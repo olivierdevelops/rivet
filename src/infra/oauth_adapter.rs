@@ -376,9 +376,12 @@ fn form_escape(s: &str) -> String {
 }
 
 /// Fresh enough to lease: present, not revoked, and valid beyond the skew
-/// (min(30 s, half the lifetime)). A token without expiry is reused only by
-/// user flows; client credentials reacquire.
-fn usable(rec: &Stored, flow: OAuthFlow, revoked: &HashSet<String>) -> bool {
+/// (min(30 s, half the lifetime)). A token without expiry is never reused
+/// (proposal Increment 9: "No expiry -> do not reuse across requests without an
+/// explicit provider rule"; there is no such rule in v0.1): client credentials
+/// reacquire, user flows refresh when they hold a refresh token and otherwise
+/// need a new login.
+fn usable(rec: &Stored, _flow: OAuthFlow, revoked: &HashSet<String>) -> bool {
     let Some(tok) = &rec.access_token else {
         return false;
     };
@@ -390,7 +393,7 @@ fn usable(rec: &Stored, flow: OAuthFlow, revoked: &HashSet<String>) -> bool {
             let skew = (exp.saturating_sub(rec.issued_at) / 2).min(30);
             now() + skew < exp
         }
-        None => flow != OAuthFlow::ClientCredentials,
+        None => false,
     }
 }
 
@@ -451,14 +454,35 @@ impl OAuthAdapter {
         })
     }
 
+    /// Token cache identity (proposal Increment 9): principal, profile (name +
+    /// configuration hash), account, and an explicit digest of the audience, the
+    /// resource-origin SET and the requested scope SET (sorted, deduplicated), so two
+    /// identities that differ in audience/resources/scopes never share a token even if
+    /// the configuration hash were to ignore them.
     fn key(principal: &Principal, p: &OAuthProfile, account: &str) -> String {
         format!(
-            "{}/{}#{}/{}",
+            "{}/{}#{}/{}@{}",
             principal.name,
             p.name,
             &p.config_hash[..12],
-            account
+            account,
+            &Self::identity_digest(p)[..12]
         )
+    }
+
+    fn identity_digest(p: &OAuthProfile) -> String {
+        let set = |v: &[String]| {
+            let mut v: Vec<&str> = v.iter().map(String::as_str).collect();
+            v.sort_unstable();
+            v.dedup();
+            v.join(" ")
+        };
+        digest_hex(&format!(
+            "aud={}\nres={}\nscope={}",
+            p.audience.as_deref().unwrap_or(""),
+            set(&p.resource_origins),
+            set(&p.scopes)
+        ))
     }
 
     fn slot(&self, key: &str) -> Arc<tokio::sync::Mutex<()>> {
@@ -698,7 +722,12 @@ impl OAuthAdapter {
     ) -> CredentialStatus {
         let (state, scopes, expires_at, generation) = match rec {
             Some(r) if r.access_token.is_some() || r.refresh_token.is_some() => {
-                let state = if usable(r, p.flow, revoked) {
+                // A user-flow token without expiry is refreshed at every use: the account
+                // stays connected while it holds a refresh token.
+                let refreshable = r.expires_at.is_none()
+                    && p.flow != OAuthFlow::ClientCredentials
+                    && r.refresh_token.is_some();
+                let state = if usable(r, p.flow, revoked) || refreshable {
                     CredentialState::Connected
                 } else {
                     CredentialState::Expired
@@ -1552,8 +1581,11 @@ mod tests {
         r.issued_at = t - 100; // skew capped at 30 s
         assert!(!usable(&r, OAuthFlow::ClientCredentials, &none));
         r.expires_at = None;
+        // G20: a token without expiry is never reused, whatever the flow.
         assert!(!usable(&r, OAuthFlow::ClientCredentials, &none));
-        assert!(usable(&r, OAuthFlow::DeviceCode, &none));
+        assert!(!usable(&r, OAuthFlow::DeviceCode, &none));
+        assert!(!usable(&r, OAuthFlow::AuthorizationCode, &none));
+        r.expires_at = Some(t + 3600);
         let revoked: HashSet<String> = [digest_hex("a")].into_iter().collect();
         assert!(!usable(&r, OAuthFlow::DeviceCode, &revoked));
     }
@@ -1620,5 +1652,25 @@ mod tests {
         // A different profile configuration never reads another profile's entry.
         p.config_hash = "other".into();
         assert!(a.load_entry(&p, "k").await.unwrap().is_none());
+
+        // G20: the cache key covers profile, account, audience, resource-origin set and
+        // scope set (order-insensitive), and nothing else collapses two identities.
+        let principal = Principal::local();
+        p.config_hash = "0123456789abcdef".into();
+        p.scopes = vec!["a".into(), "b".into()];
+        let base = OAuthAdapter::key(&principal, &p, "ada");
+        let mut q = p.clone();
+        q.scopes = vec!["b".into(), "a".into(), "a".into()];
+        assert_eq!(OAuthAdapter::key(&principal, &q, "ada"), base);
+        q.scopes = vec!["a".into()];
+        assert_ne!(OAuthAdapter::key(&principal, &q, "ada"), base);
+        let mut q = p.clone();
+        q.audience = Some("https://api.example.com".into());
+        assert_ne!(OAuthAdapter::key(&principal, &q, "ada"), base);
+        let mut q = p.clone();
+        q.resource_origins
+            .push("https://other.example.com:443".into());
+        assert_ne!(OAuthAdapter::key(&principal, &q, "ada"), base);
+        assert_ne!(OAuthAdapter::key(&principal, &p, "bob"), base);
     }
 }

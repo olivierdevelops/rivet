@@ -804,6 +804,35 @@ async fn refresh_rotation_race_and_invalid_grant() {
     );
 }
 
+// vhco:test auth.acquire_credential -- G20: a user-flow access token without expiry is never reused: every use refreshes (the account stays connected), and without a refresh token it is login_required
+#[tokio::test]
+async fn user_token_without_expiry_is_never_reused() {
+    let f = Fake::start().await;
+    f.with(|s| s.omit_expiry = true);
+    let rt = runtime(&f);
+    let st = connect_user(&f, &rt).await;
+    assert_eq!(st["state"], "connected");
+    assert_eq!(grants_of(&f, "refresh_token"), 0);
+    call(&rt, "user.contacts", serde_json::json!({}))
+        .await
+        .unwrap();
+    assert_eq!(grants_of(&f, "refresh_token"), 1, "first use refreshes");
+    call(&rt, "user.contacts", serde_json::json!({}))
+        .await
+        .unwrap();
+    assert_eq!(
+        grants_of(&f, "refresh_token"),
+        2,
+        "no reuse across requests"
+    );
+    // Provider drops the refresh grant: no silent reuse of the old access token.
+    f.with(|s| s.refresh.clear());
+    let e = call(&rt, "user.contacts", serde_json::json!({}))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "auth.login_required");
+}
+
 // vhco:test auth.acquire_credential -- a refresh whose answer never arrives is auth.refresh_uncertain and the old refresh token is never replayed
 #[tokio::test]
 async fn uncertain_refresh_is_not_replayed() {
