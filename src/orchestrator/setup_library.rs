@@ -9,7 +9,12 @@
 //!     └─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
 //! ```
 
-// vhco:surface library kind library calls language/compile_program, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve
+// vhco:surface library kind library calls language/compile_program, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", PARAMS, None)
+// vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", PARAMS, None)
+// vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", PARAMS, None)
+// vhco:trigger library auth/disconnect_account = Runtime::request("rivet.auth.disconnect", PARAMS, None)
+// vhco:trigger library auth/cancel_authorization = Runtime::request("rivet.auth.cancel", PARAMS, None)
 // vhco:trigger library language/compile_program = Runtime::builder().file(PATH).build()
 // vhco:trigger library policy/load_policy = Runtime::builder().policy_file(PATH).build()
 // vhco:trigger library execution/request_operation = Runtime::request(ID, PARAMS, sink)

@@ -10,6 +10,7 @@ pub mod h3_client;
 pub mod http_adapter;
 pub mod mcp_client;
 pub mod net_tls;
+pub mod oauth_adapter;
 pub mod policy_broker;
 pub mod policy_draft_writer;
 pub mod policy_file_reader;

@@ -26,6 +26,8 @@ use tonic::codegen::http;
 use tonic::server::NamedService;
 use tonic::{Request, Response, Status, Streaming};
 
+mod oauth_support;
+
 const USERS_PB: &str = "tests/fixtures/grpc/users.pb";
 const TYPES_PB: &str = "tests/fixtures/grpc/types.pb";
 
@@ -93,6 +95,12 @@ async fn handle(
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    // `whoami` reports whether an OAuth bearer arrived (never echoes it).
+    let bearer = req
+        .metadata()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("Bearer CANARY-AT-"));
     let mut input = req.into_inner();
     let one = |m: DynamicMessage| -> Out { Box::pin(futures_util::stream::iter([Ok(m)])) };
     let mut response = match method.as_str() {
@@ -114,6 +122,10 @@ async fn handle(
                     Ok(msg(&output, serde_json::json!({"id": "1"}))),
                     Ok(msg(&output, serde_json::json!({"id": "2"}))),
                 ])) as Out),
+                "whoami" => Response::new(one(msg(
+                    &output,
+                    serde_json::json!({"id": "whoami", "name": if bearer { "bearer" } else { "anonymous" }}),
+                ))),
                 "denied" => return Err(Status::permission_denied("not yours")),
                 "unauth" => return Err(Status::unauthenticated("log in")),
                 other => return Err(Status::not_found(format!("no user {other}"))),
@@ -896,20 +908,49 @@ fn load_time_descriptor_checks() {
     );
 }
 
-// vhco:test grpc.invoke_rpc -- `auth PROFILE account A` is unsupported.auth until OAuth exists; reserved metadata is rejected; nothing dials
+// vhco:test grpc.invoke_rpc -- `auth PROFILE account A` attaches an origin-bound OAuth bearer after the method/network permits (none without allow_auth, and nothing dials); reserved metadata is rejected
 #[tokio::test]
-async fn auth_and_reserved_metadata_rejected() {
+async fn auth_attaches_bearer_and_reserved_metadata_rejected() {
+    // SAFETY: set once for this test binary before any runtime reads it.
+    unsafe { std::env::set_var("RIVET_T17_CLIENT_SECRET", oauth_support::CLIENT_SECRET) };
     let s = start_plain().await;
-    let b = std_bundle(
-        &s,
-        "auth svc oauth2\n    flow client_credentials\nend\n\noperation users.secure_get\n    output json\n    response = grpc users.GetUser\n        message {id: \"42\"}\n        auth svc account \"service\"\n    end\n    return response\nend\n\noperation users.reserved\n    output json\n    response = grpc users.GetUser\n        message {id: \"42\"}\n        metadata \"grpc-timeout\" \"1S\"\n    end\n    return response\nend\n",
+    let f = oauth_support::Fake::start().await;
+    let a = f.auth_origin();
+    let origin = format!("http://{}", s.addr);
+    let src = format!(
+        "{}auth svc oauth2\n    flow client_credentials\n    issuer \"{a}\"\n    token_url \"{a}/token\"\n    client_id \"rivet-service\"\n    client_secret env \"RIVET_T17_CLIENT_SECRET\"\n    client_auth basic\n    scopes [\"contacts.read\"]\n    resource_origins [\"{origin}\"]\n    store memory\nend\n\noperation users.secure_get\n    output json\n    response = grpc users.GetUser\n        message {{id: \"whoami\"}}\n        auth svc account \"service\"\n    end\n    return response\nend\n\noperation users.reserved\n    output json\n    response = grpc users.GetUser\n        message {{id: \"42\"}}\n        metadata \"grpc-timeout\" \"1S\"\n    end\n    return response\nend\n",
+        connector(&origin)
     );
+    let auth_grants = format!(
+        r#"{}, {{"capability": "allow_network", "targets": ["{a}"]}},
+           {{"capability": "allow_credentials", "targets": ["svc/service"]}},
+           {{"capability": "allow_env", "targets": ["RIVET_T17_CLIENT_SECRET"]}}"#,
+        grants(&origin)
+    );
+    // Without allow_auth: permission.denied, no token request and nothing dials.
+    let b = bundle(&src, &policy(&auth_grants));
     let rt = b.rt.as_ref().unwrap();
     let e = err(call(rt, "users.secure_get", serde_json::json!({})).await.0);
-    assert_eq!(e.code, "unsupported.auth");
+    assert_eq!(e.code, "permission.denied");
+    assert_eq!(s.calls.load(Ordering::SeqCst), 0);
+    assert!(f.with(|st| st.grants.is_empty()));
     let e = err(call(rt, "users.reserved", serde_json::json!({})).await.0);
     assert_eq!(e.code, "grpc.metadata");
-    assert_eq!(s.calls.load(Ordering::SeqCst), 0);
+    // With allow_auth: the call carries `authorization: Bearer …`; the result never does.
+    let with_auth =
+        format!(r#"{auth_grants}, {{"capability": "allow_auth", "targets": ["svc/service/use"]}}"#);
+    let b = bundle(&src, &policy(&with_auth));
+    let rt = b.rt.as_ref().unwrap();
+    let v = call(rt, "users.secure_get", serde_json::json!({}))
+        .await
+        .0
+        .unwrap();
+    assert_eq!(
+        v.get("message").unwrap().get("name"),
+        Some(&Value::text("bearer"))
+    );
+    assert!(!v.to_json().to_string().contains("CANARY"));
+    assert_eq!(f.with(|st| st.grants.len()), 1);
 }
 
 // vhco:test grpc.invoke_rpc -- docs/demos/10-grpc compiles and its README flows (unary, watch, late UNAVAILABLE, upload) run against the fixture

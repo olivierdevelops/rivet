@@ -59,9 +59,23 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["h
 # HTTP/3 over the same quinn/ring stack (ADR-0002: exact pins for the 0.0.x crates; TASK-044)
 h3 = "=0.0.8"
 h3-quinn = "=0.0.10"
+# OAuth 2.0 (WS-F, ADR-0002): hand-rolled over the broker HTTP client; CSPRNG for state/PKCE from ring
+ring = "0.17.14"
+# credentials (ADR-0002): keyring-core + one native store per OS for `store keychain "NS"`
+keyring-core = "1.0.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1.0"
+
+[target.'cfg(target_os = "linux")'.dependencies.zbus-secret-service-keyring-store]
+version = "1.0.1"
+features = ["rt-tokio-crypto-rust"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.7"

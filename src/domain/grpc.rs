@@ -127,7 +127,7 @@ pub enum GrpcMetadataValue {
     Binary(Vec<u8>),
 }
 
-// vhco:domain GrpcPlan { connector: string; method: string; usage: GrpcUsage; message?: Value; metadata: (string, GrpcMetadataValue)[]; timeout_ms?: int; deadline_ms: int; auth?: (string, string); operation_id: string; span?: SourceSpan }
+// vhco:domain GrpcPlan { connector: string; method: string; usage: GrpcUsage; message?: Value; metadata: (string, GrpcMetadataValue)[]; timeout_ms?: int; deadline_ms: int; auth?: (string, string); principal: Principal; operation_id: string; span?: SourceSpan }
 /// One evaluated `grpc …` / `with grpc …` form.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GrpcPlan {
@@ -144,6 +144,8 @@ pub struct GrpcPlan {
     pub deadline_ms: u64,
     /// `auth PROFILE account ACCOUNT`.
     pub auth: Option<(String, String)>,
+    /// The request principal (credential cache identity for `auth`).
+    pub principal: super::contracts::Principal,
     pub operation_id: String,
     pub span: Option<SourceSpan>,
 }

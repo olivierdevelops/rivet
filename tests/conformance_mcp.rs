@@ -175,7 +175,10 @@ async fn stdio_rivet_peer_sync_approve_call() {
     write(
         dir.path(),
         "policy.json",
-        &policy(stdio_grants(peer.path()), std::slice::from_ref(&receipt.sha256)),
+        &policy(
+            stdio_grants(peer.path()),
+            std::slice::from_ref(&receipt.sha256),
+        ),
     );
     let rt = load(dir.path()).unwrap();
     assert!(

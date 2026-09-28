@@ -1,6 +1,17 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy, connectors/invoke_mcp
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --params JSON
+// vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
+// vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
+// vhco:trigger cli auth/disconnect_account = rivet auth disconnect PROFILE --account ACCOUNT
+// vhco:trigger cli auth/cancel_authorization = rivet auth cancel TRANSACTION_ID
+// vhco:api cli auth/begin_authorization rivet auth begin PROFILE --account ACCOUNT -- start a code (PKCE S256) or device transaction; stdout is the Completion with the AuthChallenge (no verifier, state secret or token)
+// vhco:request { "profile": "string", "account": "string" }
+// vhco:response { "transaction_id": "string", "authorization_url": "string?", "verification_uri": "string?", "user_code": "string?", "expires_at": "RFC 3339", "interval_seconds": "int?" }
+// vhco:api cli auth/complete_authorization rivet auth complete --params-file PATH [--timeout D] -- finish a transaction; connected CredentialStatus, or {"state":"pending"} when the deadline came first (transaction kept)
+// vhco:request { "transaction_id": "string", "callback": "{code, state, redirect_uri, issuer?}?", "wait": "bool" }
+// vhco:response { "profile": "string", "account": "string", "state": "connected|pending", "scopes": "string[]", "expires_at": "RFC 3339", "generation": "int" }
 // vhco:trigger cli execution/request_operation = rivet request ID --params JSON
 // vhco:trigger cli execution/cancel_request = Ctrl-C during rivet request
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
@@ -31,8 +42,8 @@ use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
 use crate::features::language::lower::strict_doc_findings;
 use crate::io::cli::{
-    Cli, Command, ConnectorsCommand, PolicyCommand, TraceCommand, render_describe, render_list,
-    render_outputs, render_policy, render_policy_review,
+    AuthCommand, Cli, Command, ConnectorsCommand, PolicyCommand, TraceCommand, render_describe,
+    render_list, render_outputs, render_policy, render_policy_review,
 };
 use crate::orchestrator::runtime::{Runtime, RuntimeBuilder};
 use clap::Parser;
@@ -352,6 +363,36 @@ async fn run(cli: Cli) -> i32 {
                 Err(e) => fail(&e, None, true),
             }
         }
+        Command::Auth { command } => {
+            let (id, params, timeout) = match auth_request(command) {
+                Ok(v) => v,
+                Err(e) => return fail(&e, None, true),
+            };
+            let mut req =
+                runtime.new_request(id, params, crate::domain::contracts::Principal::local());
+            if let Some(t) = &timeout {
+                match parse_duration_ms(t) {
+                    Some(ms) => req.deadline_ms = ms,
+                    None => {
+                        return fail(
+                            &RivetError::validation(
+                                "validation.usage",
+                                format!("--timeout {t}: use digits plus ms, s, m or h"),
+                            ),
+                            None,
+                            true,
+                        );
+                    }
+                }
+            }
+            match runtime.dispatch_request(req, None).await {
+                Ok(c) => {
+                    let _ = writeln!(stdout, "{}", c.to_json());
+                    0
+                }
+                Err(e) => fail(&e, None, true),
+            }
+        }
         #[allow(unreachable_patterns)]
         _ => fail(
             &RivetError::unsupported(
@@ -394,6 +435,67 @@ fn root_relative(output: &str, root: &str) -> Result<String, RivetError> {
         ));
     }
     Ok(format!("./{}", o[r.len()..].join("/")))
+}
+
+/// Map `rivet auth …` onto the `rivet.auth.*` built-in (ID, params, --timeout).
+fn auth_request(
+    command: &AuthCommand,
+) -> Result<(&'static str, Value, Option<String>), RivetError> {
+    let pa = |profile: &str, account: &str| {
+        Value::object([
+            ("profile", Value::text(profile)),
+            ("account", Value::text(account)),
+        ])
+    };
+    Ok(match command {
+        AuthCommand::Begin { profile, account } => ("rivet.auth.begin", pa(profile, account), None),
+        AuthCommand::Status { profile, account } => {
+            ("rivet.auth.status", pa(profile, account), None)
+        }
+        AuthCommand::Disconnect { profile, account } => {
+            ("rivet.auth.disconnect", pa(profile, account), None)
+        }
+        AuthCommand::Cancel { transaction_id } => (
+            "rivet.auth.cancel",
+            Value::object([("transaction_id", Value::text(transaction_id))]),
+            None,
+        ),
+        AuthCommand::Complete {
+            params,
+            params_file,
+            timeout,
+        } => {
+            let text = match (params, params_file) {
+                (Some(p), None) => p.clone(),
+                (None, Some(f)) => std::fs::read_to_string(f).map_err(|e| {
+                    RivetError::validation(
+                        "validation.usage",
+                        format!("--params-file {f}: {}", e.kind()),
+                    )
+                })?,
+                _ => {
+                    return Err(RivetError::validation(
+                        "validation.usage",
+                        "auth complete needs exactly one of --params JSON or --params-file PATH",
+                    ));
+                }
+            };
+            // Parse errors never echo the input (it may hold a callback code).
+            let v = serde_json::from_str::<serde_json::Value>(&text)
+                .map(|j| Value::from_json(&j))
+                .map_err(|e| {
+                    RivetError::validation(
+                        "validation.params",
+                        format!(
+                            "auth complete params are not valid JSON (line {}, column {})",
+                            e.line(),
+                            e.column()
+                        ),
+                    )
+                })?;
+            ("rivet.auth.complete", v, timeout.clone())
+        }
+    })
 }
 
 /// `--stream`: each data item becomes one NDJSON envelope line on stdout.

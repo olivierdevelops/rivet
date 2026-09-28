@@ -24,12 +24,14 @@ use super::effect_args::{
 use super::execution_driver::{EffectAdapter, EffectCtx, EvalArg, EvaluatedForm, ResourceHandle};
 use super::h3_client;
 use super::net_tls::{client_config, connect_err, handshake_err, resolve, server_name};
+use crate::domain::auth::{AuthContext, CredentialInput, CredentialLease, origin_of};
 use crate::domain::ir::EffectForm;
-use crate::domain::ports::{FileAccess, PolicyEvaluator};
+use crate::domain::policy::{AccessVerb, Capability, EffectTarget};
+use crate::domain::ports::{CredentialProvider, FileAccess, PolicyEvaluator};
 use crate::domain::transports::{
     ByteStream, Codec, CodecInput, CodecKind, HttpBody, HttpClient, HttpExchange, HttpOutcome,
     HttpReply, HttpResponse, HttpVersionPolicy, HttpWire, RetryPolicy, StreamMode, TlsMaterial,
-    WireTarget, version_value,
+    WireTarget, replay_safe, version_value,
 };
 use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
 use async_trait::async_trait;
@@ -321,6 +323,14 @@ pub struct HttpEffects {
     files: Arc<dyn FileAccess>,
     client: HyperClient,
     codec: StdCodec,
+    /// `auth PROFILE account A`: the authorized, origin-bound lease source.
+    credentials: Option<Arc<dyn CredentialProvider>>,
+}
+
+/// One `auth PROFILE account ACCOUNT` line after evaluation.
+struct AuthAttach {
+    profile: String,
+    account: String,
 }
 
 impl HttpEffects {
@@ -330,6 +340,99 @@ impl HttpEffects {
             files,
             client: HyperClient,
             codec: StdCodec,
+            credentials: None,
+        }
+    }
+
+    /// Enable `auth PROFILE account A` (the orchestrator passes the provider
+    /// wrapped in the `auth.acquire_credential` use case).
+    pub fn with_credentials(mut self, credentials: Option<Arc<dyn CredentialProvider>>) -> Self {
+        self.credentials = credentials;
+        self
+    }
+
+    /// Acquire an origin-bound lease and add `Authorization: Bearer`. The
+    /// resource origin is authorized first so a denied resource never costs a
+    /// token request; `exchange_http` strips the header on any origin change.
+    async fn attach(
+        &self,
+        ctx: &EffectCtx,
+        x: &mut HttpExchange,
+        auth: &AuthAttach,
+    ) -> RivetResult<CredentialLease> {
+        let provider = self.credentials.as_ref().ok_or_else(|| {
+            RivetError::unsupported(
+                "unsupported.oauth",
+                "`auth PROFILE account …` needs the OAuth adapter, which this host did not enable",
+            )
+        })?;
+        let url = url::Url::parse(&x.url).map_err(|e| bad("validation.url", e.to_string()))?;
+        let origin = origin_of(&x.url)
+            .ok_or_else(|| bad("validation.url", "`auth` needs an http(s) URL"))?;
+        ctx.authorize(
+            Capability::Network,
+            AccessVerb::Connect,
+            EffectTarget::Url(format!("{origin}{}", url.path())),
+        )?;
+        let lease = provider
+            .acquire(
+                CredentialInput {
+                    profile: auth.profile.clone(),
+                    account: auth.account.clone(),
+                    origin,
+                    audience: None,
+                    scopes: Vec::new(),
+                    context: AuthContext {
+                        principal: ctx.request.principal.clone(),
+                        operation_id: ctx.operation_id.clone(),
+                        deadline_ms: ctx.remaining().as_millis() as u64,
+                    },
+                },
+                ctx.policy.as_ref(),
+            )
+            .await
+            .map_err(|e| e.with_span(Some(ctx.span.clone())))?;
+        x.headers
+            .retain(|(k, _)| !k.eq_ignore_ascii_case("authorization"));
+        x.headers.push((
+            "authorization".into(),
+            format!("Bearer {}", lease.handle.expose()),
+        ));
+        Ok(lease)
+    }
+
+    /// Exchange with an attached credential. A 401 invalidates the lease; only
+    /// a replay-safe, non-streaming request is retried, once, with a new lease.
+    async fn exchange_authed(
+        &self,
+        ctx: &EffectCtx,
+        mut x: HttpExchange,
+        timeout: Option<u64>,
+        auth: Option<AuthAttach>,
+    ) -> RivetResult<HttpOutcome> {
+        let Some(auth) = auth else {
+            let ms = budget_ms(ctx, timeout);
+            return self.exchange(ctx, x, ms).await;
+        };
+        let lease = self.attach(ctx, &mut x, &auth).await?;
+        let retry_copy = (replay_safe(&x.method) && x.stream.is_none()).then(|| x.clone());
+        let ms = budget_ms(ctx, timeout);
+        let out = self.exchange(ctx, x, ms).await;
+        let unauthorized = matches!(&out, Err(e) if e.code == "http.status"
+            && e.details.get("status") == Some(&Value::Int(401)));
+        if !unauthorized {
+            return out;
+        }
+        if let Some(p) = &self.credentials {
+            p.invalidate(&lease);
+        }
+        match retry_copy {
+            Some(mut again) => {
+                self.attach(ctx, &mut again, &auth).await?;
+                let ms = budget_ms(ctx, timeout);
+                self.exchange(ctx, again, ms).await
+            }
+            None => out,
         }
     }
 
@@ -340,7 +443,7 @@ impl HttpEffects {
         form: &EffectForm,
         f: &EvaluatedForm,
         scoped: bool,
-    ) -> RivetResult<(HttpExchange, u64)> {
+    ) -> RivetResult<(HttpExchange, Option<u64>, Option<AuthAttach>)> {
         let method = word(f.head.first())
             .ok_or_else(|| bad("syntax.http", "expected `http METHOD URL`"))?
             .to_ascii_uppercase();
@@ -364,6 +467,7 @@ impl HttpEffects {
             origin: origin(ctx),
         };
         let mut timeout = None;
+        let mut auth = None;
         for (i, k, args) in options(f) {
             match k {
                 "query" | "header" => {
@@ -443,10 +547,28 @@ impl HttpEffects {
                 "retry" => x.retry = Some(parse_retry(args)?),
                 "version" => x.version = parse_version(args)?,
                 "auth" => {
-                    return Err(RivetError::unsupported(
-                        "unsupported.oauth",
-                        "`auth PROFILE account …` needs the OAuth adapter, which is not available in this build",
-                    ));
+                    // auth PROFILE account "ACCOUNT"
+                    let profile = word(args.first())
+                        .map(str::to_string)
+                        .or_else(|| text(args.first()));
+                    let account = args
+                        .iter()
+                        .position(|a| a.word() == Some("account"))
+                        .and_then(|i| {
+                            text(args.get(i + 1))
+                                .or_else(|| word(args.get(i + 1)).map(str::to_string))
+                        });
+                    match (profile, account) {
+                        (Some(profile), Some(account)) => {
+                            auth = Some(AuthAttach { profile, account })
+                        }
+                        _ => {
+                            return Err(bad(
+                                "validation.http_option",
+                                "expected `auth PROFILE account \"ACCOUNT\"`",
+                            ));
+                        }
+                    }
                 }
                 "unix" => x.unix_socket = text(args.first()),
                 "tls" => apply_tls(self.files.as_ref(), args, &mut x.tls).await?,
@@ -476,7 +598,13 @@ impl HttpEffects {
                 "`with http … as NAME` needs `stream sse|jsonl|lines|bytes`",
             ));
         }
-        Ok((x, budget_ms(ctx, timeout)))
+        if auth.is_some() && x.unix_socket.is_some() {
+            return Err(bad(
+                "validation.http_option",
+                "`auth` cannot be combined with `unix`: credentials bind to network origins",
+            ));
+        }
+        Ok((x, timeout, auth))
     }
 
     async fn exchange(
@@ -589,8 +717,8 @@ impl EffectAdapter for HttpEffects {
         form: &EffectForm,
         args: EvaluatedForm,
     ) -> RivetResult<Value> {
-        let (x, ms) = self.parse(ctx, form, &args, false).await?;
-        let out = self.exchange(ctx, x, ms).await?;
+        let (x, timeout, auth) = self.parse(ctx, form, &args, false).await?;
+        let out = self.exchange_authed(ctx, x, timeout, auth).await?;
         Ok(out.response.to_value())
     }
 
@@ -600,10 +728,10 @@ impl EffectAdapter for HttpEffects {
         form: &EffectForm,
         args: EvaluatedForm,
     ) -> RivetResult<Box<dyn ResourceHandle>> {
-        let (x, ms) = self.parse(ctx, form, &args, true).await?;
+        let (x, timeout, auth) = self.parse(ctx, form, &args, true).await?;
         let mode = x.stream.unwrap_or(StreamMode::Bytes);
-        let deadline = Instant::now() + Duration::from_millis(ms);
-        let out = self.exchange(ctx, x, ms).await?;
+        let deadline = Instant::now() + Duration::from_millis(budget_ms(ctx, timeout));
+        let out = self.exchange_authed(ctx, x, timeout, auth).await?;
         let decode_json = match mode {
             StreamMode::Sse => !matches!(out.decode, Some(CodecKind::Text | CodecKind::Bytes)),
             _ => true,
