@@ -16,6 +16,7 @@ use crate::domain::ir::{
 use crate::domain::policy::{AccessVerb, Capability, Decision, EffectIntent, EffectTarget};
 use crate::domain::ports::{DataSink, Dispatcher, ExecutionDriver, FileAccess, PolicyEvaluator};
 use crate::domain::source::SourceSpan;
+use crate::domain::transports::{UrlPiece, assemble_url};
 use crate::domain::{RivetError, RivetResult, Value};
 use async_trait::async_trait;
 use base64::Engine;
@@ -90,6 +91,15 @@ pub trait ResourceHandle: Send {
         Err(RivetError::unsupported(
             "unsupported.iterate",
             "this resource cannot be iterated",
+        ))
+    }
+
+    /// `for item in NAME.MEMBER` (`for line in process.stdout`); `Ok(None)` ends it.
+    async fn next_of(&mut self, ctx: &EffectCtx, member: &str) -> RivetResult<Option<Value>> {
+        let _ = ctx;
+        Err(RivetError::unsupported(
+            "unsupported.iterate",
+            format!("`{member}` cannot be iterated on this resource"),
         ))
     }
 
@@ -550,7 +560,7 @@ impl<'a> Machine<'a> {
                     span,
                 } => {
                     if let Expr::Path(path, _) = iter {
-                        if path.len() == 1 && frame.get(&path[0]).is_none() {
+                        if !path.is_empty() && frame.get(&path[0]).is_none() {
                             if let Some(handle) = frame.handle(&path[0]) {
                                 loop {
                                     let ctx = self.ctx(frame, span);
@@ -563,9 +573,12 @@ impl<'a> Machine<'a> {
                                                 format!("`{}` is already closed", path[0]),
                                             )
                                         })?;
-                                        h.next(&ctx)
-                                            .await
-                                            .map_err(|e| e.with_span(Some(span.clone())))?
+                                        let pulled = if path.len() == 1 {
+                                            h.next(&ctx).await
+                                        } else {
+                                            h.next_of(&ctx, &path[1..].join(".")).await
+                                        };
+                                        pulled.map_err(|e| e.with_span(Some(span.clone())))?
                                     };
                                     let Some(item) = item else { break };
                                     frame.scopes.push(HashMap::from([(var.clone(), item)]));
@@ -1033,7 +1046,29 @@ impl<'a> Machine<'a> {
         form: &EffectForm,
     ) -> RivetResult<EvaluatedForm> {
         let mut out = EvaluatedForm::default();
-        for a in &form.head {
+        // Component-aware URL interpolation for `http METHOD URL` / `websocket URL`.
+        let url_at = match form.kind {
+            EffectKind::Http => Some(1),
+            EffectKind::WebSocket => Some(0),
+            _ => None,
+        };
+        for (i, a) in form.head.iter().enumerate() {
+            if let (Some(u), Arg::Expr(Expr::Template(parts), span)) = (url_at, a)
+                && u == i
+            {
+                let mut pieces = Vec::with_capacity(parts.len());
+                for p in parts {
+                    pieces.push(match p {
+                        TemplatePart::Lit(l) => UrlPiece::Literal(l.clone()),
+                        TemplatePart::Path(path) => {
+                            UrlPiece::Value(lookup(frame, path, Some(span))?.to_display())
+                        }
+                    });
+                }
+                let url = assemble_url(&pieces).map_err(|e| e.with_span(Some(span.clone())))?;
+                out.head.push(EvalArg::Value(Value::Text(url)));
+                continue;
+            }
             out.head.push(self.eval_arg(frame, a).await?);
         }
         for o in &form.options {

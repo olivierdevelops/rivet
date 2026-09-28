@@ -208,7 +208,9 @@ impl Runtime {
             raw: ConfinedFiles::new(&bundle.root),
         });
         let evaluator: Arc<dyn PolicyEvaluator> = broker.clone();
-        let driver = Arc::new(Interpreter::new(Arc::clone(&program), files, evaluator));
+        let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
+        crate::orchestrator::transports::register(&mut interp, files, &bundle.root);
+        let driver = Arc::new(interp);
         let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)));
         let inner = Arc::new(Inner {
             bundle,
