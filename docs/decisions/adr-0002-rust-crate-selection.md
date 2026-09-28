@@ -207,7 +207,7 @@ None.
 - [RES-2026-0001](../research/res-2026-0001-capy-grammar-spike.md) — Capy pinned commit
 - [ADR-0001](adr-0001-approve-rivet-runtime-design.md) — approval basis
 - [ADR-0003](adr-0003-process-sandbox-backends.md) — sandbox backends
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md), [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md), [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 
 ## Change History
 

@@ -69,7 +69,7 @@ Four policy files show the same bundle under different authority. Only the file 
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 `curl` for step 8; loopback port 18811 free.
@@ -498,7 +498,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Policy and I/O manifest guide](../../manuals/man-2026-0005-policy-and-io-manifest-guide.md)
 - [Policy file tests TEST-2026-0021](../../testing/test-2026-0021-policy-file.md) · [I/O manifest tests TEST-2026-0025](../../testing/test-2026-0025-io-manifest.md) · [Policy generate tests TEST-2026-0026](../../testing/test-2026-0026-policy-generate.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

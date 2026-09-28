@@ -64,7 +64,7 @@ an operation, read its declared output, inspect its I/O and serve it over HTTP. 
 ### Journey Overview
 
 ```text
- [git checkout] -> cargo build -> target/debug/rivet --version -> "rivet 0.1.0-dev"
+ [git checkout] -> cargo build -> target/debug/rivet --version -> "rivet 0.1.0"
                         |
                         +-> compile error / linker "no space left" -> free disk (TRBL-2026-0003) -> retry
 ```
@@ -79,7 +79,7 @@ perch --help
 perch build             # cargo build --locked --release --bin rivet
 perch build_debug       # cargo build --locked --bin rivet
 perch install           # build release, then bman add "<absolute binary path>"
-rivet --version         # rivet 0.1.0-dev
+rivet --version         # rivet 0.1.0
 ```
 
 The install task requires `bman` on `PATH`. It builds the optimized binary into this checkout's `target/`
@@ -113,7 +113,7 @@ target/debug/rivet --version
 Expected output (the version string of the unreleased tree):
 
 ```text
-rivet 0.1.0-dev
+rivet 0.1.0
 ```
 
 Optimized build (slower to compile, faster to run):

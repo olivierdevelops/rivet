@@ -56,7 +56,7 @@ The planned functionality is implemented and behaves as specified on macOS. Ever
 
 ## Plan Under Validation
 
-[PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md), which implements [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) (approved, revision 8), Stages A and B.
+[PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md), which implements [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) (approved, revision 8), Stages A and B.
 
 ## Method
 
@@ -149,7 +149,7 @@ The v0.1.0 implementation meets the plan on the platform it was validated on. No
 ## Related Documents
 
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Tests](../testing/index.md) · [Incidents](../incidents/index.md)
 - [ADR-0003](../decisions/adr-0003-process-sandbox-backends.md)
 

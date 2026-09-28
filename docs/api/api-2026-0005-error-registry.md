@@ -274,7 +274,7 @@ Captured on commit `f40d4aa` (the secret and restriction lines below on `829ca43
 ## Related Documents
 
 - [API index](index.md) · [HTTP API](api-2026-0001-http-rest-sse-polling.md) · [WebSocket](api-2026-0002-websocket-rivet-v1.md) · [MCP](api-2026-0003-mcp-server-tools.md) · [Library](api-2026-0004-rust-library.md)
-- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

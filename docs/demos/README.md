@@ -213,7 +213,7 @@ These are sample assets under docs, not new Rust architecture buckets or runtime
 - [Release verification guide (DEMO-2026-0015)](demo-2026-0015-v0-1-0-release-verification.md) · [demos index](index.md)
 - [Current project state](../../README.md)
 - [153-example language reference](../references/ref-2026-0002-language-and-usage.md)
-- [Runtime proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Runtime proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Request and evidence](../references/ref-2026-0001-request-and-evidence.md)
 
 ## Change History

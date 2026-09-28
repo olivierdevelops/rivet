@@ -2,18 +2,18 @@
 document_id: PROP-2026-0001
 title: "Rivet scoped connection runtime and unified request interface"
 document_type: proposal
-status: approved
+status: implemented
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 8
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [language, execution, cli, http, mcp, library, policy, serve, audit]
 affected_versions:
-  from: not-applicable
-  to: proposed-v0.1
+  from: "0.1.0"
+  to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
 scope: Proposed Rivet behavior and design review; no implementation or release claim.
@@ -32,9 +32,11 @@ next_review_date: 2026-10-27
 
 ## Summary
 
-> **Status banner.** This design is **approved** (2026-09-28) and not yet implemented: every `rivet` command, HTTP
-> route, WebSocket frame, Rust signature and language example is a *proposed* contract. This is the only
-> place the proposal says so; later sections do not repeat it.
+> **Status banner.** This design was approved on 2026-09-28 (ADR-0001) and **implemented** in v0.1.0
+> ([REL-0.1.0](../../releases/rel-0.1.0-release-notes.md)). It stays the design record. The current behaviour is
+> described by the [manuals](../../manuals/index.md), [system](../../system/index.md) and [API](../../api/index.md)
+> documents; where 0.1.0 differs from a design example, the example's status line in
+> [REF-2026-0002](../../references/ref-2026-0002-language-and-usage.md) says what 0.1.0 does.
 
 Rivet is a Rust library and CLI that runs `.rivet` files. A file declares many described operations
 (`operation users.get … end`); each operation declares its params, its **output** and the I/O it may do.
@@ -2211,6 +2213,7 @@ G-SPIKE is an implementation-entry gate owned by the implementer and is tracked 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-28 | Claude | Implemented in v0.1.0 (PLAN-2026-0001, REL-0.1.0): status implemented, moved to `implemented/`, status banner updated. |
 | 8 | 2026-09-28 | Claude | TASK-005 (approved in ADR-0001): option-derived file sites (`tls ca_file`/`cert_file`/`key_file`, `body file`, operation-level `descriptor`), per-site `origin`/`phase`/`requires_existing`/`secret`, `--by target` ORIGIN/PHASE/NEEDS FILE, `rivet io --needs` (`rivet.io {needs}`, `GET /v1/io?needs=true`) and `--check-files` (exit 4/3), exact-path grants in `policy generate`; R26, UC-21, C-23, T-25, Increment 18 and samples S154–S159. TASK-006: F-13 names the `transports` feature, F-19 adds `cancel_authorization.rs`, F-35 extends `inspect_effects.rs` as the contract does. |
 | 7 | 2026-09-28 | Claude | Approved by the project maintainer (ADR-0001): G-DESIGN, G-CONTRACT and G-LIC closed; moved to `proposals/approved/`; G-SPIKE tracked by PLAN-2026-0001. |
 | 6 | 2026-09-28 | Claude | UQ-18: generated I/O manifest (R26, UC-21, UC-22, Increment 18) — access vocabulary per site, target normalization, `rivet io` views/formats/`--check-policy`/`--strict`/`--trace`, JSON IoManifest, `rivet policy generate` least-privilege drafts, `rivet.io`/`rivet.policy.generate` on every surface with explicit-only network exposure, `effect_id` trace link; optional `access` narrowing in policy.json (Increments 5, 16); R6/UC-09 refined; P7; error registry (`conflict.exists`, wrong-verb `policy.invalid`, exit 3/7 for `io`/`policy generate`); C-23–C-24, F-35–F-37, T-25–T-26; samples. |

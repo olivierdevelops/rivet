@@ -12,7 +12,7 @@ reviewers: [Project maintainer]
 systems: [Rivet]
 components: [language, execution, cli, http, mcp, library, policy]
 affected_versions:
-  from: "0.1.0-dev"
+  from: "0.1.0"
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
@@ -39,7 +39,7 @@ plan are recorded in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-de
 Start with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and
 [installation guide](docs/manuals/man-2026-0002-installation-and-quickstart.md).
 
-- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))
 - [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)
 - [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)

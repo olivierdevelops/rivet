@@ -705,7 +705,7 @@ content-type: application/json
 mcp-session-id: mcp_16b53335089e1368d
 content-length: 146
 
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 
 # with -H 'mcp-session-id: mcp_16b53335089e1368d' -H 'mcp-protocol-version: 2025-11-25'
 notifications/initialized            -> [202]
@@ -739,7 +739,7 @@ uses `rivet.sessions.read`.
 ```text
 $ (…three JSON-RPC lines…) | rivet --file app.rivet serve --stdio
 {"listen_addr":null,"stdio":true,"surfaces":["mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","policy_hash":null}      <- stderr
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0100cee3ad\",\"trace_id\":\"tr_0100cee3ad\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}"}],"structuredContent":{"request_id":"req_0100cee3ad","trace_id":"tr_0100cee3ad","result":5,"data_count":0,"effects":"none"},"isError":false}}
 ```
 
@@ -1062,7 +1062,7 @@ trace, session and MCP session IDs differ on every run.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 implementation and release plan](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [SYS-2026-0001 Compiler and catalog](sys-2026-0001-compiler-and-catalog.md)
 - [SYS-2026-0002 Execution scopes and DAG](../runtime/sys-2026-0002-execution-scopes-and-dag.md)

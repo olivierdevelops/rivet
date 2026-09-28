@@ -569,7 +569,7 @@ differ per run.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [REF-2026-0002 Language and usage](../../references/ref-2026-0002-language-and-usage.md)
 - [SYS-2026-0002 Execution, scopes and DAG](sys-2026-0002-execution-scopes-and-dag.md)

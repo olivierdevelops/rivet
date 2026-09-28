@@ -359,7 +359,7 @@ network.
 
 ## Related Documents
 
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) — Increment 5 "Enforcement limit", F-14, OQ-1, T-08
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) — Increment 5 "Enforcement limit", F-14, OQ-1, T-08
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) — TASK-011, TASK-035, PF-25
 - [ADR-0003](../decisions/adr-0003-process-sandbox-backends.md), [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md)
 - [RES-2026-0002](res-2026-0002-rust-crate-feasibility.md) — crate selection, rmcp child-process seam

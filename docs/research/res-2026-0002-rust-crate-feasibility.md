@@ -38,7 +38,7 @@ next_review_date: 2026-10-28
 
 ## Summary
 
-Every third-party need of [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) has a crate
+Every third-party need of [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) has a crate
 that is permissively licensed and builds on Rust 1.90. The one exception is OAuth, which is hand-rolled on
 purpose (see the note under the table). A single scratch prototype ran 20 live probes against local fixtures,
 and all 20 passed:
@@ -379,7 +379,7 @@ control. Recommendation: adopt the block above as written in [ADR-0002](../decis
 
 ## Related Documents
 
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) — Increments 5, 8–14, 17; Environment and Feasibility
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) — Increments 5, 8–14, 17; Environment and Feasibility
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) — TASK-009, TASK-014
 - [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md), [ADR-0002](../decisions/adr-0002-rust-crate-selection.md)
 - [RES-2026-0001](res-2026-0001-capy-grammar-spike.md) (Capy), [RES-2026-0003](res-2026-0003-process-sandbox-backends.md) (sandbox)

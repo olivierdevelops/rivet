@@ -860,7 +860,7 @@ on every run.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [ADR-0002 Rust crate selection](../../decisions/adr-0002-rust-crate-selection.md)
 - [REF-2026-0002 Language and usage](../../references/ref-2026-0002-language-and-usage.md)

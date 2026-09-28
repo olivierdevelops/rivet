@@ -39,7 +39,7 @@ approves one, it moves to [approved/](../approved/index.md) and keeps its file n
 
 - PROP-2026-0001 (Rivet runtime) was approved on 2026-09-28
   ([ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md)) and now lives at
-  [approved/prop-2026-0001-rivet-runtime.md](../approved/prop-2026-0001-rivet-runtime.md).
+  [implemented/prop-2026-0001-rivet-runtime.md](../implemented/prop-2026-0001-rivet-runtime.md).
 - [Parent proposal index](../index.md)
 
 ## Status and maintenance

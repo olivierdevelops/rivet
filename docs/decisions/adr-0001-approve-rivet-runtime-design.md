@@ -43,7 +43,7 @@ Approved on 2026-09-28 by the project maintainer.
 ## Context
 
 The following were presented for approval together:
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) revision 6, covering R1–R26,
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) revision 6, covering R1–R26,
   UC-01–UC-22 and C-01–C-24;
 - the hand-authored `vhco-contract.json`;
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) revision 1.
@@ -106,7 +106,7 @@ None.
 
 ## Related Documents
 
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [REF-2026-0001](../references/ref-2026-0001-request-and-evidence.md)
 

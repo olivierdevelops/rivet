@@ -319,7 +319,7 @@ Fixed in commit `2c3d09b` with a regression test (`opaque_scheme_ip_literals_get
 
 - [Security index](index.md) · [ARCH-2026-0001](../architecture/arch-2026-0001-rivet-runtime-architecture.md) · [API-2026-0001](../api/api-2026-0001-http-rest-sse-polling.md) · [API-2026-0003](../api/api-2026-0003-mcp-server-tools.md) · [Error registry](../api/api-2026-0005-error-registry.md)
 - [ADR-0003 process sandbox backends](../decisions/adr-0003-process-sandbox-backends.md) · [RES-2026-0003](../research/res-2026-0003-process-sandbox-backends.md)
-- [INC-2026-0001](../incidents/resolved/inc-2026-0001-private-range-bypass-opaque-url-hosts.md) · [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [INC-2026-0001](../incidents/resolved/inc-2026-0001-private-range-bypass-opaque-url-hosts.md) · [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

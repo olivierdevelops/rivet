@@ -42,7 +42,7 @@ Source records and proposed syntax references, named ref-YYYY-NNNN-topic.md. The
 - [Request and evidence](ref-2026-0001-request-and-evidence.md) — user requests UQ-01 to UQ-18 and the licence evidence (G-LIC closed by the Capy owner, ADR-0001); UQ-17 supersedes UQ-13's `--sandbox` flag syntax while keeping its deny-by-default behaviour
 - [Numbered usage examples](ref-2026-0002-language-and-usage.md) — S01–S159, each with its 0.1.0 status: Capy prefix-call syntax, declared outputs, policy.json-only commands, unified `serve`, the generated I/O manifest, option-derived file sites and `rivet io --needs` / `--check-files` (S154–S159)
 - [Sample folders: status](../demos/index.md) and [walkthroughs](../demos/README.md)
-- [Proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Status and maintenance
 

@@ -412,7 +412,7 @@ curl -sS "${H[@]}" -H 'mcp-session-id: mcp_1c380c9408750a025' -X POST $B/mcp -d 
 ```text
 HTTP/1.1 200 OK
 mcp-session-id: mcp_1c380c9408750a025
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_017deba705\",…,\"result\":5,…}"}],"structuredContent":{"request_id":"req_017deba705","trace_id":"tr_017deba705","result":5,"data_count":0,"effects":"none"},"isError":false}}
 ```
@@ -453,7 +453,7 @@ Callable through every surface (`POST /v1/request {"id":"rivet.list"}`, MCP tool
 
 ```text
 $ rivet --file app.rivet request rivet.capabilities          # abridged; also POST /v1/request, MCP tools/call
-{"request_id":"req_…","trace_id":"tr_…","result":{"version":"0.1.0-dev","platform":{"os":"macos","arch":"aarch64"},
+{"request_id":"req_…","trace_id":"tr_…","result":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},
  "stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A",…},…],
  "sandbox":{"backend":"macos-seatbelt","status":"active",…},"serve":{"surfaces":[…],"auth":["none","bearer"]}},…}
 ```

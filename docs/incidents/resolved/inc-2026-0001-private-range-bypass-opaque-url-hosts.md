@@ -141,7 +141,7 @@ Standards-compliant URL parsing differs between special and non-special schemes;
 ## Related Documents
 
 - [PLAN-2026-0001](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
-- [PROP-2026-0001](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [RES-2026-0001](../../research/res-2026-0001-capy-grammar-spike.md)
 
 ## Change History

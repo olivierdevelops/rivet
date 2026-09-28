@@ -73,7 +73,7 @@ Embed Rivet as a Rust library. Delivery stage: **A**. Read [app.rivet](app.rivet
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 A Rust toolchain matching the repository's `rust-toolchain.toml` (edition 2024) for step 2.
@@ -245,7 +245,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; the embedding was b
 - [Same catalog on every surface (01-catalog)](../01-catalog/README.md)
 - [Embedding manual MAN-2026-0007](../../manuals/man-2026-0007-embedding-library.md) · [Rust library API](../../api/api-2026-0004-rust-library.md)
 - [Library tests TEST-2026-0010](../../testing/test-2026-0010-library.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

@@ -65,7 +65,7 @@ Create, read, update and delete one JSON file. Delivery stage: **A**. Read [app.
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 No fixture services are needed; everything happens under `./out` in this folder.
@@ -428,7 +428,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Policy and I/O manifest guide](../../manuals/man-2026-0005-policy-and-io-manifest-guide.md)
 - [File tests TEST-2026-0004](../../testing/test-2026-0004-files.md) · [Policy file tests TEST-2026-0021](../../testing/test-2026-0021-policy-file.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

@@ -608,7 +608,7 @@ re-verified at `829ca43`. Every other message above was first produced by the `f
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [SYS-2026-0003 Policy broker and I/O manifest](../components/sys-2026-0003-policy-broker-and-io-manifest.md)
 - [SYS-2026-0004 Surfaces and serve](../components/sys-2026-0004-surfaces-and-serve.md)

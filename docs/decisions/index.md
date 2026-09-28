@@ -52,7 +52,7 @@ evidence (`../research/`).
 
 | ADR | Status | Date | Decision | Drives |
 |---|---|---|---|---|
-| [ADR-0001](adr-0001-approve-rivet-runtime-design.md) | approved | 2026-09-28 | Approve PROP-2026-0001, `vhco-contract.json` and PLAN-2026-0001; close G-DESIGN, G-CONTRACT and G-LIC; approve TASK-005; adopt Git | [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md), [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) |
+| [ADR-0001](adr-0001-approve-rivet-runtime-design.md) | approved | 2026-09-28 | Approve PROP-2026-0001, `vhco-contract.json` and PLAN-2026-0001; close G-DESIGN, G-CONTRACT and G-LIC; approve TASK-005; adopt Git | [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md), [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) |
 | [ADR-0002](adr-0002-rust-crate-selection.md) | approved | 2026-09-28 | Rust crate set for v0.1.0 (RES-2026-0002); ring-only TLS; broker-dialed hyper client; rmcp pinned to 2025-11-25; hand-rolled OAuth | TASK-014, [RES-2026-0002](../research/res-2026-0002-rust-crate-feasibility.md) |
 | [ADR-0003](adr-0003-process-sandbox-backends.md) | approved | 2026-09-28 | Sandbox backends: macOS Seatbelt ships; Linux Landlock+seccomp gated on T-08; Windows/others refuse `unsupported.sandbox_backend`; children get no network | TASK-035, [RES-2026-0003](../research/res-2026-0003-process-sandbox-backends.md) |
 

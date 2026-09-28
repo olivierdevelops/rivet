@@ -77,7 +77,7 @@ None.
 
 ## Recommended reading order
 
-1. [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md): what is being built and why.
+1. [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md): what is being built and why.
 2. [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md): how it is built, validated, documented and released.
 
 ## Related directories

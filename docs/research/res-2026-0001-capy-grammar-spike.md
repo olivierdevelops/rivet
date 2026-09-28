@@ -152,7 +152,7 @@ for `src/infra/rivet.capy`.
 
 ## Related Documents
 
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md): Increment 1 and gate G-SPIKE
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md): Increment 1 and gate G-SPIKE
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md): TASK-010, TASK-016, TASK-017
 - [REF-2026-0002](../references/ref-2026-0002-language-and-usage.md): the example corpus
 - Capy docs at the pinned commit: `docs/ast-json.md`, `docs/diagnostics.md`, `docs/block-functions.md`

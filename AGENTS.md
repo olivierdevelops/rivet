@@ -510,7 +510,7 @@ command set, and the codebase-intelligence layer), see the **VHCO agent wiki ind
 - **Surfaces:** `cli`, `http`, `library`, `mcp`, `ws`, `poll` (each with `orchestrator/setup_<surface>.rs`).
 - **Spec (hand-authored design):** `vhco-contract.json` — render with `vhco live`. Approved by the maintainer
   in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md); design source of truth is
-  [PROP-2026-0001](docs/proposals/approved/prop-2026-0001-rivet-runtime.md), execution ledger is
+  [PROP-2026-0001](docs/proposals/implemented/prop-2026-0001-rivet-runtime.md), execution ledger is
   [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).
 - **Model (generated):** `vhco.json` — `vhco spec`, never hand-edited. **Explorer:** `vhco.html`.
 

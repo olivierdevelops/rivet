@@ -71,7 +71,7 @@ Build Rivet and put it on `PATH` (from the repository root):
 
 ```sh
 cargo build --release
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 `curl` is needed for the HTTP steps. The WebSocket step uses the small client in [fixtures/ws_client.py](fixtures/ws_client.py), which needs the `websockets` Python package (any WebSocket client that can set the `rivet.v1` subprotocol works, for example websocat):
@@ -170,7 +170,7 @@ rivet --file app.rivet request rivet.capabilities --params '{}'
 ```
 
 ```json
-{"request_id":"req_01ace5705d","trace_id":"tr_01ace5705d","result":{"version":"0.1.0-dev","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]}},"data_count":0,"effects":"none"}
+{"request_id":"req_01ace5705d","trace_id":"tr_01ace5705d","result":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]}},"data_count":0,"effects":"none"}
 ```
 
 ### 2. View outputs
@@ -469,7 +469,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 mcp-session-id: mcp_192d307ae7f5842cd
 …
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 ```
 
 `notifications/initialized` returns HTTP 202 with an empty body. `tools/list` returns the four direct tools, each with `name`, `title`, `description`, `inputSchema` and `outputSchema` (the Completion envelope whose `result` is the declared output), followed by the built-ins `rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.open|send|finish_input|read|cancel`, `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.capabilities`, `rivet.connectors.sync` and `rivet.auth.begin|complete|status|disconnect|cancel`. One entry, abbreviated:
@@ -493,7 +493,7 @@ For an MCP client that launches Rivet as a subprocess, use stdio instead. It ser
 ```
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_01aabacb0d\",\"trace_id\":\"tr_01aabacb0d\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}"}],"structuredContent":{"request_id":"req_01aabacb0d","trace_id":"tr_01aabacb0d","result":5,"data_count":0,"effects":"none"},"isError":false}}
 ```
 
@@ -695,7 +695,7 @@ Build: `cargo build` and `cargo build --release` at `829ca43`. Every command abo
 
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md) · [CLI reference](../../manuals/man-2026-0004-cli-reference.md)
 - [Installation and quickstart (MAN-2026-0002)](../../manuals/man-2026-0002-installation-and-quickstart.md) · [Serving and surfaces (MAN-2026-0006)](../../manuals/man-2026-0006-serving-and-surfaces.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

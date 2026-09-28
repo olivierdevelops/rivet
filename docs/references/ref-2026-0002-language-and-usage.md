@@ -30,7 +30,7 @@ next_review_date: 2026-10-27
 
 # Rivet language and usage reference — 159 proposed examples
 
-**Design reference, verified against the 0.1.0 build.** This document specifies the syntax proposed in [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md); since revision 8 every numbered example carries a **0.1.0 status** line (TASK-066): *verified*, *verified with differences* (the note says exactly what 0.1.0 does instead), *Stage C — refused in 0.1.0*, or *not implemented in 0.1.0*. The [status summary](#verification-status) counts them. Where this reference and the manuals differ, the [manuals](../manuals/man-2026-0001-rivet-manual.md) describe the build. Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S159 block parses cleanly.
+**Design reference, verified against the 0.1.0 build.** This document specifies the syntax proposed in [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md); since revision 8 every numbered example carries a **0.1.0 status** line (TASK-066): *verified*, *verified with differences* (the note says exactly what 0.1.0 does instead), *Stage C — refused in 0.1.0*, or *not implemented in 0.1.0*. The [status summary](#verification-status) counts them. Where this reference and the manuals differ, the [manuals](../manuals/man-2026-0001-rivet-manual.md) describe the build. Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S159 block parses cleanly.
 
 For complete files grouped by use case, see the [sample folders](../demos/README.md). The twelve bundles materialize selected examples below, with request bodies, local fixtures and per-folder READMEs; the numbered S01–S159 examples remain stable.
 
@@ -56,7 +56,7 @@ Where an example shows a `policy.json`, that file sits beside the entry `.rivet`
 
 ## Syntax summary
 
-The proposal's [syntax table](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are the design; this section restates them with an example per form, annotated where 0.1.0 differs. The implemented grammar is described in [MAN-2026-0003](../manuals/man-2026-0003-language-guide.md) and the implemented error codes in [API-2026-0005](../api/api-2026-0005-error-registry.md).
+The proposal's [syntax table](../proposals/implemented/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/implemented/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are the design; this section restates them with an example per form, annotated where 0.1.0 differs. The implemented grammar is described in [MAN-2026-0003](../manuals/man-2026-0003-language-guide.md) and the implemented error codes in [API-2026-0005](../api/api-2026-0005-error-registry.md).
 
 ```text
 operation users.get                         <- header: stable callable ID
@@ -164,7 +164,7 @@ Option lines must precede the first body statement of their block; an option aft
 
 ### Error registry
 
-One registry governs every surface ([proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors)). Codes not listed follow their kind's row.
+One registry governs every surface ([proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors)). Codes not listed follow their kind's row.
 
 | Kind / code | Meaning | HTTP | CLI exit | Retryable |
 |---|---|---|---|---|
@@ -638,11 +638,11 @@ Built-in generic operations are also MCP tools. Direct named tools (one per publ
 | `rivet.policy.generate` | `{ids?: [text], all?: boolean}` → `{policy: {…}, review: [site…], complete: bool}`; never writes files. Same explicit-listing rule as `rivet.io` |
 | `rivet.sessions.open` / `send` / `finish_input` / `read` / `cancel` | see [gRPC, catalog and session additions](#grpc-catalog-and-session-additions) |
 
-Every HTTP route, the WebSocket endpoint and `/mcp` are mounted by one `rivet serve`; see [One serve, every surface](#one-serve-every-surface). Exact curl requests, response shapes, statuses and the MCP initialization sequence are in the proposal's [surface contract](../proposals/approved/prop-2026-0001-rivet-runtime.md#sample-api-calls-and-cli-commands).
+Every HTTP route, the WebSocket endpoint and `/mcp` are mounted by one `rivet serve`; see [One serve, every surface](#one-serve-every-surface). Exact curl requests, response shapes, statuses and the MCP initialization sequence are in the proposal's [surface contract](../proposals/implemented/prop-2026-0001-rivet-runtime.md#sample-api-calls-and-cli-commands).
 
 ## OAuth, UDP, QUIC and HTTP/3 additions
 
-These are required Stage B scope. The detailed behavioral and security contracts are [proposal increments 9–11](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-9--oauth-20-as-a-reusable-authorization-layer).
+These are required Stage B scope. The detailed behavioral and security contracts are [proposal increments 9–11](../proposals/implemented/prop-2026-0001-rivet-runtime.md#increment-9--oauth-20-as-a-reusable-authorization-layer).
 
 | Syntax / configuration | Contract |
 |---|---|
@@ -5326,7 +5326,7 @@ S01–S159 is gapless and index, headings and anchors agree.
 
 ## Related Documents
 
-- [Proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Original request and source evidence](ref-2026-0001-request-and-evidence.md)
 - [Current state](../../README.md)
 

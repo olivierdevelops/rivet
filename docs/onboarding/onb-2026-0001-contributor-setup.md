@@ -69,7 +69,7 @@ protoc --version         # libprotoc 29.3
 cargo deny --version     # cargo-deny 0.20.2
 vhco --version           # vhco 1.6.0
 cargo build              # target/debug/rivet (≈ 53 MiB)
-target/debug/rivet --version    # rivet 0.1.0-dev
+target/debug/rivet --version    # rivet 0.1.0
 ```
 
 ## Perch development commands
@@ -347,7 +347,7 @@ cannot carry arguments ([TRBL-2026-0002](../troubleshooting/trbl-2026-0002-capy-
 
 - [AGENTS.md](../../AGENTS.md) · [DOCUMENTATION.md](../../DOCUMENTATION.md)
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [ADR-0002 Rust crate selection](../decisions/adr-0002-rust-crate-selection.md)
 - [RES-2026-0001 Capy grammar spike](../research/res-2026-0001-capy-grammar-spike.md)
 - [REF-2026-0002 Language and usage](../references/ref-2026-0002-language-and-usage.md)

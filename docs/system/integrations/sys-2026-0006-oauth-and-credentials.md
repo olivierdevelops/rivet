@@ -756,7 +756,7 @@ stopped afterwards.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md), Increment 9
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md), Increment 9
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [ADR-0002 Rust crate selection](../../decisions/adr-0002-rust-crate-selection.md)
 - [SYS-2026-0003 Policy broker and I/O manifest](../components/sys-2026-0003-policy-broker-and-io-manifest.md)

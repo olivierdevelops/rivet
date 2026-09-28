@@ -68,7 +68,7 @@ OAuth 2.0 without returning tokens. Delivery stage: **B**. Read [app.rivet](app.
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 - `python3` (standard library only) for [fixtures/oauth_fixture.py](fixtures/oauth_fixture.py): an authorization server (`POST /token`, client `rivet-service`, secret `demo-secret-not-real`, tokens `DEMO-AT-<n>`) and a resource server (`GET /contacts`, accepts only issued tokens). `DEMO_FIXTURE_TOKEN_DELAY=5` makes `/token` answer late.
@@ -374,7 +374,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Protocols and connectors manual](../../manuals/man-2026-0008-protocols-and-connectors.md)
 - [OAuth tests TEST-2026-0011](../../testing/test-2026-0011-oauth.md) · [Auth/transport policy tests TEST-2026-0015](../../testing/test-2026-0015-auth-transport-policy.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

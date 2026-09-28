@@ -207,7 +207,7 @@ None.
 - [RES-2026-0003](../research/res-2026-0003-process-sandbox-backends.md) — evidence and capability matrix
 - [ADR-0002](adr-0002-rust-crate-selection.md) — `landlock`, `seccompiler`, `windows-sys` in the dependency block
 - [ADR-0001](adr-0001-approve-rivet-runtime-design.md) — approval basis
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) — Increment 5, F-14, OQ-1, T-08
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) — Increment 5, F-14, OQ-1, T-08
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) — TASK-011, TASK-035, PF-25
 
 ## Change History

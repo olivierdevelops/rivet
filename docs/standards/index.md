@@ -37,7 +37,7 @@ This index lists existing supplied requirements; it does not activate new standa
 - [Supplied AGENTS instructions](../../AGENTS.md)
 - [Documentation standard, revision 4](../../DOCUMENTATION.md)
 - [Original brief](../../PROJECT.md)
-- [Proposal validation](../proposals/approved/prop-2026-0001-rivet-runtime.md#project-validation)
+- [Proposal validation](../proposals/implemented/prop-2026-0001-rivet-runtime.md#project-validation)
 
 ## Status and maintenance
 

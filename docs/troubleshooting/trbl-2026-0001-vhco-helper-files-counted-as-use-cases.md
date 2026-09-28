@@ -12,7 +12,7 @@ systems: [Rivet]
 components: [language, auth]
 current_status: resolved
 affected_versions:
-  from: "0.1.0-dev"
+  from: "0.1.0"
   to: "0.1.0-dev"
 confidentiality: internal
 scope: Reusable knowledge from PLAN-2026-0001 implementation.

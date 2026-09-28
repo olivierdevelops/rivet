@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -35,22 +35,24 @@ Design proposals for Rivet, one directory per lifecycle state. Documents are nam
 `status` field change. An approved proposal has a decision record in [decisions](../decisions/index.md).
 
 ```text
-  draft/ ──(ADR approval)──▶ approved/ ──(plan released)──▶ implemented/   (none yet)
+  draft/ ──(ADR approval)──▶ approved/ ──(plan released)──▶ implemented/
      │                          │
      └─(rejection)─▶ rejected/  └─(replaced)─▶ superseded/                  (none)
 
   today:  draft/     (empty)
-          approved/  PROP-2026-0001  rev 8  ── ADR-0001 ──▶ PLAN-2026-0001 (P1 in execution)
+          approved/  (empty)
+          implemented/  PROP-2026-0001  rev 9  ── ADR-0001 ──▶ PLAN-2026-0001 ──▶ v0.1.0
 ```
 
 ## Reading order and active documents
 
 | Directory | Contents | Index |
 |---|---|---|
-| `approved/` | [PROP-2026-0001 — Rivet runtime](approved/prop-2026-0001-rivet-runtime.md), design revision 8, R1–R26 | [approved/index.md](approved/index.md) |
+| `implemented/` | [PROP-2026-0001 — Rivet runtime](implemented/prop-2026-0001-rivet-runtime.md), implemented in v0.1.0, R1–R26 | [implemented/index.md](implemented/index.md) |
+| `approved/` | Empty — nothing approved and awaiting implementation | [approved/index.md](approved/index.md) |
 | `draft/` | Empty — no proposal is under review | [draft/index.md](draft/index.md) |
 
-1. [Approved proposals](approved/index.md), then [PROP-2026-0001](approved/prop-2026-0001-rivet-runtime.md).
+1. [Implemented proposals](implemented/index.md), then [PROP-2026-0001](implemented/prop-2026-0001-rivet-runtime.md).
 2. [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md): the approval record.
 3. [Reference samples](../references/ref-2026-0002-language-and-usage.md) (S01–S159).
 
@@ -66,6 +68,7 @@ TASK-010). Update this index when a document changes lifecycle or a new related 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | PROP-2026-0001 implemented in v0.1.0; moved to implemented/. |
 | 6 | 2026-09-28 | Claude | PROP-2026-0001 approved (ADR-0001) and moved to `approved/`; revision 8; draft/ now empty; linked approved/index.md and decisions. |
 | 5 | 2026-09-28 | Claude | Status for design revision 5 (R23–R25) and the two approval gates; added lifecycle diagram. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

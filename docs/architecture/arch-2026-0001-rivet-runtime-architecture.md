@@ -356,7 +356,7 @@ Architecture drift found at `829ca43` (TASK-092) — `BUILTIN_IDS` listed `rivet
 
 - [Architecture index](index.md) · [API index](../api/index.md) · [Policy and sandbox model](../security/sec-2026-0001-policy-and-sandbox-model.md)
 - [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md) · [ADR-0002 crate selection](../decisions/adr-0002-rust-crate-selection.md) · [ADR-0003 sandbox backends](../decisions/adr-0003-process-sandbox-backends.md)
-- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

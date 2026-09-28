@@ -253,7 +253,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 mcp-session-id: mcp_1b9c7c55f832a92a5
 
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 
 $ curl -s -i -X POST http://127.0.0.1:18431/mcp -H 'mcp-session-id: mcp_1b9c7c55f832a92a5' -d @initialized.mcp.json
 HTTP/1.1 202 Accepted
@@ -268,7 +268,7 @@ rivet.io, rivet.policy.generate, rivet.trace.show, rivet.trace.export, rivet.cap
 rivet.auth.begin, rivet.auth.complete, rivet.auth.status, rivet.auth.disconnect, rivet.auth.cancel
 
 $ … -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"rivet.capabilities","arguments":{}}}'
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0605da8c0e\",…,\"result\":{\"version\":\"0.1.0-dev\",\"platform\":{\"os\":\"macos\",\"arch\":\"aarch64\"},\"stages\":{\"A\":\"supported\",\"B\":\"supported\",\"C\":\"unsupported\"},…"}],…,"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0605da8c0e\",…,\"result\":{\"version\":\"0.1.0\",\"platform\":{\"os\":\"macos\",\"arch\":\"aarch64\"},\"stages\":{\"A\":\"supported\",\"B\":\"supported\",\"C\":\"unsupported\"},…"}],…,"isError":false}}
 ```
 
 The `demo.add` descriptor from that list:
@@ -291,7 +291,7 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protoc
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"demo.add","arguments":{"a":2,"b":3}}}' \
   | rivet --file app.rivet serve --stdio
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0-dev"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_018287d0ad\",…}"}],"structuredContent":{"request_id":"req_018287d0ad","trace_id":"tr_018287d0ad","result":5,"data_count":0,"effects":"none"},"isError":false}}
 # stderr:
 {"listen_addr":null,"stdio":true,"surfaces":["mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e…9730","policy_hash":null}

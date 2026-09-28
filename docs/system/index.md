@@ -132,7 +132,7 @@ None.
 
 ## Important relationships
 
-- Design intent and rationale: [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md),
+- Design intent and rationale: [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md),
   [ADR-0002 crates](../decisions/adr-0002-rust-crate-selection.md),
   [ADR-0003 sandbox backends](../decisions/adr-0003-process-sandbox-backends.md).
 - Delivery: [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) deliverables D-15 to D-23.

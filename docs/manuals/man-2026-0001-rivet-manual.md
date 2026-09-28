@@ -193,7 +193,7 @@ Build from source with Cargo (Rust 1.90.0, pinned by `rust-toolchain.toml`); see
 
 ```bash
 cargo build                          # produces target/debug/rivet
-target/debug/rivet --version         # rivet 0.1.0-dev
+target/debug/rivet --version         # rivet 0.1.0
 ```
 
 ## Feature Catalogue
@@ -507,7 +507,7 @@ surfaces (MAN-2026-0006) expose every operation.
 ## Related Documents
 
 - Plan: [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) (rows D-34 … D-41)
-- Approved design: [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- Approved design: [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - Numbered examples: [REF-2026-0002](../references/ref-2026-0002-language-and-usage.md)
 - System documents: [SYS-2026-0001](../system/components/sys-2026-0001-compiler-and-catalog.md),
   [SYS-2026-0002](../system/runtime/sys-2026-0002-execution-scopes-and-dag.md),

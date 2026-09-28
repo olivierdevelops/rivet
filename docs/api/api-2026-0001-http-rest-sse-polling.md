@@ -167,7 +167,7 @@ Every reserved `rivet.*` ID is dispatched through the same `/v1/request` route (
 
 ```text
 $ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"rivet.capabilities"}'      # abridged
-{"request_id":"req_07847f7a3b","trace_id":"tr_07847f7a3b","result":{"version":"0.1.0-dev","platform":{"os":"macos","arch":"aarch64"},
+{"request_id":"req_07847f7a3b","trace_id":"tr_07847f7a3b","result":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},
  "stages":{"A":"supported","B":"supported","C":"unsupported"},
  "features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]},
              …,{"name":"file_watch","stage":"C","support":"unsupported","reason":"Stage C (`with file watch` fails unsupported.stage_c)"},…],
@@ -583,7 +583,7 @@ The remote CLI (`rivet --endpoint URL [--token-file PATH] …`) is a client of t
 
 - [API index](index.md) · [WebSocket rivet.v1](api-2026-0002-websocket-rivet-v1.md) · [MCP server tools](api-2026-0003-mcp-server-tools.md) · [Error registry](api-2026-0005-error-registry.md)
 - [Runtime architecture](../architecture/arch-2026-0001-rivet-runtime-architecture.md) · [Policy and sandbox model](../security/sec-2026-0001-policy-and-sandbox-model.md)
-- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) · [Demo 01-catalog](../demos/01-catalog/README.md)
+- [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) · [Demo 01-catalog](../demos/01-catalog/README.md)
 
 ## Change History
 

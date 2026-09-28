@@ -668,7 +668,7 @@ afterwards, plus a stdio child Rivet bundle.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md), Increment 6
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md), Increment 6
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [ADR-0003 Process sandbox backends](../../decisions/adr-0003-process-sandbox-backends.md)
 - [SYS-2026-0001 Compiler and catalog](../components/sys-2026-0001-compiler-and-catalog.md)

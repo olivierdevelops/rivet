@@ -37,7 +37,7 @@ next_review_date: 2026-10-27
 > **Owner:** Project maintainer
 > **Affected Components:** registry
 
-This directory holds `.rivet` bundles, `policy.json` files, fixtures, request bodies and one usage README per folder. They illustrate [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md). The new [13-real-world-apis](13-real-world-apis/README.md) cookbook uses public APIs where possible and labels credentialed, local and private-gateway setup explicitly. The walkthroughs, commands and expected results are in [README.md](README.md); this page gives status, reading order and open work only.
+This directory holds `.rivet` bundles, `policy.json` files, fixtures, request bodies and one usage README per folder. They illustrate [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md). The new [13-real-world-apis](13-real-world-apis/README.md) cookbook uses public APIs where possible and labels credentialed, local and private-gateway setup explicitly. The walkthroughs, commands and expected results are in [README.md](README.md); this page gives status, reading order and open work only.
 
 ## What belongs here
 
@@ -100,7 +100,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 - [Sample walkthroughs (README.md)](README.md) and [manifest.json](manifest.json)
 - [Release verification guide (DEMO-2026-0015)](demo-2026-0015-v0-1-0-release-verification.md)
 - [Numbered usage examples](../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Documentation current state](../README.md) and [navigation](../index.md)
 
 ## Change History

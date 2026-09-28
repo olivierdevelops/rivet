@@ -816,7 +816,7 @@ Request and trace IDs vary between runs.
 
 ## Related Documents
 
-- [PROP-2026-0001: Rivet runtime (approved proposal)](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001: Rivet runtime (approved proposal)](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001: v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) (deliverable D-15)
 - [ADR-0002: Rust crate selection](../../decisions/adr-0002-rust-crate-selection.md) (pinned `capy-core`)
 - [RES-2026-0001: Capy grammar spike](../../research/res-2026-0001-capy-grammar-spike.md)

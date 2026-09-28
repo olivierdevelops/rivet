@@ -68,7 +68,7 @@ All four gRPC call modes. Delivery stage: **B**. Read [app.rivet](app.rivet) alo
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 python3 -m venv "$TMPDIR/rivet-grpc-venv" && "$TMPDIR/rivet-grpc-venv/bin/pip" install grpcio protobuf websockets
 ```
 
@@ -429,7 +429,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [Serving and surfaces](../../manuals/man-2026-0006-serving-and-surfaces.md) · [Protocols and connectors](../../manuals/man-2026-0008-protocols-and-connectors.md)
 - [REST/SSE/polling API](../../api/api-2026-0001-http-rest-sse-polling.md) · [WebSocket API](../../api/api-2026-0002-websocket-rivet-v1.md) · [MCP API](../../api/api-2026-0003-mcp-server-tools.md)
 - [gRPC tests TEST-2026-0017](../../testing/test-2026-0017-grpc.md) · [Session tests TEST-2026-0019](../../testing/test-2026-0019-sessions.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

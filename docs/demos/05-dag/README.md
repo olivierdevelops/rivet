@@ -76,7 +76,7 @@ Each node value is the envelope `{status, result, error}`; `.result` of a node t
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 ## Setup
@@ -294,7 +294,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Language guide](../../manuals/man-2026-0003-language-guide.md) · [DAG tests TEST-2026-0007](../../testing/test-2026-0007-dag.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

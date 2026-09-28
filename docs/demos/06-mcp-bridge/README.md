@@ -73,7 +73,7 @@ The connector's tool schemas come from a **reviewed snapshot**, never from disco
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 ```
 
 - `python3` (standard library only) for [fixtures/crm_mcp.py](fixtures/crm_mcp.py), an MCP Streamable HTTP server that replays [schemas/tools-list.fixture.json](schemas/tools-list.fixture.json) and [schemas/search-result.fixture.json](schemas/search-result.fixture.json) (query `Ada` → one contact; any other query → `isError: true`). `--drift` serves a changed `search` input schema.
@@ -439,7 +439,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Protocols and connectors manual](../../manuals/man-2026-0008-protocols-and-connectors.md) · [MCP server tools API](../../api/api-2026-0003-mcp-server-tools.md)
 - [MCP client tests TEST-2026-0006](../../testing/test-2026-0006-mcp.md) · [MCP catalog tests TEST-2026-0018](../../testing/test-2026-0018-mcp-catalog.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

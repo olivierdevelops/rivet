@@ -98,7 +98,7 @@ None.
 ## Important relationships
 
 - Implements PLAN-2026-0001 documentation rows D-34 … D-41; describes the build that implements
-  [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md).
+  [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md).
 - Each task section links a sample folder in [`docs/demos/`](../demos/README.md).
 - Wire contracts: [`docs/api/`](../api/api-2026-0001-http-rest-sse-polling.md); internals: [`docs/system/`](../system/index.md);
   operations: [OPS-2026-0001](../operations/ops-2026-0001-operating-rivet-serve.md).

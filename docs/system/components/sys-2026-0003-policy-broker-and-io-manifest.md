@@ -751,7 +751,7 @@ vary per run and per file.
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 v0.1.0 implementation and release](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [SYS-2026-0008 policy.json schema v1 reference](../configuration/sys-2026-0008-policy-json-reference.md)
 - [SYS-2026-0004 Surfaces and serve](sys-2026-0004-surfaces-and-serve.md)

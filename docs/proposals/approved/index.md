@@ -5,7 +5,7 @@ document_type: reference
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -60,16 +60,16 @@ moves between lifecycle directories. Only its directory and `status` change.
 
 | Proposal | Status | Design revision | Decision | Plan | Summary |
 |---|---|---|---|---|---|
-| [PROP-2026-0001](prop-2026-0001-rivet-runtime.md) | approved | 8 | [ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md) | [PLAN-2026-0001](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) (P1) | Rivet scoped connection runtime: R1–R26, UC-01–UC-22, C-01–C-24, Increments 1–18 |
+| — | — | — | — | — | None: PROP-2026-0001 was implemented in v0.1.0 and moved to [implemented/](../implemented/index.md) |
 
 ```text
-  PROP-2026-0001 rev 8 ──▶ vhco-contract.json (approved) ──▶ PLAN-2026-0001 (P1 in execution) ──▶ v0.1.0
-        │
-        └── gates: G-DESIGN ✔  G-CONTRACT ✔  G-LIC ✔  G-SPIKE ☐ (TASK-010)
+  PROP-2026-0001 rev 8 ──▶ PLAN-2026-0001 ──▶ v0.1.0 ──▶ implemented/ (rev 9)
+        └── gates: G-DESIGN ✔  G-CONTRACT ✔  G-LIC ✔  G-SPIKE ✔
 ```
 
 ## Recently added or updated
 
+- 2026-09-28: PROP-2026-0001 implemented in v0.1.0 and moved to `implemented/`.
 - 2026-09-28: PROP-2026-0001 moved here from `draft/` with status `approved` (revision 7, ADR-0001).
 - 2026-09-28: revision 8 applied the approved TASK-005 extension (option-derived file sites; `origin`, `phase`,
   `requires_existing`, `secret`; `rivet io --needs` and `--check-files`) and the TASK-006 contract reconciliation
@@ -84,12 +84,11 @@ None.
 - [ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md) records the approval and the closure of G-LIC.
 - The numbered examples live in [REF-2026-0002](../../references/ref-2026-0002-language-and-usage.md) (S01–S159).
   The sample bundles live in [docs/demos](../../demos/index.md).
-- Open: G-SPIKE, the Capy parse spike over every numbered example and demo bundle (PLAN-2026-0001 TASK-010).
-  A grammar change forced by the spike goes back through the contract and this proposal first.
+- G-SPIKE passed (RES-2026-0001); the proposal was implemented in v0.1.0.
 
 ## Recommended reading order
 
-1. [PROP-2026-0001](prop-2026-0001-rivet-runtime.md) — start with the Summary, then Requirements and Increments.
+1. [PROP-2026-0001](../implemented/prop-2026-0001-rivet-runtime.md) (now implemented) — start with the Summary, then Requirements and Increments.
 2. [ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md) — what was approved and when.
 3. [PLAN-2026-0001](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) — how it is built.
 
@@ -102,4 +101,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | PROP-2026-0001 implemented (v0.1.0) and moved to implemented/. |
 | 1 | 2026-09-28 | Claude | Created the approved-proposals index with PROP-2026-0001 (revision 8, ADR-0001). |

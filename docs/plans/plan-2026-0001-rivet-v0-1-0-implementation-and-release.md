@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 start_date: 2026-09-28
 target_date: null           # not estimated; scope is fixed (all Stage A+B required); maintainer may set a date
 authors: [Claude]
@@ -42,7 +42,7 @@ next_review_date: 2026-10-28
 ## Summary
 
 This is the live execution ledger for turning the approved design in
-[PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) (revision 6) into the released Rust crate and
+[PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) (revision 6) into the released Rust crate and
 `rivet` binary **v0.1.0**. It covers five gated phases:
 
 1. approval and discovery;
@@ -132,16 +132,16 @@ planned. Any Stage C example among S01–S159 stays documented as Stage C and is
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 15 | P4 remainder (README, docs/README, decisions), P5 release |
-| IN PROGRESS | 7 | demos + DEMO-2026-0014, docs refresh for Fix-A…D, version check, ledger |
-| BLOCKED | 1 | TASK-051 CI needs a git remote |
-| DONE | 73 | P1, P2, P3 |
+| NOT STARTED | 4 | release commit, tag and gate walk (TASK-076/077/079/096) run next |
+| IN PROGRESS | 1 | TASK-082 plan closure waits on the blocked tasks |
+| BLOCKED | 4 | TASK-051 CI, TASK-078 push, TASK-080 publish, TASK-081 artifact verification: no git remote |
+| DONE | 87 | P1–P4 and the P5 preparation |
 | FAILED | 0 | |
 | DEFERRED | 0 | Stage C is out of scope, not deferred inside this plan |
 
-- **Current phase:** P4 (documentation and demos). P3 exited 2026-09-28: 396 tests pass, `vhco assure` green, TEST-2026-0001…0031 recorded, RPT-2026-0001 drafted (20 PASS, 6 PARTIAL, 0 FAIL).
-- **Next action:** finish TASK-066/067/068/091/092, then README/docs README (TASK-069/070), decisions (TASK-072), then P5.
-- **Blockers:** no git remote (TASK-051 CI, TASK-078 push, TASK-080 publish). Linux sandbox T-08 needs a kernel ≥ 6.12 runner (ADR-0003).
+- **Current phase:** P5 (release). P4 exited 2026-09-28: demos verified, documentation current, RPT-2026-0001 final (21 PASS, 5 PARTIAL, 0 FAIL).
+- **Next action:** release commit `release: v0.1.0`, annotated tag, verification, REL-0.1.0 finalization, §34 gate.
+- **Blockers:** no git remote (TASK-051, 078, 080, 081). Linux sandbox T-08 needs a kernel ≥ 6.12 runner (ADR-0003).
 - **Last updated:** 2026-09-28.
 - **Release target:** v0.1.0.
 
@@ -258,7 +258,7 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-001 | P1 | Design review of PROP-2026-0001 rev 6; record G-DESIGN in its Approval table and in ADR-0001 | all | `docs/proposals/approved/prop-2026-0001-rivet-runtime.md` (UPDATE), `docs/decisions/adr-0001-approve-rivet-runtime-design.md` (CREATE) | Manual: maintainer sign-off | — | M | DONE | ADR-0001 (2026-09-28): maintainer approved PROP-2026-0001; proposal rev 7 Approval table |
+| TASK-001 | P1 | Design review of PROP-2026-0001 rev 6; record G-DESIGN in its Approval table and in ADR-0001 | all | `docs/proposals/implemented/prop-2026-0001-rivet-runtime.md` (UPDATE), `docs/decisions/adr-0001-approve-rivet-runtime-design.md` (CREATE) | Manual: maintainer sign-off | — | M | DONE | ADR-0001 (2026-09-28): maintainer approved PROP-2026-0001; proposal rev 7 Approval table |
 | TASK-002 | P1 | `vhco live vhco-contract.json --port 7787`; the maintainer audits; changes loop until approved; record G-CONTRACT | all / C-09 | `vhco-contract.json` (UPDATE if changes) | Manual: live review | TASK-006 | M | DONE | ADR-0001: contract approved by the maintainer ("everything else is approved") |
 | TASK-003 | P1 | Relicense Capy at the pinned commit (or a new pinned commit) so `LICENSE` matches MIT; record the commit hash and licence text | R1 / G-LIC | `docs/references/ref-2026-0001-request-and-evidence.md` (UPDATE licence evidence) | Manual: read the upstream LICENSE at the pinned commit | — | M | DONE | ADR-0001: maintainer owns Capy and authorized its use; G-LIC closed; REF-2026-0001 updated |
 | TASK-004 | P1 | Move the proposal to `docs/proposals/approved/` with status `approved`; fix inbound links; update indexes | R14 | proposal (MOVE), `docs/proposals/index.md`, `docs/proposals/draft/index.md`, `docs/proposals/approved/index.md` (CREATE) | T-31 link check | TASK-001 | I | DONE | Proposal at docs/proposals/approved/ (status approved); inbound links fixed; approved/ index REF-2026-0012 |
@@ -353,28 +353,28 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | TASK-063 | P4 | Runbooks (template 12.8): rotate bearer tokens; roll out a policy.json change and verify with `io --check-policy` | R24, R25 | — | `docs/runbooks/run-2026-0001-rotate-serve-bearer-tokens.md`, `run-2026-0002-roll-out-policy-change.md`, `docs/runbooks/index.md` | TASK-062 | I | DONE | RUN-2026-0001, RUN-2026-0002 (54d07a1) |
 | TASK-064 | P4 | Onboarding: contributor setup (toolchain, vhco loop, fixtures, running conformance suites, writing an adapter) | R14 | — | `docs/onboarding/onb-2026-0001-contributor-setup.md`, `docs/onboarding/index.md` | TASK-051 | I | DONE | ONB-2026-0001 (54d07a1) |
 | TASK-065 | P4 | Manual root plus volumes (template 12.15), see checklist MAN-0001…0008. Includes a feature catalogue, task workflows with CLI/HTTP/WS/MCP/library procedures, success and failure examples, errors and recovery, ASCII journeys, verified-demo links and "What's New in 0.1.0" | R1–R26 | — | `docs/manuals/man-2026-0001…0008-*.md`, `docs/manuals/index.md` | TASK-059, TASK-060, TASK-068 | I | DONE | MAN-2026-0001…0008 (c3f0ba7); refreshed for Fix-A…D in P4 |
-| TASK-066 | P4 | Update REF-2026-0002: mark each example verified or Stage C; fix anything implementation changed; the proposal sample CLI section agrees with the code | R14 | — | `docs/references/ref-2026-0002-language-and-usage.md` (UPDATE) | TASK-048 | I | IN PROGRESS | P4 docs refresh running |
-| TASK-067 | P4 | Execute and verify the 12 sample folders against v0.1.0 builds: fill each Verification Record; `verified_against: 0.1.0`; status draft → active; update `manifest.json` (`runtime_verified: true`), demos README and index | R14 / all UCs | — | `docs/demos/01-catalog/README.md` … `12-library/README.md`, `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` (UPDATE); `12-library/embedding.rs.txt` → compiled example (see PF-D13) | TASK-048 | I | IN PROGRESS | P4 demo execution running |
-| TASK-068 | P4 | Release verification guide DEMO-2026-0014 (§29): version/tag/commit header; one U-NN row per released update (U-01…U-26, one per requirement) with inciting UQ, action, expected result and evidence; success and failure examples per surface; cleanup; verification record | R1–R26 | — | `docs/demos/demo-2026-0014-v0-1-0-release-verification.md` (CREATE) | TASK-067 | I | IN PROGRESS | P4 demo execution running |
-| TASK-069 | P4 | README (root) → current implemented state: install, quickstart, surfaces, links to the manual; remove "design only" once true | R14 | — | `README.md` (UPDATE) | TASK-065 | I | NOT STARTED | |
-| TASK-070 | P4 | docs current-state and indexes: `docs/README.md` (status, releases, implementations, incidents, proposals, architecture, decisions, limitations, risks), `docs/index.md`; each new directory's `index.md` | R14 | — | `docs/README.md`, `docs/index.md`, all new `index.md` (UPDATE/CREATE) | TASK-058–068 | I | NOT STARTED | |
+| TASK-066 | P4 | Update REF-2026-0002: mark each example verified or Stage C; fix anything implementation changed; the proposal sample CLI section agrees with the code | R14 | — | `docs/references/ref-2026-0002-language-and-usage.md` (UPDATE) | TASK-048 | I | DONE | REF-2026-0002 status lines: 126 verified, 28 verified with differences, 4 Stage C, 1 not implemented (S42) |
+| TASK-067 | P4 | Execute and verify the 12 sample folders against v0.1.0 builds: fill each Verification Record; `verified_against: 0.1.0`; status draft → active; update `manifest.json` (`runtime_verified: true`), demos README and index | R14 / all UCs | — | `docs/demos/01-catalog/README.md` … `12-library/README.md`, `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` (UPDATE); `12-library/embedding.rs.txt` → compiled example (see PF-D13) | TASK-048 | I | DONE | 12 folders executed at 829ca43 (+ re-runs at 2a751ab), status active, runtime_verified; 6 defects fixed (INC-2026-0007) |
+| TASK-068 | P4 | Release verification guide DEMO-2026-0014 (§29): version/tag/commit header; one U-NN row per released update (U-01…U-26, one per requirement) with inciting UQ, action, expected result and evidence; success and failure examples per surface; cleanup; verification record | R1–R26 | — | `docs/demos/demo-2026-0014-v0-1-0-release-verification.md` (CREATE) | TASK-067 | I | DONE | DEMO-2026-0015 (ID 0014 taken by the 13-real-world-apis cookbook): U-01…U-26 recorded |
+| TASK-069 | P4 | README (root) → current implemented state: install, quickstart, surfaces, links to the manual; remove "design only" once true | R14 | — | `README.md` (UPDATE) | TASK-065 | I | DONE | README: verified quickstart, limitations, release state (with Perch content from a separate approved session) |
+| TASK-070 | P4 | docs current-state and indexes: `docs/README.md` (status, releases, implementations, incidents, proposals, architecture, decisions, limitations, risks), `docs/index.md`; each new directory's `index.md` | R14 | — | `docs/README.md`, `docs/index.md`, all new `index.md` (UPDATE/CREATE) | TASK-058–068 | I | DONE | docs/README.md release table, risks; docs/index.md; indexes for testing, reports, releases, proposals/implemented |
 | TASK-071 | P4 | Documentation checker script run in CI (§19): front matter, IDs unique, prefix↔type↔dir, status values, filename↔ID, header↔front matter, revision↔last history row, links/anchors, fences, index membership | R14 | `scripts/check_docs.py` (CREATE) | T-31 | TASK-070 | I | DONE | scripts/check_docs.py verified against planted defects |
-| TASK-072 | P4 | Record the six documentation-impact decisions (demo, README, system, architecture, API/CLI, manual) as UPDATED or NOT APPLICABLE with a reason | R14 | — | Findings table + REL-0.1.0 | TASK-058–070 | I | NOT STARTED | |
+| TASK-072 | P4 | Record the six documentation-impact decisions (demo, README, system, architecture, API/CLI, manual) as UPDATED or NOT APPLICABLE with a reason | R14 | — | Findings table + REL-0.1.0 | TASK-058–070 | I | DONE | Six documentation-impact decisions all UPDATED (REL-0.1.0 Documentation Impact; findings table) |
 
 ### P5 — Version, release and rollout
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-073 | P5 | Maintainer approves the release candidate (validation report, demos, manuals) | all | — | Manual | P4 exit | M | NOT STARTED | |
-| TASK-074 | P5 | Set the canonical version `0.1.0` in `Cargo.toml`; check every version reference (`rivet --version`, MCP `serverInfo.version`, API docs, manuals, DEMO-2026-0014, README) | release | `Cargo.toml`, `Cargo.lock` (UPDATE) | T-33 (version sync script step) | TASK-073 | I | IN PROGRESS | scripts/check_version.py + CI step added; bump at release commit |
-| TASK-075 | P5 | Draft the release document in the flat form: version, plan, standards baseline, requirements, Added/Changed/Fixed/Removed, U-NN verification, tests, validation, incidents, troubleshooting, demo, manual, system, the six impact decisions, source changes, known issues, limitations, follow-up (Stage C → PLAN-2026-0002) | R1–R26 | — | `docs/releases/rel-0.1.0-release-notes.md`, `docs/releases/index.md` (CREATE) | TASK-074 | I | NOT STARTED | |
+| TASK-073 | P5 | Maintainer approves the release candidate (validation report, demos, manuals) | all | — | Manual | P4 exit | M | DONE | Maintainer standing approval ("everything else is approved", 2026-09-28); RC = RPT-2026-0001 final, DEMO-2026-0015, manuals |
+| TASK-074 | P5 | Set the canonical version `0.1.0` in `Cargo.toml`; check every version reference (`rivet --version`, MCP `serverInfo.version`, API docs, manuals, DEMO-2026-0014, README) | release | `Cargo.toml`, `Cargo.lock` (UPDATE) | T-33 (version sync script step) | TASK-073 | I | DONE | Cargo.toml 0.1.0; scripts/check_version.py: --version, MCP serverInfo, rivet.capabilities all 0.1.0 |
+| TASK-075 | P5 | Draft the release document in the flat form: version, plan, standards baseline, requirements, Added/Changed/Fixed/Removed, U-NN verification, tests, validation, incidents, troubleshooting, demo, manual, system, the six impact decisions, source changes, known issues, limitations, follow-up (Stage C → PLAN-2026-0002) | R1–R26 | — | `docs/releases/rel-0.1.0-release-notes.md`, `docs/releases/index.md` (CREATE) | TASK-074 | I | DONE | docs/releases/rel-0.1.0-release-notes.md drafted in the release commit |
 | TASK-076 | P5 | Final release commit `release: v0.1.0`; record the full SHA | §32.2 | repository | `git rev-parse HEAD` | TASK-075 | I | NOT STARTED | |
 | TASK-077 | P5 | Annotated tag `v0.1.0`; verify `git rev-list -n 1 v0.1.0` == recorded SHA; `git describe --tags --exact-match HEAD` = `v0.1.0`; clean tree | §32.3–32.4 | repository | T-33 | TASK-076 | I | NOT STARTED | |
-| TASK-078 | P5 | Push the commit and tag to the remote (if configured) | §32.3 | repository | remote shows the tag | TASK-077 | M | NOT STARTED | |
+| TASK-078 | P5 | Push the commit and tag to the remote (if configured) | §32.3 | repository | remote shows the tag | TASK-077 | M | BLOCKED | No git remote configured; the maintainer must add one, then push main and v0.1.0 |
 | TASK-079 | P5 | Finalize REL-0.1.0 with tag, full SHA and release date; set status. The finalizing commit is a follow-up doc commit; the tag stays on the release commit | §33 | — | `docs/releases/rel-0.1.0-release-notes.md` (UPDATE) | TASK-077 | I | NOT STARTED | |
-| TASK-080 | P5 | Rollout: publish the binary/crate artifacts (GitHub release assets; crates.io only if the maintainer chooses and G-LIC permits) | release | release artifacts | Manual: download and run `rivet --version` | TASK-078 | M | NOT STARTED | |
-| TASK-081 | P5 | Post-release verification: run DEMO-2026-0014 against the published artifact; record it in the demo's verification record | R1–R26 | — | T-30 on release artifacts | TASK-080 | I | NOT STARTED | |
-| TASK-082 | P5 | Mark this plan `completed`, the proposal `implemented`; move documents as the lifecycle requires; regenerate indexes | R14 | this plan, proposal, indexes | T-31 | TASK-081 | I | NOT STARTED | |
+| TASK-080 | P5 | Rollout: publish the binary/crate artifacts (GitHub release assets; crates.io only if the maintainer chooses and G-LIC permits) | release | release artifacts | Manual: download and run `rivet --version` | TASK-078 | M | BLOCKED | Needs a remote/hosting target for release assets |
+| TASK-081 | P5 | Post-release verification: run DEMO-2026-0014 against the published artifact; record it in the demo's verification record | R1–R26 | — | T-30 on release artifacts | TASK-080 | I | BLOCKED | Needs a published artifact; DEMO-2026-0015 was run against the local release build |
+| TASK-082 | P5 | Mark this plan `completed`, the proposal `implemented`; move documents as the lifecycle requires; regenerate indexes | R14 | this plan, proposal, indexes | T-31 | TASK-081 | I | IN PROGRESS | PROP-2026-0001 implemented and moved to implemented/; plan stays open until TASK-078/080/081 unblock |
 
 ### Cross-phase documentation upkeep
 
@@ -384,15 +384,15 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | TASK-084 | P1 | Create `docs/research/index.md` and `docs/decisions/index.md` | R14 | — | as named | TASK-009 | I | DONE | research/index.md (REF-2026-0014) and decisions/index.md (REF-2026-0013) |
 | TASK-085 | P2a | Create `docs/incidents/index.md` (with `active/`, `resolved/`, `postmortems/`) and `docs/troubleshooting/index.md` before code starts, so defects have a home | R14 | — | as named | TASK-013 | I | DONE | incidents/{active,resolved,postmortems}/index.md and troubleshooting/index.md |
 | TASK-086 | P2* | Every design change discovered during P2 updates the contract first, then the proposal/reference, then code (AGENTS loop); log it in Decisions | all | `vhco-contract.json`, proposal | `vhco sync .` | — | I | DONE | Contract reconciled at P2 exit; design deltas in contract overview |
-| TASK-087 | P2* | Update this plan's statuses and evidence at every task transition; recompute the Live Status Summary | all | this plan | Review at each phase exit | — | I | IN PROGRESS | Ledger updated at P2 exit and P3 exit (2026-09-28) |
+| TASK-087 | P2* | Update this plan's statuses and evidence at every task transition; recompute the Live Status Summary | all | this plan | Review at each phase exit | — | I | DONE | Ledger updated at every phase exit (revisions 3–7) |
 | TASK-088 | P3 | Create `docs/testing/index.md`, `docs/reports/index.md` | R14 | — | as named | TASK-052 | I | DONE | docs/testing/index.md (REF-2026-0033), docs/reports/index.md (REF-2026-0034) |
 | TASK-089 | P4 | Create `docs/manuals/index.md`, `docs/system/index.md`, `docs/architecture/index.md`, `docs/api/index.md`, `docs/security/index.md`, `docs/operations/index.md`, `docs/runbooks/index.md`, `docs/onboarding/index.md` | R14 | — | as named | TASK-058–065 | I | DONE | indexes for manuals, system, architecture, api, security, operations, runbooks, onboarding (c3f0ba7) |
-| TASK-090 | P5 | Create `docs/releases/index.md` | R14 | — | as named | TASK-075 | I | NOT STARTED | |
-| TASK-091 | P4 | Review documents with `review_cycle: on-release` (§34) and bump `next_review_date` | R14 | — | all docs | TASK-070 | M | IN PROGRESS | P4 docs refresh running |
-| TASK-092 | P4 | Code ≈ system docs drift check (`vhco doc`); fix or record as a known limitation | R14 | — | Findings | TASK-059 | I | IN PROGRESS | P4 docs refresh running |
+| TASK-090 | P5 | Create `docs/releases/index.md` | R14 | — | as named | TASK-075 | I | DONE | docs/releases/index.md (REF-2026-0036) |
+| TASK-091 | P4 | Review documents with `review_cycle: on-release` (§34) and bump `next_review_date` | R14 | — | all docs | TASK-070 | M | DONE | 34 on-release docs: next_review_date 2026-10-28 |
+| TASK-092 | P4 | Code ≈ system docs drift check (`vhco doc`); fix or record as a known limitation | R14 | — | Findings | TASK-059 | I | DONE | All 40 use cases, 6 surfaces and adapters documented; trace.export/tools list drift fixed (2a751ab) |
 | TASK-093 | P3 | Secret-canary scan over every test log, trace export and error body (no token/secret/key contents) | R13, R16 | — | T-09, T-11 artifacts | TASK-047 | I | DONE | cargo test --nocapture (903 lines) scanned: 0 canary hits; in-suite canary assertions in T-08/T-09/T-11 |
 | TASK-094 | P3 | Stage C refusal check: Stage C syntax (FIFO, watch, mTLS TCP, custom codec, reconnect) fails with typed `unsupported.*`, never partially runs | R12 | — | part of T-05 | TASK-047 | I | DONE | mTLS TCP, interactive, FIFO, watch, reconnect → unsupported.* exit 5, effects none, 0 TCP connections |
-| TASK-095 | P5 | Record limitations and known issues (platform sandbox gaps, remote MCP opacity, no persistence/resume) in REL-0.1.0, MAN limitations chapter and docs/README | R11, R12 | — | as named | TASK-075 | I | NOT STARTED | |
+| TASK-095 | P5 | Record limitations and known issues (platform sandbox gaps, remote MCP opacity, no persistence/resume) in REL-0.1.0, MAN limitations chapter and docs/README | R11, R12 | — | as named | TASK-075 | I | DONE | MAN-2026-0001 Known Limitations chapter; REL-0.1.0 Limitations/Known Issues; docs/README.md risks |
 | TASK-096 | P5 | Walk the §34 Release Completion Gate item by item; attach evidence for each; the release is complete only when every box is checked | all | — | §34 checklist copied into REL-0.1.0 | TASK-082 | M | NOT STARTED | |
 
 ## File and Artifact Checklist
@@ -639,6 +639,11 @@ Every document follows the metadata of DOCUMENTATION §5/§20, the visible heade
 | 2026-09-28 | Finding | TASK-053 / R11 | Security defect: URL grant paths matched as raw string prefixes (`/users/42` covered `/users/420`); now whole-segment (2d581b8) | Incident recorded | Implementer | INC-2026-0005 |
 | 2026-09-28 | Finding | TASK-055 | T-01, T-08, T-27 are PARTIAL: macOS only; Linux/Windows runs need CI (TASK-051) | R1, R2, R11–R13 PARTIAL in RPT-2026-0001; release notes list it | Maintainer (remote) | RPT-2026-0001 |
 | 2026-09-28 | Decision | TASK-031 | vhco docs warnings DOC-DIR-001/DOC-NAME-001 on the 28 required `index.md` pages are accepted (AGENTS.md directory-index rule wins) | 0 errors; warnings only | Implementer | TEST-2026-0031 |
+| 2026-09-28 | Deviation | TASK-068 / D-rows | The release verification guide is DEMO-2026-0015: DEMO-2026-0014 was taken by the 13-real-world-apis cookbook from a separate session | References updated in RPT/REL/README | Implementer | DEMO-2026-0015 |
+| 2026-09-28 | Finding | TASK-067, TASK-059–066 | Executing the demos and the documentation against the build found 13 defects (INC-2026-0007: 6, INC-2026-0008: 7) plus INC-2026-0006 (codec keyword collision); all fixed before release | 400 tests | Implementer | INC-2026-0006…0008 |
+| 2026-09-28 | Decision | TASK-072 | Documentation impact: release verification guide/demo UPDATED (DEMO-2026-0015 + 12 folders); README.md UPDATED; system docs UPDATED (SYS-0001…0009); architecture UPDATED (ARCH-0001); API and CLI reference UPDATED (API-0001…0005, MAN-0004); manual UPDATED (MAN-0001…0008) | Recorded in REL-0.1.0 | Implementer | REL-0.1.0 |
+| 2026-09-28 | Finding | — | A separate maintainer-approved session added Perch developer commands (`commands.perch`, bman install) and the 13-real-world-apis cookbook; committed separately (13d95b9, 91b42ea) and included in v0.1.0 | README/onboarding updated | Maintainer | commands.perch |
+| 2026-09-28 | Blocker | TASK-078/080/081 | No git remote: push, CI, artifact publication and post-release verification against a published artifact cannot run | Release is local (tag v0.1.0); plan stays open | Maintainer | REL-0.1.0 Follow-up |
 | 2026-09-28 | Scope | — | Stage C adapters excluded; they need a future PLAN-2026-0002 | Not in v0.1.0 | Maintainer | PROP delivery matrix |
 
 ## Rollout Strategy
@@ -726,7 +731,7 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 ## Related Documents
 
-- [PROP-2026-0001 — Rivet runtime proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md) (baseline revision 6)
+- [PROP-2026-0001 — Rivet runtime proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md) (baseline revision 6)
 - [REF-2026-0001 — Request and evidence](../references/ref-2026-0001-request-and-evidence.md) (UQ-01–UQ-18)
 - [REF-2026-0002 — Language and usage reference](../references/ref-2026-0002-language-and-usage.md) (S01–S159)
 - [Sample folders](../demos/README.md) · [demos index](../demos/index.md)
@@ -737,6 +742,7 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | P4 complete: demos verified (DEMO-2026-0015), docs current, INC-2026-0006…0008 fixed, RPT-2026-0001 final; P5 preparation (version 0.1.0, REL draft, proposal implemented); remote-dependent tasks BLOCKED. |
 | 6 | 2026-09-28 | Claude | P3 complete: Fix-A…D merged (G1–G36, B1–B3), INC-2026-0005 fixed, contract re-reconciled, TEST documents and RPT-2026-0001 recorded, TASK-093/094 checks; P4 started. |
 | 5 | 2026-09-28 | Claude | P2 complete: all implementation tasks DONE; contract reconciled; vhco assure green; P3 started. |
 | 4 | 2026-09-28 | Claude | P2a foundation implemented (TASK-014–021, 023, 036 DONE); WS-A/B/C started; five implementation findings recorded. |

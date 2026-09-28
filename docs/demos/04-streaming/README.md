@@ -68,7 +68,7 @@ Streaming data and contextual cleanup. Delivery stage: **A; WebSocket in B**. Re
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 python3 -m venv "$TMPDIR/rivet-demo-venv" && "$TMPDIR/rivet-demo-venv/bin/pip" install websockets
 ```
 
@@ -392,7 +392,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Language guide](../../manuals/man-2026-0003-language-guide.md) · [Serving and surfaces](../../manuals/man-2026-0006-serving-and-surfaces.md)
 - [Stream tests TEST-2026-0003](../../testing/test-2026-0003-streams.md) · [Resource tests TEST-2026-0005](../../testing/test-2026-0005-resources.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

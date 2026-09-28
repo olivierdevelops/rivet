@@ -38,7 +38,7 @@ next_review_date: 2026-10-28
 
 ## Purpose
 
-`docs/api/` holds the **current, implemented** contracts of Rivet's programmatic access points: routes, frames, tools, Rust items, request/response shapes, authentication and errors. Every example in these documents was captured from a real build. Design history stays in the [approved proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md); command-line usage belongs to the manuals; internal structure belongs to [architecture](../architecture/index.md).
+`docs/api/` holds the **current, implemented** contracts of Rivet's programmatic access points: routes, frames, tools, Rust items, request/response shapes, authentication and errors. Every example in these documents was captured from a real build. Design history stays in the [approved proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md); command-line usage belongs to the manuals; internal structure belongs to [architecture](../architecture/index.md).
 
 ```text
                     one bundle (app.rivet + policy.json)
@@ -82,7 +82,7 @@ None.
 
 ## Important relationships
 
-- Implements the surface requirements of [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) under [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).
+- Implements the surface requirements of [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) under [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).
 - Security properties of these surfaces (serve auth, principal map, MCP trust boundary): [SEC-2026-0001](../security/sec-2026-0001-policy-and-sandbox-model.md).
 - How the surfaces reach the shared dispatcher: [ARCH-2026-0001](../architecture/arch-2026-0001-rivet-runtime-architecture.md).
 

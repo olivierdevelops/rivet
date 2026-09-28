@@ -65,7 +65,7 @@ QUIC streams and HTTP3. Delivery stage: **B**. Read [app.rivet](app.rivet) along
 
 ```sh
 cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0-dev until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
 python3 -m venv "$TMPDIR/rivet-quic-venv" && "$TMPDIR/rivet-quic-venv/bin/pip" install aioquic
 ```
 
@@ -334,7 +334,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 - [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Protocols and connectors manual](../../manuals/man-2026-0008-protocols-and-connectors.md)
 - [QUIC tests TEST-2026-0013](../../testing/test-2026-0013-quic.md) · [HTTP/3 tests TEST-2026-0014](../../testing/test-2026-0014-http3.md)
-- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

@@ -50,9 +50,11 @@ docs/
 ├── onboarding/          ONB-2026-0001
 ├── testing/             TEST-2026-0001 … 0033 (one per plan test row, latest recorded result)
 ├── reports/             RPT-2026-0001 validation of PLAN-2026-0001
+├── releases/            REL-0.1.0 (first release, tag v0.1.0)
 ├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
 ├── proposals/           design proposals by lifecycle
-│   ├── approved/        PROP-2026-0001 Rivet runtime (approved, revision 8)
+│   ├── approved/        (empty)
+│   ├── implemented/     PROP-2026-0001 Rivet runtime (implemented in v0.1.0, revision 9)
 │   └── draft/           (empty)
 ├── references/          REF-2026-0001 request + evidence, REF-2026-0002 numbered examples S01–S159
 ├── demos/               twelve draft sample folders (index.md = status, README.md = walkthroughs)
@@ -67,8 +69,9 @@ docs/
 - [Incidents](incidents/index.md)
 - [Tests](testing/index.md)
 - [Reports](reports/index.md)
+- [Releases](releases/index.md)
 - [Troubleshooting](troubleshooting/index.md)
-- [Proposals](proposals/index.md), then [approved proposals](proposals/approved/index.md)
+- [Proposals](proposals/index.md), then [implemented proposals](proposals/implemented/index.md)
 - [Plans](plans/index.md)
 - [References](references/index.md)
 - [Sample folders: status and reading order](demos/index.md), then the [walkthroughs](demos/README.md)

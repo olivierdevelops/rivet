@@ -70,7 +70,7 @@ A reader who did not implement Rivet can use this page to decide, update by upda
 ```sh
 cargo build && cargo build --release            # from the repository root
 export PATH="$PWD/target/release:$PATH"
-rivet --version                                  # rivet 0.1.0-dev on the candidate, rivet 0.1.0 on the release
+rivet --version                                  # rivet 0.1.0
 ```
 
 | Needed for | Tool |
@@ -302,7 +302,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) are remov
 - [Sample folders (DEMO-2026-0013)](README.md) · [demos index](index.md)
 - [Implementation plan PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [Validation report RPT-2026-0001](../reports/rpt-2026-0001-validation-of-plan-2026-0001.md)
 - [Rivet manual](../manuals/man-2026-0001-rivet-manual.md) · [Error registry](../api/api-2026-0005-error-registry.md) · [Testing index](../testing/index.md)
-- [Approved proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [Approved proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

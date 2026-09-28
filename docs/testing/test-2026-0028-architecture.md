@@ -109,7 +109,7 @@ Defects found while building this suite are recorded as incidents (see [incident
 ## Related Documents
 
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) — Test and Validation Checklist row T-28
-- [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 

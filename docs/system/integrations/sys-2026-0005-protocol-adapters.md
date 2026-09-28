@@ -351,7 +351,7 @@ below list every option each parser accepts. Any other option returns the per-ad
 | Option | Values | Default | Notes / errors |
 |---|---|---|---|
 | `query K V` | text | — | Form-encoded and appended to the URL. |
-| `header K V` | text | `user-agent: rivet/0.1.0-dev` added if absent | — |
+| `header K V` | text | `user-agent: rivet/0.1.0` added if absent | — |
 | `body json\|text\|form\|bytes V` | value | none | Content-Type is added unless a header sets one. `form` needs an object and `bytes` needs bytes or text (`validation.codec`). |
 | `body xml V` | `(xml.element …)` or text | — | Other types return `validation.http_option`. |
 | `body file PATH` | path | — | Read through the policed file port (`allow_read`) before connecting. |
@@ -1044,7 +1044,7 @@ paths are covered by the conformance suites (`tests/conformance_http3.rs`, `conf
 
 ## Related Documents
 
-- [PROP-2026-0001 Rivet runtime proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
+- [PROP-2026-0001 Rivet runtime proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [PLAN-2026-0001 v0.1.0 implementation and release plan](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
 - [ADR-0002 Rust crate selection](../../decisions/adr-0002-rust-crate-selection.md)
 - [ADR-0003 Process sandbox backends](../../decisions/adr-0003-process-sandbox-backends.md)
