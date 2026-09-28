@@ -126,15 +126,13 @@ async fn child_cannot_write_outside_granted_paths() {
         assert!(!target.exists(), "{target:?} must not be created");
     }
     // A deny entry carves a hole in a granted tree for the child too.
-    let deny = format!(
-        r#"{{"version":1,"grants":[
-            {{"capability":"allow_exec","targets":["/usr/bin/touch"]}},
-            {{"capability":"allow_write","targets":["./out/**"]}}],
-            "deny":[{{"capability":"allow_write","targets":["./out/locked/**"]}}]}}"#
-    );
+    let deny = r#"{"version":1,"grants":[
+            {"capability":"allow_exec","targets":["/usr/bin/touch"]},
+            {"capability":"allow_write","targets":["./out/**"]}],
+            "deny":[{"capability":"allow_write","targets":["./out/locked/**"]}]}"#;
     std::fs::create_dir(b.path().join("out/locked")).unwrap();
     let locked = b.path().join("out/locked/x");
-    let e = run(b.path(), &touch(&locked), &deny).await.unwrap_err();
+    let e = run(b.path(), &touch(&locked), deny).await.unwrap_err();
     assert_eq!(e.code, "process.exit");
     assert!(!locked.exists());
 }
@@ -390,7 +388,7 @@ async fn secret_destination_binding() {
 
     // Returning a secret (explicit flow through object construction) is an error.
     let leak = rt.request("account.leak", Value::Null, None).await;
-    let leak_err = leak.as_ref().err().expect("returning a secret must fail");
+    let leak_err = leak.as_ref().expect_err("returning a secret must fail");
     assert_eq!(leak_err.code, "permission.denied");
 
     for e in [Some(e), leak.err()].into_iter().flatten() {
