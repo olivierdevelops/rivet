@@ -30,72 +30,10 @@ pub async fn run_process(
     codec: &dyn Codec,
 ) -> RivetResult<ProcessOutcome> {
     let mut plan = input;
-    let span = plan.origin.span.clone();
     // vhco:todo authorize_exec -- refuse a shell interpreter invoked with -c (unsupported.shell) and `interactive true` (Stage C, unsupported.interactive); require an absolute or bundle-relative path (no PATH lookup); authorize allow_exec on the path as written; env starts empty and holds only the explicit `env {…}` pairs; when policy.json is present build the SandboxSpec from its read/write/delete/exec grants and deny entries (only `DIR/**`, exact paths and `*` are representable; narrowed `access` lists or other globs fail unsupported.sandbox_backend before spawning)
-    // vhco:step shell guard -- `sh -c STRING` and friends are the declined shell escape hatch
-    // vhco:error shell -- shell string evaluation => unsupported.shell (501, exit 5), never spawns
-    let base = plan
-        .program
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if SHELLS.contains(&base.as_str())
-        && plan
-            .args
-            .iter()
-            .any(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('c'))
-    {
-        return Err(RivetError::unsupported(
-            "unsupported.shell",
-            format!(
-                "`{}` with -c evaluates a shell string; pass argv to the target binary instead",
-                plan.program
-            ),
-        )
-        .with_span(span));
-    }
-    if plan.interactive {
-        return Err(RivetError::unsupported(
-            "unsupported.interactive",
-            "interactive processes are Stage C and not available in this build",
-        )
-        .with_span(span));
-    }
-    // vhco:error program_path -- a bare name (PATH lookup) => validation.process_program (exit 2)
-    if !plan.program.contains('/') && !plan.program.contains('\\') {
-        return Err(RivetError::validation(
-            "validation.process_program",
-            format!(
-                "`{}` is not a path; use an absolute path or a bundle-relative ./path (no PATH lookup)",
-                plan.program
-            ),
-        )
-        .with_span(span));
-    }
-    // vhco:step authorize effect_checks::authorize -- allow_exec exec on the binary path
-    authorize(
-        evaluator,
-        &plan.origin,
-        Capability::Exec,
-        AccessVerb::Exec,
-        EffectTarget::Path(plan.program.clone()),
-    )?;
-    // vhco:step cwd effect_checks::authorize -- an explicit working directory must be inside a readable grant (allow_read stat)
-    if let Some(cwd) = &plan.cwd {
-        authorize(
-            evaluator,
-            &plan.origin,
-            Capability::Read,
-            AccessVerb::Stat,
-            EffectTarget::Path(cwd.clone()),
-        )?;
-    }
-    // vhco:step sandbox sandbox_spec -- policy present ⇒ the child must be confined
-    let policy = evaluator.policy();
-    if policy.present {
-        plan.sandbox = Some(sandbox_spec(policy).map_err(|e| e.with_span(span.clone()))?);
-    }
+    // vhco:step confine confine_process -- shell guard (unsupported.shell), bare-name refusal (validation.process_program), allow_exec on the binary, allow_read stat on cwd, then the policy-derived SandboxSpec when policy.json is present
+    confine_process(&mut plan, evaluator)?;
+    let span = plan.origin.span.clone();
     // vhco:todo run_bounded -- encode `stdin json|text|bytes` through Codec; run through ProcessRunner with stdout/stderr drained concurrently into bounded buffers under min(timeout, request deadline); `with command … as p` + `stream stdout …` spawns instead and returns the live stdout for the scope to frame
     // vhco:step stdin codec.encode -- the only data the child receives on stdin
     if let Some(s) = &plan.stdin {
@@ -248,6 +186,79 @@ fn selector_path(base: &str, selector: &str) -> RivetResult<String> {
         }
     }
     Ok(out.to_string_lossy().into_owned())
+}
+
+/// Authorization and confinement shared by `command` and MCP stdio connectors:
+/// refuses shell strings, interactive children and PATH lookups, authorizes
+/// allow_exec on the binary (and allow_read stat on an explicit cwd), and sets
+/// the OS sandbox from policy.json. Nothing is spawned here.
+pub fn confine_process(plan: &mut ProcessPlan, evaluator: &dyn PolicyEvaluator) -> RivetResult<()> {
+    let span = plan.origin.span.clone();
+    // shell guard -- `sh -c STRING` and friends are the declined shell escape hatch
+    // shell -- shell string evaluation => unsupported.shell (501, exit 5), never spawns
+    let base = plan
+        .program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if SHELLS.contains(&base.as_str())
+        && plan
+            .args
+            .iter()
+            .any(|a| a.starts_with('-') && !a.starts_with("--") && a.contains('c'))
+    {
+        return Err(RivetError::unsupported(
+            "unsupported.shell",
+            format!(
+                "`{}` with -c evaluates a shell string; pass argv to the target binary instead",
+                plan.program
+            ),
+        )
+        .with_span(span));
+    }
+    if plan.interactive {
+        return Err(RivetError::unsupported(
+            "unsupported.interactive",
+            "interactive processes are Stage C and not available in this build",
+        )
+        .with_span(span));
+    }
+    // program_path -- a bare name (PATH lookup) => validation.process_program (exit 2)
+    if !plan.program.contains('/') && !plan.program.contains('\\') {
+        return Err(RivetError::validation(
+            "validation.process_program",
+            format!(
+                "`{}` is not a path; use an absolute path or a bundle-relative ./path (no PATH lookup)",
+                plan.program
+            ),
+        )
+        .with_span(span));
+    }
+    // authorize effect_checks::authorize -- allow_exec exec on the binary path
+    authorize(
+        evaluator,
+        &plan.origin,
+        Capability::Exec,
+        AccessVerb::Exec,
+        EffectTarget::Path(plan.program.clone()),
+    )?;
+    // cwd effect_checks::authorize -- an explicit working directory must be inside a readable grant (allow_read stat)
+    if let Some(cwd) = &plan.cwd {
+        authorize(
+            evaluator,
+            &plan.origin,
+            Capability::Read,
+            AccessVerb::Stat,
+            EffectTarget::Path(cwd.clone()),
+        )?;
+    }
+    // sandbox sandbox_spec -- policy present ⇒ the child must be confined
+    let policy = evaluator.policy();
+    if policy.present {
+        plan.sandbox = Some(sandbox_spec(policy).map_err(|e| e.with_span(span.clone()))?);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

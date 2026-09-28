@@ -11,9 +11,13 @@ use crate::domain::io_manifest::{
     IoQuery, IoReport, PolicyDraft, TraceEvent, TraceQuery, TraceResult,
 };
 use crate::domain::ir::CompiledProgram;
+use crate::domain::mcp::{
+    BridgeHops, McpContext, McpImportKind, McpRequest, McpSnapshot, snapshot_hash,
+};
 use crate::domain::policy::{AccessVerb, Capability, Decision};
 use crate::domain::policy::{EffectIntent, Permit, Policy};
 use crate::domain::ports::GrpcDriver;
+use crate::domain::ports::McpClient;
 use crate::domain::ports::TraceStore;
 use crate::domain::ports::{
     DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SessionDriver,
@@ -21,10 +25,12 @@ use crate::domain::ports::{
 };
 use crate::domain::serve::OperationAccess;
 use crate::domain::source::SourceBundle;
+use crate::domain::transports::ProcessRunner;
 use crate::domain::{RivetError, RivetResult, Value};
 use crate::features::audit::effect_sites::analyze_program;
 use crate::features::audit::inspect_effects::{AuditPorts, inspect_effects};
 use crate::features::audit::read_trace::read_trace;
+use crate::features::connectors::invoke_mcp::invoke_mcp;
 use crate::features::datagrams::exchange_datagrams::exchange_datagrams;
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
@@ -37,10 +43,13 @@ use crate::features::quic::exchange_quic::exchange_quic;
 use crate::features::registry::describe_operations::describe_operations;
 use crate::features::registry::inspect_outputs::{OutputQuery, inspect_outputs};
 use crate::features::serve::authorize_operation::require_operation;
+use crate::features::transports::exchange_http::exchange_http;
+use crate::features::transports::run_process::confine_process;
 use crate::infra::capy_parser::CapyParser;
 use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
 use crate::infra::grpc_adapter::{GrpcEffects, GrpcTransport, InvokeFn};
+use crate::infra::mcp_client::{McpHttpFn, McpPeer, McpSpawnFn};
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_draft_writer::ExclusiveDraftWriter;
 use crate::infra::policy_file_reader::DiskPolicyReader;
@@ -72,6 +81,8 @@ pub struct RuntimeBuilder {
     entry: Option<String>,
     source: Option<SourceBundle>,
     policy: PolicySource,
+    /// `connectors sync`: MCP connectors may lack a reviewed snapshot.
+    discovery: bool,
 }
 
 impl Default for RuntimeBuilder {
@@ -80,6 +91,7 @@ impl Default for RuntimeBuilder {
             entry: None,
             source: None,
             policy: PolicySource::Discover,
+            discovery: false,
         }
     }
 }
@@ -106,6 +118,13 @@ impl RuntimeBuilder {
 
     pub fn policy(mut self, policy: Policy) -> Self {
         self.policy = PolicySource::Given(policy);
+        self
+    }
+
+    /// Load for `connectors sync`: an MCP connector whose `schema` file is
+    /// missing or not yet approved loads without imports instead of failing.
+    pub fn connector_discovery(mut self) -> Self {
+        self.discovery = true;
         self
     }
 
@@ -140,7 +159,7 @@ impl RuntimeBuilder {
                 &DiskPolicyReader,
             )?,
         };
-        Runtime::assemble(bundle, program, policy)
+        Runtime::assemble(bundle, program, policy, self.discovery)
     }
 }
 
@@ -162,6 +181,14 @@ struct Inner {
     sessions: Arc<SessionHost>,
     /// Cancellation signals for running top-level requests.
     requests: Arc<crate::infra::request_control::RunningRequests>,
+    /// MCP client connectors (reviewed snapshots + sessions).
+    mcp: Arc<McpPeer>,
+    /// The traced evaluator adapters see (for use cases run by the host).
+    evaluator: Arc<dyn PolicyEvaluator>,
+    /// Policed files (connector snapshot writes by `connectors sync`).
+    files: Arc<dyn FileAccess>,
+    /// Bridge hop state of requests that arrived over MCP, keyed by trace ID.
+    bridges: Mutex<HashMap<String, BridgeHops>>,
 }
 
 /// A loaded, compiled bundle ready to serve requests from every surface.
@@ -348,6 +375,7 @@ impl Runtime {
         bundle: SourceBundle,
         program: Arc<CompiledProgram>,
         policy: Policy,
+        discovery: bool,
     ) -> RivetResult<Runtime> {
         let decide: Arc<crate::infra::policy_broker::DecideFn> =
             Arc::new(|i: &EffectIntent, p: &Policy, root: &str| -> Permit {
@@ -377,6 +405,24 @@ impl Runtime {
             evaluator: Arc::clone(&evaluator),
             raw: ConfinedFiles::new(&bundle.root),
         });
+        // MCP connectors: reviewed snapshots are bootstrap reads checked against
+        // policy.json approved.snapshots before anything is served.
+        let mcp_catalog = McpPeer::load(
+            &program,
+            &bundle.root,
+            &policy.approved.snapshots,
+            discovery,
+        )?;
+        let mcp = Arc::new(McpPeer::new(
+            mcp_catalog,
+            &bundle.root,
+            Arc::clone(&evaluator),
+            mcp_http(),
+            mcp_spawn(&bundle.root),
+            Arc::clone(&files),
+        ));
+        let host_evaluator = Arc::clone(&evaluator);
+        let host_files = Arc::clone(&files);
         let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
         crate::orchestrator::transports::register(&mut interp, files, &bundle.root);
         register_transports(&mut interp, &bundle.root);
@@ -414,6 +460,10 @@ impl Runtime {
                 counter: AtomicU64::new(0),
                 sessions,
                 requests: Arc::new(crate::infra::request_control::RunningRequests::default()),
+                mcp,
+                evaluator: host_evaluator,
+                files: host_files,
+                bridges: Mutex::new(HashMap::new()),
             }
         });
         inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
@@ -502,6 +552,8 @@ impl Runtime {
         if req.operation_id.starts_with("rivet.") {
             return super::builtins::dispatch_builtin(self, req, sink).await;
         }
+        let imported = self.inner.program.operation(&req.operation_id).is_none()
+            && self.inner.mcp.catalog().owns(&req.operation_id);
         // Host-wide budget shared by nested calls and DAG nodes; nested calls run
         // inside their parent's permit, so only top-level requests acquire one.
         let _permit = if req.depth == 0 {
@@ -522,6 +574,9 @@ impl Runtime {
         } else {
             None
         };
+        if imported {
+            return self.dispatch_mcp(req).await;
+        }
         if req.depth > 0 {
             return request_operation(
                 req,
@@ -576,6 +631,166 @@ impl Runtime {
             },
             self.inner.requests.as_ref(),
         )
+    }
+
+    /// Identity of this host in MCP bridge chains.
+    fn bridge_identity(&self) -> String {
+        let h = self.inner.program.source_hash.trim_start_matches("sha256:");
+        format!("rivet:{}", &h[..h.len().min(16)])
+    }
+
+    fn mcp_context(&self, operation_id: &str, req: Option<&Request>) -> McpContext {
+        McpContext {
+            operation_id: operation_id.to_string(),
+            request_id: req.map(|r| r.request_id.clone()).unwrap_or_default(),
+            deadline_ms: req.map(|r| r.deadline_ms).unwrap_or(DEFAULT_DEADLINE_MS),
+            bridge: req
+                .and_then(|r| {
+                    self.inner
+                        .bridges
+                        .lock()
+                        .ok()
+                        .and_then(|m| m.get(&r.trace_id).cloned())
+                })
+                .unwrap_or_default(),
+            identity: self.bridge_identity(),
+            span: None,
+        }
+    }
+
+    /// An imported connector operation (`crm.tools.search`): the
+    /// `connectors.invoke_mcp` use case under the request deadline.
+    async fn dispatch_mcp(&self, req: Request) -> RivetResult<Completion> {
+        let id = req.operation_id.clone();
+        let tag = |mut e: RivetError| {
+            e.operation_id.get_or_insert_with(|| id.clone());
+            e.request_id.get_or_insert_with(|| req.request_id.clone());
+            e.trace_id.get_or_insert_with(|| req.trace_id.clone());
+            e
+        };
+        let catalog = self.inner.mcp.catalog();
+        let (connector, method) = id.split_once('.').unwrap_or((id.as_str(), ""));
+        let kind = catalog.import(&id).map(|i| i.kind);
+        let input = McpRequest {
+            connector: connector.to_string(),
+            method: method.to_string(),
+            params: req.params.clone(),
+            schema_hash: catalog
+                .connector(connector)
+                .and_then(|c| c.schema_hash.clone())
+                .unwrap_or_default(),
+            context: self.mcp_context(&id, Some(&req)),
+        };
+        let run = invoke_mcp(
+            input,
+            self.inner.evaluator.as_ref(),
+            self.inner.mcp.as_ref(),
+        );
+        let result = match tokio::time::timeout(
+            std::time::Duration::from_millis(req.deadline_ms.max(1)),
+            run,
+        )
+        .await
+        {
+            Ok(r) => r.map_err(tag)?,
+            Err(_) => {
+                return Err(tag(RivetError::new(
+                    ErrorKind::Timeout,
+                    "timeout.mcp",
+                    format!(
+                        "`{id}` exceeded its {} ms deadline (the MCP call was cancelled)",
+                        req.deadline_ms
+                    ),
+                )
+                .with_effects(crate::domain::EffectsStatus::Unknown)));
+            }
+        };
+        let kind = kind.unwrap_or(McpImportKind::Tool);
+        Ok(Completion {
+            request_id: req.request_id,
+            trace_id: req.trace_id,
+            result: result.to_value(kind),
+            data_count: 0,
+            effects: if kind == McpImportKind::Tool {
+                crate::domain::EffectsStatus::Unknown
+            } else {
+                crate::domain::EffectsStatus::None
+            },
+        })
+    }
+
+    /// A request that arrived over MCP with bridge `_meta` (hop count and
+    /// identity chain); nested connector calls continue that chain.
+    pub async fn request_bridged(
+        &self,
+        principal: Principal,
+        operation_id: &str,
+        params: Value,
+        bridge: BridgeHops,
+    ) -> RivetResult<Completion> {
+        let req = self.new_request(operation_id, params, principal);
+        let trace = req.trace_id.clone();
+        let tracked = bridge != BridgeHops::default();
+        if tracked && let Ok(mut m) = self.inner.bridges.lock() {
+            m.insert(trace.clone(), bridge);
+        }
+        let out = self.dispatch_request(req, None).await;
+        if tracked && let Ok(mut m) = self.inner.bridges.lock() {
+            m.remove(&trace);
+        }
+        out
+    }
+
+    /// `rivet connectors sync NAME --output PATH`: authorized discovery
+    /// (allow_mcp NAME/discover + transport grants), then an exclusive create of
+    /// the candidate snapshot (allow_write). Never overwrites an existing file,
+    /// never changes this runtime's catalog. `output` is bundle-root relative.
+    pub async fn sync_connector(&self, name: &str, output: &str) -> RivetResult<ConnectorSync> {
+        let input = McpRequest {
+            connector: name.to_string(),
+            method: "discover".into(),
+            params: Value::Null,
+            schema_hash: String::new(),
+            context: self.mcp_context("connectors.sync", None),
+        };
+        let found = invoke_mcp(
+            input,
+            self.inner.evaluator.as_ref(),
+            self.inner.mcp.as_ref(),
+        )
+        .await?;
+        let snapshot_json = found
+            .structured_content
+            .map(|v| v.to_json())
+            .unwrap_or_default();
+        let snapshot = McpSnapshot::parse(snapshot_json.to_string().as_bytes())?;
+        let bytes = snapshot.serialize();
+        let sha256 = snapshot_hash(&bytes);
+        let mut op = FileOperation::new(crate::domain::files::FileVerb::Create, output);
+        op.codec = Some(crate::domain::files::Codec::Bytes);
+        op.content = Some(Value::Bytes(bytes));
+        op.overwrite = false;
+        self.inner.files.apply(op).await?;
+        Ok(ConnectorSync {
+            connector: name.to_string(),
+            path: output.to_string(),
+            sha256,
+            protocol_version: snapshot.protocol_version.clone(),
+            tools: snapshot.tools.iter().map(|t| t.name.clone()).collect(),
+            resources: snapshot.resources.iter().map(|r| r.uri.clone()).collect(),
+            prompts: snapshot.prompts.iter().map(|p| p.name.clone()).collect(),
+        })
+    }
+
+    /// Imported MCP operation IDs of this bundle (`crm.tools.search`, …).
+    pub fn connector_imports(&self) -> Vec<String> {
+        self.inner
+            .mcp
+            .catalog()
+            .imports
+            .iter()
+            .map(|i| i.id.clone())
+            .collect()
     }
 
     pub fn list(&self) -> RivetResult<Catalog> {
@@ -708,6 +923,60 @@ impl Runtime {
     pub fn trace_store(&self) -> Arc<dyn TraceStore> {
         self.inner.trace.clone()
     }
+}
+
+/// Receipt of `rivet connectors sync`: where the candidate snapshot went and
+/// the hash a maintainer must approve in policy.json.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConnectorSync {
+    pub connector: String,
+    pub path: String,
+    pub sha256: String,
+    pub protocol_version: String,
+    pub tools: Vec<String>,
+    pub resources: Vec<String>,
+    pub prompts: Vec<String>,
+}
+
+impl ConnectorSync {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "connector": self.connector,
+            "path": self.path,
+            "sha256": self.sha256,
+            "protocolVersion": self.protocol_version,
+            "tools": self.tools,
+            "resources": self.resources,
+            "prompts": self.prompts,
+        })
+    }
+}
+
+/// The brokered HTTP client for MCP Streamable HTTP (transports.exchange_http).
+fn mcp_http() -> Arc<McpHttpFn> {
+    Arc::new(|x, ev| {
+        Box::pin(async move {
+            exchange_http(
+                x,
+                ev.as_ref(),
+                &crate::infra::http_adapter::HyperClient,
+                &crate::infra::codec::StdCodec,
+            )
+            .await
+        })
+    })
+}
+
+/// The process path for MCP stdio: confine (allow_exec + sandbox), then a duplex spawn.
+fn mcp_spawn(root: &str) -> Arc<McpSpawnFn> {
+    let runner = Arc::new(crate::infra::process_adapter::TokioRunner::new(root));
+    Arc::new(move |mut plan, ev| {
+        let runner = Arc::clone(&runner);
+        Box::pin(async move {
+            confine_process(&mut plan, ev.as_ref())?;
+            runner.spawn_duplex(&plan).await
+        })
+    })
 }
 
 /// Relative path from the draft file's directory back to the bundle root.

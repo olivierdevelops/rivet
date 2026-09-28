@@ -8,6 +8,7 @@ pub mod file_access;
 pub mod grpc_adapter;
 pub mod h3_client;
 pub mod http_adapter;
+pub mod mcp_client;
 pub mod net_tls;
 pub mod policy_broker;
 pub mod policy_draft_writer;

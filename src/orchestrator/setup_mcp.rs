@@ -28,6 +28,7 @@ use super::builtins::{BUILTIN_IDS, visible};
 use super::runtime::Runtime;
 use super::setup_serve::{ServeState, error_response, json_response};
 use crate::domain::contracts::Principal;
+use crate::domain::mcp::BridgeHops;
 use crate::domain::serve::{MCP_PROTOCOL_VERSION, OperationAccess};
 use crate::domain::sessions::SessionOpenInput;
 use crate::domain::{ErrorKind, RivetError, Value};
@@ -90,7 +91,9 @@ pub async fn handle_request(
                 .get("arguments")
                 .map(Value::from_json)
                 .unwrap_or(Value::Null);
-            Ok(call_tool(rt, principal, &name, args).await?)
+            // Bridge recursion state (`_meta` rivet/hops + rivet/chain) continues into nested connector calls.
+            let bridge = BridgeHops::from_meta(params);
+            Ok(call_tool(rt, principal, &name, args, bridge).await?)
         }
         other => Err((METHOD_NOT_FOUND, format!("method not found: {other}"))),
     }
@@ -101,6 +104,7 @@ async fn call_tool(
     principal: &Principal,
     name: &str,
     args: Value,
+    bridge: BridgeHops,
 ) -> Result<Json, (i64, String)> {
     let unknown = || (INVALID_PARAMS, format!("Unknown tool: {name}"));
     let outcome = if BUILTIN_IDS.contains(&name) {
@@ -137,7 +141,7 @@ async fn call_tool(
             .await;
             opened.map(|r| r.to_json())
         } else {
-            rt.request_as(principal.clone(), name, args, None)
+            rt.request_bridged(principal.clone(), name, args, bridge)
                 .await
                 .map(|c| c.to_json())
         }

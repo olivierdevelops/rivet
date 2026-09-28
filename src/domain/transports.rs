@@ -511,11 +511,34 @@ pub trait SocketStream: Send + Sync {
     ) -> RivetResult<Box<dyn SocketConnection>>;
 }
 
+/// Push-based byte sink: a child's stdin.
+#[async_trait]
+pub trait ByteSink: Send {
+    async fn write(&mut self, bytes: &[u8]) -> RivetResult<()>;
+    /// Close the sink (EOF on the child's stdin).
+    async fn close(self: Box<Self>) -> RivetResult<()>;
+}
+
+/// A running child with both pipes (MCP stdio connectors): stdin is written
+/// by the owner, stdout is read as a stream; closing stdout kills and reaps.
+pub struct ChildDuplex {
+    pub stdin: Box<dyn ByteSink>,
+    pub stdout: Box<dyn ByteStream>,
+}
+
 /// Spawns argv-only children (optionally inside an OS sandbox) and reaps them.
 #[async_trait]
 pub trait ProcessRunner: Send + Sync {
     async fn run(&self, plan: &ProcessPlan) -> RivetResult<ProcessResult>;
     async fn spawn(&self, plan: &ProcessPlan) -> RivetResult<Box<dyn ByteStream>>;
+    /// Spawn with piped stdin and stdout (long-lived protocol children).
+    async fn spawn_duplex(&self, plan: &ProcessPlan) -> RivetResult<ChildDuplex> {
+        let _ = plan;
+        Err(RivetError::unsupported(
+            "unsupported.process_duplex",
+            "this process runner cannot keep a child's stdin open",
+        ))
+    }
 }
 
 /// True when an HTTP method may be replayed automatically (`retry`).

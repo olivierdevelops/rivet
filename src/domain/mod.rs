@@ -7,6 +7,7 @@ pub mod files;
 pub mod grpc;
 pub mod io_manifest;
 pub mod ir;
+pub mod mcp;
 pub mod outputs;
 pub mod policy;
 pub mod ports;
