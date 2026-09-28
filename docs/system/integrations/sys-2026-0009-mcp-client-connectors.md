@@ -4,8 +4,8 @@ title: "Rivet MCP client connectors"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [connectors, mcp, policy]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
 scope: How Rivet calls remote MCP servers as a client. Covers `connector NAME mcp` declarations, stdio and Streamable HTTP transports, reviewed snapshots (format rivet.mcp.snapshot/1, sha256 approval in policy.json), imported operation IDs, the connectors.invoke_mcp use case, `rivet connectors sync` / rivet.connectors.sync, bridge recursion guards and the typed error codes.
 reason: Outbound MCP lets Rivet run tools whose effects it cannot see. Reviewers need to know exactly which schema is trusted, which grants each call needs, how a schema refresh is proposed and approved, and how bridge loops are stopped.
-related_documents: [PROP-2026-0001, PLAN-2026-0001, ADR-0003, SYS-2026-0001, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0008]
+related_documents: [PROP-2026-0001, PLAN-2026-0001, PLAN-2026-0002, API-2026-0006, SYS-2026-0010, ADR-0003, SYS-2026-0001, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0008]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, mcp, connectors, snapshots, streamable-http, stdio, bridge]
@@ -31,11 +31,11 @@ tags: [rivet, system, mcp, connectors, snapshots, streamable-http, stdio, bridge
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** connectors, mcp, policy
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -213,6 +213,7 @@ error[mcp.snapshot_unapproved]: snapshot ./schemas/crm.json of connector `crm` i
    │                         │                │──close─────────────────────────▶│ HTTP DELETE (session id) /  │
    │                         │                │                                 │ stdin EOF, 500 ms, reap      │
    │◀── Completion{result:{content, structuredContent?, isError:false}, effects:"unknown"} ────────────────────│
+   (surfaces render it as a ResponseEnvelope: data = the tool result as returned, effects "unknown")
 ```
 
 Steps 1 to 7 run before any transport I/O. Each call opens its own session and always closes it. A
@@ -405,20 +406,22 @@ MCP server is needed to go further with the demo itself.
 
 ### Full journey against a local fixture server
 
-A scratch copy of the demo pointed `transport http` at a Python Streamable HTTP fixture on
-`127.0.0.1:18443`. The fixture answers `initialize`, `tools/list` (from
+A scratch copy of the demo pointed `transport http` at the demo's own Streamable HTTP fixture
+(`fixtures/crm_mcp.py`) on `127.0.0.1:18918`. The fixture answers `initialize`, `tools/list` (from
 `schemas/tools-list.fixture.json`) and `tools/call` (from `schemas/search-result.fixture.json`, or
-`isError: true` for other queries). The sync policy granted `allow_network http://127.0.0.1:18443`,
-`allow_mcp crm/discover` and `allow_write ../schemas/crm.json`. Request IDs vary per run.
+`isError: true` for other queries). The sync policy granted `allow_network http://127.0.0.1:18918`,
+`allow_mcp crm/discover` and `allow_write ../schemas/crm.json`. Captured with the 0.2.0-rc; every JSON answer is
+a [ResponseEnvelope](../../api/api-2026-0006-envelopes.md). Request IDs vary per run; the snapshot hash is
+stable because the fixture bytes are.
 
 **1. Sync writes the candidate.**
 
 ```text
 $ rivet --file app.rivet --policy ./policies/sync.json connectors sync crm --output ./schemas/crm.json
-{"connector":"crm","path":"./schemas/crm.json","sha256":"sha256:ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805","protocolVersion":"2025-11-25","tools":["search"],"resources":[],"prompts":[]}
+{"request_id":"req_016524a2e5","trace_id":"tr_016524a2e5","operation":"rivet.connectors.sync","type":"result","status":"ok","data":{"connector":"crm","path":"./schemas/crm.json","sha256":"sha256:ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805","protocolVersion":"2025-11-25","tools":["search"],"resources":[],"prompts":[]},"error":null,"effects":"committed","data_count":0}
 wrote candidate snapshot ./schemas/crm.json (sha256:ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805); after review, approve it in policy.json: "approved": {"snapshots": ["sha256:ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805"]}
-exit 0
-   server saw: initialize · notifications/initialized · tools/list · DELETE session=fx-session-1
+exit=0
+   server saw: initialize · notifications/initialized · tools/list · DELETE (session end)
 
 $ head -8 schemas/crm.json
 {
@@ -433,17 +436,12 @@ $ head -8 schemas/crm.json
 $ shasum -a 256 schemas/crm.json
 ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805  schemas/crm.json
 
-$ rivet … connectors sync crm --output ./schemas/crm.json          # again: never overwrites (f40d4aa)
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists","retryable":false,"effects":"none"}}
-exit 4
-
-# at 829ca43 the check runs first and names the rule (docs/demos/06-mcp-bridge, no server contacted):
-$ rivet --file app.rivet connectors sync crm --output ./schemas/crm.json
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists; connectors sync never overwrites a snapshot","retryable":false,"effects":"none","details":{"path":"./schemas/crm.json"}}}
-exit 4
+$ rivet … connectors sync crm --output ./schemas/crm.json          # again: never overwrites, no server contact
+{"request_id":"","trace_id":"","operation":"rivet.connectors.sync","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists; connectors sync never overwrites a snapshot","retryable":false,"details":{"path":"./schemas/crm.json"}},"effects":"none","data_count":0}
+exit=4
 ```
 
-**2. Before and after approval** (the runtime policy grants `allow_network http://127.0.0.1:18443` and
+**2. Before and after approval** (the runtime policy grants `allow_network http://127.0.0.1:18918` and
 `allow_mcp crm/tools/search`):
 
 ```text
@@ -454,7 +452,7 @@ error[mcp.snapshot_unapproved]: snapshot ./schemas/crm.json of connector `crm` i
   1| connector crm mcp
    | ^
   = hint: after reviewing ./schemas/crm.json, add "sha256:ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805" to policy.json "approved": {"snapshots": [...]}
-exit 2
+exit=2
 
    … add "approved": {"snapshots": ["sha256:ab6b8ae3…d805"]} to policy.json …
 
@@ -491,13 +489,13 @@ errors   —
 ```text
 $ rivet --file app.rivet io --by target
 TARGET                  ACCESS        CAPABILITY     ORIGIN          PHASE    NEEDS FILE  USED BY
-http://127.0.0.1:18443  connect POST  allow_network  transport http  connect  —           contacts.find (via crm.tools.search)
+http://127.0.0.1:18918  connect POST  allow_network  transport http  connect  —           contacts.find (via crm.tools.search)
 crm/tools/search        call tool     allow_mcp      request         body     —           contacts.find (via crm.tools.search)
 
 $ rivet --file app.rivet io --check-policy
 OPERATION      KIND     ACCESS        TARGET                      KNOWLEDGE      SOURCE        DECISION
 contacts.find  (calls crm.tools.search — connector crm)                          app.rivet:17
-contacts.find  network  connect POST  http://127.0.0.1:18443/mcp  exact          app.rivet:2   allowed
+contacts.find  network  connect POST  http://127.0.0.1:18918/mcp  exact          app.rivet:2   allowed
 contacts.find  mcp      call tool     crm/tools/search            opaque_remote  app.rivet:17  allowed
 2 allowed
 
@@ -505,59 +503,78 @@ $ rivet --file app.rivet io --strict
 …
 io: complete=false — 1 of 2 sites is dynamic/opaque
   contacts.find#2  mcp call tool  crm/tools/search (opaque_remote)  (app.rivet:17)
-exit 7
+exit=7
 ```
 
-**4. Calls.**
+**4. Calls.** The imported tool's result is the envelope's `data`, unchanged (it still has its own MCP
+`structuredContent` and `isError` keys; those belong to the remote tool, not to Rivet's envelope).
 
 ```text
-$ rivet --file app.rivet request contacts.find --params '{"query":"Ada"}'          # captured at f40d4aa
-{"request_id":"req_0174bd72c5","trace_id":"tr_0174bd72c5","result":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"data_count":0,"effects":"committed"}
-   (since 829ca43 the wrapping operation reports "effects":"unknown" — G22, tests/conformance_mcp.rs)
-   server saw: initialize · notifications/initialized ·
-               tools/call _meta {"rivet/hops": 1, "rivet/chain": ["rivet:232af55e413a4e42/crm.tools.search"]} · DELETE
+$ rivet --file app.rivet request contacts.find --data '{"query":"Ada"}'
+{"request_id":"req_0155ac0655","trace_id":"tr_0155ac0655","operation":"contacts.find","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"error":null,"effects":"unknown","data_count":0}
+   server saw: initialize · notifications/initialized · tools/list (drift check) · tools/call · DELETE
+   (tools/call carries _meta {"rivet/hops": 1, "rivet/chain": ["rivet:<bundle-hash16>/crm.tools.search"]};
+    the demo fixture logs method names only)
 
-$ rivet --file app.rivet request crm.tools.search --params '{"query":"Bob"}'        # exit 5
-{"request_id":"req_01714d76f5","trace_id":"tr_01714d76f5","error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"effects":"unknown","operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}}}
+$ rivet --file app.rivet request crm.tools.search --data '{"query":"Bob"}'        # exit 5
+{"request_id":"req_0153620be5","trace_id":"tr_0153620be5","operation":"crm.tools.search","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0}
 
-$ rivet --file app.rivet request crm.tools.search --params '{"query":42}'           # exit 2, no I/O
-{…,"error":{"kind":"validation","code":"validation.mcp_params","message":"invalid params for `crm.tools.search`: params.query: expected string, got number","retryable":false,"effects":"none","operation_id":"crm.tools.search","details":{"problems":["params.query: expected string, got number"]}}}
+$ rivet --file app.rivet request crm.tools.search --data '{"query":42}'           # exit 2, no I/O
+{"request_id":"req_015268dac5","trace_id":"tr_015268dac5","operation":"crm.tools.search","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.mcp_params","message":"invalid params for `crm.tools.search`: params.query: expected string, got number","retryable":false,"operation_id":"crm.tools.search","details":{"problems":["params.query: expected string, got number"]}},"effects":"none","data_count":0}
 
-$ rivet --file app.rivet request crm.tools.search --params '{"query":"Ada","limit":1}'  # exit 2
-{…,"error":{"kind":"validation","code":"validation.mcp_params","message":"invalid params for `crm.tools.search`: params.limit: unknown field",…}}
+$ rivet --file app.rivet request crm.tools.search --data '{"query":"Ada","limit":1}'  # exit 2
+{"request_id":"req_0152b375b5",…,"error":{"kind":"validation","code":"validation.mcp_params","message":"invalid params for `crm.tools.search`: params.limit: unknown field",…,"details":{"problems":["params.limit: unknown field"]}},"effects":"none","data_count":0}
 
-$ rivet --file app.rivet --policy ./policies/nomcp.json request contacts.find --params '{"query":"Ada"}'   # exit 3, server saw nothing
-{"request_id":"req_012f6009f5.1","trace_id":"tr_012f6009f5","error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/tools/search denied: no grant for allow_mcp crm/tools/search","retryable":false,"effects":"none","source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"capability":"allow_mcp","access":"call","target":"crm/tools/search"}}}
+$ rivet --file app.rivet --policy ./nomcp.json request contacts.find --data '{"query":"Ada"}'   # exit 3, server saw nothing
+{"request_id":"req_01507453fd","trace_id":"tr_01507453fd","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/tools/search denied: no grant for allow_mcp crm/tools/search","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"capability":"allow_mcp","access":"call","target":"crm/tools/search"}},"effects":"none","data_count":0}
 ```
 
-A direct call of the import reports `effects: "unknown"`. The wrapping operation `contacts.find`
-reported `effects: "committed"` in this run.
+Both a direct call of the import and the wrapping operation `contacts.find` report `effects: "unknown"`
+(G22, since `829ca43`). A tool failure is `mcp.tool_failed` with the top-level `effects: "unknown"`; in 0.1.0
+`effects` sat inside the error object.
 
-**5. Built-in over serve.** The served runtime loaded the everyday policy, which has no discover grant:
+**5. Built-in over serve** (`rivet serve --listen 127.0.0.1:18919`, stopped afterwards). The served runtime
+loaded the everyday policy, which has no discover grant:
 
 ```text
-$ rivet --endpoint http://127.0.0.1:18444 connectors sync crm --output ./schemas/crm.next.json      # exit 3
-{"request_id":"req_039292be7f","trace_id":"tr_039292be7f","error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/discover denied: no grant for allow_mcp crm/discover","retryable":false,"effects":"none","details":{"capability":"allow_mcp","access":"call","target":"crm/discover"}}}
+$ rivet --endpoint http://127.0.0.1:18919 connectors sync crm --output ./schemas/crm.next.json      # exit 3
+{"request_id":"req_011b75126d","trace_id":"tr_011b75126d","operation":"rivet.connectors.sync","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/discover denied: no grant for allow_mcp crm/discover","retryable":false,"details":{"capability":"allow_mcp","access":"call","target":"crm/discover"}},"effects":"none","data_count":0}
 ```
 
 ### stdio transport (verified)
 
-A connector with
-`transport command "/…/target/debug/rivet"` and `args ["--file", "/…/child/app.rivet", "serve", "--stdio"]`
-used another Rivet bundle as the MCP server. That bundle has one operation, `greet`. The grants were
-`allow_exec` on the binary and `allow_read ./child/`, plus `allow_mcp peer/discover` and `allow_write`
-for sync:
+A connector with `transport command "/…/target/release/rivet"` and
+`args ["--file", "/…/child/app.rivet", "serve", "--stdio"]` used another Rivet bundle as the MCP server. That
+bundle has one operation, `greet`. The grants were `allow_exec` on the binary and `allow_read ./child/**`, plus
+`allow_mcp peer/discover` and `allow_write` for sync:
 
 ```text
 $ rivet --file app.rivet --policy ./sync.json connectors sync peer --output ./schemas/peer.json
-{"connector":"peer","path":"./schemas/peer.json","sha256":"sha256:5a44d74bffbb63d56b9cd940fcdab35dc69f7a14ae961a9a322ae2818c9d568b","protocolVersion":"2025-11-25","tools":["greet","rivet.request","rivet.list","rivet.describe","rivet.outputs","rivet.sessions.open","rivet.sessions.send","rivet.sessions.finish_input","rivet.sessions.read","rivet.sessions.cancel"],"resources":[],"prompts":[]}
+{"request_id":"req_01b71729ed",…,"operation":"rivet.connectors.sync","type":"result","status":"ok","data":{"connector":"peer","path":"./schemas/peer.json","sha256":"sha256:8432506f2315ad2993c7f56a4be3c4d1c1dd044042341f8fb87c8008a4794490","protocolVersion":"2025-11-25","tools":["greet","rivet.request","rivet.list","rivet.describe","rivet.outputs","rivet.sessions.open","rivet.sessions.send","rivet.sessions.finish_input","rivet.sessions.read","rivet.sessions.cancel","rivet.io","rivet.policy.generate","rivet.trace.show","rivet.trace.export","rivet.capabilities","rivet.connectors.sync","rivet.auth.begin","rivet.auth.complete","rivet.auth.status","rivet.auth.disconnect","rivet.auth.cancel"],"resources":[],"prompts":[]},"error":null,"effects":"committed","data_count":0}
 
-$ rivet --file app.rivet request peer.tools.greet --params '{"who":"Ada"}'        # after approval, allow_mcp peer/tools/greet
-{"request_id":"req_01d8c4cdcd","trace_id":"tr_01d8c4cdcd","result":{"content":[{"type":"text","text":"{\"request_id\":\"req_01d7ade2b5\",\"trace_id\":\"tr_01d7ade2b5\",\"result\":\"hello Ada\",\"data_count\":0,\"effects\":\"none\"}"}],"structuredContent":{"request_id":"req_01d7ade2b5","trace_id":"tr_01d7ade2b5","result":"hello Ada","data_count":0,"effects":"none"},"isError":false},"data_count":0,"effects":"unknown"}
+$ rivet --file app.rivet request peer.tools.greet --data '{"who":"Ada"}'        # after approval, allow_mcp peer/tools/greet
+{"request_id":"req_01b42e90d5","trace_id":"tr_01b42e90d5","operation":"peer.tools.greet","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"request_id\":\"req_01b3e4041d\",…,\"operation\":\"greet\",\"type\":\"result\",\"status\":\"ok\",\"data\":\"hello Ada\",…}"}],"structuredContent":{"request_id":"req_01b3e4041d","trace_id":"tr_01b3e4041d","operation":"greet","type":"result","status":"ok","data":"hello Ada","error":null,"effects":"none","data_count":0},"isError":false},"error":null,"effects":"unknown","data_count":0}
 ```
 
-Without `allow_read` on the child bundle, the sandboxed child could not read its source:
-`process.exit … "error[not_found.source]: cannot read …/child/app.rivet: Operation not permitted (os error 1)"`.
+The inner envelope is the child Rivet server's MCP `structuredContent`. It is nested inside the outer envelope's
+`data` because a Rivet MCP server answers with envelopes too. The child, running as principal `local` over
+stdio, lists all 20 built-ins (10 in 0.1.0). Without `allow_read` on the child bundle, the sandboxed child
+cannot read its source: `process.exit` with
+`"stderr":"error[not_found.source]: cannot read …/child/app.rivet: Operation not permitted (os error 1)\n"` (exit 5).
+
+### Connectors in file modules (0.2.0)
+
+A `connector` declared in an imported module stays inside that module: only its own operations can call it.
+Its **name** must still be unique across the bundle (`check.import_collision`), because the loader's single
+policy grants it by name (`allow_mcp NAME/…`). The MCP import IDs of a module connector (`crm.tools.search`)
+are **not** prefixed by the module alias. The import IDs of a connector in an internal (non-`public`) module
+are unlisted on every surface (PLAN-2026-0002 findings, TASK-102). See
+[SYS-2026-0001](../components/sys-2026-0001-compiler-and-catalog.md) (File modules)
+and [SYS-2026-0003](../components/sys-2026-0003-policy-broker-and-io-manifest.md#globals-file-modules-and-bootstrap-reads-020).
+
+**Feature gates.** The MCP client is always compiled; it reuses the HTTP client and the process runner. A
+connector with `auth PROFILE` needs the `oauth` feature, and a lean build refuses it at load with
+`unsupported.feature` ([SYS-2026-0005](sys-2026-0005-protocol-adapters.md#deployment)).
 
 ### Recursion guards
 
@@ -612,9 +629,10 @@ No extra service is needed. Operators must:
 2. Review the candidate file, then add its hash to `approved.snapshots` in the everyday policy.
 3. Keep the `allow_mcp` grants in the everyday policy limited to the exposed imports.
 
-On Linux and Windows, stdio connectors inherit the process sandbox status described in
-[ADR-0003](../../decisions/adr-0003-process-sandbox-backends.md). Where no sandbox backend is active,
-confined spawns are refused.
+On Linux, stdio connectors inherit the process sandbox status described in
+[ADR-0003](../../decisions/adr-0003-process-sandbox-backends.md) (the Linux backend is gated, so confined spawns
+are refused with `unsupported.sandbox_backend`). Windows is not a supported platform in 0.2.0
+([INC-2026-0011](../../incidents/active/inc-2026-0011-windows-port-failures.md)).
 
 ## Security Boundaries
 
@@ -655,11 +673,17 @@ From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.m
 Other current behaviour (by design): no subscriptions, sampling, elicitation or roots; the HTTP reply stream is
 read only for the current request (server-to-client messages on a separate GET stream are not consumed); the
 minimal JSON Schema checker ignores unsupported keywords such as `pattern`, `format` and `$ref`;
-`docs/demos/06-mcp-bridge` targets a placeholder host, so its success path needs a live server.
+`docs/demos/06-mcp-bridge` targets a placeholder host, so its success path needs a live server or the demo's
+loopback fixture (`fixtures/crm_mcp.py`).
 
 ## Last Verified Version
 
-0.1.0-dev (commit 829ca43), on macOS (darwin 25.4.0), 2026-09-28. The drift check, sync-output check, opaque
+0.2.0-rc (main at `8031baa`), macOS (Darwin 25.4.0), 2026-09-29, `target/release/rivet` built with
+`cargo build --release --features cli`. The full journey was re-run on a scratch copy of
+`docs/demos/06-mcp-bridge` with its fixture on `127.0.0.1:18918` and `rivet serve` on `127.0.0.1:18919` (both
+stopped afterwards), plus a stdio child Rivet bundle.
+
+History: 0.1.0-dev (commit 829ca43), on macOS (darwin 25.4.0), 2026-09-28. The drift check, sync-output check, opaque
 effects and 8 MiB message cap were re-verified at `829ca43` (source, `tests/conformance_mcp.rs`, and the
 `connectors sync` refusal against `docs/demos/06-mcp-bridge`). First verified at `f40d4aa`: commands were run with
 `target/debug/rivet` from `docs/demos/06-mcp-bridge`. The full journey used scratch copies with a
@@ -678,6 +702,8 @@ afterwards, plus a stdio child Rivet bundle.
 - [SYS-2026-0006 OAuth 2.0 and credentials](sys-2026-0006-oauth-and-credentials.md)
 - [SYS-2026-0008 policy.json reference](../configuration/sys-2026-0008-policy-json-reference.md)
 - [Language and usage reference](../../references/ref-2026-0002-language-and-usage.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md)
+- [SYS-2026-0010 FFI surface, packaging and Cargo features](../components/sys-2026-0010-ffi-surface-and-packaging.md)
 - [Demos](../../demos/README.md)
 
 ## Change History
@@ -686,3 +712,4 @@ afterwards, plus a stdio child Rivet bundle.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-23). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): live `tools/list` drift check (`mcp.schema_drift`), sync refuses an existing `--output` before discovery, remote effects stay `unknown` when wrapped, 8 MiB message cap; limitations reduced to the current ones. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-35/D-47 (TASK-073, TASK-070): full journey (sync, approval, inspection, calls, serve) and stdio transport re-run on the 0.2.0-rc as envelopes (tool result = `data`, top-level `effects: "unknown"`); connectors in file modules; feature gates; macOS/Linux only. |
