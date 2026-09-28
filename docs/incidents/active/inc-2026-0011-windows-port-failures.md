@@ -48,7 +48,7 @@ incident is that record: one row per defect, with what failed, the likely cause 
    windows-latest ✘  build (LNK1201) + 10 test targets
         │
         ▼ maintainer, 2026-09-29: "drop windows … write incident report for bugs encountered"
-   Windows removed from the CI matrix (ee8fc19) ─▶ this catalogue (W-01 … W-13) stays active
+   Windows removed from the CI matrix (6f9943f) ─▶ this catalogue (W-01 … W-13) stays active
 ```
 
 ## Severity
@@ -134,7 +134,7 @@ Most items come from three root patterns:
 2026-09-29T02:10Z  first Windows CI failures read via annotations (run 36443517906)
 2026-09-29T02:40Z  cfg/test portability fixes pushed (850460c); Windows still red in 10 targets
 2026-09-29T03:00Z  maintainer decision: drop Windows, record the bugs
-2026-09-29T03:40Z  Windows removed from CI (ee8fc19); catalogue written
+2026-09-29T03:40Z  Windows removed from CI (6f9943f); catalogue written
 ```
 
 ## Logs and Evidence
