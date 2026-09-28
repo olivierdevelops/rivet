@@ -3,7 +3,7 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling.",
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling. PLAN-2026-0002 (v0.2.0, PROP-2026-0002 / ADR-0004) contract delta applied at P1 (TASK-004): one ResponseEnvelope and one InputEnvelope on every surface (serve.parse_input, legacy id/params aliases with deprecation signals), opt-in pretty JSON, immutable `global` constants (language.compile_globals), syntax highlighting (language.highlight_source), the `ffi` surface (C ABI through orchestrator/setup_ffi.rs) and the capability report's build features and ABI version.",
     "why": "Provide a root commands.perch that wraps existing Cargo, Python and VHCO workflows. Each command runs from ${script_dir}, declares cargo/bman/python3/vhco as optional binaries and CARGO_TARGET_DIR/CARGO_HOME/RUSTUP_HOME as optional environment variables, propagates failures, and uses the checked-in Cargo.lock for Cargo build/check/test/clippy/install. build produces the release binary; build_debug produces the debug binary; install first builds with cargo build --locked --release --bin rivet --target-dir ${script_dir}/target, then runs bman add with the quoted absolute ${script_dir}/target/release/rivet path (rivet.exe on Windows). The explicit target directory prevents CARGO_TARGET_DIR from selecting a different artifact; installation stops if the build fails and propagates bman failures. bman manages the global command destination. The main command prints available tasks (perch main, or the script-file invocation perch commands.perch); perch --help lists descriptions. Bare perch displays the installed CLI usage. The test wrapper is named tests because test is a reserved Perch built-in. gates runs fmt_check, check, clippy, tests, docs_check and architecture sequentially and stops on the first failure. Architecture runs vhco validate, sync and check; model/explorer generation remains explicit. clean removes Cargo build artifacts only when explicitly requested. No runtime feature, use case, port, surface, flow or domain delta is needed: these are developer wrappers outside the runtime model. Verification covers perch --check and --help, command dispatch from paths with spaces, Cargo environment forwarding, fail-fast gate behavior, release build/install, Rust formatting/type/lint/tests, documentation links and VHCO architecture/sync/guarantees. README.md and installation/contributor documentation describe the implemented tasks.",
     "status": "Runtime and Perch developer commands implemented. Perch command set approved by the maintainer on 2026-09-28; installation changed to bman add at the maintainer's explicit request; verified with the installed CLI, real release build/install, Rust checks, documentation checks and VHCO gates.",
     "quickstart": [
@@ -692,6 +692,10 @@
           "type": "string"
         },
         {
+          "name": "operation",
+          "type": "string"
+        },
+        {
           "name": "result",
           "type": "Value"
         },
@@ -714,6 +718,10 @@
         },
         {
           "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "operation",
           "type": "string"
         },
         {
@@ -991,6 +999,128 @@
         {
           "name": "effects",
           "type": "EffectsStatus"
+        }
+      ]
+    },
+    {
+      "name": "EnvelopeStatus",
+      "fields": [
+        {
+          "name": "ok",
+          "type": "| error | cancelled | accepted"
+        }
+      ]
+    },
+    {
+      "name": "RecordType",
+      "fields": [
+        {
+          "name": "result",
+          "type": "| data"
+        }
+      ]
+    },
+    {
+      "name": "OutputFormat",
+      "fields": [
+        {
+          "name": "compact",
+          "type": "| pretty"
+        }
+      ]
+    },
+    {
+      "name": "ResponseEnvelope",
+      "fields": [
+        {
+          "name": "ref?",
+          "type": "string"
+        },
+        {
+          "name": "request_id",
+          "type": "string"
+        },
+        {
+          "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "operation?",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "RecordType"
+        },
+        {
+          "name": "seq?",
+          "type": "int"
+        },
+        {
+          "name": "status?",
+          "type": "EnvelopeStatus"
+        },
+        {
+          "name": "data?",
+          "type": "Json"
+        },
+        {
+          "name": "error?",
+          "type": "Json"
+        },
+        {
+          "name": "effects?",
+          "type": "EffectsStatus"
+        },
+        {
+          "name": "data_count?",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "name": "InputEnvelope",
+      "fields": [
+        {
+          "name": "operation",
+          "type": "string"
+        },
+        {
+          "name": "data",
+          "type": "Value"
+        },
+        {
+          "name": "deadline_ms?",
+          "type": "int"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
+        },
+        {
+          "name": "stream?",
+          "type": "bool"
+        },
+        {
+          "name": "pretty?",
+          "type": "bool"
+        },
+        {
+          "name": "aliases",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "RawInput",
+      "fields": [
+        {
+          "name": "body",
+          "type": "Json"
+        },
+        {
+          "name": "legacy_ok",
+          "type": "bool"
         }
       ]
     },
@@ -3479,12 +3609,8 @@
           "type": "string"
         },
         {
-          "name": "id?",
-          "type": "string"
-        },
-        {
-          "name": "params?",
-          "type": "Value"
+          "name": "input?",
+          "type": "InputEnvelope"
         },
         {
           "name": "seq?",
@@ -3495,24 +3621,8 @@
           "type": "Value"
         },
         {
-          "name": "completion?",
-          "type": "Completion"
-        },
-        {
-          "name": "error?",
-          "type": "RivetError"
-        },
-        {
-          "name": "request_id?",
-          "type": "string"
-        },
-        {
-          "name": "trace_id?",
-          "type": "string"
-        },
-        {
-          "name": "restrict?",
-          "type": "Value"
+          "name": "record?",
+          "type": "ResponseEnvelope"
         }
       ]
     },
@@ -5073,84 +5183,84 @@
       "kind": "domain",
       "name": "Principal",
       "file": "src/domain/contracts.rs",
-      "line": 11,
+      "line": 12,
       "code": "#[derive(Clone, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "Request",
       "file": "src/domain/contracts.rs",
-      "line": 27,
+      "line": 28,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "TraceContext",
       "file": "src/domain/contracts.rs",
-      "line": 59,
+      "line": 60,
       "code": "/// A valid W3C `traceparent` (version 00): 32-hex trace-id, 16-hex parent-id."
     },
     {
       "kind": "domain",
       "name": "Completion",
       "file": "src/domain/contracts.rs",
-      "line": 160,
-      "code": "#[derive(Clone, Debug, PartialEq)]"
+      "line": 161,
+      "code": "/// A finished request. Every surface writes it as a [`ResponseEnvelope`]"
     },
     {
       "kind": "domain",
       "name": "DataEvent",
       "file": "src/domain/contracts.rs",
-      "line": 195,
+      "line": 190,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "Envelope",
       "file": "src/domain/contracts.rs",
-      "line": 217,
-      "code": "#[derive(Clone, Debug, PartialEq)]"
+      "line": 220,
+      "code": "/// One stream event in Rust form; [`Envelope::record`] is its wire record."
     },
     {
       "kind": "domain",
       "name": "RegistryEntry",
       "file": "src/domain/contracts.rs",
-      "line": 269,
+      "line": 273,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CatalogQuery",
       "file": "src/domain/contracts.rs",
-      "line": 449,
+      "line": 453,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "Catalog",
       "file": "src/domain/contracts.rs",
-      "line": 456,
+      "line": 460,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "ExecutionPlan",
       "file": "src/domain/contracts.rs",
-      "line": 462,
+      "line": 466,
       "code": "/// Validated request handed to the execution driver."
     },
     {
       "kind": "domain",
       "name": "RunOutcome",
       "file": "src/domain/contracts.rs",
-      "line": 470,
+      "line": 474,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OutputReport",
       "file": "src/domain/contracts.rs",
-      "line": 478,
+      "line": 482,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -5187,6 +5297,56 @@
       "file": "src/domain/dag.rs",
       "line": 113,
       "code": "#[derive(Clone, Debug, PartialEq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "EnvelopeStatus",
+      "file": "src/domain/envelope.rs",
+      "line": 32,
+      "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "RecordType",
+      "file": "src/domain/envelope.rs",
+      "line": 75,
+      "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "OutputFormat",
+      "file": "src/domain/envelope.rs",
+      "line": 93,
+      "code": "/// How a surface writes JSON: one line (the default) or 2-space indented."
+    },
+    {
+      "kind": "domain",
+      "name": "ResponseEnvelope",
+      "file": "src/domain/envelope.rs",
+      "line": 122,
+      "code": "/// One output record. `status`, `effects` and `data_count` are `None` on"
+    },
+    {
+      "kind": "domain",
+      "name": "InputEnvelope",
+      "file": "src/domain/envelope.rs",
+      "line": 402,
+      "code": "/// One request as every surface accepts it. `aliases` lists the deprecated"
+    },
+    {
+      "kind": "domain",
+      "name": "RawInput",
+      "file": "src/domain/envelope.rs",
+      "line": 478,
+      "code": "/// A request body handed to `serve.parse_input`. `legacy_ok` accepts the 0.1.0"
+    },
+    {
+      "kind": "test",
+      "name": "execution.request_operation",
+      "note": "R1 key order on ok, error, data and ws records; pretty keeps the order",
+      "file": "src/domain/envelope.rs",
+      "line": 516,
+      "code": "#[test]"
     },
     {
       "kind": "domain",
@@ -5993,203 +6153,203 @@
       "kind": "domain",
       "name": "ServeStartInput",
       "file": "src/domain/serve.rs",
-      "line": 24,
+      "line": 25,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "ServeConfig",
       "file": "src/domain/serve.rs",
-      "line": 34,
+      "line": 35,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "ListenerHandle",
       "file": "src/domain/serve.rs",
-      "line": 41,
+      "line": 42,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SurfaceMount",
       "file": "src/domain/serve.rs",
-      "line": 48,
+      "line": 49,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "MountReceipt",
       "file": "src/domain/serve.rs",
-      "line": 56,
+      "line": 57,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "ServeReceipt",
       "file": "src/domain/serve.rs",
-      "line": 63,
+      "line": 64,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "AuthnInput",
       "file": "src/domain/serve.rs",
-      "line": 119,
+      "line": 120,
       "code": "/// Everything an authenticator may look at. `authorization` is the raw header"
     },
     {
       "kind": "domain",
       "name": "OperationAccess",
       "file": "src/domain/serve.rs",
-      "line": 147,
+      "line": 148,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "AccessDecision",
       "file": "src/domain/serve.rs",
-      "line": 155,
+      "line": 156,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "WsFrameType",
       "file": "src/domain/serve.rs",
-      "line": 163,
+      "line": 164,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "WsFrame",
       "file": "src/domain/serve.rs",
-      "line": 199,
-      "code": "/// One JSON text frame on `/v1/ws` (client or server direction)."
+      "line": 200,
+      "code": "/// One JSON text frame on `/v1/ws` (client or server direction). Client"
     },
     {
       "kind": "domain",
       "name": "WsInbound",
       "file": "src/domain/serve.rs",
-      "line": 305,
+      "line": 294,
       "code": "/// One parsed client frame plus the connection facts the multiplexer needs."
     },
     {
       "kind": "domain",
       "name": "WsOutcome",
       "file": "src/domain/serve.rs",
-      "line": 319,
+      "line": 308,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "WsClose",
       "file": "src/domain/serve.rs",
-      "line": 331,
+      "line": 320,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollAction",
       "file": "src/domain/serve.rs",
-      "line": 338,
+      "line": 327,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollRoute",
       "file": "src/domain/serve.rs",
-      "line": 367,
+      "line": 356,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollResponse",
       "file": "src/domain/serve.rs",
-      "line": 377,
+      "line": 366,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionLimits",
       "file": "src/domain/sessions.rs",
-      "line": 20,
+      "line": 21,
       "code": "/// Session limits (Increment 14 defaults)."
     },
     {
       "kind": "domain",
       "name": "SessionOpenInput",
       "file": "src/domain/sessions.rs",
-      "line": 69,
+      "line": 70,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionReceipt",
       "file": "src/domain/sessions.rs",
-      "line": 87,
+      "line": 88,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionSendInput",
       "file": "src/domain/sessions.rs",
-      "line": 124,
+      "line": 125,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionRef",
       "file": "src/domain/sessions.rs",
-      "line": 133,
+      "line": 134,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionAck",
       "file": "src/domain/sessions.rs",
-      "line": 140,
+      "line": 141,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionReadInput",
       "file": "src/domain/sessions.rs",
-      "line": 154,
+      "line": 155,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionEvent",
       "file": "src/domain/sessions.rs",
-      "line": 164,
+      "line": 165,
       "code": "/// One retained event; `seq` is the session's output sequence (1-based)."
     },
     {
       "kind": "domain",
       "name": "SessionBatch",
       "file": "src/domain/sessions.rs",
-      "line": 185,
+      "line": 195,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CancelReceipt",
       "file": "src/domain/sessions.rs",
-      "line": 205,
+      "line": 215,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "InputSequencer",
       "file": "src/domain/sessions.rs",
-      "line": 229,
+      "line": 239,
       "code": "/// Input sequencing: `send_seq` starts at 1 and increases by one; the most"
     },
     {
       "kind": "domain",
       "name": "EventLog",
       "file": "src/domain/sessions.rs",
-      "line": 279,
+      "line": 289,
       "code": "/// Retained output events with an acknowledgement cursor."
     },
     {
@@ -6197,7 +6357,7 @@
       "name": "sessions.send_input",
       "note": "send_seq starts at 1, identical retry is a duplicate, changed payload or gaps conflict, closed input rejects",
       "file": "src/domain/sessions.rs",
-      "line": 411,
+      "line": 424,
       "code": "#[test]"
     },
     {
@@ -6205,7 +6365,7 @@
       "name": "sessions.read_events",
       "note": "batches are ordered, acknowledgement evicts, future and evicted cursors are typed errors",
       "file": "src/domain/sessions.rs",
-      "line": 428,
+      "line": 441,
       "code": "#[test]"
     },
     {
@@ -7392,7 +7552,7 @@
       "name": "execution.request_operation",
       "note": "params are checked for unknown fields and types before defaults are injected",
       "file": "src/features/execution/request_operation.rs",
-      "line": 360,
+      "line": 361,
       "code": "#[test]"
     },
     {
@@ -7400,7 +7560,7 @@
       "name": "execution.request_operation",
       "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
       "file": "src/features/execution/request_operation.rs",
-      "line": 434,
+      "line": 436,
       "code": "#[tokio::test]"
     },
     {
@@ -7408,7 +7568,7 @@
       "name": "execution.request_operation",
       "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
       "file": "src/features/execution/request_operation.rs",
-      "line": 462,
+      "line": 464,
       "code": "#[test]"
     },
     {
@@ -8421,7 +8581,7 @@
     {
       "kind": "todo",
       "name": "parse_frame",
-      "note": "the surface parses JSON text frames; a malformed frame (bad JSON, unknown type, missing ref) arrives here as an error and is answered with {type:error, ref, error} (validation, 422 semantics) without closing the socket",
+      "note": "the surface parses JSON text frames (request frames through serve.parse_input: {operation, data}, deprecated {id, params}); a malformed frame (bad JSON, unknown type, missing ref, bad envelope) arrives here as an error and is answered with an error record {ref, …, type:\"result\", status:\"error\", error} (validation, 422 semantics) without closing the socket",
       "file": "src/features/serve/multiplex_ws.rs",
       "line": 17,
       "code": "let frame = match input.frame {"
@@ -8455,7 +8615,7 @@
       "name": "route_input",
       "note": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 94,
+      "line": 99,
       "code": "kind =\u003e {"
     },
     {
@@ -8463,7 +8623,7 @@
       "name": "unknown_ref",
       "note": "input/finish_input/cancel for a ref not in flight",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 95,
+      "line": 100,
       "code": "kind =\u003e {"
     },
     {
@@ -8471,15 +8631,15 @@
       "name": "refused_input",
       "note": "the session refused an input/finish_input frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 128,
+      "line": 133,
       "code": "match routed {"
     },
     {
       "kind": "todo",
       "name": "stream_out",
-      "note": "the host's per-ref pump reads the session with a bounded wait and forwards {type:data, ref, seq, data}, then exactly one {type:result, ref, completion} or {type:error, ref, error}; a full 16-event log blocks the producer (backpressure)",
+      "note": "the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:\"data\", seq, data, error:null}, then exactly one terminal record {ref, …, type:\"result\", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 144,
+      "line": 149,
       "code": "Ok(outcome)"
     },
     {
@@ -8487,7 +8647,7 @@
       "name": "close_cancels",
       "note": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 145,
+      "line": 150,
       "code": "Ok(outcome)"
     },
     {
@@ -8495,8 +8655,87 @@
       "name": "serve.multiplex_ws",
       "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 239,
+      "line": 244,
       "code": "#[tokio::test]"
+    },
+    {
+      "kind": "usecase",
+      "name": "serve.parse_input",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 42,
+      "code": "pub fn parse_input(input: RawInput) -\u003e RivetResult\u003cInputEnvelope\u003e {"
+    },
+    {
+      "kind": "todo",
+      "name": "object_only",
+      "note": "the body must be a JSON object (anything else is validation.input_envelope); an `error` key is refused (an input envelope never carries an error); unknown keys are ignored as in 0.1.0",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 48,
+      "code": "let Some(body) = input.body.as_object() else {"
+    },
+    {
+      "kind": "error",
+      "name": "not_object",
+      "note": "the body is not a JSON object or carries an `error` key",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 50,
+      "code": "let Some(body) = input.body.as_object() else {"
+    },
+    {
+      "kind": "todo",
+      "name": "operation_alias",
+      "note": "`operation` (non-empty string) names the operation; the alias `id` only when legacy_ok; both → validation.input_envelope; neither → validation.required with details.field = \"operation\"; a non-string value → validation.input_envelope",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 61,
+      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+    },
+    {
+      "kind": "error",
+      "name": "mixed_keys",
+      "note": "`operation` with `id`, or `data` with `params`",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 63,
+      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+    },
+    {
+      "kind": "error",
+      "name": "no_operation",
+      "note": "neither `operation` nor `id`",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 64,
+      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+    },
+    {
+      "kind": "todo",
+      "name": "data_alias",
+      "note": "`data` is the operation input and defaults to {} when absent or null; the alias `params` only when legacy_ok; `data` with `params` → validation.input_envelope",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 83,
+      "code": "let data = match pick(body, \"data\", \"params\", input.legacy_ok, \u0026mut aliases)? {"
+    },
+    {
+      "kind": "todo",
+      "name": "options",
+      "note": "deadline_ms (non-negative integer, clamped to 1..=600000), restrict (passed through; the runtime validates it), stream and pretty (bools); a wrong type → validation.input_envelope naming the key",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 89,
+      "code": "let deadline_ms = match body.get(\"deadline_ms\") {"
+    },
+    {
+      "kind": "todo",
+      "name": "report_aliases",
+      "note": "return the InputEnvelope with `aliases` listing every deprecated key used (\"id\", \"params\") so the surface emits its deprecation signal (HTTP Deprecation: true + access log deprecated=1, CLI warning on stderr, trace note); pure, no ports",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 112,
+      "code": "Ok(InputEnvelope {"
+    },
+    {
+      "kind": "test",
+      "name": "serve.parse_input",
+      "note": "{operation,data} parses; data defaults to {}; options typed and clamped; aliases reported; mixing, `error`, non-objects and missing operation refused",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 134,
+      "code": "#[test]"
     },
     {
       "kind": "port",
@@ -8536,9 +8775,9 @@
     {
       "kind": "todo",
       "name": "open",
-      "note": "POST /v1/requests {id, params, deadline_ms?}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
+      "note": "POST /v1/requests {operation, data, deadline_ms?} (id/params: deprecated aliases, parsed by serve.parse_input): authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 with an accepted ResponseEnvelope whose data is the SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
       "file": "src/features/serve/project_polling.rs",
-      "line": 16,
+      "line": 24,
       "code": "PollAction::Open {"
     },
     {
@@ -8546,7 +8785,7 @@
       "name": "denied",
       "note": "the principal may not call the operation",
       "file": "src/features/serve/project_polling.rs",
-      "line": 17,
+      "line": 25,
       "code": "PollAction::Open {"
     },
     {
@@ -8554,7 +8793,7 @@
       "name": "read",
       "note": "GET /v1/requests/{id}/events?after_seq=N\u0026wait_ms=M -\u003e SessionDriver.read with wait_ms defaulting to 1000 and capped at 5000 (returns early when events arrive) and max_events capped at 16; 200 SessionBatch",
       "file": "src/features/serve/project_polling.rs",
-      "line": 49,
+      "line": 64,
       "code": "PollAction::Events {"
     },
     {
@@ -8562,15 +8801,15 @@
       "name": "input_finish_cancel",
       "note": "POST .../input {send_seq, data} -\u003e SessionDriver.send (200 SessionAck); POST .../finish_input -\u003e SessionDriver.finish_input (200 SessionAck input_closed:true); POST .../cancel -\u003e SessionDriver.cancel (200 CancelReceipt with session_id, request_id, state)",
       "file": "src/features/serve/project_polling.rs",
-      "line": 68,
+      "line": 83,
       "code": "PollAction::Input {"
     },
     {
       "kind": "todo",
       "name": "ownership",
-      "note": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the ErrorEnvelope with the registry status (404/409/422/429)",
+      "note": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the error ResponseEnvelope (status error, data null) with the registry status (404/409/422/429)",
       "file": "src/features/serve/project_polling.rs",
-      "line": 97,
+      "line": 112,
       "code": "match result {"
     },
     {
@@ -9419,7 +9658,7 @@
       "kind": "infra",
       "name": "remote_client",
       "file": "src/infra/remote_client.rs",
-      "line": 46,
+      "line": 49,
       "code": "pub struct RemoteClient {"
     },
     {
@@ -9427,7 +9666,7 @@
       "name": "connect http+https+ws",
       "note": "the `--endpoint URL` of a running `rivet serve` (REST, SSE and /v1/ws), host bootstrap only",
       "file": "src/infra/remote_client.rs",
-      "line": 47,
+      "line": 50,
       "code": "pub struct RemoteClient {"
     },
     {
@@ -9435,7 +9674,7 @@
       "name": "read \u003c--token-file PATH\u003e",
       "note": "the caller's bearer token for the server (read by setup_cli, never echoed)",
       "file": "src/infra/remote_client.rs",
-      "line": 48,
+      "line": 51,
       "code": "pub struct RemoteClient {"
     },
     {
@@ -9488,7 +9727,7 @@
       "name": "sessions.cancel_session",
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "file": "src/infra/session_driver.rs",
-      "line": 779,
+      "line": 783,
       "code": "#[tokio::test]"
     },
     {
@@ -9564,7 +9803,7 @@
       "name": "execution.request_operation",
       "note": "demo.add returns 5 through the shared dispatcher, defaults apply and output is checked",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1458,
+      "line": 1495,
       "code": "#[tokio::test]"
     },
     {
@@ -9572,7 +9811,7 @@
       "name": "execution.cancel_request",
       "note": "a running top-level request is cancelled by id; its caller gets cancelled (exit 130) and the state becomes cancelled",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1582,
+      "line": 1619,
       "code": "#[tokio::test]"
     },
     {
@@ -9580,116 +9819,116 @@
       "name": "cli",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 3,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
       "name": " rivet auth begin PROFILE --account ACCOUNT",
-      "note": "start a code (PKCE S256) or device transaction; stdout is the Completion with the AuthChallenge (no verifier, state secret or token)",
+      "note": "start a code (PKCE S256) or device transaction; stdout is the ResponseEnvelope (operation rivet.auth.begin) whose data is the AuthChallenge (no verifier, state secret or token)",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 9,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
       "name": " rivet auth complete --params-file PATH [--timeout D]",
-      "note": "finish a transaction; connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
+      "note": "finish a transaction; envelope whose data is the connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 12,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
       "name": " rivet connectors sync NAME --output PATH",
-      "note": "authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists",
+      "note": "authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints an envelope (operation rivet.connectors.sync) whose data is the receipt; the sha256 to approve in policy.json approved.snapshots goes to stderr; exit 0, 3 denied, 4 output exists",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 27,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "line": 28,
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
       "name": " rivet io [ID ...] [flags]",
-      "note": "the I/O manifest; stdout in the requested format, summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)",
+      "note": "the I/O manifest; stdout in the requested format (json / --json: an envelope, operation rivet.io, whose data is the manifest), summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 30,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "line": 31,
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
       "name": " rivet policy generate [ID ...|--all] [--output PATH]",
-      "note": "least-privilege policy.json draft on stdout (or a new file); review items on stderr; exit 7 when review items exist, 4 conflict.exists",
+      "note": "least-privilege policy.json draft on stdout (or a new file); with --json an envelope (operation rivet.policy.generate) whose data is {policy, review, complete}; review items on stderr; exit 7 when review items exist, 4 conflict.exists",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 33,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "line": 34,
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "api",
-      "name": " rivet request ID --params JSON",
-      "note": "invoke one operation; stdout is the Completion JSON, errors are an ErrorEnvelope on stderr with the registry exit code",
+      "name": " rivet request ID --data JSON | rivet request --input FILE|-",
+      "note": "invoke one operation; stdout is the ResponseEnvelope (compact, or 2-space indented with --pretty); errors are the same envelope with status error on stderr and the registry exit code; --stream prints NDJSON records (type data … then one type result) and refuses --pretty (validation.usage); --params is a deprecated alias of --data (warning[deprecated.params] on stderr)",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 36,
-      "code": "use crate::domain::contracts::error_envelope;"
+      "line": 37,
+      "code": "use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};"
     },
     {
       "kind": "surface",
       "name": "http",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 10,
+      "line": 13,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "api",
       "name": "POST /v1/request",
-      "note": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream; a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header",
+      "note": "invoke one operation; a JSON ResponseEnvelope (status ok, or error/cancelled with the registry HTTP status), or SSE records with Accept: text/event-stream; ?pretty=true indents JSON answers (refused on SSE: 400 validation.pretty_stream); a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header; the deprecated {id, params} body still works and adds Deprecation: true",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 30,
+      "line": 34,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "api",
       "name": "GET /v1/io",
-      "note": "the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
+      "note": "envelope (operation rivet.io) whose data is the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} as data instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 33,
+      "line": 37,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "api",
       "name": "POST /v1/policy/generate",
-      "note": "least-privilege policy draft; never writes files",
+      "note": "envelope (operation rivet.policy.generate) whose data is the least-privilege policy draft; never writes files",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 36,
+      "line": 40,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "api",
       "name": "GET /v1/operations",
-      "note": "authorized operation summaries",
+      "note": "envelope (operation rivet.list) whose data lists the authorized operation summaries",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 39,
+      "line": 43,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "api",
       "name": "GET /v1/operations/{id}/outputs",
-      "note": "declared output, emits, receives and errors JSON Schema",
+      "note": "envelope (operation rivet.outputs) whose data is the declared output, emits, receives and errors JSON Schema",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 42,
+      "line": 46,
       "code": "use super::builtins::visible;"
     },
     {
       "kind": "surface",
       "name": "library",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 13,
+      "line": 14,
       "code": "use super::runtime::Runtime;"
     },
     {
       "kind": "api",
-      "name": " Runtime::request(id, params, on_data)",
-      "note": "invoke one operation in-process; returns Completion or RivetError",
+      "name": " Runtime::call(InputEnvelope)",
+      "note": "invoke one operation in-process and always get a ResponseEnvelope (errors included; to_json / to_json_pretty); Runtime::request(id, data, on_data) stays for `?`-style use and returns Completion or RivetError",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 31,
+      "line": 33,
       "code": "use super::runtime::Runtime;"
     },
     {
@@ -9697,14 +9936,14 @@
       "name": " Runtime::open_session(SessionOpenInput)",
       "note": "open a live session (duplex or server-streaming) owned by the principal",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 34,
+      "line": 36,
       "code": "use super::runtime::Runtime;"
     },
     {
       "kind": "surface",
       "name": "mcp",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 14,
+      "line": 16,
       "code": "use super::builtins::{BUILTIN_IDS, visible};"
     },
     {
@@ -9712,7 +9951,7 @@
       "name": "POST /mcp tools/call",
       "note": "call an operation as its direct named tool",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 30,
+      "line": 33,
       "code": "use super::builtins::{BUILTIN_IDS, visible};"
     },
     {
@@ -9725,17 +9964,17 @@
     {
       "kind": "api",
       "name": "POST /v1/requests",
-      "note": "open a principal-owned session (unary or streaming) and poll its events",
+      "note": "open a principal-owned session (unary or streaming) and poll its events; 202 accepted envelope; GET …/events answers {session_id, events: [records], last_seq, terminal}",
       "file": "src/orchestrator/setup_poll.rs",
-      "line": 13,
+      "line": 14,
       "code": "use super::setup_serve::{"
     },
     {
       "kind": "api",
       "name": "GET /v1/health",
-      "note": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth",
+      "note": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth; a ResponseEnvelope (operation rivet.health) whose data carries the server version so a client can tell 0.2 servers apart",
       "file": "src/orchestrator/setup_serve.rs",
-      "line": 18,
+      "line": 20,
       "code": "use super::runtime::Runtime;"
     },
     {
@@ -9748,9 +9987,9 @@
     {
       "kind": "api",
       "name": "GET /v1/ws",
-      "note": "JSON text frames multiplexed by client-chosen ref (max 8 in flight, one terminal frame per ref)",
+      "note": "JSON text frames multiplexed by client-chosen ref (max 8 in flight, one terminal record per ref); server frames are ResponseEnvelope records with `ref` first",
       "file": "src/orchestrator/setup_ws.rs",
-      "line": 15,
+      "line": 16,
       "code": "use super::setup_serve::{ServeState, error_response, trace_context};"
     }
   ],
@@ -9935,7 +10174,7 @@
       "owner": "remote_client",
       "provenance": "annotated",
       "file": "src/infra/remote_client.rs",
-      "line": 47
+      "line": 50
     },
     {
       "kind": "file",
@@ -9945,7 +10184,7 @@
       "owner": "remote_client",
       "provenance": "annotated",
       "file": "src/infra/remote_client.rs",
-      "line": 48
+      "line": 51
     },
     {
       "kind": "net",
@@ -9998,6 +10237,13 @@
   ],
   "tests": [
     {
+      "subject": "execution.request_operation",
+      "note": "R1 key order on ok, error, data and ws records; pretty keeps the order",
+      "code": "#[test]",
+      "file": "src/domain/envelope.rs",
+      "line": 516
+    },
+    {
       "subject": "connectors.invoke_mcp",
       "note": "the snapshot file format parses strictly and re-serializes to an equal snapshot",
       "code": "#[test]",
@@ -10023,14 +10269,14 @@
       "note": "send_seq starts at 1, identical retry is a duplicate, changed payload or gaps conflict, closed input rejects",
       "code": "#[test]",
       "file": "src/domain/sessions.rs",
-      "line": 411
+      "line": 424
     },
     {
       "subject": "sessions.read_events",
       "note": "batches are ordered, acknowledgement evicts, future and evicted cursors are typed errors",
       "code": "#[test]",
       "file": "src/domain/sessions.rs",
-      "line": 428
+      "line": 441
     },
     {
       "subject": "audit.read_trace",
@@ -10149,21 +10395,21 @@
       "note": "params are checked for unknown fields and types before defaults are injected",
       "code": "#[test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 360
+      "line": 361
     },
     {
       "subject": "execution.request_operation",
       "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
       "code": "#[tokio::test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 434
+      "line": 436
     },
     {
       "subject": "execution.request_operation",
       "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
       "code": "#[test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 462
+      "line": 464
     },
     {
       "subject": "execution.run_dag",
@@ -10324,7 +10570,14 @@
       "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
       "code": "#[tokio::test]",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 239
+      "line": 244
+    },
+    {
+      "subject": "serve.parse_input",
+      "note": "{operation,data} parses; data defaults to {}; options typed and clamped; aliases reported; mixing, `error`, non-objects and missing operation refused",
+      "code": "#[test]",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 134
     },
     {
       "subject": "serve.start_serve",
@@ -10478,7 +10731,7 @@
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "code": "#[tokio::test]",
       "file": "src/infra/session_driver.rs",
-      "line": 779
+      "line": 783
     },
     {
       "subject": "audit.read_trace",
@@ -10492,14 +10745,14 @@
       "note": "demo.add returns 5 through the shared dispatcher, defaults apply and output is checked",
       "code": "#[tokio::test]",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1458
+      "line": 1495
     },
     {
       "subject": "execution.cancel_request",
       "note": "a running top-level request is cancelled by id; its caller gets cancelled (exit 130) and the state becomes cancelled",
       "code": "#[tokio::test]",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1582
+      "line": 1619
     }
   ],
   "endpoints": [
@@ -10507,9 +10760,9 @@
       "surface": "cli",
       "action": "auth.begin_authorization",
       "path": "rivet auth begin PROFILE --account ACCOUNT",
-      "description": "start a code (PKCE S256) or device transaction; stdout is the Completion with the AuthChallenge (no verifier, state secret or token)",
+      "description": "start a code (PKCE S256) or device transaction; stdout is the ResponseEnvelope (operation rivet.auth.begin) whose data is the AuthChallenge (no verifier, state secret or token)",
       "request": "{ \"profile\": \"string\", \"account\": \"string\" }",
-      "response": "{ \"transaction_id\": \"string\", \"authorization_url\": \"string?\", \"verification_uri\": \"string?\", \"user_code\": \"string?\", \"expires_at\": \"RFC 3339\", \"interval_seconds\": \"int?\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.auth.begin\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{transaction_id, authorization_url?, verification_uri?, user_code?, expires_at, interval_seconds?}\", \"error\": \"null\", \"effects\": \"none|committed\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 9
     },
@@ -10517,9 +10770,9 @@
       "surface": "cli",
       "action": "auth.complete_authorization",
       "path": "rivet auth complete --params-file PATH [--timeout D]",
-      "description": "finish a transaction; connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
+      "description": "finish a transaction; envelope whose data is the connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
       "request": "{ \"transaction_id\": \"string\", \"callback\": \"{code, state, redirect_uri, issuer?}?\", \"wait\": \"bool\" }",
-      "response": "{ \"profile\": \"string\", \"account\": \"string\", \"state\": \"connected|pending\", \"scopes\": \"string[]\", \"expires_at\": \"RFC 3339\", \"generation\": \"int\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.auth.complete\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{profile, account, state: connected|pending, scopes, expires_at, generation}\", \"error\": \"null\", \"effects\": \"none|committed\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 12
     },
@@ -10527,106 +10780,106 @@
       "surface": "cli",
       "action": "connectors.invoke_mcp",
       "path": "rivet connectors sync NAME --output PATH",
-      "description": "authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists",
+      "description": "authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints an envelope (operation rivet.connectors.sync) whose data is the receipt; the sha256 to approve in policy.json approved.snapshots goes to stderr; exit 0, 3 denied, 4 output exists",
       "request": "{ \"name\": \"string — mcp connector\", \"output\": \"string — new snapshot path inside the bundle\" }",
-      "response": "{ \"connector\": \"string\", \"path\": \"string\", \"sha256\": \"sha256:…\", \"protocolVersion\": \"string\", \"tools\": \"string[]\", \"resources\": \"string[]\", \"prompts\": \"string[]\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.connectors.sync\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{connector, path, sha256, protocolVersion, tools, resources, prompts}\", \"error\": \"null\", \"effects\": \"committed\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 27
+      "line": 28
     },
     {
       "surface": "cli",
       "action": "audit.inspect_effects",
       "path": "rivet io [ID ...] [flags]",
-      "description": "the I/O manifest; stdout in the requested format, summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)",
+      "description": "the I/O manifest; stdout in the requested format (json / --json: an envelope, operation rivet.io, whose data is the manifest), summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)",
       "request": "{ \"ids\": \"string[]\", \"all\": \"bool\", \"by\": \"operation|target|capability\", \"kind\": \"string?\", \"access\": \"string[]\", \"format\": \"table|json|markdown|csv\", \"check_policy\": \"bool\", \"strict\": \"bool\", \"needs\": \"bool\", \"check_files\": \"bool\", \"trace\": \"string?\" }",
-      "response": "{ \"bundle\": \"FileDigest\", \"policy\": \"FileDigest?\", \"complete\": \"bool\", \"sites\": \"EffectSite[]\", \"targets\": \"TargetSummary[]\", \"needs\": \"OperationNeeds[]\", \"bootstrap\": \"EffectSite[]\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.io\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{bundle: FileDigest, policy: FileDigest?, complete: bool, sites: EffectSite[], targets: TargetSummary[], needs: OperationNeeds[], bootstrap: EffectSite[]}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 30
+      "line": 31
     },
     {
       "surface": "cli",
       "action": "policy.generate_policy",
       "path": "rivet policy generate [ID ...|--all] [--output PATH]",
-      "description": "least-privilege policy.json draft on stdout (or a new file); review items on stderr; exit 7 when review items exist, 4 conflict.exists",
+      "description": "least-privilege policy.json draft on stdout (or a new file); with --json an envelope (operation rivet.policy.generate) whose data is {policy, review, complete}; review items on stderr; exit 7 when review items exist, 4 conflict.exists",
       "request": "{ \"ids\": \"string[]\", \"all\": \"bool\", \"output\": \"string?\" }",
       "response": "{ \"version\": \"1\", \"grants\": \"Grant[]\", \"network\": \"{deny_private_ranges: true}\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 33
+      "line": 34
     },
     {
       "surface": "cli",
       "action": "execution.request_operation",
-      "path": "rivet request ID --params JSON",
-      "description": "invoke one operation; stdout is the Completion JSON, errors are an ErrorEnvelope on stderr with the registry exit code",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"JSON object\" }",
-      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
+      "path": "rivet request ID --data JSON | rivet request --input FILE|-",
+      "description": "invoke one operation; stdout is the ResponseEnvelope (compact, or 2-space indented with --pretty); errors are the same envelope with status error on stderr and the registry exit code; --stream prints NDJSON records (type data … then one type result) and refuses --pretty (validation.usage); --params is a deprecated alias of --data (warning[deprecated.params] on stderr)",
+      "request": "{ \"operation\": \"string — operation ID (positional ID or the --input envelope)\", \"data\": \"JSON object (--data; deprecated --params)\", \"input\": \"FILE|- — a whole input envelope {operation, data, deadline_ms?, restrict?, stream?}\", \"pretty\": \"bool\", \"stream\": \"bool\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"string\", \"type\": \"result\", \"status\": \"ok|error|cancelled\", \"data\": \"Value|null\", \"error\": \"{kind, code, message, retryable, …}|null\", \"effects\": \"none|committed|partial|unknown\", \"data_count\": \"int\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 36
+      "line": 37
     },
     {
       "surface": "http",
       "action": "execution.request_operation",
       "verb": "POST",
       "path": "/v1/request",
-      "description": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream; a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\", \"deadline_ms\": \"int? — requested deadline, capped at 600000\", \"restrict\": \"{grants:[{capability, targets, access?}]}? — narrows this request's authority, never widens\", \"headers\": \"traceparent? — W3C 00-\u003ctrace-id\u003e-\u003cparent-id\u003e-\u003cflags\u003e\" }",
-      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
+      "description": "invoke one operation; a JSON ResponseEnvelope (status ok, or error/cancelled with the registry HTTP status), or SSE records with Accept: text/event-stream; ?pretty=true indents JSON answers (refused on SSE: 400 validation.pretty_stream); a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header; the deprecated {id, params} body still works and adds Deprecation: true",
+      "request": "{ \"operation\": \"string — operation ID (deprecated alias: id)\", \"data\": \"object — operation input, default {} (deprecated alias: params)\", \"deadline_ms\": \"int? — requested deadline, capped at 600000\", \"restrict\": \"{grants:[{capability, targets, access?}]}? — narrows this request's authority, never widens\", \"query\": \"pretty=true? — 2-space indented JSON\", \"headers\": \"traceparent? — W3C 00-\u003ctrace-id\u003e-\u003cparent-id\u003e-\u003cflags\u003e\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"string\", \"type\": \"result\", \"status\": \"ok|error|cancelled\", \"data\": \"Value|null\", \"error\": \"{kind, code, message, retryable, details?, source?, hint?}|null\", \"effects\": \"none|committed|partial|unknown\", \"data_count\": \"int\", \"headers\": \"traceparent; Deprecation: true when id/params were used\" }",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 30
+      "line": 34
     },
     {
       "surface": "http",
       "action": "audit.inspect_effects",
       "verb": "GET",
       "path": "/v1/io",
-      "description": "the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
-      "request": "{ \"query\": \"by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv, report=bool\" }",
-      "response": "{ \"bundle\": \"FileDigest\", \"policy\": \"FileDigest|null\", \"complete\": \"bool\", \"sites\": \"EffectSite[]\", \"targets\": \"TargetSummary[]\" }",
+      "description": "envelope (operation rivet.io) whose data is the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} as data instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
+      "request": "{ \"query\": \"by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv, report=bool, pretty=bool\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.io\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{bundle: FileDigest, policy: FileDigest|null, complete: bool, sites: EffectSite[], targets: TargetSummary[]}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 33
+      "line": 37
     },
     {
       "surface": "http",
       "action": "policy.generate_policy",
       "verb": "POST",
       "path": "/v1/policy/generate",
-      "description": "least-privilege policy draft; never writes files",
+      "description": "envelope (operation rivet.policy.generate) whose data is the least-privilege policy draft; never writes files",
       "request": "{ \"ids\": \"string[]\", \"all\": \"bool\" }",
-      "response": "{ \"policy\": \"policy.json v1\", \"review\": \"EffectSite[]\", \"complete\": \"bool\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.policy.generate\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{policy: policy.json v1, review: EffectSite[], complete: bool}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 36
+      "line": 40
     },
     {
       "surface": "http",
       "action": "registry.describe_operations",
       "verb": "GET",
       "path": "/v1/operations",
-      "description": "authorized operation summaries",
-      "request": "{ \"headers\": \"Authorization: Bearer TOKEN (when serve.auth is bearer)\" }",
-      "response": "{ \"operations\": \"[{id, name, description, streaming}]\", \"next_cursor\": \"null\" }",
+      "description": "envelope (operation rivet.list) whose data lists the authorized operation summaries",
+      "request": "{ \"headers\": \"Authorization: Bearer TOKEN (when serve.auth is bearer)\", \"query\": \"pretty=true?\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.list\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{operations: [{id, name, description, streaming}], next_cursor: null}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 39
+      "line": 43
     },
     {
       "surface": "http",
       "action": "registry.inspect_outputs",
       "verb": "GET",
       "path": "/v1/operations/{id}/outputs",
-      "description": "declared output, emits, receives and errors JSON Schema",
-      "request": "{ \"path\": \"id — operation ID\" }",
-      "response": "{ \"id\": \"string\", \"output\": \"JSON Schema\", \"emits\": \"JSON Schema|null\", \"receives\": \"JSON Schema|null\", \"errors\": \"[{code, description}]\" }",
+      "description": "envelope (operation rivet.outputs) whose data is the declared output, emits, receives and errors JSON Schema",
+      "request": "{ \"path\": \"id — operation ID\", \"query\": \"pretty=true?\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.outputs\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{id, output: JSON Schema, emits: JSON Schema|null, receives: JSON Schema|null, errors: [{code, description}]}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_http.rs",
-      "line": 42
+      "line": 46
     },
     {
       "surface": "library",
       "action": "execution.request_operation",
-      "path": "Runtime::request(id, params, on_data)",
-      "description": "invoke one operation in-process; returns Completion or RivetError",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"Value object\", \"on_data\": \"Option\u003cArc\u003cdyn DataSink\u003e\u003e\" }",
-      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
+      "path": "Runtime::call(InputEnvelope)",
+      "description": "invoke one operation in-process and always get a ResponseEnvelope (errors included; to_json / to_json_pretty); Runtime::request(id, data, on_data) stays for `?`-style use and returns Completion or RivetError",
+      "request": "{ \"operation\": \"string — operation ID\", \"data\": \"Value object (default {})\", \"deadline_ms\": \"int?\", \"restrict\": \"{grants:[…]}?\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"string\", \"type\": \"result\", \"status\": \"ok|error|cancelled\", \"data\": \"Value|null\", \"error\": \"RivetError object|null\", \"effects\": \"none|committed|partial|unknown\", \"data_count\": \"int\" }",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 31
+      "line": 33
     },
     {
       "surface": "library",
@@ -10636,7 +10889,7 @@
       "request": "{ \"id\": \"string\", \"params\": \"Value\", \"principal\": \"Principal\", \"connection_owned\": \"bool\" }",
       "response": "{ \"session_id\": \"string\", \"request_id\": \"string\", \"catalog_version\": \"string\", \"input_schema\": \"json|null\", \"emits_schema\": \"json|null\", \"next_send_seq\": \"int\", \"expires_at\": \"RFC 3339\" }",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 34
+      "line": 36
     },
     {
       "surface": "mcp",
@@ -10644,43 +10897,43 @@
       "verb": "POST",
       "path": "/mcp tools/call",
       "description": "call an operation as its direct named tool",
-      "request": "{ \"jsonrpc\": \"2.0\", \"id\": \"int\", \"method\": \"tools/call\", \"params\": \"{name: ID, arguments: object, restrict?: {grants:[…]} (narrows this call only)}\" }",
-      "response": "{ \"content\": \"[{type:text, text: serialized Completion}]\", \"structuredContent\": \"Completion | SessionReceipt | ErrorEnvelope\", \"isError\": \"bool\" }",
+      "request": "{ \"jsonrpc\": \"2.0\", \"id\": \"int\", \"method\": \"tools/call\", \"params\": \"{name: ID, arguments: object (rivet.request: {operation, data}), restrict?: {grants:[…]} (narrows this call only)}\" }",
+      "response": "{ \"content\": \"[{type:text, text: serialized ResponseEnvelope}]\", \"structuredContent\": \"ResponseEnvelope {request_id, trace_id, operation, type, status: ok|accepted|error|cancelled, data, error, effects, data_count}\", \"isError\": \"bool — status error or cancelled\" }",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 30
+      "line": 33
     },
     {
       "surface": "poll",
       "action": "serve.project_polling",
       "verb": "POST",
       "path": "/v1/requests",
-      "description": "open a principal-owned session (unary or streaming) and poll its events",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\", \"deadline_ms\": \"int? — total deadline, capped at 600000\", \"headers\": \"traceparent? — W3C trace context for the session\" }",
-      "response": "{ \"session_id\": \"string\", \"request_id\": \"string\", \"catalog_version\": \"string\", \"input_schema\": \"json|null\", \"emits_schema\": \"json|null\", \"next_send_seq\": \"int\", \"expires_at\": \"RFC 3339\", \"events_url\": \"/v1/requests/{session_id}/events\" }",
+      "description": "open a principal-owned session (unary or streaming) and poll its events; 202 accepted envelope; GET …/events answers {session_id, events: [records], last_seq, terminal}",
+      "request": "{ \"operation\": \"string — operation ID (deprecated alias: id)\", \"data\": \"object (deprecated alias: params)\", \"deadline_ms\": \"int? — total deadline, capped at 600000\", \"restrict\": \"{grants:[…]}?\", \"headers\": \"traceparent? — W3C trace context for the session\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"string\", \"type\": \"result\", \"status\": \"accepted\", \"data\": \"{session_id, request_id, trace_id, catalog_version, input_schema, emits_schema, next_send_seq, expires_at, events_url}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_poll.rs",
-      "line": 13
+      "line": 14
     },
     {
       "surface": "http",
       "action": "serve.start_serve",
       "verb": "GET",
       "path": "/v1/health",
-      "description": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth",
-      "request": "{ \"headers\": \"Authorization: Bearer TOKEN (non-loopback binds with bearer auth)\" }",
-      "response": "{ \"status\": \"ok\", \"catalog_version\": \"sha256:…\" }",
+      "description": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth; a ResponseEnvelope (operation rivet.health) whose data carries the server version so a client can tell 0.2 servers apart",
+      "request": "{ \"headers\": \"Authorization: Bearer TOKEN (non-loopback binds with bearer auth)\", \"query\": \"pretty=true? — 2-space indented JSON\" }",
+      "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.health\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{status: ok, catalog_version: sha256:…, version: string}\", \"error\": \"null\", \"effects\": \"none\", \"data_count\": \"0\" }",
       "file": "src/orchestrator/setup_serve.rs",
-      "line": 18
+      "line": 20
     },
     {
       "surface": "ws",
       "action": "serve.multiplex_ws",
       "verb": "GET",
       "path": "/v1/ws",
-      "description": "JSON text frames multiplexed by client-chosen ref (max 8 in flight, one terminal frame per ref)",
-      "request": "{ \"type\": \"request|input|finish_input|cancel\", \"ref\": \"string\", \"id\": \"string (request)\", \"params\": \"object (request)\", \"seq\": \"int (input)\", \"data\": \"Value (input)\" }",
-      "response": "{ \"type\": \"data|result|error\", \"ref\": \"string\", \"seq\": \"int (data)\", \"data\": \"Value (data)\", \"completion\": \"Completion (result)\", \"error\": \"RivetError (error)\" }",
+      "description": "JSON text frames multiplexed by client-chosen ref (max 8 in flight, one terminal record per ref); server frames are ResponseEnvelope records with `ref` first",
+      "request": "{ \"type\": \"request|input|finish_input|cancel\", \"ref\": \"string\", \"operation\": \"string (request; deprecated alias id)\", \"data\": \"object (request: operation input; deprecated alias params) | Value (input: the item)\", \"deadline_ms\": \"int? (request)\", \"restrict\": \"{grants:[…]}? (request)\", \"seq\": \"int (input)\" }",
+      "response": "{ \"ref\": \"string\", \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"string\", \"type\": \"data|result\", \"seq\": \"int (data)\", \"status\": \"ok|error|cancelled (result)\", \"data\": \"Value|null\", \"error\": \"{kind, code, message, retryable, …}|null\", \"effects\": \"none|committed|partial|unknown (result)\", \"data_count\": \"int (result)\" }",
       "file": "src/orchestrator/setup_ws.rs",
-      "line": 15
+      "line": 16
     }
   ],
   "definition": {
@@ -12057,7 +12310,7 @@
             "examples": [
               {
                 "input": "input={operation_id:\"demo.add\", params:{a:2, b:3}}",
-                "result": "{ \"result\": 5, \"data_count\": 0, \"effects\": \"none\" }"
+                "result": "{ \"operation\": \"demo.add\", \"type\": \"result\", \"status\": \"ok\", \"data\": 5, \"error\": null, \"effects\": \"none\", \"data_count\": 0 }"
               }
             ],
             "todos": [
@@ -13388,14 +13641,14 @@
             ],
             "examples": [
               {
-                "input": "input={frame:{type:\"request\", ref:\"c1\", id:\"demo.add\", params:{a:2,b:3}}}",
+                "input": "input={frame:{type:\"request\", ref:\"c1\", input:{operation:\"demo.add\", data:{a:2,b:3}}}}",
                 "result": "{ \"opened\": [\"c1\", \"ses_…\"] }"
               }
             ],
             "todos": [
               {
                 "id": "parse_frame",
-                "todo": "the surface parses JSON text frames; a malformed frame (bad JSON, unknown type, missing ref) arrives here as an error and is answered with {type:error, ref, error} (validation, 422 semantics) without closing the socket",
+                "todo": "the surface parses JSON text frames (request frames through serve.parse_input: {operation, data}, deprecated {id, params}); a malformed frame (bad JSON, unknown type, missing ref, bad envelope) arrives here as an error and is answered with an error record {ref, …, type:\"result\", status:\"error\", error} (validation, 422 semantics) without closing the socket",
                 "file": "src/features/serve/multiplex_ws.rs",
                 "line": 17
               },
@@ -13409,19 +13662,19 @@
                 "id": "route_input",
                 "todo": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 94
+                "line": 99
               },
               {
                 "id": "stream_out",
-                "todo": "the host's per-ref pump reads the session with a bounded wait and forwards {type:data, ref, seq, data}, then exactly one {type:result, ref, completion} or {type:error, ref, error}; a full 16-event log blocks the producer (backpressure)",
+                "todo": "the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:\"data\", seq, data, error:null}, then exactly one terminal record {ref, …, type:\"result\", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 144
+                "line": 149
               },
               {
                 "id": "close_cancels",
                 "todo": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 145
+                "line": 150
               }
             ],
             "failures": [
@@ -13446,7 +13699,7 @@
                 "when": "input/finish_input/cancel for a ref not in flight",
                 "code": "not_found.ref error frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 95,
+                "line": 100,
                 "snippet": "kind =\u003e {"
               },
               {
@@ -13454,15 +13707,98 @@
                 "when": "the session refused an input/finish_input frame",
                 "code": "that error (e.g. conflict.input_sequence, validation.input) as the ref's terminal frame, then the session is cancelled",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 128,
+                "line": 133,
                 "snippet": "match routed {"
+              }
+            ]
+          },
+          {
+            "name": "parse_input",
+            "label": "Parse input envelope",
+            "about": "Turns one JSON request body (HTTP /v1/request and /v1/requests, a WebSocket request frame, the MCP rivet.request and rivet.sessions.open arguments, `rivet request --input FILE|-` / `--data`, the library's Runtime::call_json and the FFI) into the one InputEnvelope {operation, data, deadline_ms?, restrict?, stream?}; the 0.1.0 keys id/params are deprecated aliases through 0.2.x and are reported so each surface can emit its deprecation signal.",
+            "in": [
+              {
+                "name": "input",
+                "type": "RawInput"
+              }
+            ],
+            "out": "InputEnvelope",
+            "examples": [
+              {
+                "input": "input={body:{operation:\"users.get\", data:{id:42}}, legacy_ok:true}",
+                "result": "{ \"operation\": \"users.get\", \"data\": {\"id\": 42}, \"aliases\": [] }"
+              },
+              {
+                "input": "input={body:{id:\"users.get\", params:{id:42}}, legacy_ok:true}",
+                "result": "{ \"operation\": \"users.get\", \"data\": {\"id\": 42}, \"aliases\": [\"id\", \"params\"] }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "object_only",
+                "todo": "the body must be a JSON object (anything else is validation.input_envelope); an `error` key is refused (an input envelope never carries an error); unknown keys are ignored as in 0.1.0",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 48
+              },
+              {
+                "id": "operation_alias",
+                "todo": "`operation` (non-empty string) names the operation; the alias `id` only when legacy_ok; both → validation.input_envelope; neither → validation.required with details.field = \"operation\"; a non-string value → validation.input_envelope",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 61
+              },
+              {
+                "id": "data_alias",
+                "todo": "`data` is the operation input and defaults to {} when absent or null; the alias `params` only when legacy_ok; `data` with `params` → validation.input_envelope",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 83
+              },
+              {
+                "id": "options",
+                "todo": "deadline_ms (non-negative integer, clamped to 1..=600000), restrict (passed through; the runtime validates it), stream and pretty (bools); a wrong type → validation.input_envelope naming the key",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 89
+              },
+              {
+                "id": "report_aliases",
+                "todo": "return the InputEnvelope with `aliases` listing every deprecated key used (\"id\", \"params\") so the surface emits its deprecation signal (HTTP Deprecation: true + access log deprecated=1, CLI warning on stderr, trace note); pure, no ports",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 112
+              }
+            ],
+            "failures": [
+              {
+                "id": "not_object",
+                "when": "the body is not a JSON object or carries an `error` key",
+                "code": "validation.input_envelope (422, exit 2)",
+                "propagates": "returns",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 50,
+                "snippet": "let Some(body) = input.body.as_object() else {"
+              },
+              {
+                "id": "mixed_keys",
+                "when": "`operation` with `id`, or `data` with `params`",
+                "code": "validation.input_envelope",
+                "propagates": "returns",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 63,
+                "snippet": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+              },
+              {
+                "id": "no_operation",
+                "when": "neither `operation` nor `id`",
+                "code": "validation.required (details.field operation)",
+                "propagates": "returns",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 64,
+                "snippet": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
               }
             ]
           },
           {
             "name": "project_polling",
             "label": "Project polling",
-            "about": "The HTTP polling routes are a projection of the session operations: open → 202 SessionReceipt with events_url, events → SessionBatch, input/finish_input/cancel → SessionAck / CancelReceipt, all bound to the authenticated principal.",
+            "about": "The HTTP polling routes are a projection of the session operations: open → 202 ResponseEnvelope (status accepted) whose data is the SessionReceipt with events_url, events → SessionBatch whose events are ResponseEnvelope records, input/finish_input/cancel → SessionAck / CancelReceipt, all bound to the authenticated principal; every failure is an error envelope.",
             "in": [
               {
                 "name": "input",
@@ -13525,33 +13861,33 @@
             "examples": [
               {
                 "input": "input={action:{open:{id:\"demo.countdown\"}}}",
-                "result": "{ \"status\": 202, \"body\": {\"session_id\": \"ses_…\", \"events_url\": \"/v1/requests/ses_…/events\"} }"
+                "result": "{ \"status\": 202, \"body\": {\"request_id\": \"req_…\", \"trace_id\": \"tr_…\", \"operation\": \"demo.countdown\", \"type\": \"result\", \"status\": \"accepted\", \"data\": {\"session_id\": \"ses_…\", \"events_url\": \"/v1/requests/ses_…/events\"}, \"error\": null, \"effects\": \"none\", \"data_count\": 0} }"
               }
             ],
             "todos": [
               {
                 "id": "open",
-                "todo": "POST /v1/requests {id, params, deadline_ms?}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
+                "todo": "POST /v1/requests {operation, data, deadline_ms?} (id/params: deprecated aliases, parsed by serve.parse_input): authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 with an accepted ResponseEnvelope whose data is the SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 16
+                "line": 24
               },
               {
                 "id": "read",
                 "todo": "GET /v1/requests/{id}/events?after_seq=N\u0026wait_ms=M -\u003e SessionDriver.read with wait_ms defaulting to 1000 and capped at 5000 (returns early when events arrive) and max_events capped at 16; 200 SessionBatch",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 49
+                "line": 64
               },
               {
                 "id": "input_finish_cancel",
                 "todo": "POST .../input {send_seq, data} -\u003e SessionDriver.send (200 SessionAck); POST .../finish_input -\u003e SessionDriver.finish_input (200 SessionAck input_closed:true); POST .../cancel -\u003e SessionDriver.cancel (200 CancelReceipt with session_id, request_id, state)",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 68
+                "line": 83
               },
               {
                 "id": "ownership",
-                "todo": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the ErrorEnvelope with the registry status (404/409/422/429)",
+                "todo": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the error ResponseEnvelope (status error, data null) with the registry status (404/409/422/429)",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 97
+                "line": 112
               }
             ],
             "failures": [
@@ -13560,7 +13896,7 @@
                 "when": "the principal may not call the operation",
                 "code": "permission.denied (403) body",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 17,
+                "line": 25,
                 "snippet": "PollAction::Open {"
               }
             ]
@@ -14521,6 +14857,7 @@
           "policy/load_policy",
           "registry/describe_operations",
           "registry/inspect_outputs",
+          "serve/parse_input",
           "serve/start_serve"
         ]
       },
@@ -14542,6 +14879,7 @@
           "registry/inspect_outputs",
           "serve/authenticate_principal",
           "serve/authorize_operation",
+          "serve/parse_input",
           "sessions/cancel_session",
           "sessions/finish_input",
           "sessions/open_session",
@@ -14563,6 +14901,7 @@
           "registry/inspect_outputs",
           "serve/authenticate_principal",
           "serve/authorize_operation",
+          "serve/parse_input",
           "sessions/cancel_session",
           "sessions/finish_input",
           "sessions/open_session",
@@ -14576,7 +14915,18 @@
         "calls": [
           "serve/authenticate_principal",
           "serve/authorize_operation",
-          "serve/multiplex_ws"
+          "serve/multiplex_ws",
+          "serve/parse_input"
+        ]
+      },
+      {
+        "name": "poll",
+        "kind": "http",
+        "calls": [
+          "serve/authenticate_principal",
+          "serve/authorize_operation",
+          "serve/parse_input",
+          "serve/project_polling"
         ]
       },
       {
@@ -14594,21 +14944,13 @@
           "registry/describe_operations",
           "registry/inspect_outputs",
           "serve/authorize_operation",
+          "serve/parse_input",
           "serve/start_serve",
           "sessions/cancel_session",
           "sessions/finish_input",
           "sessions/open_session",
           "sessions/read_events",
           "sessions/send_input"
-        ]
-      },
-      {
-        "name": "poll",
-        "kind": "http",
-        "calls": [
-          "serve/authenticate_principal",
-          "serve/authorize_operation",
-          "serve/project_polling"
         ]
       }
     ],
@@ -14874,7 +15216,7 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.trace.show\",\"params\":{\"request_id\":\"…\"}} (local principal or explicit listing)"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.trace.show\",\"data\":{\"request_id\":\"…\"}} (local principal or explicit listing)"
         }
       ],
       "input": [
@@ -14944,15 +15286,15 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --params JSON"
+          "invocation": "rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON"
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.begin\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.begin\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.begin\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.begin\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -15009,11 +15351,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.cancel\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.cancel\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.cancel\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.cancel\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -15060,11 +15402,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.complete\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.complete\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.complete\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.complete\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -15121,11 +15463,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.status\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.status\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.status\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.status\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -15177,11 +15519,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.disconnect\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.disconnect\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.disconnect\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.disconnect\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -15229,11 +15571,11 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON"
+          "invocation": "rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --data JSON"
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.connectors.sync\",\"params\":{\"name\":\"…\",\"output\":\"./…\"}} | POST /v1/request {\"id\":\"CONNECTOR.tools.NAME\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.connectors.sync\",\"data\":{\"name\":\"…\",\"output\":\"./…\"}} | POST /v1/request {\"operation\":\"CONNECTOR.tools.NAME\"}"
         }
       ],
       "input": [
@@ -15402,7 +15744,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet request ID --params JSON [--stream] [--input-jsonl - --stream] | rivet --endpoint URL [--token-file PATH] request ID …"
+          "invocation": "rivet request ID --data JSON [--stream] [--input-jsonl - --stream] | rivet request --input FILE|- | rivet --endpoint URL [--token-file PATH] request ID …"
         },
         {
           "surface": "http",
@@ -15410,11 +15752,11 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(ID, PARAMS, sink) | Runtime::scope(|scope| …) scope.stream(ID, PARAMS) | scope.duplex(ID, PARAMS)"
+          "invocation": "Runtime::call(InputEnvelope) | Runtime::request(ID, DATA, sink) | Runtime::scope(|scope| …) scope.stream(ID, DATA) | scope.duplex(ID, DATA)"
         },
         {
           "surface": "mcp",
-          "invocation": "tools/call {name: ID} | tools/call {name: \"rivet.request\"}"
+          "invocation": "tools/call {name: ID} | tools/call {name: \"rivet.request\", arguments: {operation, data}}"
         }
       ],
       "input": [
@@ -16146,7 +16488,7 @@
       "triggers": [
         {
           "surface": "ws",
-          "invocation": "GET /v1/ws (Sec-WebSocket-Protocol: rivet.v1) text frames request|input|finish_input|cancel"
+          "invocation": "GET /v1/ws (Sec-WebSocket-Protocol: rivet.v1) text frames request {operation, data}|input|finish_input|cancel"
         }
       ],
       "input": [
@@ -16199,11 +16541,81 @@
       ]
     },
     {
+      "action": "serve.parse_input",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet request --input FILE|- | rivet request ID --data JSON (--params: deprecated alias, warning[deprecated.params])"
+        },
+        {
+          "surface": "http",
+          "invocation": "POST /v1/request {operation, data, deadline_ms?, restrict?} (id/params: deprecated aliases, Deprecation: true)"
+        },
+        {
+          "surface": "library",
+          "invocation": "Runtime::call_json(INPUT_JSON)"
+        },
+        {
+          "surface": "mcp",
+          "invocation": "tools/call {name: \"rivet.request\"|\"rivet.sessions.open\", arguments: {operation, data}}"
+        },
+        {
+          "surface": "poll",
+          "invocation": "POST /v1/requests {operation, data, deadline_ms?, restrict?}"
+        },
+        {
+          "surface": "ws",
+          "invocation": "request frame {type:\"request\", ref, operation, data}"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "RawInput"
+        }
+      ],
+      "output": "InputEnvelope",
+      "handling": [
+        {
+          "layer": "shape",
+          "ref": "as_object",
+          "role": "a non-object body is refused before any key is read"
+        },
+        {
+          "layer": "no_error",
+          "ref": "body.get",
+          "role": "`error` belongs to output envelopes only",
+          "lane": "body"
+        },
+        {
+          "layer": "operation",
+          "ref": "pick",
+          "role": "`operation`, else the deprecated `id` (recorded in aliases)"
+        },
+        {
+          "layer": "data",
+          "ref": "pick",
+          "role": "`data`, else the deprecated `params`; absent or null becomes {}"
+        },
+        {
+          "layer": "options",
+          "ref": "body.get",
+          "role": "typed optional keys; the deadline is clamped like 0.1.0",
+          "lane": "body"
+        },
+        {
+          "layer": "build",
+          "ref": "InputEnvelope",
+          "role": "the one input shape every surface dispatches"
+        }
+      ]
+    },
+    {
       "action": "serve.project_polling",
       "triggers": [
         {
           "surface": "poll",
-          "invocation": "POST /v1/requests | GET /v1/requests/{id}/events | POST /v1/requests/{id}/input | POST /v1/requests/{id}/finish_input | POST /v1/requests/{id}/cancel"
+          "invocation": "POST /v1/requests {operation, data} | GET /v1/requests/{id}/events | POST /v1/requests/{id}/input | POST /v1/requests/{id}/finish_input | POST /v1/requests/{id}/cancel"
         }
       ],
       "input": [
@@ -16229,6 +16641,11 @@
           "lane": "driver"
         },
         {
+          "layer": "accept",
+          "ref": "ResponseEnvelope::accepted",
+          "role": "202 envelope, status accepted, data = the receipt"
+        },
+        {
           "layer": "read",
           "ref": "driver.read",
           "role": "bounded long-poll with the clamped wait",
@@ -16236,8 +16653,8 @@
         },
         {
           "layer": "encode",
-          "ref": "error_envelope",
-          "role": "error → {request_id, trace_id, error} with its registry HTTP status"
+          "ref": "ResponseEnvelope::from_error",
+          "role": "error → envelope (status error|cancelled, data null) with its registry HTTP status"
         }
       ]
     },
@@ -16298,7 +16715,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.cancel\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.cancel\"}"
         },
         {
           "surface": "library",
@@ -16333,7 +16750,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.finish_input\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.finish_input\"}"
         },
         {
           "surface": "library",
@@ -16368,7 +16785,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.open\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.open\"}"
         },
         {
           "surface": "library",
@@ -16413,7 +16830,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.read\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.read\"}"
         },
         {
           "surface": "library",
@@ -16454,7 +16871,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.send\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.send\"}"
         },
         {
           "surface": "library",
