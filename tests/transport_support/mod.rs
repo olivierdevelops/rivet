@@ -329,6 +329,8 @@ pub async fn tcp_fin_server() -> u16 {
 }
 
 /// Newline-framed JSON over a Unix socket: echoes `{"echo": <input>}`.
+/// Unix only: tokio has no Unix-domain listener on Windows.
+#[cfg(unix)]
 pub async fn unix_server(path: &std::path::Path) {
     let l = tokio::net::UnixListener::bind(path).unwrap();
     tokio::spawn(async move {

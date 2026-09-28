@@ -19,11 +19,12 @@ use std::process::Command;
 const RIVET: &str = env!("CARGO_BIN_EXE_rivet");
 const FIXTURES: &str = "tests/fixtures/highlight";
 
+/// `python3`, else `python` (Windows installs of CPython ship only `python.exe`).
 fn python(args: &[&str]) -> std::process::Output {
-    Command::new("python3")
-        .args(args)
-        .output()
-        .expect("python3 is required for the editor checks (T-13)")
+    ["python3", "python"]
+        .iter()
+        .find_map(|exe| Command::new(exe).args(args).output().ok())
+        .expect("python3 (or python) is required for the editor checks (T-13)")
 }
 
 fn assert_ok(out: &std::process::Output, what: &str) {

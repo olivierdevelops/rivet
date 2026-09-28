@@ -358,15 +358,19 @@ fn t17_outside_root() {
         diag(dir.path(), "permission.import_outside_root"),
         ("lib/a.rivet".into(), 1, 1, 3)
     );
-    let outside = tree(&[("x.rivet", AUDIT)]);
-    let dir = tree(&[("app.rivet", "import \"./link.rivet\" as x\n")]);
-    std::os::unix::fs::symlink(
-        outside.path().join("x.rivet"),
-        dir.path().join("link.rivet"),
-    )
-    .unwrap();
-    let (file, line, col, exit) = diag(dir.path(), "permission.import_outside_root");
-    assert_eq!((file.as_str(), line, col, exit), ("app.rivet", 1, 1, 3));
+    // Unix only: creating a symlink on Windows needs developer mode or admin rights.
+    #[cfg(unix)]
+    {
+        let outside = tree(&[("x.rivet", AUDIT)]);
+        let dir = tree(&[("app.rivet", "import \"./link.rivet\" as x\n")]);
+        std::os::unix::fs::symlink(
+            outside.path().join("x.rivet"),
+            dir.path().join("link.rivet"),
+        )
+        .unwrap();
+        let (file, line, col, exit) = diag(dir.path(), "permission.import_outside_root");
+        assert_eq!((file.as_str(), line, col, exit), ("app.rivet", 1, 1, 3));
+    }
 }
 
 // vhco:test language.resolve_imports -- check.import_cycle names the cycle path at the import that starts it

@@ -1,0 +1,11 @@
+# Check out every text file with LF on every OS (TRBL-2026-0007). Windows runners default to
+# core.autocrlf=true, which would turn golden files, .rivet fixtures and policy JSON into CRLF
+# and break byte-exact comparisons (tests/fixtures/highlight, conformance goldens).
+* text=auto eol=lf
+
+# Binary fixtures stay byte-exact.
+*.png binary
+*.ico binary
+*.vsix binary
+*.bin binary
+*.pb binary

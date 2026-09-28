@@ -373,6 +373,8 @@ async fn tcp_finish_send_raw_iteration() {
 }
 
 // vhco:test transports.exchange_socket -- a unix socket with newline JSON framing needs allow_unix
+// Unix only: Windows has no Unix-domain sockets here; `unix_socket_refused_off_unix` covers it.
+#[cfg(unix)]
 #[tokio::test]
 async fn unix_json() {
     let tmp = tempfile::tempdir().unwrap();
@@ -403,6 +405,26 @@ async fn unix_json() {
     .await
     .unwrap_err();
     assert_eq!(e.code, "permission.denied");
+}
+
+// vhco:test transports.exchange_socket -- off Unix, a granted `with unix` refuses with the typed unsupported.unix
+// Windows only: the counterpart of `unix_json` where the platform lacks Unix-domain sockets.
+#[cfg(not(unix))]
+#[tokio::test]
+async fn unix_socket_refused_off_unix() {
+    let path = "C:/rivet-test/render.sock";
+    let src = op(&format!(
+        "with unix \"{path}\" as conn\n    framing newline\n    conn.send json {{action: \"render\"}}\n    return conn.receive json timeout \"2s\"\nend"
+    ));
+    let e = run(
+        &src,
+        &format!(
+            r#"{{"version":1,"grants":[{{"capability":"allow_unix","targets":["{path}"]}}]}}"#
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.code, "unsupported.unix");
 }
 
 // vhco:test transports.exchange_socket -- WebSocket request/response, a receive loop to a terminal marker, binary echo
@@ -446,6 +468,8 @@ fn exec_policy(extra: &str) -> String {
 }
 
 // vhco:test transports.run_process -- argv is data (no shell), stdin/decode round-trip, nonzero exit fails kind process unless accepted
+// macOS only: sandboxed spawns (policy.json present) run only there (ADR-0003); `process_refused_without_sandbox_backend` covers Linux and Windows.
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn process_one_shot() {
     let policy = exec_policy("");
@@ -494,6 +518,46 @@ async fn process_one_shot() {
     .unwrap_err();
     assert_eq!(e.code, "timeout.process");
     assert!(start.elapsed() < Duration::from_secs(3));
+}
+
+// vhco:test transports.run_process -- without a verified process sandbox (Linux gated until kernel >= 6.12, Windows none) every granted command form under policy.json refuses with unsupported.sandbox_backend (exit 5 / HTTP 501) and nothing is spawned
+// Linux and Windows only: the counterpart of the macOS spawn tests above and below (ADR-0003).
+#[cfg(not(target_os = "macos"))]
+#[tokio::test]
+async fn process_refused_without_sandbox_backend() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_str().unwrap().to_string();
+    std::fs::create_dir_all(tmp.path().join("out")).unwrap();
+    let marker = format!("rivet-marker-{}", std::process::id());
+    let policy = exec_policy(r#",{"capability":"allow_write","targets":["./out/**"]}"#);
+    let bodies = [
+        "result = command \"/usr/bin/printf\"\n    args [\"%s\", \"hello\"]\n    timeout \"2s\"\n    decode stdout text\nend\nreturn result.stdout".to_string(),
+        "result = command \"/bin/cat\"\n    stdin json {action: \"summarize\", n: 1}\n    decode stdout json\nend\nreturn result".to_string(),
+        "r = command \"/usr/bin/false\"\n    accept exit [0, 1]\nend\nreturn r.exit".to_string(),
+        "r = command \"/bin/sleep\"\n    args [\"5\"]\n    timeout \"200ms\"\nend\nreturn r".to_string(),
+        format!("n = 0\nwith command \"/usr/bin/yes\" as process\n    args [\"{marker}\"]\n    stream stdout lines\n    for line in process.stdout\n        n += 1\n        if n == 3\n            break\n        end\n    end\nend\nreturn n"),
+    ];
+    for body in bodies {
+        let rt = runtime(&op(&body), &root, &policy);
+        let e = rt.request("t.run", Value::Null, None).await.unwrap_err();
+        assert_eq!(
+            (e.kind, e.code.as_str()),
+            (ErrorKind::Unsupported, "unsupported.sandbox_backend"),
+            "{body}"
+        );
+        assert_eq!((e.http_status(), e.exit_code()), (501, 5), "{body}");
+    }
+    #[cfg(unix)]
+    {
+        let ps = std::process::Command::new("/bin/ps")
+            .args(["-axo", "command"])
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&ps.stdout).contains(&marker),
+            "nothing was spawned"
+        );
+    }
 }
 
 // vhco:test transports.run_process -- exec without a grant, bare names and shell strings never spawn
@@ -560,6 +624,8 @@ async fn process_sandbox_confines_reads() {
 }
 
 // vhco:test transports.run_process -- a streamed child is iterated by line and killed/reaped when the loop breaks early
+// macOS only: sandboxed spawns (policy.json present) run only there (ADR-0003); `process_refused_without_sandbox_backend` covers Linux and Windows.
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn process_stream_break_reaps() {
     let marker = format!("rivet-marker-{}", std::process::id());
@@ -920,7 +986,8 @@ async fn deadline_expiry_closes_handles_gracefully() {
 }
 
 // vhco:test transports.run_process -- G15: cancelling a request with a streamed child process terminates it gracefully (SIGTERM reaches its trap, not a bare SIGKILL) and the child is reaped before the caller gets `cancelled`
-#[cfg(unix)]
+// macOS only: sandboxed spawns (policy.json present) run only there (ADR-0003); `process_refused_without_sandbox_backend` covers Linux and Windows.
+#[cfg(target_os = "macos")]
 #[tokio::test]
 async fn cancel_terminates_and_reaps_child_processes() {
     // A child that records a graceful SIGTERM (the sandbox forbids fork, so no

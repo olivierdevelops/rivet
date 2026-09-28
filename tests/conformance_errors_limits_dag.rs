@@ -203,6 +203,14 @@ async fn write_bundle() -> Bundle {
     Bundle { dir, stats }
 }
 
+/// `t.process` under policy.json: a sandboxed spawn really runs only on macOS. Linux (backend
+/// gated until kernel >= 6.12) and Windows (no backend) refuse before spawning (ADR-0003).
+const PROCESS_FAILURE: (&str, &str, i32, u16) = if cfg!(target_os = "macos") {
+    ("process", "process.exit", 5, 502)
+} else {
+    ("unsupported", "unsupported.sandbox_backend", 5, 501)
+};
+
 /// (operation, params, kind, code, exit, HTTP)
 const CASES: &[(&str, &str, &str, &str, i32, u16)] = &[
     ("t.need", "{}", "validation", "validation.required", 2, 422),
@@ -228,7 +236,14 @@ const CASES: &[(&str, &str, &str, &str, i32, u16)] = &[
     ("t.tls", "{}", "tls", "", 5, 502),
     ("t.status", "{}", "http", "http.status", 5, 502),
     ("t.parse", "{}", "parse", "", 5, 502),
-    ("t.process", "{}", "process", "process.exit", 5, 502),
+    (
+        "t.process",
+        "{}",
+        PROCESS_FAILURE.0,
+        PROCESS_FAILURE.1,
+        PROCESS_FAILURE.2,
+        PROCESS_FAILURE.3,
+    ),
     ("t.shell", "{}", "unsupported", "unsupported.shell", 5, 501),
     ("t.app", "{}", "application", "t.app_failure", 5, 502),
     ("t.brief", "{}", "output_invalid", "output.invalid", 5, 500),

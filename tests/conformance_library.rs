@@ -186,6 +186,8 @@ fn effect_policy(base: &str) -> String {
     )
 }
 
+/// Unix only: scans `/bin/ps`, which Windows lacks.
+#[cfg(unix)]
 fn process_running(marker: &str) -> bool {
     let ps = std::process::Command::new("/bin/ps")
         .args(["-axo", "command"])
@@ -218,7 +220,8 @@ async fn dropped_future_closes_the_socket() {
 }
 
 // vhco:test execution.request_operation -- dropping a request future mid-flight leaves no running child process (killed and reaped by the runtime)
-#[cfg(unix)]
+// macOS only: the one platform with a process sandbox (ADR-0003); `sandboxed_spawn_is_refused_without_a_backend` covers the rest.
+#[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dropped_future_kills_the_child_process() {
     let marker = format!("31.{}", std::process::id());
@@ -253,6 +256,34 @@ async fn dropped_future_kills_the_child_process() {
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
     assert!(gone, "no child process survives the dropped future");
+}
+
+// vhco:test execution.request_operation -- without a verified process sandbox (Linux gated until kernel >= 6.12, Windows none) a spawn under policy.json is refused with unsupported.sandbox_backend (exit 5 / HTTP 501) and no child starts
+// Linux and Windows only: the counterpart of `dropped_future_kills_the_child_process` (ADR-0003).
+#[cfg(not(target_os = "macos"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sandboxed_spawn_is_refused_without_a_backend() {
+    let marker = format!("31.{}", std::process::id());
+    let rt = runtime(
+        &effect_src("http://127.0.0.1:1"),
+        ".",
+        &effect_policy("http://127.0.0.1:1"),
+    );
+    let e = rt
+        .request(
+            "t.sleep",
+            Value::object([("marker", Value::text(marker.clone()))]),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.kind, e.code.as_str()),
+        (ErrorKind::Unsupported, "unsupported.sandbox_backend")
+    );
+    assert_eq!((e.http_status(), e.exit_code()), (501, 5));
+    #[cfg(unix)]
+    assert!(!process_running(&marker), "nothing was spawned");
 }
 
 // vhco:test sessions.read_events -- the host pulls a request's stream as ordered Data envelopes followed by exactly one terminal Result (the library stream API)

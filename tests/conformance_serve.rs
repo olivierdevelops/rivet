@@ -5,7 +5,6 @@
 mod support;
 
 use serde_json::{Value as Json, json};
-use std::net::SocketAddr;
 use support::*;
 
 // vhco:test serve.start_serve -- one listener answers REST, SSE, polling, WebSocket and MCP for the same catalog with identical results
@@ -884,7 +883,7 @@ async fn sigterm_drains_and_exits_zero() {
         .unwrap();
     let mut err = tokio::io::BufReader::new(child.stderr.take().unwrap()).lines();
     let receipt: Json = serde_json::from_str(&err.next_line().await.unwrap().unwrap()).unwrap();
-    let addr: SocketAddr = receipt["listen_addr"].as_str().unwrap().parse().unwrap();
+    let addr: std::net::SocketAddr = receipt["listen_addr"].as_str().unwrap().parse().unwrap();
     let slow = tokio::spawn(async move {
         post(
             addr,

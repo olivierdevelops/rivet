@@ -274,6 +274,8 @@ fn atomic_write(dir: &Dir, rel_path: &Path, path: &str, bytes: &[u8]) -> RivetRe
 }
 
 /// How long a replacement waits for another Rivet writer's lock on the same file.
+/// Only the Unix `locked_replace` waits on an advisory lock.
+#[cfg(unix)]
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Conditional (and every) replacement of an EXISTING file — G32, proposal
@@ -645,6 +647,12 @@ fn readable(meta: &cap_std::fs::Metadata) -> bool {
     meta.permissions().mode() & 0o444 != 0
 }
 
+/// Windows has no permission bits; readability is decided by opening, which the probe never does.
+#[cfg(not(unix))]
+fn readable(_meta: &cap_std::fs::Metadata) -> bool {
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -813,9 +821,4 @@ mod tests {
             "file.hardlink_refused"
         );
     }
-}
-
-#[cfg(not(unix))]
-fn readable(_meta: &cap_std::fs::Metadata) -> bool {
-    true
 }

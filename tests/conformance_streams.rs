@@ -137,7 +137,7 @@ async fn disconnect_mid_stream() {
     assert_eq!(*sink.items.lock().unwrap(), vec![Value::text("ab")]);
 }
 
-// vhco:test transports.run_process -- child stdout streamed as JSON lines
+// vhco:test transports.run_process -- child stdout streamed as JSON lines (macOS); unsupported.sandbox_backend before spawning where no sandbox backend is verified
 #[tokio::test]
 async fn child_jsonl_stream() {
     let src = "operation p.run\n    output json\n    total = 0\n    with command \"/usr/bin/printf\" as p\n        args [\"{\\\"n\\\":1}\\n{\\\"n\\\":2}\\n\"]\n        stream stdout jsonl\n        for item in p.stdout\n            total += item.n\n        end\n    end\n    return total\nend\n";
@@ -147,6 +147,14 @@ async fn child_jsonl_stream() {
         tmp.path().to_str().unwrap(),
         &policy("http://127.0.0.1:1"),
     );
-    let c = rt.request("p.run", Value::Null, None).await.unwrap();
-    assert_eq!(c.result, Value::Int(3));
+    let r = rt.request("p.run", Value::Null, None).await;
+    if cfg!(target_os = "macos") {
+        assert_eq!(r.unwrap().result, Value::Int(3));
+    } else {
+        // Linux (backend gated until kernel >= 6.12) and Windows (no backend) refuse a
+        // sandboxed spawn under policy.json before starting it (ADR-0003).
+        let e = r.unwrap_err();
+        assert_eq!(e.code, "unsupported.sandbox_backend", "{e:?}");
+        assert_eq!((e.http_status(), e.exit_code()), (501, 5));
+    }
 }
