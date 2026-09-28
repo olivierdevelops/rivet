@@ -4,8 +4,8 @@ title: "Rivet references"
 document_type: reference
 status: draft
 created_date: 2026-09-27
-last_updated: 2026-09-28
-document_revision: 7
+last_updated: 2026-09-29
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -46,12 +46,15 @@ Source records and proposed syntax references, named ref-YYYY-NNNN-topic.md. The
 
 ## Status and maintenance
 
-Recently updated, 2026-09-28: REF-2026-0001 records the closure of G-LIC; REF-2026-0002 adds option-derived file sites and S154–S159 for design revision 8 (TASK-005, approved by [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md)). Earlier the same day both were revised for design revisions 5 (UQ-17) and 6 (UQ-18). Nothing deprecated, superseded or archived. REF-2026-0002 revision 8 (TASK-066) marks every example against the 0.1.0 build (commit `2a751ab`): 126 verified, 28 verified with differences, 4 Stage C and 1 not implemented (S42); every numbered DSL block parses and lowers with the 0.1.0 grammar (tests/conformance_samples.rs). Update this index when a document changes lifecycle or a new related document is added.
+Recently updated, 2026-09-29: REF-2026-0002 revision 9 (PLAN-2026-0002 D-45) documents the 0.2.0 build. It adds the `global`, `import … as ALIAS [public]` and numeric path-segment (`xs.0`, INC-2026-0009) syntax, with real examples, and the CLI mapping for `--data`, `--input`, `--pretty` and `highlight`. It also adds envelope examples, converts every sample to the 0.2.0 input and output, and re-marks every status line against the 0.2.0 release candidate: 127 verified, 27 with differences, 4 Stage C and 1 not implemented. `conformance_samples` and `conformance_highlight` pass.
+
+Earlier, 2026-09-28: REF-2026-0001 records the closure of G-LIC; REF-2026-0002 adds option-derived file sites and S154–S159 for design revision 8 (TASK-005, approved by [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md)). Earlier the same day both were revised for design revisions 5 (UQ-17) and 6 (UQ-18). Nothing deprecated, superseded or archived. REF-2026-0002 revision 8 (TASK-066) marks every example against the 0.1.0 build (commit `2a751ab`): 126 verified, 28 verified with differences, 4 Stage C and 1 not implemented (S42); every numbered DSL block parses and lowers with the 0.1.0 grammar (tests/conformance_samples.rs). Update this index when a document changes lifecycle or a new related document is added.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-29 | Claude | REF-2026-0002 revision 9: 0.2.0 syntax, CLI mapping, envelopes, statuses (D-45, TASK-078). |
 | 7 | 2026-09-28 | Claude | REF-2026-0002 revision 8: 0.1.0 status of every example (TASK-066). |
 | 6 | 2026-09-28 | Claude | Status for design revision 8: G-LIC closed in REF-2026-0001; S154–S159 (option-derived file sites, `io --needs`, `--check-files`) in REF-2026-0002. |
 | 5 | 2026-09-28 | Claude | Status for design revision 5: UQ-17 recorded, examples moved to prefix calls/policy.json/unified serve; linked demos index; parser spike noted as open. |
