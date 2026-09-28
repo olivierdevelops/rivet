@@ -181,7 +181,7 @@ Selector matching (`selector_matches` in `src/features/policy/authorize_effect.r
 |---|---|---|
 | `"*"` | every capability | matches every target (still subject to the private-range rule) |
 | path glob | `allow_read`, `allow_write`, `allow_delete`, `allow_exec`, `allow_unix`, `allow_pipe` | selector is joined to the **policy file's directory** and normalized; the target is joined to the **bundle root**; `globset` with `literal_separator(true)` (`*` stays inside one segment, `**` crosses); `dir/**` also matches `dir` itself; on macOS and Windows both sides are lower-cased |
-| URL | network-style targets | same scheme, same host (case-insensitive), same port after defaults (`https` → 443, `http` → 80); an empty or `/` path matches every path; otherwise the target path must start with the selector path (a trailing `*` is ignored) |
+| URL | network-style targets | same scheme, same host (case-insensitive), same port after defaults (`https` → 443, `http` → 80); an empty or `/` path matches every path; otherwise the target path must equal the selector path or continue it with `/` (whole segments: `/users/42` never covers `/users/420`; a selector ending in `/` covers everything below it); a trailing `*` makes it a raw string prefix |
 | IP or CIDR | URL targets whose host is an IP literal | single IP equality or CIDR containment (IPv4 and IPv6) |
 | anything else | env names, logical targets (`crm/tools/search`, `users/example.Users/GetUser`, `PROFILE/ACCOUNT/use`) | plain `globset` match against the text |
 

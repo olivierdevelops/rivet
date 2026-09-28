@@ -204,7 +204,9 @@ Selector validation (`validate_selector`), pointer `/grants/N/targets/J`:
 Matching at run time (details in [SYS-2026-0003](../components/sys-2026-0003-policy-broker-and-io-manifest.md)):
 path selectors are joined to the policy file's directory and normalized; `*` stays within one path
 segment, `**` crosses segments, and `dir/**` also matches `dir`. URL selectors match scheme, host and
-port (defaults made explicit) and a path prefix; an empty or `/` path covers every path. IP and CIDR
+port (defaults made explicit) and a whole-segment path prefix (`/users/42` covers `/users/42` and
+`/users/42/posts` but not `/users/420`; a trailing `*` such as `/users/4*` is a raw prefix); an empty
+or `/` path covers every path. IP and CIDR
 selectors match URL hosts that are IP literals.
 
 ### network

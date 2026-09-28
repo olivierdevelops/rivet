@@ -185,6 +185,25 @@ pub fn normalize_path(base: &str, p: &str) -> String {
     }
 }
 
+/// Segment-aware URL path match: `/users/42` covers `/users/42` and
+/// `/users/42/…` but not `/users/420`; a selector ending in `/` covers what is
+/// below it; an explicit trailing `*` (`/users/4*`) is a raw prefix.
+fn url_path_matches(gpath: &str, tpath: &str) -> bool {
+    if gpath.is_empty() || gpath == "/" {
+        return true;
+    }
+    if let Some(prefix) = gpath.strip_suffix('*') {
+        return tpath.starts_with(prefix.trim_end_matches('*'));
+    }
+    if gpath.ends_with('/') {
+        return tpath.starts_with(gpath) || tpath == gpath.trim_end_matches('/');
+    }
+    tpath == gpath
+        || tpath
+            .strip_prefix(gpath)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
 fn selector_matches(
     selector: &str,
     target: &NormalTarget,
@@ -216,10 +235,7 @@ fn selector_matches(
         if gurl.port_or_known_default() != turl.port_or_known_default() {
             return false;
         }
-        let gpath = gurl.path();
-        return gpath.is_empty()
-            || gpath == "/"
-            || turl.path().starts_with(gpath.trim_end_matches('*'));
+        return url_path_matches(gurl.path(), turl.path());
     }
     if let Some(turl) = &target.url {
         // IP or CIDR selector against a URL host.
@@ -570,5 +586,20 @@ mod tests {
             "svc",
         );
         assert_eq!(quic_v6.decision, Decision::Denied);
+    }
+
+    #[test]
+    fn url_grant_paths_match_whole_segments() {
+        assert!(url_path_matches("/users/42", "/users/42"));
+        assert!(url_path_matches("/users/42", "/users/42/posts"));
+        assert!(!url_path_matches("/users/42", "/users/420"));
+        assert!(!url_path_matches("/users/42", "/users/4"));
+        assert!(url_path_matches("/users/", "/users/7"));
+        assert!(url_path_matches("/users/", "/users"));
+        assert!(!url_path_matches("/users/", "/usersx"));
+        assert!(url_path_matches("/users/4*", "/users/420"));
+        assert!(url_path_matches("/users/*", "/users/7/x"));
+        assert!(url_path_matches("/", "/anything"));
+        assert!(url_path_matches("", "/anything"));
     }
 }
