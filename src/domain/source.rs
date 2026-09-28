@@ -30,6 +30,18 @@ impl SourceSpan {
         }
     }
 
+    /// Inverse of [`SourceSpan::to_value`] (remote error envelopes).
+    pub fn from_value(v: &Value) -> Option<SourceSpan> {
+        let n = |k: &str| v.get(k).and_then(Value::as_i64).unwrap_or(0).max(0) as u32;
+        Some(SourceSpan {
+            file: v.get("file")?.as_str()?.to_string(),
+            start_line: n("line"),
+            start_col: n("column"),
+            end_line: n("end_line"),
+            end_col: n("end_column"),
+        })
+    }
+
     pub fn to_value(&self) -> Value {
         Value::object([
             ("file", Value::text(&self.file)),

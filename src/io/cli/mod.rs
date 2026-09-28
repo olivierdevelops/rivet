@@ -359,18 +359,11 @@ pub fn render_describe(e: &RegistryEntry) -> String {
     }
     out.push('\n');
     out.push_str(
-        &render_outputs(&[OutputReport {
-            id: e.id.clone(),
-            name: e.name.clone(),
-            output: e.output.clone(),
-            emits: e.emits.clone(),
-            receives: e.receives.clone(),
-            errors: e.errors.clone(),
-        }])
-        .lines()
-        .skip(1)
-        .map(|l| format!("{l}\n"))
-        .collect::<String>(),
+        &render_outputs(&[e.output_report()])
+            .lines()
+            .skip(1)
+            .map(|l| format!("{l}\n"))
+            .collect::<String>(),
     );
     out
 }

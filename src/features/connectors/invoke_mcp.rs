@@ -1,8 +1,10 @@
-use super::ports::{McpClient, McpSession, PolicyEvaluator};
+use super::ports::{CredentialProvider, McpClient, McpSession, PolicyEvaluator};
+use crate::domain::auth::{AuthContext, CredentialInput, origin_of};
+use crate::domain::contracts::Principal;
 use crate::domain::effect_checks::authorize;
 use crate::domain::mcp::{
     MAX_MCP_HOPS, META_CHAIN, META_HOPS, McpConnectorInfo, McpImport, McpImportKind, McpReply,
-    McpRequest, McpResult, McpSnapshot, check_schema,
+    McpRequest, McpResult, McpSnapshot, McpTransport, check_schema,
 };
 use crate::domain::policy::{AccessVerb, Capability, EffectTarget};
 use crate::domain::transports::EffectOrigin;
@@ -12,21 +14,22 @@ use serde_json::{Value as Json, json};
 /// Upper bound on `*/list` pages read by one discovery.
 const MAX_LIST_PAGES: usize = 100;
 
-// vhco:usecase connectors.invoke_mcp(input: McpRequest) -> McpResult needs McpClient, PolicyEvaluator
+// vhco:usecase connectors.invoke_mcp(input: McpRequest) -> McpResult needs McpClient, PolicyEvaluator, CredentialProvider
 // vhco:label Invoke mcp
-// vhco:about Resolves an imported MCP operation (crm.tools.search, crm.resources.read, crm.prompts.get) or a `discover` against the reviewed snapshot pinned at bundle load, refuses schema changes, OAuth (not yet available), bridge recursion and invalid params, authorizes allow_mcp on the logical target before any I/O, then runs one scoped session (the adapter authorizes the transport), preserving content blocks and structuredContent and mapping isError, JSON-RPC errors and declined server callbacks to distinct typed errors.
+// vhco:about Resolves an imported MCP operation (crm.tools.search, crm.resources.read, crm.prompts.get) or a `discover` against the reviewed snapshot pinned at bundle load, refuses schema changes, bridge recursion and invalid params, authorizes allow_mcp on the logical target before any I/O, acquires an origin-bound OAuth lease for `auth PROFILE account A` (http transport), then runs one scoped session (the adapter authorizes the transport and attaches the bearer), preserving content blocks and structuredContent and mapping isError, JSON-RPC errors and declined server callbacks to distinct typed errors.
 // vhco:example input={connector:"crm", method:"tools.search", params:{query:"Ada"}} => { "content": [{"type": "text", "text": "{\"contacts\":[…]}"}], "structuredContent": {"contacts": [{"id": "42", "name": "Ada"}]}, "isError": false }
 pub async fn invoke_mcp(
     input: McpRequest,
     evaluator: &dyn PolicyEvaluator,
     client: &dyn McpClient,
+    credentials: Option<&dyn CredentialProvider>,
 ) -> RivetResult<McpResult> {
     let ctx = &input.context;
     let origin = EffectOrigin {
         operation_id: ctx.operation_id.clone(),
         span: ctx.span.clone(),
     };
-    // vhco:todo authorize_mcp -- resolve CONNECTOR.METHOD in the pinned McpCatalog (unknown connector → not_found.mcp_connector; an ID that is not an exposed import of the reviewed snapshot → not_found.operation); the request's schema_hash must equal the loaded snapshot hash (else protocol.mcp_schema_changed); `auth PROFILE account A` is unsupported.auth until OAuth exists; hops ≥ MAX_MCP_HOPS is limit.mcp_hops and an identity already in the bridge chain is limit.mcp_recursion; params are validated against the snapshot (tool inputSchema → validation.mcp_params, resource URI must be exposed, prompt name exposed with its required arguments); finally authorize allow_mcp call Logical(connector/tools/NAME | resources/read | prompts/get | discover) — all before any transport I/O
+    // vhco:todo authorize_mcp -- resolve CONNECTOR.METHOD in the pinned McpCatalog (unknown connector → not_found.mcp_connector; an ID that is not an exposed import of the reviewed snapshot → not_found.operation); the request's schema_hash must equal the loaded snapshot hash (else protocol.mcp_schema_changed); `auth PROFILE account A` without a credential provider is unsupported.auth (with one, an origin-bound lease is acquired after allow_mcp and before the session opens); hops ≥ MAX_MCP_HOPS is limit.mcp_hops and an identity already in the bridge chain is limit.mcp_recursion; params are validated against the snapshot (tool inputSchema → validation.mcp_params, resource URI must be exposed, prompt name exposed with its required arguments); finally authorize allow_mcp call Logical(connector/tools/NAME | resources/read | prompts/get | discover) — all before any transport I/O
     // vhco:step lookup client.catalog -- connector + import from the snapshot catalog read at bundle load (never live discovery)
     let catalog = client.catalog();
     let conn = catalog.connector(&input.connector).ok_or_else(|| {
@@ -64,12 +67,12 @@ pub async fn invoke_mcp(
             ),
         ));
     }
-    // vhco:error auth_unsupported -- `auth PROFILE account A` on the connector => unsupported.auth returns before any effect
-    if let Some((profile, account)) = &conn.auth {
+    // vhco:error auth_unsupported -- `auth PROFILE account A` on a host without a credential provider => unsupported.auth returns before any effect
+    if let (Some((profile, account)), None) = (&conn.auth, credentials) {
         return Err(RivetError::unsupported(
             "unsupported.auth",
             format!(
-                "connector `{}` uses `auth {profile} account \"{account}\"`, but OAuth 2.0 is not available in this build",
+                "connector `{}` uses `auth {profile} account \"{account}\"`, but this host has no credential provider",
                 conn.name
             ),
         )
@@ -117,8 +120,75 @@ pub async fn invoke_mcp(
     )?;
 
     // vhco:todo invoke_peer -- open one scoped session through McpClient (the adapter authorizes allow_network per POST or allow_exec + sandbox for stdio, then runs initialize with a compatible protocolVersion and notifications/initialized); the negotiated capability for tools/resources/prompts must be present (protocol.mcp_capability); send the call with a fresh correlation ID and `_meta` {rivet/hops: hops+1, rivet/chain: chain+[identity/import]}; a JSON-RPC error keeps its code (protocol.mcp_error, details.code); tools isError:true → application mcp.tool_failed with content/structuredContent in details and effects unknown; a structuredContent that fails the snapshot outputSchema → protocol.mcp_output_schema; content blocks and structuredContent are returned unchanged; discovery pages tools/resources/prompts lists into a candidate snapshot; the session is always closed, and dropping it mid-call sends notifications/cancelled
+    // vhco:step auth credentials.acquire -- `auth PROFILE account A` (http transport only; stdio + auth fails at bundle load): authorize allow_network on the endpoint first so a denied resource never costs a token request, then acquire an origin-bound lease (allow_auth use, allow_credentials, token endpoint; the endpoint origin must be one of the profile's resource_origins) that the HTTP transport attaches as `Authorization: Bearer` on every POST/DELETE of this session
+    let mut ctx_owned;
+    let ctx = match (&conn.auth, credentials, &conn.transport) {
+        (Some((profile, account)), Some(provider), McpTransport::Http { url }) => {
+            let endpoint_origin = origin_of(url).ok_or_else(|| {
+                RivetError::validation(
+                    "mcp.auth_transport",
+                    format!(
+                        "connector `{}`: `auth` needs an http(s) endpoint",
+                        conn.name
+                    ),
+                )
+            })?;
+            authorize(
+                evaluator,
+                &origin,
+                Capability::Network,
+                AccessVerb::Connect,
+                EffectTarget::Url(url.clone()),
+            )?;
+            let lease = provider
+                .acquire(
+                    CredentialInput {
+                        profile: profile.clone(),
+                        account: account.clone(),
+                        origin: endpoint_origin,
+                        audience: None,
+                        scopes: Vec::new(),
+                        context: AuthContext {
+                            principal: ctx.principal.clone().unwrap_or_else(Principal::local),
+                            operation_id: ctx.operation_id.clone(),
+                            deadline_ms: ctx.deadline_ms,
+                        },
+                    },
+                    evaluator,
+                )
+                .await
+                .map_err(|e| e.with_span(ctx.span.clone()))?;
+            ctx_owned = ctx.clone();
+            ctx_owned.bearer = Some(lease);
+            &ctx_owned
+        }
+        (Some(_), _, McpTransport::Command { .. }) => {
+            // vhco:error auth_stdio -- `auth` on a stdio connector => validation.mcp_auth_transport (also refused at load)
+            return Err(RivetError::validation(
+                "mcp.auth_transport",
+                format!(
+                    "connector `{}`: `auth` applies only to `transport http` (credentials bind to network origins)",
+                    conn.name
+                ),
+            ));
+        }
+        _ => ctx,
+    };
     // vhco:step open client.open -- spawn/connect + initialize (transport authorized by the adapter per attempt)
-    let mut session = client.open(conn, ctx).await?;
+    let opened = client.open(conn, ctx).await;
+    // vhco:error resource_401 -- the MCP endpoint answers 401 to a bearer => the lease is invalidated (next call reacquires) and http.status returns
+    let rejected = |e: &RivetError| {
+        e.code == "http.status" && e.details.get("status") == Some(&Value::Int(401))
+    };
+    let mut session = match opened {
+        Ok(s) => s,
+        Err(e) => {
+            if let (Some(lease), Some(p), true) = (&ctx.bearer, credentials, rejected(&e)) {
+                p.invalidate(lease);
+            }
+            return Err(e);
+        }
+    };
     let outcome = match (&import, call) {
         (Some(i), Some(params)) => {
             let mut params = params;
@@ -133,6 +203,11 @@ pub async fn invoke_mcp(
     };
     // vhco:step close session.close -- owned sessions end with the call (stdin EOF + reap, or HTTP DELETE)
     session.close().await;
+    if let (Err(e), Some(lease), Some(p)) = (&outcome, &ctx.bearer, credentials)
+        && rejected(e)
+    {
+        p.invalidate(lease);
+    }
     outcome
 }
 
@@ -625,6 +700,7 @@ mod tests {
             req(json!({"query": "Ada"}), BridgeHops::default()),
             &allow(),
             &f,
+            None,
         )
         .await
         .unwrap();
@@ -650,6 +726,7 @@ mod tests {
             req(json!({"query": "x"}), BridgeHops::default()),
             &allow(),
             &f,
+            None,
         )
         .await
         .unwrap_err();
@@ -666,6 +743,7 @@ mod tests {
             req(json!({"query": "x"}), BridgeHops::default()),
             &allow(),
             &f,
+            None,
         )
         .await
         .unwrap_err();
@@ -677,14 +755,20 @@ mod tests {
     #[tokio::test]
     async fn guards_run_before_io() {
         let f = fake(vec![]);
-        let e = invoke_mcp(req(json!({"q": 1}), BridgeHops::default()), &allow(), &f)
-            .await
-            .unwrap_err();
+        let e = invoke_mcp(
+            req(json!({"q": 1}), BridgeHops::default()),
+            &allow(),
+            &f,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.code, "validation.mcp_params");
         let e = invoke_mcp(
             req(json!({"query": "x"}), BridgeHops::default()),
             &Allow(Policy::deny_all("."), false),
             &f,
+            None,
         )
         .await
         .unwrap_err();
@@ -699,6 +783,7 @@ mod tests {
             ),
             &allow(),
             &f,
+            None,
         )
         .await
         .unwrap_err();
@@ -713,6 +798,7 @@ mod tests {
             ),
             &allow(),
             &f,
+            None,
         )
         .await
         .unwrap_err();
@@ -720,7 +806,7 @@ mod tests {
         let mut r = req(json!({"query": "x"}), BridgeHops::default());
         r.schema_hash = "sha256:other".into();
         assert_eq!(
-            invoke_mcp(r, &allow(), &f).await.unwrap_err().code,
+            invoke_mcp(r, &allow(), &f, None).await.unwrap_err().code,
             "protocol.mcp_schema_changed"
         );
         assert!(f.sent.lock().unwrap().is_empty());

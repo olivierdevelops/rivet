@@ -143,6 +143,16 @@ pub enum EffectsStatus {
 }
 
 impl EffectsStatus {
+    /// Inverse of [`EffectsStatus::as_str`]; anything else is `none`.
+    pub fn parse(s: &str) -> EffectsStatus {
+        match s {
+            "committed" => EffectsStatus::Committed,
+            "partial" => EffectsStatus::Partial,
+            "unknown" => EffectsStatus::Unknown,
+            _ => EffectsStatus::None,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             EffectsStatus::None => "none",
@@ -248,6 +258,36 @@ impl RivetError {
 
     pub fn http_status(&self) -> u16 {
         self.kind.http_status()
+    }
+
+    /// Decode the `error` object of an ErrorEnvelope (the inverse of
+    /// [`RivetError::to_value`]); a remote client rebuilds the same error, so
+    /// its registry exit code and rendering match a local run. An unknown kind
+    /// decodes as `internal`.
+    pub fn from_value(v: &Value) -> RivetError {
+        let text = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+        let kind = text("kind")
+            .and_then(|k| ErrorKind::parse(&k))
+            .unwrap_or(ErrorKind::Internal);
+        let mut e = RivetError::new(
+            kind,
+            text("code").unwrap_or_else(|| kind.as_str().to_string()),
+            text("message").unwrap_or_default(),
+        );
+        if let Some(r) = v.get("retryable").and_then(Value::as_bool) {
+            e.retryable = r;
+        }
+        e.effects = EffectsStatus::parse(text("effects").as_deref().unwrap_or(""));
+        e.source = v.get("source").and_then(SourceSpan::from_value);
+        e.operation_id = text("operation_id");
+        e.node_id = text("node_id");
+        e.hint = text("hint");
+        e.details = v.get("details").cloned().unwrap_or(Value::Null);
+        e.cause = v.get("cause").map(|c| Box::new(RivetError::from_value(c)));
+        if let Some(Value::List(items)) = v.get("suppressed") {
+            e.suppressed = items.iter().map(RivetError::from_value).collect();
+        }
+        e
     }
 
     /// The `error` object of an ErrorEnvelope.

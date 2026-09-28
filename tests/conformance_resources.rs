@@ -711,3 +711,58 @@ async fn demo_04_socket_ping() {
         .unwrap_err();
     assert_eq!(e.code, "permission.denied");
 }
+
+// vhco:test transports.exchange_http -- `body multipart … end` sends field and file parts (the file read is authorized by allow_read before connecting; without the grant nothing is sent) and `body xml (xml.element …)` sends escaped application/xml
+#[tokio::test]
+async fn http_multipart_and_xml_bodies() {
+    let (port, stats) = http_server().await;
+    let base = format!("http://127.0.0.1:{port}");
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("data")).unwrap();
+    std::fs::write(tmp.path().join("data/voice.wav"), b"RIFF-bytes").unwrap();
+    let root = tmp.path().to_str().unwrap();
+    let src = op(&format!(
+        "r = http post \"{base}/form\"\n    body multipart\n        field purpose \"transcription\"\n        file audio \"./data/voice.wav\" \"audio/wav\"\n    end\n    decode json\nend\nreturn r.body"
+    ));
+    let with_read = format!(
+        r#"{{"version":1,"grants":[{{"capability":"allow_network","targets":["{base}"]}},{{"capability":"allow_read","targets":["./data/**"]}}]}}"#
+    );
+    let rt = runtime(&src, root, &with_read);
+    let v = rt.request("t.run", Value::Null, None).await.unwrap().result;
+    let ct = v.get("ct").and_then(Value::as_str).unwrap().to_string();
+    let boundary = ct
+        .strip_prefix("multipart/form-data; boundary=")
+        .expect("multipart content type");
+    let body = v.get("body").and_then(Value::as_str).unwrap();
+    assert!(body.starts_with(&format!("--{boundary}\r\n")), "{body}");
+    assert!(
+        body.contains("Content-Disposition: form-data; name=\"purpose\"\r\n\r\ntranscription\r\n")
+    );
+    assert!(body.contains(
+        "Content-Disposition: form-data; name=\"audio\"; filename=\"voice.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF-bytes\r\n"
+    ));
+    assert!(body.ends_with(&format!("--{boundary}--\r\n")));
+
+    // Without allow_read the part's file read is denied before anything connects.
+    let before = stats.requests.lock().unwrap().len();
+    let rt = runtime(&src, root, &net_policy(std::slice::from_ref(&base)));
+    let e = rt.request("t.run", Value::Null, None).await.unwrap_err();
+    assert_eq!(e.code, "permission.denied");
+    assert_eq!(stats.requests.lock().unwrap().len(), before);
+
+    let v = run(
+        &op(&format!(
+            "r = http post \"{base}/form\"\n    body xml (xml.element \"speak\" {{lang: \"en\"}} [\"Hello & welcome \", (xml.element \"b\" {{}} \"<now>\")])\n    decode json\nend\nreturn r.body"
+        )),
+        &net_policy(std::slice::from_ref(&base)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v.get("ct"), Some(&Value::text("application/xml")));
+    assert_eq!(
+        v.get("body"),
+        Some(&Value::text(
+            "<speak lang=\"en\">Hello &amp; welcome <b>&lt;now&gt;</b></speak>"
+        ))
+    );
+}

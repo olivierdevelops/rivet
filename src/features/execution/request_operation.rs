@@ -276,6 +276,8 @@ mod tests {
             receives: None,
             errors: vec![],
             source: SourceSpan::default(),
+            raw_input_schema: None,
+            raw_output_schema: None,
         }
     }
 
