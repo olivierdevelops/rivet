@@ -27,6 +27,7 @@ fn every_demo_bundle_compiles() {
                 path: path.display().to_string(),
                 text: text.clone(),
             }],
+            modules: Vec::new(),
         };
         if let Err(e) = compile_program(&bundle, &parser) {
             failures.push(e.render(Some(&text)));
@@ -130,6 +131,7 @@ fn every_reference_fragment_lowers() {
                 path: format!("ref-{n}.rivet"),
                 text: wrapped.clone(),
             }],
+            modules: Vec::new(),
         };
         if let Err(e) = compile_program(&bundle, &parser) {
             for err in std::iter::once(&e).chain(e.suppressed.iter()) {

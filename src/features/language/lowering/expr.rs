@@ -36,6 +36,30 @@ struct Token {
 pub struct SpanMap {
     base: SourceSpan,
     text: String,
+    calls: std::sync::Arc<CallScope>,
+}
+
+/// Prefix-call names a file may use besides the built-ins (PROP-2026-0002
+/// R20): its own operation IDs (`(get {id: 1})`) and `ALIAS.…` of its imports
+/// (`(users.get {…})`). `any` accepts every name (a `global` right-hand side,
+/// which `language.compile_globals` checks for constancy instead).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CallScope {
+    pub ids: Vec<String>,
+    pub aliases: Vec<String>,
+    pub any: bool,
+}
+
+impl CallScope {
+    pub fn allows(&self, func: &str) -> bool {
+        self.any
+            || self.ids.iter().any(|i| i == func)
+            || self.aliases.iter().any(|a| {
+                func.len() > a.len()
+                    && func.starts_with(a.as_str())
+                    && func.as_bytes()[a.len()] == b'.'
+            })
+    }
 }
 
 impl SpanMap {
@@ -43,7 +67,14 @@ impl SpanMap {
         SpanMap {
             base,
             text: text.to_string(),
+            calls: std::sync::Arc::new(CallScope::default()),
         }
+    }
+
+    /// Accept the operation IDs and import aliases of `calls` as call names.
+    pub fn with_calls(mut self, calls: std::sync::Arc<CallScope>) -> SpanMap {
+        self.calls = calls;
+        self
     }
 
     fn pos(&self, offset: usize) -> (u32, u32) {
@@ -597,7 +628,8 @@ impl<'a> P<'a> {
                     }
                     self.expect_close(')')?;
                     let func = segs.join(".");
-                    if !BUILTIN_FUNCTIONS.contains(&func.as_str()) {
+                    if !BUILTIN_FUNCTIONS.contains(&func.as_str()) && !self.map.calls.allows(&func)
+                    {
                         let e = err(
                             self.map,
                             "check.unknown_function",

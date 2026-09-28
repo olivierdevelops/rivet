@@ -1,6 +1,6 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface cli kind cli calls language/compile_program, language/compile_globals, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON
 // vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
 // vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
@@ -18,6 +18,7 @@
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID | rivet --endpoint URL list | describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
+// vhco:trigger cli language/compile_globals = rivet check (globals are evaluated when the bundle loads)
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]

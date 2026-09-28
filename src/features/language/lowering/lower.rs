@@ -4,21 +4,28 @@
 //! its `catch`, recognizes effect forms (`http`, `file`, `grpc`, `command`, …),
 //! and reports every problem with its exact source span.
 
-use super::expr::{SpanMap, parse_args, parse_expr};
+use super::expr::{CallScope, SpanMap, parse_args, parse_expr};
 use crate::domain::ir::{
     Arg, CatchFilter, DagNode, Declaration, EffectForm, EffectKind, Expr, FailurePolicy,
-    GroupOptions, MemberCall, Operation, OperationKind, OptionLine, Rhs, Stmt, parse_duration_ms,
+    GlobalDecl, GroupOptions, MemberCall, Operation, OperationKind, OptionLine, Rhs, Stmt,
+    parse_duration_ms,
 };
 use crate::domain::outputs::{DeclaredError, FieldSpec, OutputSpec, ParamSpec, ValueSpec};
+use crate::domain::source::ImportDecl;
 use crate::domain::source::SourceSpan;
 use crate::domain::syntax_tree::{SyntaxNode, SyntaxTree};
 use crate::domain::{RivetError, Value};
+use std::sync::Arc;
 
 /// Collects every diagnostic instead of stopping at the first.
 #[derive(Default)]
 pub struct Lowerer {
     pub errors: Vec<RivetError>,
     pub warnings: Vec<RivetError>,
+    /// `global NAME = EXPR` declarations of every lowered file, in order.
+    pub globals: Vec<GlobalDecl>,
+    /// Call names the file being lowered may use besides the built-ins.
+    pub calls: Arc<CallScope>,
 }
 
 /// Effect keywords that may start an assignment value or a `with` resource.
@@ -64,11 +71,12 @@ fn option_key(func: &str) -> String {
     }
 }
 
-fn map_for(node: &SyntaxNode, capture: &str) -> SpanMap {
-    SpanMap::new(node.capture_span(capture), node.text(capture))
-}
-
 impl Lowerer {
+    fn map_for(&self, node: &SyntaxNode, capture: &str) -> SpanMap {
+        SpanMap::new(node.capture_span(capture), node.text(capture))
+            .with_calls(Arc::clone(&self.calls))
+    }
+
     fn fail(&mut self, e: RivetError) {
         self.errors.push(e);
     }
@@ -80,7 +88,7 @@ impl Lowerer {
 
     fn expr(&mut self, node: &SyntaxNode, capture: &str) -> Option<Expr> {
         let text = node.text(capture);
-        match parse_expr(text, &map_for(node, capture)) {
+        match parse_expr(text, &self.map_for(node, capture)) {
             Ok(e) => Some(e),
             Err(e) => {
                 self.fail(e);
@@ -94,7 +102,7 @@ impl Lowerer {
         if text.trim().is_empty() {
             return Vec::new();
         }
-        match parse_args(text, &map_for(node, capture)) {
+        match parse_args(text, &self.map_for(node, capture)) {
             Ok(a) => a,
             Err(e) => {
                 self.fail(e);
@@ -121,8 +129,17 @@ impl Lowerer {
         if !tree.diagnostics.is_empty() {
             return;
         }
+        // Imports are resolved before compilation (`language.resolve_imports`);
+        // here they are only checked for shape and placement.
+        self.imports(tree);
         for node in &tree.nodes {
             match node.func.as_str() {
+                "import" => {}
+                "global" => {
+                    if let Some(g) = self.global_decl(node) {
+                        self.globals.push(g);
+                    }
+                }
                 "operation" | "pipeline" => {
                     if let Some(op) = self.lower_operation(node, &tree.file) {
                         ops.push(op);
@@ -140,6 +157,167 @@ impl Lowerer {
                 ),
             }
         }
+    }
+
+    /// The `import "PATH" as ALIAS [public]` lines of one parsed file, in
+    /// order. An import after any other top-level line, or malformed, is
+    /// `syntax.import` at the import line (PROP-2026-0002 R19, R21).
+    pub fn imports(&mut self, tree: &SyntaxTree) -> Vec<ImportDecl> {
+        let mut out = Vec::new();
+        let mut declared = false;
+        for node in &tree.nodes {
+            if node.func != "import" {
+                declared = true;
+                continue;
+            }
+            if declared {
+                self.syntax(
+                    "syntax.import",
+                    "`import` must come before the first declaration of the file",
+                    &node.span,
+                );
+                continue;
+            }
+            if let Some(i) = self.import_decl(node) {
+                out.push(i);
+            }
+        }
+        out
+    }
+
+    fn import_decl(&mut self, node: &SyntaxNode) -> Option<ImportDecl> {
+        const SHAPE: &str =
+            "expected `import \"PATH\" as ALIAS` or `import \"PATH\" as ALIAS public`";
+        let rest = node.text("rest");
+        let args = if rest.trim().is_empty() {
+            Vec::new()
+        } else {
+            match parse_args(rest, &self.map_for(node, "rest")) {
+                Ok(a) => a,
+                Err(_) => {
+                    self.syntax("syntax.import", SHAPE, &node.span);
+                    return None;
+                }
+            }
+        };
+        let path = args.first().and_then(|a| match a {
+            Arg::Expr(e, _) => e.const_text(),
+            Arg::Word(..) => None,
+        });
+        let words: Vec<Option<&str>> = args.iter().skip(1).map(Arg::word).collect();
+        let (Some(path), [Some("as"), Some(alias), public @ ..]) = (path, words.as_slice()) else {
+            self.syntax("syntax.import", SHAPE, &node.span);
+            return None;
+        };
+        let public = match public {
+            [] => false,
+            [Some("public")] => true,
+            _ => {
+                self.syntax("syntax.import", SHAPE, &node.span);
+                return None;
+            }
+        };
+        if path.trim().is_empty() || path.starts_with('/') || path.contains('\\') {
+            self.syntax(
+                "syntax.import",
+                format!("import path `{path}` must be relative to the importing file, e.g. \"./users.rivet\""),
+                &node.span,
+            );
+            return None;
+        }
+        if !is_ident(alias) || *alias == "rivet" {
+            self.syntax(
+                "syntax.import",
+                format!(
+                    "`{alias}` is not a valid import alias (an identifier; `rivet` is reserved)"
+                ),
+                &node.span,
+            );
+            return None;
+        }
+        Some(ImportDecl {
+            path,
+            alias: alias.to_string(),
+            public,
+            span: node.span.clone(),
+            target: String::new(),
+        })
+    }
+
+    /// `global NAME = EXPR`: split NAME and EXPR (syntax.global when either is
+    /// missing or NAME is not an identifier); an effect on the right-hand side
+    /// is check.global_not_constant. Constancy of EXPR itself is checked by
+    /// `language.compile_globals`, so any call name parses here.
+    fn global_decl(&mut self, node: &SyntaxNode) -> Option<GlobalDecl> {
+        const SHAPE: &str = "expected `global NAME = EXPR`";
+        let rest = node.text("rest");
+        let base = node.capture_span("rest");
+        let sub = |from: usize, to: usize| {
+            SourceSpan::new(
+                &base.file,
+                base.start_line,
+                base.start_col + from as u32,
+                base.start_line,
+                base.start_col + to as u32,
+            )
+        };
+        let Some(eq) = rest.find('=').filter(|_| !rest.trim().is_empty()) else {
+            self.syntax("syntax.global", SHAPE, &node.span);
+            return None;
+        };
+        let name_raw = &rest[..eq];
+        let name = name_raw.trim();
+        let name_from = name_raw.len() - name_raw.trim_start().len();
+        let name_span = sub(name_from, name_from + name.len());
+        if !is_ident(name) {
+            self.syntax(
+                "syntax.global",
+                format!("{SHAPE}; `{name}` is not a global name (letters, digits and `_`)"),
+                if name.is_empty() {
+                    &node.span
+                } else {
+                    &name_span
+                },
+            );
+            return None;
+        }
+        let value_raw = &rest[eq + 1..];
+        let value = value_raw.trim();
+        if value.is_empty() || value.starts_with('=') {
+            self.syntax("syntax.global", SHAPE, &node.span);
+            return None;
+        }
+        let value_from = eq + 1 + (value_raw.len() - value_raw.trim_start().len());
+        let expr_span = sub(value_from, value_from + value.len());
+        let head = value.split_whitespace().next().unwrap_or("");
+        if EFFECT_WORDS.contains(&head) || head == "secret" || head == "env" {
+            self.fail(
+                RivetError::syntax(
+                    "check.global_not_constant",
+                    format!("global `{name}` cannot perform `{head}`; globals are constants fixed at load time"),
+                    Some(expr_span),
+                )
+                .with_hint("move the effect into the operation that uses it"),
+            );
+            return None;
+        }
+        let map = SpanMap::new(expr_span.clone(), value).with_calls(Arc::new(CallScope {
+            any: true,
+            ..CallScope::default()
+        }));
+        let expr = match parse_expr(value, &map) {
+            Ok(e) => e,
+            Err(e) => {
+                self.fail(e);
+                return None;
+            }
+        };
+        Some(GlobalDecl {
+            name: name.to_string(),
+            expr,
+            span: name_span,
+            expr_span,
+        })
     }
 
     fn lower_declaration(&mut self, node: &SyntaxNode, what: &str) -> Declaration {
@@ -252,6 +430,8 @@ impl Lowerer {
             span: node.span.clone(),
             file: file.to_string(),
             calls: Vec::new(),
+            module: String::new(),
+            param_spans: Vec::new(),
         };
         let mut last_rank = 0u8;
         let mut body_started = false;
@@ -318,6 +498,7 @@ impl Lowerer {
                         );
                     }
                     op.params.push(p);
+                    op.param_spans.push(child.capture_span("name"));
                 }
             }
             "output" | "output_block" => {
@@ -1166,7 +1347,7 @@ impl Lowerer {
                     );
                 }
                 let text = n.text("rest");
-                let cond = match parse_expr(text, &map_for(n, "rest")) {
+                let cond = match parse_expr(text, &self.map_for(n, "rest")) {
                     Ok(e) => e,
                     Err(e) => {
                         self.fail(e);
@@ -1190,6 +1371,22 @@ impl Lowerer {
                 self.syntax(
                     "syntax.option_misplaced",
                     format!("option `{}` is only valid at the start of a resource block (http, with, file, …)", option_key(f)),
+                    &span,
+                );
+                None
+            }
+            "import" => {
+                self.syntax(
+                    "syntax.import",
+                    "`import` is only valid at the top level of a file, before the first declaration",
+                    &span,
+                );
+                None
+            }
+            "global" => {
+                self.syntax(
+                    "syntax.global",
+                    "`global` is only valid at the top level of a file (use a local assignment inside an operation)",
                     &span,
                 );
                 None
@@ -1399,6 +1596,14 @@ fn display_func(f: &str) -> String {
         "call_stmt" => "call".into(),
         other => other.trim_start_matches("opt_").into(),
     }
+}
+
+/// A plain identifier: `[A-Za-z_][A-Za-z0-9_]*` (global names, import aliases).
+pub fn is_ident(s: &str) -> bool {
+    s.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn valid_id(id: &str) -> bool {

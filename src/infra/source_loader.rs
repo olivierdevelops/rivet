@@ -26,6 +26,7 @@ impl SourceLoader for DiskSourceLoader {
                 path: entry.to_string(),
                 text,
             }],
+            modules: Vec::new(),
         })
     }
 }

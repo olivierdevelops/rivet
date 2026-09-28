@@ -299,6 +299,7 @@ async fn duplicate_id_rejects_the_whole_candidate() {
                 text: "operation demo.add\n    output integer\n    return 0\nend\n".into(),
             },
         ],
+        modules: Vec::new(),
     };
     let e = compile_program(&bundle, &CapyParser::new().unwrap()).unwrap_err();
     assert_eq!(e.code, "registry.duplicate_id");

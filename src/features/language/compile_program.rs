@@ -1,3 +1,4 @@
+use super::compile_globals::compile_globals;
 use super::lowering::lower::{Lowerer, strict_doc_findings};
 use super::ports::Parser;
 use crate::domain::ir::CompiledProgram;
@@ -40,6 +41,18 @@ pub fn compile_program(input: &SourceBundle, parser: &dyn Parser) -> RivetResult
     // vhco:todo check_auth_transport -- every `auth PROFILE account …` and `grpc CONNECTOR.Method` reference names a declared auth profile or connector; unknown names fail compilation before any request
     // vhco:step refs check_references -- walk option lines and effect heads for profile/connector names
     check_references(&program, &mut lowerer.errors);
+
+    // vhco:todo compile_globals -- evaluate every file's `global NAME = EXPR` once through language.compile_globals (declaration order, constants only) and keep the frozen scopes on the program; shadowing or assigning a global in an operation is a check error collected with the rest
+    // vhco:step globals compile_globals -- one frozen GlobalScope per file; its check.global_* errors join the other diagnostics
+    program.globals = std::mem::take(&mut lowerer.globals);
+    match compile_globals(&program) {
+        Ok(scopes) => program.global_scopes = scopes,
+        Err(mut e) => {
+            let rest = std::mem::take(&mut e.suppressed);
+            lowerer.errors.push(e);
+            lowerer.errors.extend(rest);
+        }
+    }
 
     // vhco:error syntax -- any parse, lowering or check error => kind syntax (exit 2) returns with every other error in `suppressed`
     if !lowerer.errors.is_empty() {

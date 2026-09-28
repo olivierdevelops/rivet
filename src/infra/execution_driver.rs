@@ -17,6 +17,7 @@
 //! ```
 
 use crate::domain::cancel::{CancelReason, CancelToken};
+use crate::domain::const_eval::{binary, pure_call};
 use crate::domain::contracts::{DataEvent, ExecutionPlan, Request, RunOutcome, span_id};
 use crate::domain::errors::{EffectsStatus, ErrorKind};
 use crate::domain::files::{Codec, FileOperation, FileVerb};
@@ -27,10 +28,9 @@ use crate::domain::ir::{
 use crate::domain::policy::{AccessVerb, Capability, Decision, EffectIntent, EffectTarget};
 use crate::domain::ports::{DataSink, Dispatcher, ExecutionDriver, FileAccess, PolicyEvaluator};
 use crate::domain::source::SourceSpan;
-use crate::domain::transports::{UrlPiece, assemble_url, xml_element};
+use crate::domain::transports::{UrlPiece, assemble_url};
 use crate::domain::{RivetError, RivetResult, Value};
 use async_trait::async_trait;
-use base64::Engine;
 use futures_util::future::BoxFuture;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
@@ -311,6 +311,8 @@ pub struct Interpreter {
     /// Live input feeds for runs of operations that declare `receives`, keyed
     /// by request ID; `drive` takes the feed and exposes it as `incoming`.
     inputs: std::sync::Mutex<HashMap<String, tokio::sync::mpsc::Receiver<Value>>>,
+    /// Frozen `global` values per source file (`language.compile_globals`).
+    globals: HashMap<String, Arc<Value>>,
 }
 
 impl Interpreter {
@@ -319,7 +321,13 @@ impl Interpreter {
         files: Arc<dyn FileAccess>,
         policy: Arc<dyn PolicyEvaluator>,
     ) -> Interpreter {
+        let globals = program
+            .global_scopes
+            .iter()
+            .map(|g| (g.file.clone(), Arc::new(g.values.clone())))
+            .collect();
         Interpreter {
+            globals,
             program,
             files,
             policy,
@@ -389,6 +397,8 @@ impl ExecutionDriver for Interpreter {
             grace_until: Mutex::new(None),
         });
         let mut frame = Frame::new(&plan.request, Arc::clone(&run));
+        // The operation file's frozen GlobalScope: read-only, looked up after locals and params.
+        frame.globals = self.globals.get(&op.file).cloned();
         let feed = self
             .inputs
             .lock()
@@ -776,11 +786,14 @@ struct Frame {
     node_id: Option<String>,
     /// Network destination of each open handle (secret sink rule for member calls).
     dests: Vec<(SharedHandle, Option<Origin>)>,
+    /// The operation file's frozen `global` constants (read-only; PROP-2026-0002 R7).
+    globals: Option<Arc<Value>>,
 }
 
 impl Frame {
     fn new(request: &Request, run: Arc<RunState>) -> Frame {
         Frame {
+            globals: None,
             scopes: vec![HashMap::new()],
             request: request.clone(),
             run,
@@ -829,8 +842,15 @@ impl Frame {
         }
     }
 
+    /// Lookup order: locals (innermost first) → params (the outermost scope)
+    /// → the file's globals. `check.global_shadow` guarantees a global name is
+    /// never also a param or local, so the order only matters for speed.
     fn get(&self, name: &str) -> Option<&Value> {
-        self.scopes.iter().rev().find_map(|s| s.get(name))
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|s| s.get(name))
+            .or_else(|| self.globals.as_deref().and_then(|g| g.get(name)))
     }
 }
 
@@ -2287,16 +2307,6 @@ impl<'a> Machine<'a> {
         vals: Vec<Value>,
         span: &SourceSpan,
     ) -> RivetResult<Value> {
-        let arity = |n: usize| -> RivetResult<()> {
-            if vals.len() != n {
-                return Err(runtime_err(
-                    "call.arity",
-                    format!("({func} …) takes {n} argument(s), got {}", vals.len()),
-                    span,
-                ));
-            }
-            Ok(())
-        };
         match func {
             "request" => {
                 if vals.is_empty() || vals.len() > 2 {
@@ -2375,71 +2385,10 @@ impl<'a> Machine<'a> {
                 frame.run.mark(completion.effects);
                 Ok(completion.result)
             }
-            "length" => {
-                arity(1)?;
-                Ok(Value::Int(match &vals[0] {
-                    Value::List(l) => l.len(),
-                    Value::Text(s) => s.chars().count(),
-                    Value::Object(o) => o.len(),
-                    Value::Bytes(b) => b.len(),
-                    other => {
-                        return Err(runtime_err(
-                            "call.length",
-                            format!("(length …) of {}", other.type_name()),
-                            span,
-                        ));
-                    }
-                } as i64))
-            }
-            "base64.encode" => {
-                arity(1)?;
-                let bytes = match &vals[0] {
-                    Value::Bytes(b) => b.clone(),
-                    Value::Text(s) => s.as_bytes().to_vec(),
-                    other => {
-                        return Err(runtime_err(
-                            "call.base64",
-                            format!("(base64.encode …) of {}", other.type_name()),
-                            span,
-                        ));
-                    }
-                };
-                Ok(Value::Text(
-                    base64::engine::general_purpose::STANDARD.encode(bytes),
-                ))
-            }
-            "xml.element" => {
-                arity(3)?;
-                xml_element(&vals[0], &vals[1], &vals[2])
-                    .map_err(|m| runtime_err("call.xml", m, span))
-            }
-            "base64.decode" => {
-                arity(1)?;
-                let text = vals[0].as_str().ok_or_else(|| {
-                    runtime_err("call.base64", "(base64.decode …) needs text", span)
-                })?;
-                base64::engine::general_purpose::STANDARD
-                    .decode(text)
-                    .map(Value::Bytes)
-                    .map_err(|e| runtime_err("call.base64", format!("invalid base64: {e}"), span))
-            }
-            "text" => {
-                arity(1)?;
-                Ok(Value::Text(vals[0].to_display()))
-            }
-            "keys" => {
-                arity(1)?;
-                match &vals[0] {
-                    Value::Object(o) => {
-                        Ok(Value::List(o.iter().map(|(k, _)| Value::text(k)).collect()))
-                    }
-                    other => Err(runtime_err(
-                        "call.keys",
-                        format!("(keys …) of {}", other.type_name()),
-                        span,
-                    )),
-                }
-            }
+            f if pure_call(f, &[]).is_some() => match pure_call(f, &vals) {
+                Some(out) => out.map_err(|(code, msg)| runtime_err(code, msg, span)),
+                None => unreachable!("pure_call answered for `{f}`"),
+            },
             // `check` already rejects names outside BUILTIN_FUNCTIONS
             // (check.unknown_function); `request.stream` only opens in `with`.
             other => Err(runtime_err(
@@ -2537,92 +2486,8 @@ fn lookup(frame: &Frame, path: &[String], span: Option<&SourceSpan>) -> RivetRes
     Ok(cur)
 }
 
-fn num(v: &Value) -> Option<f64> {
-    match v {
-        Value::Int(i) => Some(*i as f64),
-        Value::Float(f) => Some(*f),
-        _ => None,
-    }
-}
-
 fn arith(op: BinOp, l: Value, r: Value, span: &SourceSpan) -> RivetResult<Value> {
     binary(op, l, r).map_err(|e| e.with_span(Some(span.clone())))
-}
-
-fn binary(op: BinOp, l: Value, r: Value) -> RivetResult<Value> {
-    use BinOp::*;
-    let overflow = || RivetError::validation("value.overflow", "integer overflow");
-    Ok(match (op, l, r) {
-        (Eq, a, b) => Value::Bool(values_equal(&a, &b)),
-        (Ne, a, b) => Value::Bool(!values_equal(&a, &b)),
-        (And, a, b) => Value::Bool(a.truthy() && b.truthy()),
-        (Or, a, b) => {
-            if a.truthy() {
-                a
-            } else {
-                b
-            }
-        }
-        (Add, Value::Text(a), b) => Value::Text(a + &b.to_display()),
-        (Add, Value::List(mut a), Value::List(b)) => {
-            a.extend(b);
-            Value::List(a)
-        }
-        (Add, Value::Int(a), Value::Int(b)) => Value::Int(a.checked_add(b).ok_or_else(overflow)?),
-        (Sub, Value::Int(a), Value::Int(b)) => Value::Int(a.checked_sub(b).ok_or_else(overflow)?),
-        (Mul, Value::Int(a), Value::Int(b)) => Value::Int(a.checked_mul(b).ok_or_else(overflow)?),
-        (Div, Value::Int(_), Value::Int(0)) | (Rem, Value::Int(_), Value::Int(0)) => {
-            return Err(RivetError::validation(
-                "value.division_by_zero",
-                "division by zero",
-            ));
-        }
-        (Div, Value::Int(a), Value::Int(b)) => Value::Int(a.checked_div(b).ok_or_else(overflow)?),
-        (Rem, Value::Int(a), Value::Int(b)) => Value::Int(a.checked_rem(b).ok_or_else(overflow)?),
-        (op @ (Lt | Le | Gt | Ge), Value::Text(a), Value::Text(b)) => Value::Bool(match op {
-            Lt => a < b,
-            Le => a <= b,
-            Gt => a > b,
-            _ => a >= b,
-        }),
-        (op, a, b) => match (num(&a), num(&b)) {
-            (Some(x), Some(y)) => match op {
-                Add => Value::Float(x + y),
-                Sub => Value::Float(x - y),
-                Mul => Value::Float(x * y),
-                Div if y == 0.0 => {
-                    return Err(RivetError::validation(
-                        "value.division_by_zero",
-                        "division by zero",
-                    ));
-                }
-                Div => Value::Float(x / y),
-                Rem => Value::Float(x % y),
-                Lt => Value::Bool(x < y),
-                Le => Value::Bool(x <= y),
-                Gt => Value::Bool(x > y),
-                Ge => Value::Bool(x >= y),
-                _ => unreachable!(),
-            },
-            _ => {
-                return Err(RivetError::validation(
-                    "value.type",
-                    format!(
-                        "operator {op:?} does not apply to {} and {}",
-                        a.type_name(),
-                        b.type_name()
-                    ),
-                ));
-            }
-        },
-    })
-}
-
-fn values_equal(a: &Value, b: &Value) -> bool {
-    match (num(a), num(b)) {
-        (Some(x), Some(y)) => x == y,
-        _ => a == b,
-    }
 }
 
 /// DataSink that forwards items into a bounded channel.

@@ -95,14 +95,57 @@ pub struct SourceFile {
     pub text: String,
 }
 
-// vhco:domain SourceBundle { entry: string; root: string; files: SourceFile[] }
+// vhco:domain ImportDecl { path: string; alias: string; public: bool; span: SourceSpan; target: string }
+/// `import "PATH" as ALIAS [public]` (PROP-2026-0002 R19). `span` is the import
+/// line in the importing file; `target` is the canonical module alias the path
+/// resolved to (filled by `language.resolve_imports`, empty before).
+///
+/// ```text
+///  app.rivet:1  import "./users.rivet" as users public
+///               └─ path ─────────┘    └alias┘ └public┘   target = "users"
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ImportDecl {
+    pub path: String,
+    pub alias: String,
+    pub public: bool,
+    pub span: SourceSpan,
+    pub target: String,
+}
+
+// vhco:domain ModuleRef { alias: string; file: string; public: bool; depth: int; imports: ImportDecl[]; policy_ignored: bool }
+/// One resolved file of a bundle. `alias` is the canonical namespace of its
+/// operation IDs (`""` for the entry bundle, `users`, `users.b` for nested
+/// imports); `depth` is 0 for a root (the entry or a host-loaded module);
+/// `public` means every import on some chain from a root is `public`, so its
+/// operations are listed on the surfaces. `policy_ignored` records a
+/// `policy.json` beside the module that the loader's policy overrides.
+///
+/// ```text
+///  "" app.rivet (depth 0) ──▶ users (depth 1, internal) ──▶ users.b (depth 2)
+///                         └─▶ billing (depth 1, public)
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ModuleRef {
+    pub alias: String,
+    pub file: String,
+    pub public: bool,
+    pub depth: u32,
+    pub imports: Vec<ImportDecl>,
+    pub policy_ignored: bool,
+}
+
+// vhco:domain SourceBundle { entry: string; root: string; files: SourceFile[]; modules: ModuleRef[] }
 /// The in-memory source handed to the compiler. Loading the bytes is host
-/// bootstrap I/O; compilation itself never reads files.
+/// bootstrap I/O; compilation itself never reads files. `modules` is empty
+/// for a single-file bundle (every file compiles into the entry namespace);
+/// `language.resolve_imports` fills it with one `ModuleRef` per file.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SourceBundle {
     pub entry: String,
     pub root: String,
     pub files: Vec<SourceFile>,
+    pub modules: Vec<ModuleRef>,
 }
 
 impl SourceBundle {
@@ -114,7 +157,13 @@ impl SourceBundle {
                 path: path.to_string(),
                 text: text.to_string(),
             }],
+            modules: Vec::new(),
         }
+    }
+
+    /// The resolved module a file belongs to (none for a single-file bundle).
+    pub fn module_of(&self, file: &str) -> Option<&ModuleRef> {
+        self.modules.iter().find(|m| m.file == file)
     }
 
     pub fn text_of(&self, path: &str) -> Option<&str> {

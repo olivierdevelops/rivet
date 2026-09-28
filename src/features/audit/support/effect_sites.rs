@@ -175,6 +175,8 @@ pub fn norm_rel(p: &str) -> String {
 /// How a template placeholder is classified.
 enum Placeholder {
     Param(String),
+    /// A `global` constant (or a path into one): substituted as its value (R9).
+    Const(String),
     Other(String),
 }
 
@@ -189,6 +191,8 @@ struct Walker<'a> {
     conditions: Vec<String>,
     /// `as NAME` of the `with` block being analyzed.
     bind: Option<String>,
+    /// The operation file's frozen globals (PROP-2026-0002 R9).
+    globals: Option<&'a crate::domain::ir::GlobalScope>,
 }
 
 impl<'a> Walker<'a> {
@@ -203,7 +207,24 @@ impl<'a> Walker<'a> {
             handles: HashMap::new(),
             conditions: Vec::new(),
             bind: None,
+            globals: program.global_scope(&op.file),
         }
+    }
+
+    /// The value of a global (or a path into one) this operation can read.
+    /// `check.global_shadow` guarantees params and locals never reuse the name.
+    fn global(&self, path: &[String]) -> Option<Value> {
+        let g = self.globals?;
+        if self.param(&path[0]).is_some() {
+            return None;
+        }
+        crate::domain::const_eval::read_path(g.get(&path[0])?, &path[1..])
+    }
+
+    /// Fold an expression that reads only literals and globals.
+    fn constant(&self, e: &Expr) -> Option<Value> {
+        let lookup = |p: &[String]| self.global(p);
+        crate::domain::const_eval::fold(e, &lookup).ok().flatten()
     }
 
     fn param(&self, name: &str) -> Option<&crate::domain::outputs::ParamSpec> {
@@ -214,6 +235,8 @@ impl<'a> Walker<'a> {
         let head = path.first().cloned().unwrap_or_default();
         if path.len() == 1 && self.param(&head).is_some() {
             Placeholder::Param(head)
+        } else if let Some(v) = self.global(path) {
+            Placeholder::Const(v.to_display())
         } else {
             Placeholder::Other(path.join("."))
         }
@@ -221,6 +244,13 @@ impl<'a> Walker<'a> {
 
     /// Turn a target expression into (template, params, knowledge, expression).
     fn template_of(&self, e: &Expr) -> (String, Vec<String>, Knowledge, Option<String>) {
+        self.template_in(e, false)
+    }
+
+    /// `url`: a global interpolated after the URL's scheme and authority is
+    /// percent-encoded for its component, exactly as the runtime's
+    /// component-aware interpolation does (`domain::transports::assemble_url`).
+    fn template_in(&self, e: &Expr, url: bool) -> (String, Vec<String>, Knowledge, Option<String>) {
         let mut params = Vec::new();
         let mut dynamic = false;
         let mut text = String::new();
@@ -231,11 +261,31 @@ impl<'a> Walker<'a> {
                     params.push(n);
                 }
             }
+            Placeholder::Const(v) => {
+                if url {
+                    use crate::domain::transports::{UrlPiece, assemble_url};
+                    match assemble_url(&[UrlPiece::Literal(text.clone()), UrlPiece::Value(v)]) {
+                        Ok(full) => *text = full,
+                        Err(_) => dynamic = true,
+                    }
+                } else {
+                    text.push_str(&v);
+                }
+            }
             Placeholder::Other(x) => {
                 text.push_str(&format!("{{{x}}}"));
                 dynamic = true;
             }
         };
+        // Templates and paths are substituted part by part below (component-aware
+        // for URLs); any other expression is folded whole.
+        if !matches!(e, Expr::Lit(_) | Expr::Template(_) | Expr::Path(..))
+            && let Some(v) = self.constant(e)
+            && !matches!(v, Value::List(_) | Value::Object(_) | Value::Null)
+        {
+            // Built only from literals and globals: an exact target (R9).
+            return (v.to_display(), Vec::new(), Knowledge::Exact, None);
+        }
         match e {
             Expr::Lit(Value::Text(s)) => text.push_str(s),
             Expr::Template(parts) => {
@@ -251,6 +301,7 @@ impl<'a> Walker<'a> {
                     text = format!("{{{n}}}");
                     params.push(n);
                 }
+                Placeholder::Const(v) => text = v,
                 Placeholder::Other(x) => {
                     return (String::new(), Vec::new(), Knowledge::Dynamic, Some(x));
                 }
@@ -336,7 +387,7 @@ impl<'a> Walker<'a> {
         default_scheme: &str,
         query: &[(String, String, Vec<String>)],
     ) -> (SiteTarget, Knowledge, Option<String>) {
-        let (mut template, mut params, mut knowledge, expression) = self.template_of(e);
+        let (mut template, mut params, mut knowledge, expression) = self.template_in(e, true);
         if template.is_empty() {
             return (SiteTarget::default(), knowledge, expression);
         }
@@ -558,8 +609,14 @@ impl<'a> Walker<'a> {
     fn expr(&mut self, e: &Expr) {
         match e {
             Expr::Call { func, args, span } => {
+                // A literal ID, or a global holding one (R9), is a static edge.
                 if (func == "request" || func == "request.stream")
-                    && let Some(id) = args.first().and_then(Expr::const_text)
+                    && let Some(id) = args.first().and_then(|a| {
+                        a.const_text().or_else(|| match self.constant(a) {
+                            Some(Value::Text(t)) => Some(t),
+                            _ => None,
+                        })
+                    })
                 {
                     self.call(&id, span);
                 }

@@ -482,7 +482,7 @@ pub enum OperationKind {
     Pipeline,
 }
 
-// vhco:domain Operation { id: string; kind: OperationKind; name: string; description?: string; private: bool; params: ParamSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; body: Stmt[]; span: SourceSpan; file: string; calls: string[] }
+// vhco:domain Operation { id: string; kind: OperationKind; name: string; description?: string; private: bool; params: ParamSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; body: Stmt[]; span: SourceSpan; file: string; calls: string[]; module: string; param_spans: SourceSpan[] }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Operation {
     pub id: String,
@@ -503,6 +503,11 @@ pub struct Operation {
     pub file: String,
     /// Literal `(request "id" …)` targets, for call-graph checks.
     pub calls: Vec<String>,
+    /// Canonical module alias the operation was namespaced by (`""` for the
+    /// entry bundle, `users` for `import "./users.rivet" as users`).
+    pub module: String,
+    /// Span of each parameter's name, parallel to `params` (check diagnostics).
+    pub param_spans: Vec<SourceSpan>,
 }
 
 // vhco:domain Declaration { name: string; kind: string; head: Arg[]; options: OptionLine[]; span: SourceSpan }
@@ -521,7 +526,44 @@ impl Declaration {
     }
 }
 
-// vhco:domain CompiledProgram { operations: Operation[]; connectors: Declaration[]; auth_profiles: Declaration[]; source_hash: string; entry: string; root: string; warnings: RivetError[] }
+// vhco:domain GlobalDecl { name: string; expr: Expr; span: SourceSpan; expr_span: SourceSpan }
+/// `global NAME = EXPR` at the top level of one file (PROP-2026-0002 R7).
+/// `span` covers NAME; the file is `span.file`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlobalDecl {
+    pub name: String,
+    pub expr: Expr,
+    pub span: SourceSpan,
+    /// Span of EXPR (the right-hand side), for check diagnostics.
+    pub expr_span: SourceSpan,
+}
+
+// vhco:domain GlobalScope { file: string; names: string[]; values: Value }
+/// The frozen, read-only constants of one file, evaluated once at load in
+/// declaration order. Frames look names up here after locals and params.
+///
+/// ```text
+///  lookup(name): locals ──▶ params ──▶ GlobalScope(file of the operation) ──▶ not defined
+/// ```
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct GlobalScope {
+    pub file: String,
+    pub names: Vec<String>,
+    /// An object `{name: value}` in declaration order.
+    pub values: Value,
+}
+
+impl GlobalScope {
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.values.get(name)
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.names.iter().any(|n| n == name)
+    }
+}
+
+// vhco:domain CompiledProgram { operations: Operation[]; connectors: Declaration[]; auth_profiles: Declaration[]; source_hash: string; entry: string; root: string; warnings: RivetError[]; globals: GlobalDecl[]; global_scopes: GlobalScope[]; modules: ModuleRef[] }
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct CompiledProgram {
     pub operations: Vec<Operation>,
@@ -532,9 +574,34 @@ pub struct CompiledProgram {
     /// Bundle root: relative paths in source resolve against it.
     pub root: String,
     pub warnings: Vec<crate::domain::errors::RivetError>,
+    /// Every `global` declaration of every file, in source order.
+    pub globals: Vec<GlobalDecl>,
+    /// One frozen scope per file that declares globals (`language.compile_globals`).
+    pub global_scopes: Vec<GlobalScope>,
+    /// Resolved modules (empty for a single-file bundle).
+    pub modules: Vec<super::source::ModuleRef>,
 }
 
 impl CompiledProgram {
+    /// The frozen globals of `file` (none when the file declares no globals).
+    pub fn global_scope(&self, file: &str) -> Option<&GlobalScope> {
+        self.global_scopes.iter().find(|g| g.file == file)
+    }
+
+    /// The resolved module a file belongs to.
+    pub fn module_of(&self, file: &str) -> Option<&super::source::ModuleRef> {
+        self.modules.iter().find(|m| m.file == file)
+    }
+
+    /// Imported module files (not the entry), in resolution order.
+    pub fn module_files(&self) -> Vec<String> {
+        self.modules
+            .iter()
+            .filter(|m| !m.alias.is_empty())
+            .map(|m| m.file.clone())
+            .collect()
+    }
+
     pub fn operation(&self, id: &str) -> Option<&Operation> {
         self.operations.iter().find(|o| o.id == id)
     }
@@ -545,6 +612,118 @@ impl CompiledProgram {
 
     pub fn auth_profile(&self, name: &str) -> Option<&Declaration> {
         self.auth_profiles.iter().find(|c| c.name == name)
+    }
+}
+
+impl Expr {
+    /// Visit this expression and every sub-expression, parents first; `f` may
+    /// rewrite a node in place (the rewritten node's children are visited).
+    pub fn walk_mut(&mut self, f: &mut dyn FnMut(&mut Expr)) {
+        f(self);
+        match self {
+            Expr::List(items) => items.iter_mut().for_each(|i| i.walk_mut(f)),
+            Expr::Object(pairs) => pairs.iter_mut().for_each(|(_, v)| v.walk_mut(f)),
+            Expr::Call { args, .. } => args.iter_mut().for_each(|a| a.walk_mut(f)),
+            Expr::Binary { lhs, rhs, .. } => {
+                lhs.walk_mut(f);
+                rhs.walk_mut(f);
+            }
+            Expr::Not(i) | Expr::Neg(i) => i.walk_mut(f),
+            Expr::Lit(_) | Expr::Template(_) | Expr::Path(..) => {}
+        }
+    }
+}
+
+fn walk_args_mut(args: &mut [Arg], f: &mut dyn FnMut(&mut Expr)) {
+    for a in args {
+        if let Arg::Expr(e, _) = a {
+            e.walk_mut(f);
+        }
+    }
+}
+
+fn walk_options_mut(options: &mut [OptionLine], f: &mut dyn FnMut(&mut Expr)) {
+    for o in options {
+        walk_args_mut(&mut o.args, f);
+        walk_options_mut(&mut o.children, f);
+    }
+}
+
+fn walk_form_mut(form: &mut EffectForm, f: &mut dyn FnMut(&mut Expr)) {
+    walk_args_mut(&mut form.head, f);
+    walk_options_mut(&mut form.options, f);
+}
+
+fn walk_rhs_mut(r: &mut Rhs, f: &mut dyn FnMut(&mut Expr)) {
+    match r {
+        Rhs::Expr(e) => e.walk_mut(f),
+        Rhs::Effect(form) => walk_form_mut(form, f),
+        Rhs::Member(m) => walk_args_mut(&mut m.args, f),
+        Rhs::Map { iter, body, .. } => {
+            iter.walk_mut(f);
+            walk_body_exprs_mut(body, f);
+        }
+        Rhs::Poll { body, .. } => walk_body_exprs_mut(body, f),
+    }
+}
+
+/// Visit every expression of an operation body (statements, effect heads,
+/// option lines, DAG nodes, nested blocks), parents first (module call
+/// resolution rewrites calls through this).
+pub fn walk_body_exprs_mut(body: &mut [Stmt], f: &mut dyn FnMut(&mut Expr)) {
+    for s in body {
+        match s {
+            Stmt::Assign { rhs, options, .. } => {
+                walk_rhs_mut(rhs, f);
+                walk_options_mut(options, f);
+            }
+            Stmt::Return { value, .. } | Stmt::Yield { value, .. } | Stmt::Emit { value, .. } => {
+                walk_rhs_mut(value, f)
+            }
+            Stmt::Append { value, .. } => value.walk_mut(f),
+            Stmt::Fail { details, .. } => details.walk_mut(f),
+            Stmt::Until { cond, .. } => cond.walk_mut(f),
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                cond.walk_mut(f);
+                walk_body_exprs_mut(then, f);
+                walk_body_exprs_mut(otherwise, f);
+            }
+            Stmt::While { cond, body, .. } => {
+                cond.walk_mut(f);
+                walk_body_exprs_mut(body, f);
+            }
+            Stmt::For { iter, body, .. } => {
+                iter.walk_mut(f);
+                walk_body_exprs_mut(body, f);
+            }
+            Stmt::Try { body, handler, .. } => {
+                walk_body_exprs_mut(body, f);
+                walk_body_exprs_mut(handler, f);
+            }
+            Stmt::Dag { nodes, .. } => nodes.iter_mut().for_each(|n| n.expr.walk_mut(f)),
+            Stmt::Concurrent { tasks, .. } => tasks
+                .iter_mut()
+                .for_each(|(_, b)| walk_body_exprs_mut(b, f)),
+            Stmt::Iterate { body, .. } | Stmt::Scope { body, .. } => walk_body_exprs_mut(body, f),
+            Stmt::With {
+                form, source, body, ..
+            } => {
+                walk_form_mut(form, f);
+                if let Some(e) = source {
+                    e.walk_mut(f);
+                }
+                walk_body_exprs_mut(body, f);
+            }
+            Stmt::Effect { form, .. } => walk_form_mut(form, f),
+            Stmt::Member { call, .. } => walk_args_mut(&mut call.args, f),
+            Stmt::Call { expr, .. } => expr.walk_mut(f),
+            Stmt::Break { .. } | Stmt::Secret { .. } => {}
+        }
     }
 }
 

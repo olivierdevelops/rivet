@@ -16,6 +16,20 @@ function end
 end
 
 # ---------------------------------------------------------------- declarations
+# import "./users.rivet" as users [public] — top level, before every declaration
+# (PROP-2026-0002 R19); Rivet lowering parses the tail (syntax.import).
+function import
+    arg literal "import"
+    arg capture rest tail default ""
+end
+
+# global NAME = EXPR — a top-level constant evaluated once at load
+# (PROP-2026-0002 R7); Rivet lowering splits NAME and EXPR (syntax.global).
+function global
+    arg literal "global"
+    arg capture rest tail default ""
+end
+
 function operation
     arg literal "operation"
     arg capture id dotted_ident

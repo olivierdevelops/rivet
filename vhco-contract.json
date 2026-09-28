@@ -1817,6 +1817,10 @@
                 "todo": "Hand each bundled source to the Parser port; the capy_parser adapter calls only Capy's public Library::parse and converts the ParseResult into Rivet's own SyntaxTree (domain::ast access is confined to infra/capy_parser.rs), keeping line/column spans (no byte offsets). If any diagnostic or recovered error region exists, return every syntax diagnostic (kind syntax, exit 2) and lower nothing. The grammar is Capy prefix calls: (request \"id\" {k: v}), (request.stream \"id\" {...}), named arguments as a trailing object, `x = (f a b)` and `node n after [a, b] = (request ...)`; durations are quoted strings matching ^[0-9]+(ms|s|m|h)$; ${...} holds dotted paths only; string escapes are limited to \\n \\t \\\" \\\\ \\xNN \\uNNNN."
               },
               {
+                "id": "namespace_modules",
+                "todo": "When the bundle was resolved into modules (SourceBundle.modules), namespace every operation of an imported file as ALIAS.ID (transitively: users.b.get) and keep the entry file's IDs; rewrite each literal call target in the file's own scope — `(request \"get\")` and `(get {…})` name the file's own operations, `(request \"users.get\")` and `(users.get {…})` go through the file's import aliases to the canonical module, connector IDs stay as declared, `rivet.*` is built in; a call a module cannot resolve is check.unknown_operation, a call to another module's `private true` operation is refused, and a namespaced ID that equals another operation's ID is check.import_collision at the import. Operations of a module that no chain of `public` imports reaches become private (internal: callable inside the bundle, never listed). Connector and auth profile names stay bundle-unique (the loader's policy grants them by name; a duplicate across files is check.import_collision) and each file may reference only its own."
+              },
+              {
                 "id": "compile_catalog",
                 "todo": "Parse any number of top-level operation/pipeline declarations per source file; retain callable ID, optional display name, description and described parameter schema. Lower each operation's output/emits/receives declarations through compile_output_spec and attach the resulting OutputSpec (plus its declared errors) to the RegistryEntry. Reject duplicate IDs across the bundle atomically with both source spans (registry.duplicate_id, exit 2) and build one immutable catalog for every surface, including the built-ins rivet.list, rivet.describe, rivet.outputs, rivet.request and rivet.sessions.*. Validate reserved rivet.* IDs and private visibility. A `fail` with a code not declared by an `error` line is a check warning. With strict_docs, reject blank public operation/parameter descriptions, a missing output description on any public operation, a missing description on any output/emits/receives field, and undeclared fail codes. Validate gRPC descriptor methods and cardinality without reflection or protoc I/O."
               },
@@ -1827,6 +1831,10 @@
               {
                 "id": "check_auth_transport",
                 "todo": "Validate OAuth profiles, declared token stores, QUIC ALPN and stream ownership, UDP modes and HTTP version/fallback choices; include token refresh, credential storage, UDP binds and QUIC migration in the static effect graph."
+              },
+              {
+                "id": "compile_globals",
+                "todo": "Collect every file's `global NAME = EXPR` lines (syntax.global when malformed or inside an operation) and evaluate them once through language.compile_globals; its check.global_* diagnostics join the other errors and the frozen GlobalScope of each file is kept on the program for the interpreter and the effect analysis."
               }
             ],
             "failures": [
@@ -1844,18 +1852,18 @@
           {
             "name": "compile_globals",
             "label": "Compile global constants",
-            "about": "Evaluates the bundle's top-level `global NAME = EXPR` declarations once at load, in declaration order, into a frozen read-only GlobalScope shared by every operation (PROP-2026-0002 R7-R9).",
+            "about": "Evaluates the bundle's top-level `global NAME = EXPR` declarations once at load, in declaration order, into one frozen read-only GlobalScope per file shared by every operation of that file (PROP-2026-0002 R7-R9).",
             "in": [
               {
                 "name": "input",
                 "type": "CompiledProgram"
               }
             ],
-            "out": "GlobalScope",
+            "out": "GlobalScope[]",
             "examples": [
               {
                 "input": "input={globals:[api = \"https://api.example.com\", users_url = \"${api}/users\"]}",
-                "result": "{ \"names\": [\"api\", \"users_url\"], \"values\": {\"api\": \"https://api.example.com\", \"users_url\": \"https://api.example.com/users\"} }"
+                "result": "[{ \"file\": \"app.rivet\", \"names\": [\"api\", \"users_url\"], \"values\": {\"api\": \"https://api.example.com\", \"users_url\": \"https://api.example.com/users\"} }]"
               }
             ],
             "todos": [
@@ -1889,6 +1897,18 @@
                 "id": "duplicate",
                 "when": "a global name is declared twice",
                 "code": "check.global_duplicate (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "shadow",
+                "when": "a param, loop variable, `with … as NAME`, map item, dag node, task or secret reuses a global name",
+                "code": "check.global_shadow (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "assign",
+                "when": "`NAME = …` or `NAME += …` assigns to a global",
+                "code": "check.global_assign (exit 2)",
                 "propagates": "returns"
               }
             ]
@@ -1945,6 +1965,141 @@
                 "id": "syntax",
                 "when": "the source does not parse",
                 "code": "syntax.* (exit 2) with the tokens before the error",
+                "propagates": "returns"
+              }
+            ]
+          },
+          {
+            "name": "resolve_imports",
+            "label": "Resolve file imports",
+            "about": "Follows every `import \"PATH\" as ALIAS [public]` from the bundle's roots (the entry file and host-loaded modules), reads each imported file once through the source loader confined to the runtime root, assigns each file its canonical namespace (ALIAS, transitively ALIAS.B), detects cycles and limits, and marks which modules are public (PROP-2026-0002 R19-R21, R24). Compiles nothing.",
+            "in": [
+              {
+                "name": "input",
+                "type": "SourceBundle"
+              }
+            ],
+            "out": "SourceBundle",
+            "needs": [
+              {
+                "name": "Parser",
+                "functions": [
+                  {
+                    "name": "parse",
+                    "in": [
+                      {
+                        "type": "SourceBundle"
+                      }
+                    ],
+                    "out": "SyntaxTree"
+                  }
+                ]
+              },
+              {
+                "name": "SourceLoader",
+                "functions": [
+                  {
+                    "name": "load",
+                    "in": [
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "out": "SourceBundle"
+                  },
+                  {
+                    "name": "read_module",
+                    "in": [
+                      {
+                        "name": "root",
+                        "type": "string"
+                      },
+                      {
+                        "name": "path",
+                        "type": "string"
+                      }
+                    ],
+                    "out": "SourceFile"
+                  },
+                  {
+                    "name": "policy_beside",
+                    "in": [
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "out": "bool"
+                  }
+                ]
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={entry:\"app.rivet\", files:[app.rivet: import \"./users.rivet\" as users]}",
+                "result": "{ \"modules\": [{\"alias\": \"\", \"file\": \"app.rivet\"}, {\"alias\": \"users\", \"file\": \"users.rivet\", \"public\": false, \"depth\": 1}] }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "read_roots",
+                "todo": "Start from the bundle's roots: SourceBundle.modules entries at depth 0 (the entry file, namespace \"\", and every host-loaded module under its alias, public); when none are given the entry file is the only root. Files already in SourceBundle.files are reused as they are (never re-read); only new files go through the SourceLoader."
+              },
+              {
+                "id": "parse_imports",
+                "todo": "Parse each file with the Parser and lower only its `import` lines: an import after any other top-level line, or not of the shape `import \"PATH\" as ALIAS [public]` (relative PATH, identifier ALIAS, `rivet` reserved), is syntax.import at the import line; a file with syntax errors contributes no imports (compile_program reports them)."
+              },
+              {
+                "id": "confine_paths",
+                "todo": "Resolve PATH relative to the importing file's directory and normalize it lexically; a result outside the runtime root is permission.import_outside_root (exit 3) at the import; the file is read through SourceLoader.read_module, which refuses a symlink anywhere below the root (permission.import_outside_root) and a missing file (not_found.import, exit 4)."
+              },
+              {
+                "id": "compile_once",
+                "todo": "Walk breadth-first so the shallowest import names a file: its canonical alias is the importer's alias + \".\" + ALIAS (\"users\", \"users.b\"); a file reached again (another alias or importer) keeps its first namespace and the new ImportDecl.target points at it, so every file compiles once. The same alias twice in one file is check.import_duplicate; more than 256 files or an import deeper than 16 levels is limit.imports (exit 5)."
+              },
+              {
+                "id": "detect_cycles",
+                "todo": "Depth-first over the import edges; an import that returns to a file on the current path is check.import_cycle at the first import of the cycle with the path in the message (`cyc.rivet → a.rivet → cyc.rivet`)."
+              },
+              {
+                "id": "mark_public",
+                "todo": "A module is public when some chain of imports from a root is `public` at every step (host-loaded modules are public roots); otherwise it is internal. A policy.json beside a module outside the loader's directory sets policy_ignored so compilation warns check.module_policy_ignored (the loader's policy is the only one)."
+              }
+            ],
+            "failures": [
+              {
+                "id": "syntax",
+                "when": "an import is malformed or placed after a declaration",
+                "code": "syntax.import (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "outside_root",
+                "when": "PATH escapes the runtime root or crosses a symlink",
+                "code": "permission.import_outside_root (exit 3)",
+                "propagates": "returns"
+              },
+              {
+                "id": "missing",
+                "when": "the imported file does not exist",
+                "code": "not_found.import (exit 4)",
+                "propagates": "returns"
+              },
+              {
+                "id": "cycle",
+                "when": "imports form a cycle",
+                "code": "check.import_cycle (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "duplicate",
+                "when": "one file uses the same alias twice",
+                "code": "check.import_duplicate (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "limits",
+                "when": "more than 256 files or depth over 16",
+                "code": "limit.imports (exit 5)",
                 "propagates": "returns"
               }
             ]
@@ -2443,6 +2598,86 @@
                 "file": "src/features/registry/inspect_outputs.rs",
                 "line": 38,
                 "snippet": "if let Some(id) = ids.first()"
+              }
+            ]
+          },
+          {
+            "name": "load_module",
+            "label": "Load a module",
+            "about": "Loads a .rivet file into a running runtime as a module object (`Runtime::load` / `load_as`): picks and checks the alias, compiles the current bundle plus the new root through the catalog store, and publishes the next immutable catalog snapshot; requests already running keep theirs (PROP-2026-0002 R22, R24).",
+            "in": [
+              {
+                "name": "input",
+                "type": "ModuleLoad"
+              }
+            ],
+            "out": "ModuleSummary",
+            "needs": [
+              {
+                "name": "CatalogStore",
+                "functions": [
+                  {
+                    "name": "current",
+                    "in": [],
+                    "out": "CatalogSnapshot"
+                  },
+                  {
+                    "name": "compile",
+                    "in": [
+                      {
+                        "type": "SourceBundle"
+                      }
+                    ],
+                    "out": "CatalogSnapshot"
+                  },
+                  {
+                    "name": "publish",
+                    "in": [
+                      {
+                        "type": "CatalogSnapshot"
+                      }
+                    ],
+                    "out": "Unit"
+                  }
+                ]
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={path:\"./users.rivet\"}",
+                "result": "{ \"alias\": \"users\", \"file\": \"users.rivet\", \"public\": true, \"operations\": [\"get\", \"list\"], \"warnings\": [] }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "pick_alias",
+                "todo": "Use the given alias or the file stem (`./lib/billing.rivet` → billing); it must be an identifier other than `rivet` (syntax.import) and not already a namespace of the current snapshot (check.import_duplicate)."
+              },
+              {
+                "id": "compile_next",
+                "todo": "Take the current CatalogSnapshot's bundle, add the file as a public root ModuleRef (depth 0) and hand it to CatalogStore.compile (resolve_imports + compile_program under the loader's policy); any error is returned unchanged and the current snapshot stays in place."
+              },
+              {
+                "id": "publish",
+                "todo": "CatalogStore.publish swaps the new snapshot in atomically (Arc); requests already running keep the snapshot they started with, new requests see the module's operations as ALIAS.ID."
+              },
+              {
+                "id": "summarize",
+                "todo": "Return ModuleSummary{alias, file, public, operations = the module's own IDs without the alias, warnings = its check.module_policy_ignored warnings}."
+              }
+            ],
+            "failures": [
+              {
+                "id": "alias",
+                "when": "the alias is not an identifier, is `rivet`, or is already loaded",
+                "code": "syntax.import / check.import_duplicate (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "compile",
+                "when": "the file or one of its imports fails to resolve or compile",
+                "code": "the resolve/compile error (not_found.import, permission.import_outside_root, syntax.*, check.*)",
+                "propagates": "returns"
               }
             ]
           }
@@ -3799,7 +4034,9 @@
           "registry/inspect_outputs",
           "serve/start_serve",
           "serve/parse_input",
-          "language/highlight_source"
+          "language/highlight_source",
+          "language/compile_globals",
+          "language/resolve_imports"
         ]
       },
       {
@@ -3881,7 +4118,10 @@
           "sessions/open_session",
           "sessions/read_events",
           "sessions/send_input",
-          "serve/parse_input"
+          "serve/parse_input",
+          "language/compile_globals",
+          "language/resolve_imports",
+          "registry/load_module"
         ]
       },
       {
@@ -5027,6 +5267,11 @@
           "lane": "lowerer"
         },
         {
+          "layer": "modules",
+          "ref": "namespace_modules",
+          "role": "ALIAS.ID namespacing, per-file call resolution, visibility and import collisions (only when the bundle has modules)"
+        },
+        {
           "layer": "duplicates",
           "ref": "check_duplicates",
           "role": "first declaration wins the span; the second is the error location"
@@ -5040,6 +5285,11 @@
           "layer": "refs",
           "ref": "check_references",
           "role": "walk option lines and effect heads for profile/connector names"
+        },
+        {
+          "layer": "globals",
+          "ref": "compile_globals",
+          "role": "one frozen GlobalScope per file; its check.global_* errors join the other diagnostics"
         },
         {
           "layer": "hash",
@@ -6026,12 +6276,12 @@
         }
       ],
       "through": [],
-      "output": "GlobalScope",
+      "output": "GlobalScope[]",
       "handling": [
         {
           "layer": "order",
           "ref": "GlobalDecl",
-          "role": "declaration order; duplicates and forward references refused"
+          "role": "declaration order per file; duplicates and forward references refused"
         },
         {
           "layer": "evaluate",
@@ -6039,9 +6289,14 @@
           "role": "pure constant subset only; effects, env, secrets, params and locals refused"
         },
         {
+          "layer": "shadow",
+          "ref": "check_shadowing",
+          "role": "params, bindings and assignments that reuse a global name refused"
+        },
+        {
           "layer": "freeze",
           "ref": "GlobalScope",
-          "role": "Arc-frozen, read-only, looked up after locals and params"
+          "role": "frozen, read-only, looked up after locals and params"
         }
       ]
     },
@@ -6074,6 +6329,125 @@
           "layer": "classify",
           "ref": "classify",
           "role": "keyword table from rivet.capy"
+        }
+      ]
+    },
+    {
+      "action": "language.resolve_imports",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet check (every import is resolved when the bundle loads)"
+        },
+        {
+          "surface": "library",
+          "invocation": "Runtime::builder().file(PATH).build() | Runtime::load(PATH)"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "SourceBundle"
+        }
+      ],
+      "through": [
+        "Parser",
+        "SourceLoader"
+      ],
+      "output": "SourceBundle",
+      "handling": [
+        {
+          "layer": "roots",
+          "ref": "SourceBundle.modules",
+          "role": "the entry file and host-loaded modules are the depth-0 roots"
+        },
+        {
+          "layer": "parse",
+          "ref": "parser.parse",
+          "role": "one SyntaxTree per file; only import lines are lowered here",
+          "lane": "parser"
+        },
+        {
+          "layer": "imports",
+          "ref": "lowerer.imports",
+          "role": "shape and placement (syntax.import)",
+          "lane": "lowerer"
+        },
+        {
+          "layer": "confine",
+          "ref": "confine",
+          "role": "relative to the importing file, lexically inside the runtime root"
+        },
+        {
+          "layer": "read",
+          "ref": "loader.read_module",
+          "role": "no symlinks, missing file = not_found.import; each file read once",
+          "lane": "loader"
+        },
+        {
+          "layer": "cycles",
+          "ref": "find_cycles",
+          "role": "check.import_cycle with the path"
+        },
+        {
+          "layer": "public",
+          "ref": "mark_public",
+          "role": "public iff a chain of public imports reaches the module"
+        },
+        {
+          "layer": "policy",
+          "ref": "loader.policy_beside",
+          "role": "a module policy.json is ignored (warning)",
+          "lane": "loader"
+        }
+      ]
+    },
+    {
+      "action": "registry.load_module",
+      "triggers": [
+        {
+          "surface": "library",
+          "invocation": "Runtime::load(PATH) | Runtime::load_as(PATH, ALIAS)"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "ModuleLoad"
+        }
+      ],
+      "through": [
+        "CatalogStore"
+      ],
+      "output": "ModuleSummary",
+      "handling": [
+        {
+          "layer": "current",
+          "ref": "store.current",
+          "role": "the snapshot new requests use today",
+          "lane": "store"
+        },
+        {
+          "layer": "alias",
+          "ref": "module_alias",
+          "role": "file stem or the given alias; identifier, not reserved, not loaded yet"
+        },
+        {
+          "layer": "compile",
+          "ref": "store.compile",
+          "role": "resolve_imports + compile_program over the current roots plus the new one",
+          "lane": "store"
+        },
+        {
+          "layer": "publish",
+          "ref": "store.publish",
+          "role": "atomic Arc swap; in-flight requests keep their snapshot",
+          "lane": "store"
+        },
+        {
+          "layer": "summary",
+          "ref": "ModuleSummary",
+          "role": "short operation IDs and load warnings"
         }
       ]
     }
@@ -8459,6 +8833,14 @@
         {
           "name": "calls",
           "type": "string[]"
+        },
+        {
+          "name": "module",
+          "type": "string"
+        },
+        {
+          "name": "param_spans",
+          "type": "SourceSpan[]"
         }
       ]
     },
@@ -8517,6 +8899,18 @@
         {
           "name": "warnings",
           "type": "RivetError[]"
+        },
+        {
+          "name": "globals",
+          "type": "GlobalDecl[]"
+        },
+        {
+          "name": "global_scopes",
+          "type": "GlobalScope[]"
+        },
+        {
+          "name": "modules",
+          "type": "ModuleRef[]"
         }
       ]
     },
@@ -9982,6 +10376,10 @@
         {
           "name": "files",
           "type": "SourceFile[]"
+        },
+        {
+          "name": "modules",
+          "type": "ModuleRef[]"
         }
       ]
     },
@@ -11021,12 +11419,20 @@
         {
           "name": "span",
           "type": "SourceSpan"
+        },
+        {
+          "name": "expr_span",
+          "type": "SourceSpan"
         }
       ]
     },
     {
       "name": "GlobalScope",
       "fields": [
+        {
+          "name": "file",
+          "type": "string"
+        },
         {
           "name": "names",
           "type": "string[]"
@@ -11142,6 +11548,115 @@
         {
           "name": "abi_version",
           "type": "int"
+        }
+      ]
+    },
+    {
+      "name": "ImportDecl",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "span",
+          "type": "SourceSpan"
+        },
+        {
+          "name": "target",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ModuleRef",
+      "fields": [
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "depth",
+          "type": "int"
+        },
+        {
+          "name": "imports",
+          "type": "ImportDecl[]"
+        },
+        {
+          "name": "policy_ignored",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "ModuleLoad",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "alias?",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "ModuleSummary",
+      "fields": [
+        {
+          "name": "alias",
+          "type": "string"
+        },
+        {
+          "name": "file",
+          "type": "string"
+        },
+        {
+          "name": "public",
+          "type": "bool"
+        },
+        {
+          "name": "operations",
+          "type": "string[]"
+        },
+        {
+          "name": "warnings",
+          "type": "RivetError[]"
+        }
+      ]
+    },
+    {
+      "name": "CatalogSnapshot",
+      "fields": [
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "bundle",
+          "type": "SourceBundle"
+        },
+        {
+          "name": "program",
+          "type": "CompiledProgram"
         }
       ]
     }

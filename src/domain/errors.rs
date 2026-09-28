@@ -398,6 +398,64 @@ impl fmt::Display for RivetError {
 
 impl std::error::Error for RivetError {}
 
+/// Error codes added by PROP-2026-0002 for globals (R8) and file modules
+/// (R21, R24), with the kind that fixes their registry row
+/// (kind → exit code → HTTP status → retryable, as for every other code).
+///
+/// ```text
+///  code                              kind        exit  HTTP  retryable
+///  syntax.global                     syntax        2    422   no
+///  check.global_*                    syntax        2    422   no
+///  syntax.import                     syntax        2    422   no
+///  not_found.import                  not_found     4    404   no
+///  permission.import_outside_root    permission    3    403   no
+///  check.import_cycle|duplicate|collision  syntax  2    422   no
+///  limit.imports                     limit         5    429   yes (kind rule)
+///  check.module_policy_ignored       warning only (never fails a load)
+/// ```
+pub mod codes {
+    pub const SYNTAX_GLOBAL: &str = "syntax.global";
+    pub const GLOBAL_NOT_CONSTANT: &str = "check.global_not_constant";
+    pub const GLOBAL_FORWARD_REF: &str = "check.global_forward_ref";
+    pub const GLOBAL_DUPLICATE: &str = "check.global_duplicate";
+    pub const GLOBAL_SHADOW: &str = "check.global_shadow";
+    pub const GLOBAL_ASSIGN: &str = "check.global_assign";
+    pub const SYNTAX_IMPORT: &str = "syntax.import";
+    pub const IMPORT_NOT_FOUND: &str = "not_found.import";
+    pub const IMPORT_OUTSIDE_ROOT: &str = "permission.import_outside_root";
+    pub const IMPORT_CYCLE: &str = "check.import_cycle";
+    pub const IMPORT_DUPLICATE: &str = "check.import_duplicate";
+    pub const IMPORT_COLLISION: &str = "check.import_collision";
+    pub const LIMIT_IMPORTS: &str = "limit.imports";
+    pub const MODULE_POLICY_IGNORED: &str = "check.module_policy_ignored";
+}
+
+/// Registry rows of the PROP-2026-0002 language and module codes.
+pub const LANGUAGE_CODES: &[(&str, ErrorKind)] = &[
+    (codes::SYNTAX_GLOBAL, ErrorKind::Syntax),
+    (codes::GLOBAL_NOT_CONSTANT, ErrorKind::Syntax),
+    (codes::GLOBAL_FORWARD_REF, ErrorKind::Syntax),
+    (codes::GLOBAL_DUPLICATE, ErrorKind::Syntax),
+    (codes::GLOBAL_SHADOW, ErrorKind::Syntax),
+    (codes::GLOBAL_ASSIGN, ErrorKind::Syntax),
+    (codes::SYNTAX_IMPORT, ErrorKind::Syntax),
+    (codes::IMPORT_NOT_FOUND, ErrorKind::NotFound),
+    (codes::IMPORT_OUTSIDE_ROOT, ErrorKind::Permission),
+    (codes::IMPORT_CYCLE, ErrorKind::Syntax),
+    (codes::IMPORT_DUPLICATE, ErrorKind::Syntax),
+    (codes::IMPORT_COLLISION, ErrorKind::Syntax),
+    (codes::LIMIT_IMPORTS, ErrorKind::Limit),
+    (codes::MODULE_POLICY_IGNORED, ErrorKind::Syntax),
+];
+
+/// The registered kind of a PROP-2026-0002 language or module code.
+pub fn language_code_kind(code: &str) -> Option<ErrorKind> {
+    LANGUAGE_CODES
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, k)| *k)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,5 +475,30 @@ mod tests {
         assert_eq!(ErrorKind::Cancelled.exit_code(), 130);
         assert_eq!(ErrorKind::Validation.http_status(), 422);
         assert_eq!(ErrorKind::Unsupported.http_status(), 501);
+    }
+
+    #[test]
+    fn language_codes_have_their_registry_rows() {
+        let row = |c: &str| {
+            let k = language_code_kind(c).unwrap();
+            (k.exit_code(), k.http_status(), k.retryable())
+        };
+        for c in [
+            codes::SYNTAX_GLOBAL,
+            codes::GLOBAL_NOT_CONSTANT,
+            codes::GLOBAL_FORWARD_REF,
+            codes::GLOBAL_DUPLICATE,
+            codes::GLOBAL_SHADOW,
+            codes::GLOBAL_ASSIGN,
+            codes::SYNTAX_IMPORT,
+            codes::IMPORT_CYCLE,
+            codes::IMPORT_DUPLICATE,
+            codes::IMPORT_COLLISION,
+        ] {
+            assert_eq!(row(c), (2, 422, false), "{c}");
+        }
+        assert_eq!(row(codes::IMPORT_NOT_FOUND), (4, 404, false));
+        assert_eq!(row(codes::IMPORT_OUTSIDE_ROOT), (3, 403, false));
+        assert_eq!(row(codes::LIMIT_IMPORTS), (5, 429, true));
     }
 }

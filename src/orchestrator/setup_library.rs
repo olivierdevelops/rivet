@@ -11,7 +11,7 @@
 //!     └─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
 //! ```
 
-// vhco:surface library kind library calls language/compile_program, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface library kind library calls language/compile_program, language/compile_globals, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", DATA, None)
 // vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", DATA, None)
 // vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", DATA, None)
@@ -19,6 +19,7 @@
 // vhco:trigger library auth/cancel_authorization = Runtime::request("rivet.auth.cancel", DATA, None)
 // vhco:trigger library serve/parse_input = Runtime::call_json(INPUT_JSON)
 // vhco:trigger library language/compile_program = Runtime::builder().file(PATH).build()
+// vhco:trigger library language/compile_globals = Runtime::builder().file(PATH).build()
 // vhco:trigger library policy/load_policy = Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)
 // vhco:trigger library execution/request_operation = Runtime::call(InputEnvelope) | Runtime::request(ID, DATA, sink) | Runtime::scope(|scope| …) scope.stream(ID, DATA) | scope.duplex(ID, DATA)
 // vhco:trigger library registry/describe_operations = Runtime::list() | Runtime::describe(IDS)
