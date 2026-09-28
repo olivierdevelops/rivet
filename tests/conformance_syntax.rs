@@ -441,3 +441,85 @@ fn cli_renders_the_exact_location() {
     assert_eq!(e["source"]["line"], 4);
     assert_eq!(e["source"]["column"], 17);
 }
+
+// vhco:test language.compile_program -- G34: `if COND … else … end` pairs the else section with its `if` (nested pairs stay with their own `if`) and lowers into Stmt::If.otherwise
+#[test]
+fn if_else_pairs_into_otherwise() {
+    let p = compile(&op(
+        "x = 1\nif x > 0\n    if x > 5\n        y = \"big\"\n    else\n        y = \"small\"\n    end\nelse\n    y = \"neg\"\nend\nif x == 1\n    z = 1\nend\nreturn y",
+    ))
+    .unwrap();
+    let body = &p.operation("t.run").unwrap().body;
+    let Stmt::If {
+        then, otherwise, ..
+    } = &body[1]
+    else {
+        panic!("expected if, got {:?}", body[1]);
+    };
+    assert_eq!(then.len(), 1);
+    assert_eq!(otherwise.len(), 1, "outer else holds one assignment");
+    let Stmt::If {
+        then: inner_then,
+        otherwise: inner_else,
+        ..
+    } = &then[0]
+    else {
+        panic!("expected nested if");
+    };
+    assert_eq!((inner_then.len(), inner_else.len()), (1, 1));
+    let Stmt::If { otherwise, .. } = &body[2] else {
+        panic!("expected plain if");
+    };
+    assert!(
+        otherwise.is_empty(),
+        "an `if` without else keeps an empty otherwise"
+    );
+}
+
+// vhco:test language.compile_program -- G34: an orphan `else`, a second `else` and `else if COND` are syntax errors at the `else` line
+#[test]
+fn orphan_and_duplicate_else_are_rejected() {
+    let e = err(&op("x = 1\nelse\n    x = 2\nend\nreturn x"));
+    assert_eq!(e.code, "syntax.else_without_if");
+    assert_eq!((span(&e).0, span(&e).1), (4, 5));
+
+    let e = err(&op(
+        "x = 1\nwhile x > 1\n    x = 0\nelse\n    x = 2\nend\nreturn x",
+    ));
+    assert!(
+        all_errors(&e)
+            .iter()
+            .any(|x| x.code == "syntax.else_without_if" && span(x).0 == 6),
+        "{e:?}"
+    );
+
+    let e = err(&op(
+        "x = 1\nif x\n    y = 1\nelse\n    y = 2\nelse\n    y = 3\nend\nreturn y",
+    ));
+    assert!(
+        all_errors(&e)
+            .iter()
+            .any(|x| x.code == "syntax.else_without_if"),
+        "{e:?}"
+    );
+
+    let e = err(&op(
+        "x = 1\nif x > 2\n    y = 1\nelse if x > 1\n    y = 2\nend\nreturn y",
+    ));
+    assert!(
+        all_errors(&e).iter().any(|x| x.code == "syntax.else_if"),
+        "{e:?}"
+    );
+}
+
+// vhco:test execution.request_operation -- G34: the interpreter runs exactly one branch of `if … else … end` (nested else included)
+#[tokio::test]
+async fn if_else_runs_one_branch() {
+    let src = "operation t.run\n    param n integer required\n    output text\n    if n > 0\n        if n > 5\n            r = \"big\"\n        else\n            r = \"small\"\n        end\n    else\n        r = \"not positive\"\n    end\n    return r\nend\n";
+    for (n, want) in [(9, "big"), (3, "small"), (-1, "not positive")] {
+        let v = run(src, Value::object([("n", Value::Int(n))]))
+            .await
+            .unwrap();
+        assert_eq!(v, Value::text(want), "n = {n}");
+    }
+}

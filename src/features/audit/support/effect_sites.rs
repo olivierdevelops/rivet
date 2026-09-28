@@ -1194,7 +1194,7 @@ impl<'a> Walker<'a> {
                     .and_then(Arg::word)
                     .unwrap_or("read");
                 let (verbs, needs) = match mode {
-                    "write" => (vec![V::Create], false),
+                    "write" => (vec![V::Create, V::Update], false),
                     "append" => (vec![V::Append], false),
                     _ => (vec![V::Read], true),
                 };

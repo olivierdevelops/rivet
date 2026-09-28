@@ -3,6 +3,7 @@
 //! library): catalog inspection, generic dispatch and session control.
 //!
 //! ```text
+//!  rivet.capabilities               ─▶ registry.describe_capabilities (build facts, no I/O)
 //!  rivet.list / describe / outputs ─▶ registry use cases, filtered by serve.authorize_operation
 //!  rivet.request {id, params}       ─▶ unary: nested dispatch │ streaming: sessions.open receipt
 //!  rivet.sessions.*                 ─▶ sessions use cases ─▶ SessionHost
@@ -17,6 +18,7 @@ use crate::domain::auth::{
     AuthBeginInput, AuthCancelInput, AuthCompleteInput, AuthContext, CredentialStatusInput,
     DisconnectInput, SecretCallback, SecretString,
 };
+use crate::domain::capabilities::BuildProbe;
 use crate::domain::contracts::{Completion, Request};
 use crate::domain::errors::EffectsStatus;
 use crate::domain::ports::DataSink;
@@ -28,6 +30,7 @@ use crate::features::auth::cancel_authorization::cancel_authorization;
 use crate::features::auth::complete_authorization::complete_authorization;
 use crate::features::auth::credential_status::credential_status;
 use crate::features::auth::disconnect_account::disconnect_account;
+use crate::features::registry::describe_capabilities::describe_capabilities;
 use crate::features::serve::authorize_operation::{authorize_operation, require_operation};
 use crate::features::sessions::cancel_session::cancel_session;
 use crate::features::sessions::finish_input::finish_input;
@@ -39,7 +42,8 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 19] = [
+pub const BUILTIN_IDS: [&str; 20] = [
+    "rivet.capabilities",
     "rivet.request",
     "rivet.io",
     "rivet.policy.generate",
@@ -149,6 +153,26 @@ fn uint(params: &Value, key: &str) -> RivetResult<Option<u64>> {
     }
 }
 
+/// Build/platform facts for `rivet.capabilities` (S102): crate version, the
+/// compiled OS and the process sandbox backend selected for it.
+fn build_probe() -> BuildProbe {
+    #[cfg(target_os = "linux")]
+    use crate::infra::sandbox_linux as sandbox;
+    #[cfg(target_os = "macos")]
+    use crate::infra::sandbox_macos as sandbox;
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    use crate::infra::sandbox_unsupported as sandbox;
+    let (status, reason) = sandbox::status();
+    BuildProbe {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        sandbox_backend: sandbox::BACKEND.to_string(),
+        sandbox_status: status,
+        sandbox_reason: reason.to_string(),
+    }
+}
+
 fn hidden(id: &str) -> RivetError {
     RivetError::not_found("not_found.operation", format!("no operation `{id}`"))
 }
@@ -190,6 +214,7 @@ async fn dispatch_builtin_inner(
     };
     let out: RivetResult<Completion> = async {
         match req.operation_id.as_str() {
+            "rivet.capabilities" => Ok(done(describe_capabilities(&build_probe()).to_json())),
             "rivet.list" => {
                 let with_outputs = p.get("outputs").and_then(Value::as_bool).unwrap_or(false);
                 let ops: Vec<Json> = rt

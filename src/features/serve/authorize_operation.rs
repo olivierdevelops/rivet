@@ -16,7 +16,10 @@ pub const SENSITIVE_IDS: [&str; 5] = [
 /// Generic built-ins whose authorization applies to the operation they name
 /// (`rivet.request`, `rivet.sessions.open`, `rivet.describe`, `rivet.outputs`)
 /// or to the principal's own sessions, never to the built-in ID itself.
-pub const GENERIC_BUILTINS: [&str; 9] = [
+/// `rivet.capabilities` is here too: read-only build facts with no target and
+/// no sensitive data, callable by any authenticated principal (S102).
+pub const GENERIC_BUILTINS: [&str; 10] = [
+    "rivet.capabilities",
     "rivet.request",
     "rivet.list",
     "rivet.describe",
@@ -158,5 +161,16 @@ mod tests {
                 .code,
             "permission.denied"
         );
+    }
+
+    // vhco:test serve.authorize_operation -- rivet.capabilities is callable by any authenticated principal, even one without a serve.principals entry
+    #[test]
+    fn capabilities_open_to_every_principal() {
+        let map = Some(vec![("ci", vec!["demo.health"])]);
+        assert!(
+            authorize_operation(&access("stranger", "rivet.capabilities", map.clone())).allowed
+        );
+        assert!(authorize_operation(&access("ci", "rivet.capabilities", map)).allowed);
+        assert!(authorize_operation(&access("ci", "rivet.capabilities", None)).allowed);
     }
 }

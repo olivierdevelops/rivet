@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod call_graph;
 pub mod cancel;
+pub mod capabilities;
 pub mod contracts;
 pub mod dag;
 pub mod effect_checks;

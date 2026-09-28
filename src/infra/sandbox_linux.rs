@@ -31,6 +31,22 @@ const CERTIFIED: bool = false;
 
 const SYSTEM_READ: [&str; 6] = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache", "/dev"];
 
+/// Advertised state for `rivet.capabilities`.
+pub fn status() -> (crate::domain::capabilities::SandboxStatus, &'static str) {
+    use crate::domain::capabilities::SandboxStatus;
+    if CERTIFIED {
+        (
+            SandboxStatus::Active,
+            "Landlock ABI 6 + seccomp deny-list applied before exec",
+        )
+    } else {
+        (
+            SandboxStatus::Gated,
+            "implemented, gated until the T-08 conformance suite passes on Linux CI (kernel >= 6.12, Landlock ABI 6); sandboxed spawns are refused",
+        )
+    }
+}
+
 fn refuse(detail: &str) -> RivetError {
     RivetError::unsupported(
         "unsupported.sandbox_backend",

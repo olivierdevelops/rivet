@@ -24,6 +24,22 @@ const SYSTEM_READ: [&str; 6] = [
     "/dev",
 ];
 
+/// Advertised state for `rivet.capabilities` (active when sandbox-exec exists).
+pub fn status() -> (crate::domain::capabilities::SandboxStatus, &'static str) {
+    use crate::domain::capabilities::SandboxStatus;
+    if Path::new(SANDBOX_EXEC).exists() {
+        (
+            SandboxStatus::Active,
+            "Seatbelt via /usr/bin/sandbox-exec with a deny-default profile",
+        )
+    } else {
+        (
+            SandboxStatus::Unsupported,
+            "/usr/bin/sandbox-exec is missing; sandboxed spawns are refused",
+        )
+    }
+}
+
 fn refuse(detail: &str) -> RivetError {
     RivetError::unsupported(
         "unsupported.sandbox_backend",

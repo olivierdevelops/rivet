@@ -42,7 +42,7 @@ impl ConfinedFiles {
 }
 
 /// Root-relative form of a source path; absolute or escaping paths are refused.
-fn rel(path: &str) -> RivetResult<PathBuf> {
+pub(crate) fn rel(path: &str) -> RivetResult<PathBuf> {
     let p = Path::new(path);
     if p.is_absolute() {
         return Err(RivetError::permission(format!(
@@ -71,7 +71,7 @@ fn rel(path: &str) -> RivetResult<PathBuf> {
     Ok(out)
 }
 
-fn io_err(path: &str, e: std::io::Error) -> RivetError {
+pub(crate) fn io_err(path: &str, e: std::io::Error) -> RivetError {
     use std::io::ErrorKind as K;
     match e.kind() {
         K::NotFound => RivetError::not_found("not_found.file", format!("{path}: no such file")),
@@ -166,7 +166,7 @@ fn link_count(_meta: &cap_std::fs::Metadata) -> u64 {
     1
 }
 
-fn refuse_hardlink(dir: &Dir, rel_path: &Path, path: &str) -> RivetResult<()> {
+pub(crate) fn refuse_hardlink(dir: &Dir, rel_path: &Path, path: &str) -> RivetResult<()> {
     if let Ok(meta) = dir.symlink_metadata(rel_path) {
         if meta.file_type().is_symlink() {
             return Err(RivetError::permission(format!(
@@ -216,7 +216,7 @@ fn read_all(dir: &Dir, rel_path: &Path, path: &str) -> RivetResult<Vec<u8>> {
 /// final component) are symbolic links. cap-std keeps resolution inside the
 /// bundle root, but a link that stays inside it would still carry a write
 /// granted on `./out/**` into an ungranted sibling such as `./data`.
-fn refuse_symlink_components(
+pub(crate) fn refuse_symlink_components(
     dir: &Dir,
     rel_path: &Path,
     path: &str,

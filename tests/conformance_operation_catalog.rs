@@ -514,3 +514,53 @@ fn strict_docs_findings() {
         r.stderr
     );
 }
+
+// vhco:test registry.describe_capabilities -- G36/S102: `request rivet.capabilities` needs no policy.json and reports protocols, the sandbox backend for this OS, Stage C refusals and the version
+#[test]
+fn capabilities_builtin_reports_this_build() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("app.rivet"),
+        "operation demo.one\n    output integer\n    return 1\nend\n",
+    )
+    .unwrap();
+    let r = rivet(
+        dir.path(),
+        &[
+            "--file",
+            "app.rivet",
+            "request",
+            "rivet.capabilities",
+            "--params",
+            "{}",
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    let v = &r.json()["result"];
+    assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
+    let feature = |n: &str| {
+        v["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["name"] == n)
+            .cloned()
+            .unwrap_or_else(|| panic!("feature {n} missing: {v}"))
+    };
+    assert_eq!(feature("http")["versions"], json!(["1.1", "2", "3"]));
+    assert_eq!(feature("udp_multicast")["support"], "supported");
+    assert_eq!(
+        feature("grpc")["modes"],
+        json!(["unary", "server_stream", "client_stream", "bidi"])
+    );
+    assert_eq!(feature("file_watch")["support"], "unsupported");
+    assert_eq!(feature("oauth2_password")["support"], "unsupported");
+    let status = v["sandbox"]["status"].as_str().unwrap();
+    assert!(["active", "gated", "unsupported"].contains(&status), "{v}");
+    if cfg!(target_os = "linux") {
+        assert_eq!(v["sandbox"]["backend"], "linux-landlock-seccomp");
+    }
+    if cfg!(target_os = "macos") {
+        assert_eq!(v["sandbox"]["backend"], "macos-seatbelt");
+    }
+}

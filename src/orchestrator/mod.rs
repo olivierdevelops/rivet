@@ -1,4 +1,5 @@
 pub mod builtins;
+pub mod file_streams;
 pub mod remote_cli;
 pub mod runtime;
 pub mod setup_cli;
