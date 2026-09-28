@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -502,18 +502,29 @@ end
 
 Each node value carries RFC 3339 `started_at`/`ended_at` timestamps (millisecond precision). With `fail fast`, the
 request's error keeps the failing node's `node_id` and adds `details.nodes` — every node with its status and
-timestamps. Captured at `829ca43` (a scratch bundle with `w.one` returning 1 and `w.boom` failing `w.boom`):
+timestamps. Captured on 2026-09-29 from the 0.2.0 release candidate (a scratch bundle: private `w.one` returns 1,
+private `w.boom` fails `w.boom`; `w.indep` and `w.fast` run both as DAG nodes and `return {a: a, b: b}` under an
+`output object` with `open true`). IDs and timestamps differ on every run:
 
 ```text
-dag fail independent → return {a: a, b: b}
-{"a":{"status":"succeeded","result":1,"error":null,"started_at":"2026-09-28T09:52:42.060Z","ended_at":"2026-09-28T09:52:42.066Z"},
- "b":{"status":"failed","result":null,"error":{"kind":"application","code":"w.boom",…,"node_id":"b","details":{}},"started_at":"…","ended_at":"…"}}
+$ rivet request --file app.rivet w.indep                  # dag fail independent — exit 0
+{"request_id":"req_014141b875","trace_id":"tr_014141b875","operation":"w.indep","type":"result","status":"ok",
+ "data":{"a":{"status":"succeeded","result":1,"error":null,"started_at":"2026-09-28T21:56:37.580Z","ended_at":"2026-09-28T21:56:37.581Z"},
+         "b":{"status":"failed","result":null,"error":{"kind":"application","code":"w.boom","message":"always fails","retryable":false,"effects":"none",…,"operation_id":"w.boom","node_id":"b","details":{}},
+              "started_at":"2026-09-28T21:56:37.580Z","ended_at":"2026-09-28T21:56:37.581Z"}},
+ "error":null,"effects":"none","data_count":0}
 
-dag fail fast → [exit 5]
-{"…","error":{"kind":"application","code":"w.boom","message":"always",…,"node_id":"b",
- "details":{"nodes":[{"id":"a","status":"succeeded","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"},
-                     {"id":"b","status":"failed","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"}]}}}
+$ rivet request --file app.rivet w.fast                   # dag fail fast — exit 5 (stderr)
+{"request_id":"req_017bfb3ef5","trace_id":"tr_017bfb3ef5","operation":"w.fast","type":"result","status":"error","data":null,
+ "error":{"kind":"application","code":"w.boom","message":"always fails","retryable":false,"source":{"file":"app.rivet","line":15,"column":5,"end_line":15,"end_column":21},"operation_id":"w.boom","node_id":"b",
+          "details":{"nodes":[{"id":"a","status":"succeeded","started_at":"2026-09-28T21:56:32.323Z","ended_at":"2026-09-28T21:56:32.323Z"},
+                              {"id":"b","status":"failed","started_at":"2026-09-28T21:56:32.323Z","ended_at":"2026-09-28T21:56:32.323Z"}]}},
+ "effects":"none","data_count":0}
 ```
+
+A node value (`NODE`) is a **language value**, not a wire envelope: it keeps its 0.1.0 shape `{status, result, error,
+started_at, ended_at}`, and its `error` object still carries `effects` (PLAN-2026-0002 decision for TASK-015). The
+request's own answer is the 0.2.0 envelope around it.
 
 With `fail independent`, `NODE.result` is `null` unless the node succeeded; `rivet check` warns
 (`check.unguarded_result`) when a `return` reads it without an `if NODE.status == "succeeded"` guard.
@@ -1066,3 +1077,4 @@ Secret taint follows explicit flows only; implicit flows (for example `if SECRET
 | 1 | 2026-09-28 | Claude | Initial language guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `if … else … end` (`syntax.else_if`, `syntax.else_without_if`), infix inside objects/lists/arguments, `check.unknown_function`, DAG `started_at`/`ended_at` and `details.nodes`, `check.unguarded_result`, structured cancellation, `with file open` handles and `chunk_size`, `if_version` compare-and-replace, codec keywords, secret taint on every sink; limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-22, D-46): Globals and Modules (import) chapters with real check/request/io output; numeric list index paths (INC-2026-0009); outputs re-captured as envelopes; --data replaces --params; reference, errors, limitations and version rows updated |
+| 4 | 2026-09-29 | Claude | Envelope sweep (TASK-070): the DAG `fail independent` / `fail fast` example re-captured on the 0.2.0-rc as envelopes (was a `829ca43` capture in the 0.1.0 shape); node values are language values and keep their shape. |
