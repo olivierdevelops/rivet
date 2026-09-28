@@ -752,6 +752,8 @@ mod tests {
                     },
                     emits: None,
                     receives: None,
+                    emits_description: None,
+                    receives_description: None,
                     errors: vec![],
                     source: Default::default(),
                     raw_input_schema: None,

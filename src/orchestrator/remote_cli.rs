@@ -480,7 +480,18 @@ async fn duplex(
     };
     feeder.abort();
     match input_error.or_else(|| failed_rx.try_recv().ok()) {
-        Some(e) => Err(e),
+        Some(mut e) => {
+            // Name the remote request the input error cancelled, when known.
+            let ids = match &outcome {
+                Ok(c) => Some((c.request_id.clone(), c.trace_id.clone())),
+                Err(o) => o.request_id.clone().zip(o.trace_id.clone()),
+            };
+            if let Some((r, t)) = ids {
+                e.request_id = Some(r);
+                e.trace_id = Some(t);
+            }
+            Err(e)
+        }
         None => outcome,
     }
 }

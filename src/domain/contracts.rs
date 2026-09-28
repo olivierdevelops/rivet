@@ -252,12 +252,21 @@ impl Envelope {
     }
 }
 
+/// The JSON Schema of an `emits`/`receives` item, with its declared description.
+fn item_schema(spec: Option<&ValueSpec>, description: Option<&str>) -> Option<Json> {
+    let mut schema = spec?.to_json_schema();
+    if let (Some(d), Json::Object(m)) = (description, &mut schema) {
+        m.insert("description".into(), Json::String(d.to_string()));
+    }
+    Some(schema)
+}
+
 /// ErrorEnvelope body for unary surfaces.
 pub fn error_envelope(request_id: &str, trace_id: &str, error: &RivetError) -> Json {
     json!({"request_id": request_id, "trace_id": trace_id, "error": error.to_value().to_json()})
 }
 
-// vhco:domain RegistryEntry { id: string; name: string; description?: string; kind: OperationKind; private: bool; params: ParameterSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; errors: DeclaredError[]; source: SourceSpan; raw_input_schema?: Json; raw_output_schema?: Json }
+// vhco:domain RegistryEntry { id: string; name: string; description?: string; kind: OperationKind; private: bool; params: ParameterSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; source: SourceSpan; raw_input_schema?: Json; raw_output_schema?: Json }
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegistryEntry {
     pub id: String,
@@ -269,6 +278,8 @@ pub struct RegistryEntry {
     pub output: OutputSpec,
     pub emits: Option<ValueSpec>,
     pub receives: Option<ValueSpec>,
+    pub emits_description: Option<String>,
+    pub receives_description: Option<String>,
     pub errors: Vec<DeclaredError>,
     pub source: SourceSpan,
     /// Imported MCP operations keep their reviewed snapshot `inputSchema`
@@ -304,8 +315,16 @@ impl RegistryEntry {
         {
             emits = Some(ValueSpec::Json);
         }
+        let item_desc = |k: &str| {
+            j.get(k)
+                .and_then(|o| o.get("description"))
+                .and_then(Json::as_str)
+                .map(str::to_string)
+        };
         let id = s("id")?;
         Some(RegistryEntry {
+            emits_description: item_desc("emits"),
+            receives_description: item_desc("receives"),
             name: s("name").unwrap_or_else(|| id.clone()),
             id,
             description: s("description"),
@@ -375,6 +394,8 @@ impl RegistryEntry {
             output: self.output.clone(),
             emits: self.emits.clone(),
             receives: self.receives.clone(),
+            emits_description: self.emits_description.clone(),
+            receives_description: self.receives_description.clone(),
             errors: self.errors.clone(),
             raw_output_schema: self.raw_output_schema.clone(),
         }
@@ -405,8 +426,8 @@ impl RegistryEntry {
             "kind": match self.kind { OperationKind::Operation => "operation", OperationKind::Pipeline => "pipeline" },
             "input": self.input_schema(),
             "output": self.output_schema(),
-            "emits": self.emits.as_ref().map(ValueSpec::to_json_schema),
-            "receives": self.receives.as_ref().map(ValueSpec::to_json_schema),
+            "emits": item_schema(self.emits.as_ref(), self.emits_description.as_deref()),
+            "receives": item_schema(self.receives.as_ref(), self.receives_description.as_deref()),
             "errors": self.errors.iter().map(|e| json!({"code": e.code, "description": e.description})).collect::<Vec<_>>(),
             "delivery": self.delivery(),
             "source": {"file": self.source.file, "line": self.source.start_line},
@@ -454,7 +475,7 @@ pub struct RunOutcome {
     pub effects: EffectsStatus,
 }
 
-// vhco:domain OutputReport { id: string; name: string; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; errors: DeclaredError[]; raw_output_schema?: Json }
+// vhco:domain OutputReport { id: string; name: string; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; raw_output_schema?: Json }
 #[derive(Clone, Debug, PartialEq)]
 pub struct OutputReport {
     pub id: String,
@@ -462,6 +483,8 @@ pub struct OutputReport {
     pub output: OutputSpec,
     pub emits: Option<ValueSpec>,
     pub receives: Option<ValueSpec>,
+    pub emits_description: Option<String>,
+    pub receives_description: Option<String>,
     pub errors: Vec<DeclaredError>,
     /// Imported MCP tools: the snapshot `outputSchema`, verbatim.
     pub raw_output_schema: Option<Json>,
@@ -479,8 +502,8 @@ impl OutputReport {
         json!({
             "id": self.id,
             "output": output,
-            "emits": self.emits.as_ref().map(ValueSpec::to_json_schema),
-            "receives": self.receives.as_ref().map(ValueSpec::to_json_schema),
+            "emits": item_schema(self.emits.as_ref(), self.emits_description.as_deref()),
+            "receives": item_schema(self.receives.as_ref(), self.receives_description.as_deref()),
             "errors": self.errors.iter().map(|e| json!({"code": e.code, "description": e.description})).collect::<Vec<_>>(),
         })
     }

@@ -54,6 +54,8 @@ pub fn inspect_outputs(
             output: e.output,
             emits: e.emits,
             receives: e.receives,
+            emits_description: e.emits_description,
+            receives_description: e.receives_description,
             errors: e.errors,
             raw_output_schema: e.raw_output_schema,
         })

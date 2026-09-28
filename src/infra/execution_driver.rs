@@ -1817,7 +1817,10 @@ impl<'a> Machine<'a> {
             }
         });
         let result = guarded(&frame.cancel, |r| self.cancelled(frame, r, span), work).await;
-        if result.is_ok() && mutates(form) {
+        // `file delete … missing ok` on an absent file changed nothing.
+        let noop = matches!(&result, Ok(v) if form.kind == EffectKind::File
+            && v.get("deleted") == Some(&Value::Bool(false)));
+        if result.is_ok() && mutates(form) && !noop {
             frame.run.commit();
         }
         result.map_err(|e| e.with_span(Some(span.clone())))

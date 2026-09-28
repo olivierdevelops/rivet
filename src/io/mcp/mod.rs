@@ -244,6 +244,20 @@ pub fn builtin_tools() -> Vec<Json> {
             &["request_id"],
         ),
         builtin(
+            "rivet.trace.export",
+            "Export a request trace",
+            "Write one request's recorded trace JSON to a new bundle-relative file (needs allow_write on the path; never overwrites).",
+            json!({"request_id": {"type": "string"}, "path": {"type": "string", "description": "Bundle-relative path of the new trace file."}}),
+            &["request_id", "path"],
+        ),
+        builtin(
+            "rivet.capabilities",
+            "Describe build capabilities",
+            "Protocols, OAuth flows, sandbox backend, serve surfaces, refused Stage C forms and the version of this build.",
+            json!({}),
+            &[],
+        ),
+        builtin(
             "rivet.connectors.sync",
             "Sync an MCP connector snapshot",
             "Discover a connector's tools/resources/prompts and create a candidate snapshot file (never overwrites).",
@@ -329,7 +343,7 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(names.len(), 18);
+        assert_eq!(names.len(), 20);
         for t in builtin_tools() {
             assert_eq!(t["inputSchema"]["type"], "object");
             assert!(t["outputSchema"].is_object());

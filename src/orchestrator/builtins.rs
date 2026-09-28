@@ -297,6 +297,13 @@ async fn dispatch_builtin_inner(
                 let t = rt.trace(&text(p, "request_id")?)?;
                 Ok(done(t.to_json()))
             }
+            "rivet.trace.export" => {
+                // Same brokered write as `rivet trace export`: `path` (alias
+                // `output`) is bundle-root relative and created exclusively.
+                let path = text(p, "path").or_else(|_| text(p, "output"))?;
+                let receipt = rt.export_trace(&text(p, "request_id")?, &path).await?;
+                Ok(done(receipt.to_json()))
+            }
             "rivet.connectors.sync" => {
                 // Same authorized discovery as `rivet connectors sync`; `output`
                 // is bundle-root relative and is created exclusively.

@@ -336,8 +336,18 @@ pub fn render_outputs(reports: &[OutputReport]) -> String {
             r.output.description.as_deref(),
             &mut out,
         );
-        spec_line("emits", r.emits.as_ref(), None, &mut out);
-        spec_line("receives", r.receives.as_ref(), None, &mut out);
+        spec_line(
+            "emits",
+            r.emits.as_ref(),
+            r.emits_description.as_deref(),
+            &mut out,
+        );
+        spec_line(
+            "receives",
+            r.receives.as_ref(),
+            r.receives_description.as_deref(),
+            &mut out,
+        );
         if r.errors.is_empty() {
             out.push_str(&format!("{}{DASH}\n", pad("errors", 9)));
         } else {

@@ -170,10 +170,12 @@ pub async fn exchange_http(
     // vhco:error http_status -- non-accepted status => http.status with details.status (kind http, 502, exit 5)
     if !accepted {
         discard(reply).await;
+        // Scheme, host, explicit port and path: never userinfo or query.
         let shown = format!(
-            "{}://{}{}",
+            "{}://{}{}{}",
             url.scheme(),
             url.host_str().unwrap_or(""),
+            url.port().map(|p| format!(":{p}")).unwrap_or_default(),
             url.path()
         );
         return Err(RivetError::new(

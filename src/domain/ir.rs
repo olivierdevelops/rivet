@@ -482,7 +482,7 @@ pub enum OperationKind {
     Pipeline,
 }
 
-// vhco:domain Operation { id: string; kind: OperationKind; name: string; description?: string; private: bool; params: ParamSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; errors: DeclaredError[]; body: Stmt[]; span: SourceSpan; file: string; calls: string[] }
+// vhco:domain Operation { id: string; kind: OperationKind; name: string; description?: string; private: bool; params: ParamSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; body: Stmt[]; span: SourceSpan; file: string; calls: string[] }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Operation {
     pub id: String,
@@ -494,6 +494,9 @@ pub struct Operation {
     pub output: OutputSpec,
     pub emits: Option<ValueSpec>,
     pub receives: Option<ValueSpec>,
+    /// `emits … description "…"` / `receives … description "…"`.
+    pub emits_description: Option<String>,
+    pub receives_description: Option<String>,
     pub errors: Vec<DeclaredError>,
     pub body: Vec<Stmt>,
     pub span: SourceSpan,

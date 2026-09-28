@@ -49,6 +49,8 @@ pub fn entry_of(op: &Operation) -> RegistryEntry {
         output: op.output.clone(),
         emits: op.emits.clone(),
         receives: op.receives.clone(),
+        emits_description: op.emits_description.clone(),
+        receives_description: op.receives_description.clone(),
         errors: op.errors.clone(),
         source: op.span.clone(),
         raw_input_schema: None,

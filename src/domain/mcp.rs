@@ -508,6 +508,8 @@ impl McpCatalog {
                 },
                 emits: None,
                 receives: None,
+                emits_description: None,
+                receives_description: None,
                 errors: Vec::new(),
                 source: conn.span.clone(),
                 raw_input_schema: Some(input),

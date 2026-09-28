@@ -245,6 +245,8 @@ impl Lowerer {
             output: OutputSpec::default(),
             emits: None,
             receives: None,
+            emits_description: None,
+            receives_description: None,
             errors: Vec::new(),
             body: Vec::new(),
             span: node.span.clone(),
@@ -334,8 +336,18 @@ impl Lowerer {
                     };
                 }
             }
-            "emits" | "emits_block" => op.emits = self.typed_decl(child).map(|(s, _)| s),
-            "receives" | "receives_block" => op.receives = self.typed_decl(child).map(|(s, _)| s),
+            "emits" | "emits_block" => {
+                if let Some((s, d)) = self.typed_decl(child) {
+                    op.emits = Some(s);
+                    op.emits_description = d;
+                }
+            }
+            "receives" | "receives_block" => {
+                if let Some((s, d)) = self.typed_decl(child) {
+                    op.receives = Some(s);
+                    op.receives_description = d;
+                }
+            }
             "declared_error" => {
                 let code = unquote(child.text("code"));
                 let args = self.args(child, "rest");

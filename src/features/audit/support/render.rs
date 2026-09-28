@@ -215,7 +215,10 @@ pub fn render_by_operation(m: &IoManifest, o: &RenderOptions, show_calls: bool) 
         for (i, c) in m.calls.iter().enumerate() {
             let text = match &c.connector {
                 Some(conn) => format!("(calls {} {DASH} connector {conn})", c.callee),
-                None => format!("(calls {} {DASH} see above)", c.callee),
+                None if m.sites.iter().any(|s| s.operation_id == c.callee) => {
+                    format!("(calls {} {DASH} see above)", c.callee)
+                }
+                None => format!("(calls {} {DASH} no I/O)", c.callee),
             };
             let mut after = vec![format!("{}:{}", c.source.file, c.source.start_line)];
             if o.decision {

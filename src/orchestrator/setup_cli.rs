@@ -548,6 +548,7 @@ async fn run_duplex(
     let (failed_tx, mut failed_rx) = tokio::sync::oneshot::channel::<RivetError>();
     let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives, failed_tx));
     let request_id = req.request_id.clone();
+    let trace_id = req.trace_id.clone();
     let principal = req.principal.clone();
     let run = runtime.dispatch_session(req, std::sync::Arc::new(NdjsonSink), rx);
     tokio::pin!(run);
@@ -570,7 +571,12 @@ async fn run_duplex(
     };
     feeder.abort();
     match input_error.or_else(|| failed_rx.try_recv().ok()) {
-        Some(e) => Err(e),
+        Some(mut e) => {
+            // The input error belongs to the request it cancelled.
+            e.request_id = Some(request_id);
+            e.trace_id = Some(trace_id);
+            Err(e)
+        }
         None => outcome,
     }
 }

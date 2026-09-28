@@ -430,3 +430,37 @@ async fn trace_export_needs_write_grant_and_never_overwrites() {
     assert_eq!(out.status.code(), Some(4));
     assert!(!d.path().join("audit/cli.json").exists());
 }
+
+// vhco:test audit.read_trace -- the rivet.trace.export built-in (remote CLI, HTTP, MCP) writes the same trace file as the CLI command, through the same write grant
+#[tokio::test]
+async fn trace_export_builtin_dispatches() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(
+        d.path().join("app.rivet"),
+        "operation t.one\n    output json\n    return file read \"./data/a.json\" as json\nend\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(d.path().join("audit")).unwrap();
+    std::fs::create_dir_all(d.path().join("data")).unwrap();
+    std::fs::write(d.path().join("data/a.json"), "{\"n\":1}").unwrap();
+    std::fs::write(
+        d.path().join("policy.json"),
+        r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"]},{"capability":"allow_write","targets":["./audit/**"]}]}"#,
+    )
+    .unwrap();
+    let rt = Runtime::builder()
+        .file(&d.path().join("app.rivet").to_string_lossy())
+        .build()
+        .unwrap();
+    let c = rt.request("t.one", Value::Null, None).await.unwrap();
+    let params = Value::object([
+        ("request_id", Value::text(c.request_id.clone())),
+        ("path", Value::text("./audit/t.json")),
+    ]);
+    let r = rt
+        .request("rivet.trace.export", params, None)
+        .await
+        .unwrap();
+    assert_eq!(r.result.get("path"), Some(&Value::text("./audit/t.json")));
+    assert!(d.path().join("audit/t.json").exists());
+}
