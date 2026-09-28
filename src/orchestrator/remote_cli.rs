@@ -111,6 +111,7 @@ async fn read_stdin_jsonl(
 ) -> RivetResult<()> {
     let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
     let mut n = 0u64;
+    let mut seq = 0u64;
     loop {
         let line = match lines.next_line().await {
             Ok(Some(l)) => l,
@@ -126,6 +127,11 @@ async fn read_stdin_jsonl(
         if line.trim().is_empty() {
             continue;
         }
+        seq += 1;
+        let at = Value::object([
+            ("seq", Value::Int(seq as i64)),
+            ("line", Value::Int(n as i64)),
+        ]);
         let j: Json = serde_json::from_str(&line).map_err(|e| {
             RivetError::validation(
                 "validation.input",
@@ -134,6 +140,7 @@ async fn read_stdin_jsonl(
                     e.column()
                 ),
             )
+            .with_details(at.clone())
         })?;
         let v = Value::from_json(&j);
         let mut violations = Vec::new();
@@ -147,7 +154,8 @@ async fn read_stdin_jsonl(
                     x.expected,
                     x.found
                 ),
-            ));
+            )
+            .with_details(at));
         }
         if tx.send(v).await.is_err() {
             // The request already ended; stop reading.
@@ -308,8 +316,12 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
         }
         Command::Io(args) => {
             let q = args.to_query(cli.json);
-            let mut pairs: Vec<(&str, String)> =
-                vec![("by", q.by.clone()), ("format", q.format.clone())];
+            let mut pairs: Vec<(&str, String)> = vec![
+                ("by", q.by.clone()),
+                ("format", q.format.clone()),
+                // The rendered report (not the bare manifest) for every format.
+                ("report", "true".into()),
+            ];
             if !q.ids.is_empty() {
                 pairs.push(("ids", q.ids.join(",")));
             }

@@ -4,7 +4,9 @@
 //!
 //! ```text
 //!  POST /mcp initialize ─▶ 200 + MCP-Session-Id      notifications/* ─▶ 202
-//!  POST /mcp tools/list  ─▶ direct tools (authorized, public) + rivet.request/list/describe/outputs/sessions.*
+//!  POST /mcp tools/list  ─▶ direct tools (authorized, public) + every built-in the principal may call
+//!                          (rivet.request/list/describe/outputs/sessions.*/io/policy.generate/
+//!                           trace.show/connectors.sync/auth.*), each with its schemas
 //!  POST /mcp tools/call  ─▶ unary: Completion │ streaming: SessionReceipt │ failure: isError + ErrorEnvelope
 //!  GET /mcp ─▶ 405        DELETE /mcp ─▶ 204 (unknown session 404)
 //! ```
@@ -31,8 +33,11 @@
 
 use super::builtins::{BUILTIN_IDS, visible};
 use super::runtime::Runtime;
-use super::setup_serve::{ServeState, error_response, json_response};
+use super::setup_serve::{
+    ServeState, error_response, json_response, note_access, trace_context, with_traceparent,
+};
 use crate::domain::contracts::Principal;
+use crate::domain::contracts::TraceContext;
 use crate::domain::mcp::BridgeHops;
 use crate::domain::serve::{MCP_PROTOCOL_VERSION, OperationAccess};
 use crate::domain::sessions::SessionOpenInput;
@@ -70,6 +75,7 @@ pub async fn handle_request(
     principal: &Principal,
     method: &str,
     params: &Json,
+    trace: Option<&TraceContext>,
 ) -> Result<Json, (i64, String)> {
     match method {
         "initialize" => Ok(initialize_result(env!("CARGO_PKG_VERSION"))),
@@ -83,7 +89,14 @@ pub async fn handle_request(
                 .filter(|e| visible(rt, principal, &e.id))
                 .map(tool_descriptor)
                 .collect();
-            tools.extend(builtin_tools());
+            // Built-ins the principal may actually call: sensitive ones
+            // (rivet.io, policy.generate, trace.show, connectors.sync) only for
+            // the local principal or an exact listing; rivet.auth.* when authorized.
+            tools.extend(builtin_tools().into_iter().filter(|t| {
+                t["name"]
+                    .as_str()
+                    .is_some_and(|name| visible(rt, principal, name))
+            }));
             Ok(json!({"tools": tools}))
         }
         "tools/call" => {
@@ -98,7 +111,8 @@ pub async fn handle_request(
                 .unwrap_or(Value::Null);
             // Bridge recursion state (`_meta` rivet/hops + rivet/chain) continues into nested connector calls.
             let bridge = BridgeHops::from_meta(params);
-            Ok(call_tool(rt, principal, &name, args, bridge).await?)
+            note_access(|n| n.operation = Some(name.clone()));
+            Ok(call_tool(rt, principal, &name, args, bridge, trace).await?)
         }
         other => Err((METHOD_NOT_FOUND, format!("method not found: {other}"))),
     }
@@ -110,12 +124,12 @@ async fn call_tool(
     name: &str,
     args: Value,
     bridge: BridgeHops,
+    trace: Option<&TraceContext>,
 ) -> Result<Json, (i64, String)> {
     let unknown = || (INVALID_PARAMS, format!("Unknown tool: {name}"));
     let outcome = if BUILTIN_IDS.contains(&name) {
-        rt.request_as(principal.clone(), name, args, None)
-            .await
-            .map(|c| c.to_json())
+        let req = rt.new_request_traced(name, args, principal.clone(), trace);
+        rt.dispatch_request(req, None).await.map(|c| c.to_json())
     } else {
         if !visible(rt, principal, name) {
             return Err(unknown());
@@ -138,6 +152,7 @@ async fn call_tool(
                         principal: principal.clone(),
                         connection_owned: false,
                         deadline_ms: None,
+                        trace: trace.cloned(),
                     },
                     rt.sessions().as_ref(),
                 )
@@ -146,7 +161,7 @@ async fn call_tool(
             .await;
             opened.map(|r| r.to_json())
         } else {
-            rt.request_bridged(principal.clone(), name, args, bridge)
+            rt.request_bridged(principal.clone(), name, args, bridge, trace)
                 .await
                 .map(|c| c.to_json())
         }
@@ -217,8 +232,22 @@ async fn post_mcp(
         Err(err) => return json_response(400, err),
     };
     let id = msg.id.clone().unwrap_or(Json::Null);
+    let trace = trace_context(&headers);
+    if let Some(m) = &msg.method
+        && m != "tools/call"
+    {
+        let m = m.clone();
+        note_access(|n| n.operation = Some(m));
+    }
     if msg.method.as_deref() == Some("initialize") && msg.is_request() {
-        let result = match handle_request(&st.runtime, &principal, "initialize", &msg.params).await
+        let result = match handle_request(
+            &st.runtime,
+            &principal,
+            "initialize",
+            &msg.params,
+            trace.as_ref(),
+        )
+        .await
         {
             Ok(r) => rpc_result(&id, r),
             Err((c, m)) => rpc_error(&id, c, &m),
@@ -255,11 +284,34 @@ async fn post_mcp(
         return StatusCode::ACCEPTED.into_response();
     }
     let method = msg.method.clone().unwrap_or_default();
-    let out = match handle_request(&st.runtime, &principal, &method, &msg.params).await {
+    let out = match handle_request(
+        &st.runtime,
+        &principal,
+        &method,
+        &msg.params,
+        trace.as_ref(),
+    )
+    .await
+    {
         Ok(r) => rpc_result(&id, r),
         Err((c, m)) => rpc_error(&id, c, &m),
     };
-    json_response(200, out)
+    // traceparent of the request a tools/call ran (Completion, SessionReceipt
+    // or ErrorEnvelope carry its ids); other methods echo the caller's trace.
+    let sc = &out["result"]["structuredContent"];
+    let ids = |j: &Json| {
+        Some((
+            j.get("trace_id")?.as_str()?.to_string(),
+            j.get("request_id")?.as_str()?.to_string(),
+        ))
+    };
+    let ran = ids(sc).or_else(|| ids(&sc["error"]));
+    let resp = json_response(200, out.clone());
+    match (ran, trace) {
+        (Some((tid, rid)), _) if !tid.is_empty() => with_traceparent(resp, &tid, &rid),
+        (_, Some(t)) => with_traceparent(resp, &t.trace_id, &format!("mcp:{sid}:{id}")),
+        _ => resp,
+    }
 }
 
 async fn get_mcp() -> Response {
@@ -332,7 +384,7 @@ pub async fn run_stdio(rt: Runtime) {
                 let id = m.id.clone().unwrap_or(Json::Null);
                 let method = m.method.clone().unwrap_or_default();
                 Some(
-                    match handle_request(&rt, &principal, &method, &m.params).await {
+                    match handle_request(&rt, &principal, &method, &m.params, None).await {
                         Ok(r) => rpc_result(&id, r),
                         Err((c, msg)) => rpc_error(&id, c, &msg),
                     },

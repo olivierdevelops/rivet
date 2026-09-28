@@ -11,10 +11,12 @@
 // vhco:trigger poll serve/authenticate_principal = Authorization: Bearer TOKEN on every polling route
 // vhco:trigger poll serve/authorize_operation = serve.principals check when a session is opened
 // vhco:api poll serve/project_polling POST /v1/requests -- open a principal-owned session (unary or streaming) and poll its events
-// vhco:request { "id": "string — operation ID", "params": "object" }
+// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — total deadline, capped at 600000", "headers": "traceparent? — W3C trace context for the session" }
 // vhco:response { "session_id": "string", "request_id": "string", "catalog_version": "string", "input_schema": "json|null", "emits_schema": "json|null", "next_send_seq": "int", "expires_at": "RFC 3339", "events_url": "/v1/requests/{session_id}/events" }
 
-use super::setup_serve::{ServeState, error_response, json_response};
+use super::setup_serve::{
+    ServeState, error_response, json_response, note_access, trace_context, with_traceparent,
+};
 use crate::domain::serve::{PollAction, PollRoute};
 use crate::features::serve::project_polling::project_polling;
 use crate::io::http::parse_request_body;
@@ -50,16 +52,39 @@ async fn run(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
+    let op = match &action {
+        PollAction::Open { id, .. } => id.clone(),
+        PollAction::Events { .. } => "rivet.sessions.read".into(),
+        PollAction::Input { .. } => "rivet.sessions.send".into(),
+        PollAction::FinishInput { .. } => "rivet.sessions.finish_input".into(),
+        PollAction::Cancel { .. } => "rivet.sessions.cancel".into(),
+    };
+    note_access(|n| n.operation = Some(op));
     let r = project_polling(
         PollRoute {
             action,
             principal,
             serve: st.serve.clone(),
+            trace: trace_context(headers),
         },
         st.runtime.sessions().as_ref(),
     )
     .await;
-    json_response(r.status, r.body)
+    let ids = (
+        r.body
+            .get("trace_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        r.body
+            .get("request_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    );
+    let resp = json_response(r.status, r.body);
+    match ids {
+        (Some(tid), Some(rid)) if r.status == 202 => with_traceparent(resp, &tid, &rid),
+        _ => resp,
+    }
 }
 
 async fn open(
@@ -80,6 +105,7 @@ async fn open(
                 PollAction::Open {
                     id: b.id,
                     params: b.params,
+                    deadline_ms: b.deadline_ms,
                 },
             )
             .await

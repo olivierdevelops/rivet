@@ -266,6 +266,7 @@ async fn stream_pull_in_the_host() {
             principal: Principal::local(),
             connection_owned: false,
             deadline_ms: None,
+            trace: None,
         })
         .await
         .unwrap();

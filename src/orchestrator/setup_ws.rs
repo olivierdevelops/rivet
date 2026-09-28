@@ -16,8 +16,9 @@
 // vhco:request { "type": "request|input|finish_input|cancel", "ref": "string", "id": "string (request)", "params": "object (request)", "seq": "int (input)", "data": "Value (input)" }
 // vhco:response { "type": "data|result|error", "ref": "string", "seq": "int (data)", "data": "Value (data)", "completion": "Completion (result)", "error": "RivetError (error)" }
 
-use super::setup_serve::{ServeState, error_response};
+use super::setup_serve::{ServeState, error_response, trace_context};
 use crate::domain::RivetError;
+use crate::domain::contracts::TraceContext;
 use crate::domain::contracts::{Envelope, Principal};
 use crate::domain::ports::{SessionDriver, WsConnection};
 use crate::domain::serve::{WS_SUBPROTOCOL, WsFrame, WsInbound};
@@ -35,7 +36,6 @@ use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
 
 pub fn routes(state: Arc<ServeState>) -> Router {
     Router::new()
@@ -53,6 +53,7 @@ async fn upgrade(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
+    let trace = trace_context(&headers);
     let offered = headers
         .get_all("sec-websocket-protocol")
         .iter()
@@ -66,23 +67,30 @@ async fn upgrade(
         ));
     }
     ws.protocols([WS_SUBPROTOCOL])
-        .on_upgrade(move |socket| connection(st, principal, socket))
+        .on_upgrade(move |socket| connection(st, principal, trace, socket))
 }
 
 type Refs = Arc<Mutex<HashMap<String, String>>>;
 
-async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket) {
+async fn connection(
+    st: Arc<ServeState>,
+    principal: Principal,
+    trace: Option<TraceContext>,
+    socket: WebSocket,
+) {
     let (mut sink, mut stream) = socket.split();
-    let (tx, mut rx) = mpsc::channel::<String>(64);
+    // Per-ref lanes of 16 frames merged into one writer (backpressure per ref).
+    let (lanes, mut frames) = WsOutbox::new();
     let writer = tokio::spawn(async move {
-        while let Some(text) = rx.recv().await {
+        while let Some(text) = frames.next().await {
             if sink.send(Message::Text(text.into())).await.is_err() {
                 break;
             }
         }
         let _ = sink.close().await;
     });
-    let outbox: Arc<dyn WsConnection> = Arc::new(WsOutbox::new(tx));
+    let lanes = Arc::new(lanes);
+    let outbox: Arc<dyn WsConnection> = lanes.clone();
     let driver = st.runtime.sessions();
     let refs: Refs = Arc::new(Mutex::new(HashMap::new()));
     let mut pumps = tokio::task::JoinSet::new();
@@ -91,7 +99,7 @@ async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket
             Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Binary(_)) => {
                 let _ = outbox
-                    .send(WsFrame::error(
+                    .reply(WsFrame::error(
                         "",
                         RivetError::validation("validation.frame", "frames must be JSON text"),
                     ))
@@ -111,6 +119,7 @@ async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket
                 principal: principal.clone(),
                 serve: st.serve.clone(),
                 open_refs,
+                trace: trace.clone(),
             },
             outbox.as_ref(),
             driver.as_ref(),
@@ -119,6 +128,7 @@ async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket
         match outcome {
             Ok(o) => {
                 if let Some((r, session_id)) = o.opened {
+                    lanes.open_ref(&r);
                     if let Ok(mut m) = refs.lock() {
                         m.insert(r.clone(), session_id.clone());
                     }
@@ -127,7 +137,7 @@ async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket
                         session_id,
                         principal.clone(),
                         Arc::clone(&driver),
-                        Arc::clone(&outbox),
+                        Arc::clone(&lanes),
                         Arc::clone(&refs),
                     ));
                 }
@@ -151,6 +161,7 @@ async fn connection(st: Arc<ServeState>, principal: Principal, socket: WebSocket
     pumps.abort_all();
     while pumps.join_next().await.is_some() {}
     drop(outbox);
+    drop(lanes);
     let _ = writer.await;
 }
 
@@ -160,7 +171,7 @@ async fn pump(
     session_id: String,
     principal: Principal,
     driver: Arc<dyn SessionDriver>,
-    out: Arc<dyn WsConnection>,
+    out: Arc<WsOutbox>,
     refs: Refs,
 ) {
     let mut after = 0u64;
@@ -205,6 +216,8 @@ async fn pump(
             break;
         }
     }
+    // Release the lane before the ref name becomes reusable.
+    out.release_ref(&r);
     if let Ok(mut m) = refs.lock() {
         m.remove(&r);
     }

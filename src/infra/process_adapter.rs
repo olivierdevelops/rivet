@@ -124,6 +124,31 @@ impl TokioRunner {
     }
 }
 
+/// A one-shot child that is killed (whole group) and reaped in the background
+/// if its owner is dropped before it exited — a cancelled `command` never
+/// leaves a zombie or a stray process group behind.
+struct ReapOnDrop(Option<Child>);
+
+impl Drop for ReapOnDrop {
+    fn drop(&mut self) {
+        let Some(mut child) = self.0.take() else {
+            return;
+        };
+        if !matches!(child.try_wait(), Ok(None)) {
+            return;
+        }
+        if let Some(pid) = child.id() {
+            signal_group(pid, KILL);
+        }
+        let _ = child.start_kill();
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            rt.spawn(async move {
+                let _ = child.wait().await;
+            });
+        }
+    }
+}
+
 /// Kill the child's whole process group, then the child itself, and reap it.
 async fn kill_and_reap(child: &mut Child) {
     if let Some(pid) = child.id() {
@@ -189,7 +214,11 @@ fn exit_code(status: std::process::ExitStatus) -> i64 {
 impl ProcessRunner for TokioRunner {
     async fn run(&self, plan: &ProcessPlan) -> RivetResult<ProcessResult> {
         let start = Instant::now();
-        let mut child = self.spawn_child(plan)?;
+        // Reaped even when this future is dropped (cancelled one-shot command).
+        let mut guard = ReapOnDrop(Some(self.spawn_child(plan)?));
+        let Some(child) = guard.0.as_mut() else {
+            return Err(RivetError::internal("the spawned child is missing"));
+        };
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let max = plan.max_output;
@@ -212,7 +241,7 @@ impl ProcessRunner for TokioRunner {
             match tokio::time::timeout(Duration::from_millis(plan.timeout_ms), work).await {
                 Ok(r) => r,
                 Err(_) => {
-                    kill_and_reap(&mut child).await;
+                    kill_and_reap(child).await;
                     return Err(RivetError::new(
                         ErrorKind::Timeout,
                         "timeout.process",
@@ -233,7 +262,7 @@ impl ProcessRunner for TokioRunner {
         let (stdout, over_out) = out.map_err(io)?;
         let (stderr, over_err) = err.map_err(io)?;
         if over_out || over_err {
-            kill_and_reap(&mut child).await;
+            kill_and_reap(child).await;
             return Err(RivetError::new(
                 ErrorKind::Limit,
                 "limit.process_output",
@@ -247,7 +276,7 @@ impl ProcessRunner for TokioRunner {
         let status = match tokio::time::timeout(left, child.wait()).await {
             Ok(s) => s.map_err(|e| spawn_err(&plan.program, e))?,
             Err(_) => {
-                kill_and_reap(&mut child).await;
+                kill_and_reap(child).await;
                 return Err(RivetError::new(
                     ErrorKind::Timeout,
                     "timeout.process",

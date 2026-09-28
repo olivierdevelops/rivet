@@ -25,6 +25,8 @@ pub struct EffectScope {
     /// The effect statement's source span (file effects hand it to the broker
     /// intent so traces and permission errors name the location).
     pub span: Option<crate::domain::source::SourceSpan>,
+    /// DAG node evaluating the effect, when inside a `dag` block.
+    pub node_id: Option<String>,
 }
 
 tokio::task_local! {

@@ -34,7 +34,7 @@ url = "2.5.8"
 clap = { version = "4.6.7", features = ["derive"] }
 tracing = "0.1.44"
 # serve: one listener for REST, SSE, polling, WebSocket and MCP (ADR-0002 / RES-2026-0002)
-axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "query", "tokio", "ws"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "matched-path", "query", "tokio", "ws"] }
 # files
 cap-std = "4.0.3"
 cap-fs-ext = "4.0.3"

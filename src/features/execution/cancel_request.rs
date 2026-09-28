@@ -5,7 +5,7 @@ use crate::domain::{RivetError, RivetResult};
 
 // vhco:usecase execution.cancel_request(input: CancelRequest) -> CancelReceipt needs RequestControl
 // vhco:label Cancel a running request
-// vhco:about Signals cancellation of a caller's own running top-level request; the request's scope then drops its tasks and handles and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.
+// vhco:about Signals cancellation of a caller's own running top-level request; the request's structured cancellation token fires, its scope closes every open handle in reverse order within the 5 s grace, reaps child processes, and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.
 // vhco:example input={request_id:"req_01"} => { "request_id": "req_01", "state": "cancelling" }
 pub fn cancel_request(
     input: &CancelRequest,
@@ -32,7 +32,7 @@ pub fn cancel_request(
         // Already terminal: report it instead of pretending to cancel.
         return Ok(receipt(&state.state));
     }
-    // vhco:todo signal_cancel -- signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope is dropped
+    // vhco:todo signal_cancel -- signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope has closed its resources (dropped only as a last resort after the grace)
     // vhco:step signal control.signal -- wakes the request's select; a second signal is a no-op
     control.signal(&input.request_id);
     Ok(receipt("cancelling"))

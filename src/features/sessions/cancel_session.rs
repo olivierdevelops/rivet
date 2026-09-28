@@ -15,7 +15,7 @@ pub async fn cancel_session(
     if input.session_id.trim().is_empty() {
         return Err(RivetError::not_found("not_found.session", "no session ``"));
     }
-    // vhco:todo cancel_and_join -- the driver closes input, aborts the run task and awaits it within the 5 s cleanup grace (scoped resources are dropped with it), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:"cancelled"}
+    // vhco:todo cancel_and_join -- the driver records the cancel first (it wins over a completion not yet recorded), closes input, fires the run's cancellation token and joins the run within the 5 s cleanup grace while it closes its scoped resources (abort only after the grace), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:"cancelled"}
     // vhco:step cancel driver.cancel -- abort, join, record the terminal event, return the receipt
     driver.cancel(input).await
 }

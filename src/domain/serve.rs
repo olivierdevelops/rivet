@@ -296,7 +296,7 @@ impl WsFrame {
     }
 }
 
-// vhco:domain WsInbound { frame: WsFrame; principal: Principal; serve: ServePolicy; open_refs: string[] }
+// vhco:domain WsInbound { frame: WsFrame; principal: Principal; serve: ServePolicy; open_refs: string[]; trace?: TraceContext }
 /// One parsed client frame plus the connection facts the multiplexer needs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WsInbound {
@@ -306,15 +306,20 @@ pub struct WsInbound {
     pub serve: ServePolicy,
     /// `(ref, session_id)` of every ref still in flight on this connection.
     pub open_refs: Vec<(String, String)>,
+    /// W3C `traceparent` of the upgrade request (refs share its trace id).
+    pub trace: Option<crate::domain::contracts::TraceContext>,
 }
 
-// vhco:domain WsOutcome { opened?: string; session_id?: string; replied: bool }
+// vhco:domain WsOutcome { opened?: string; session_id?: string; replied: bool; ended?: string }
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct WsOutcome {
     /// `(ref, session_id)` of a newly opened ref; the host starts its event pump.
     pub opened: Option<(String, String)>,
     /// An immediate frame (error) was sent for this client frame.
     pub replied: bool,
+    /// A ref ended by a refused input/finish_input frame: its terminal error
+    /// frame (with the specific code) was sent and its session cancelled.
+    pub ended: Option<String>,
 }
 
 // vhco:domain WsClose { code: int; reason: string }
@@ -330,6 +335,8 @@ pub enum PollAction {
     Open {
         id: String,
         params: Value,
+        /// Requested total deadline (capped by the host).
+        deadline_ms: Option<u64>,
     },
     Events {
         session_id: String,
@@ -350,12 +357,14 @@ pub enum PollAction {
     },
 }
 
-// vhco:domain PollRoute { action: PollAction; principal: Principal; serve: ServePolicy }
+// vhco:domain PollRoute { action: PollAction; principal: Principal; serve: ServePolicy; trace?: TraceContext }
 #[derive(Clone, Debug, PartialEq)]
 pub struct PollRoute {
     pub action: PollAction,
     pub principal: Principal,
     pub serve: ServePolicy,
+    /// W3C `traceparent` of the HTTP request (used when a session is opened).
+    pub trace: Option<crate::domain::contracts::TraceContext>,
 }
 
 // vhco:domain PollResponse { status: int; body: Json }

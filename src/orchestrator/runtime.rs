@@ -5,6 +5,7 @@
 use crate::domain::auth::{CredentialInput, CredentialLease, OAuthProfile};
 use crate::domain::contracts::{
     Catalog, CatalogQuery, Completion, DEFAULT_DEADLINE_MS, OutputReport, Principal, Request,
+    TraceContext, span_id,
 };
 use crate::domain::errors::ErrorKind;
 use crate::domain::files::FileOperation;
@@ -89,6 +90,8 @@ pub struct RuntimeBuilder {
     discovery: bool,
     /// Library host ceiling intersected with the loaded policy (G10).
     ceiling: Option<Policy>,
+    /// Host session caps (idle lease, retention, queues); Increment 14 defaults.
+    session_limits: crate::domain::sessions::SessionLimits,
 }
 
 impl Default for RuntimeBuilder {
@@ -99,6 +102,7 @@ impl Default for RuntimeBuilder {
             policy: PolicySource::Discover,
             discovery: false,
             ceiling: None,
+            session_limits: crate::domain::sessions::SessionLimits::default(),
         }
     }
 }
@@ -147,6 +151,12 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Host session caps (idle lease, retention, per-principal count, queues).
+    pub fn session_limits(mut self, limits: crate::domain::sessions::SessionLimits) -> Self {
+        self.session_limits = limits;
+        self
+    }
+
     pub fn build(self) -> RivetResult<Runtime> {
         let bundle = match (self.source, &self.entry) {
             (Some(b), _) => b,
@@ -191,7 +201,7 @@ impl RuntimeBuilder {
             policy = policy.with_ceiling(ceiling);
         }
         anchor(&mut policy, &bundle.root);
-        Runtime::assemble(bundle, program, policy, self.discovery)
+        Runtime::assemble(bundle, program, policy, self.discovery, self.session_limits)
     }
 }
 
@@ -349,6 +359,7 @@ impl PolicyEvaluator for TracedEvaluator {
                     .or(cands.first())
                     .map(|(id, _)| id.clone())
             });
+            let node_id = scope.node_id.clone();
             let attempt = {
                 let key = (
                     scope.request_id.clone(),
@@ -365,7 +376,7 @@ impl PolicyEvaluator for TracedEvaluator {
             self.trace.record(TraceEvent {
                 request_id: scope.request_id,
                 trace_id: scope.trace_id,
-                node_id: None,
+                node_id,
                 attempt,
                 effect_id,
                 operation_id: scope.operation_id,
@@ -486,6 +497,7 @@ impl Runtime {
         program: Arc<CompiledProgram>,
         policy: Policy,
         discovery: bool,
+        session_limits: crate::domain::sessions::SessionLimits,
     ) -> RivetResult<Runtime> {
         let decide: Arc<crate::infra::policy_broker::DecideFn> =
             Arc::new(|i: &EffectIntent, p: &Policy, root: &str| -> Permit {
@@ -580,6 +592,7 @@ impl Runtime {
                 upgrade,
                 registry.clone(),
                 catalog_version,
+                session_limits,
             ));
             Inner {
                 bundle,
@@ -651,6 +664,52 @@ impl Runtime {
             depth: 0,
             deadline_ms: DEFAULT_DEADLINE_MS,
             include_private: false,
+            parent_span_id: None,
+            cancel: crate::domain::cancel::CancelToken::new(),
+        }
+    }
+
+    /// A top-level request continuing the caller's W3C trace: a valid
+    /// `traceparent` trace-id becomes the Rivet trace id and its parent-id the
+    /// request's parent span.
+    pub fn new_request_traced(
+        &self,
+        operation_id: &str,
+        params: Value,
+        principal: Principal,
+        trace: Option<&TraceContext>,
+    ) -> Request {
+        let mut req = self.new_request(operation_id, params, principal);
+        if let Some(t) = trace {
+            req.trace_id = t.trace_id.clone();
+            req.parent_span_id = Some(t.parent_id.clone());
+        }
+        req
+    }
+
+    /// A request a built-in starts on behalf of `parent` (generic dispatch):
+    /// new request id, same trace id, parent request and span set, cancelled
+    /// with its parent.
+    pub fn follow_request(&self, parent: &Request, operation_id: &str, params: Value) -> Request {
+        let mut req = self.new_request(operation_id, params, parent.principal.clone());
+        req.trace_id = parent.trace_id.clone();
+        req.parent_request_id = Some(parent.request_id.clone());
+        req.parent_span_id = Some(span_id(&parent.request_id));
+        req.deadline_ms = parent.deadline_ms;
+        req.cancel = parent.cancel.child();
+        req
+    }
+
+    /// Host shutdown (serve SIGINT/SIGTERM): cancel every running top-level
+    /// request and live session — each unwinds and closes its resources within
+    /// the cleanup grace — and wait up to `drain` for them to finish.
+    pub async fn shutdown(&self, drain: std::time::Duration) {
+        let until = std::time::Instant::now() + drain;
+        self.inner.requests.cancel_all();
+        let _ = tokio::time::timeout(drain, self.inner.sessions.cancel_all()).await;
+        while self.inner.requests.running_count() > 0 && std::time::Instant::now() < until {
+            self.inner.requests.cancel_all();
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
     }
 
@@ -721,11 +780,16 @@ impl Runtime {
             )
             .await;
         }
-        // Top-level requests can be cancelled by ID; dropping the request future
-        // drops its whole scope (tasks, handles, child processes are killed on drop).
+        // Top-level requests can be cancelled by ID: the signal fires the
+        // request's structured token, the interpreter unwinds and closes every
+        // handle within the cleanup grace and returns one terminal `cancelled`.
+        // Only if the run is still going after the grace is it dropped here.
         let request_id = req.request_id.clone();
         let trace_id = req.trace_id.clone();
-        let cancelled = self.inner.requests.start(&request_id, &req.principal.name);
+        let token = req.cancel.clone();
+        self.inner
+            .requests
+            .start(&request_id, &req.principal.name, token.clone());
         let run = request_operation(
             req,
             self.inner.registry.as_ref(),
@@ -733,9 +797,17 @@ impl Runtime {
             &limits,
             sink,
         );
+        let last_resort = async {
+            token.cancelled().await;
+            tokio::time::sleep(
+                crate::infra::execution_driver::CLEANUP_GRACE
+                    + 2 * crate::infra::execution_driver::DEADLINE_BACKSTOP,
+            )
+            .await;
+        };
         let out = tokio::select! {
             r = run => r,
-            _ = cancelled.notified() => {
+            _ = last_resort => {
                 let mut e = RivetError::new(ErrorKind::Cancelled, "cancelled.request", "the request was cancelled by its caller");
                 e.request_id = Some(request_id.clone());
                 e.trace_id = Some(trace_id);
@@ -864,8 +936,9 @@ impl Runtime {
         operation_id: &str,
         params: Value,
         bridge: BridgeHops,
+        trace: Option<&TraceContext>,
     ) -> RivetResult<Completion> {
-        let req = self.new_request(operation_id, params, principal);
+        let req = self.new_request_traced(operation_id, params, principal, trace);
         let trace = req.trace_id.clone();
         let tracked = bridge != BridgeHops::default();
         if tracked && let Ok(mut m) = self.inner.bridges.lock() {

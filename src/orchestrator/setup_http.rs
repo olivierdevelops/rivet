@@ -27,11 +27,11 @@
 // vhco:trigger http sessions/finish_input = POST /v1/request {"id":"rivet.sessions.finish_input"}
 // vhco:trigger http sessions/read_events = POST /v1/request {"id":"rivet.sessions.read"}
 // vhco:trigger http sessions/cancel_session = POST /v1/request {"id":"rivet.sessions.cancel"}
-// vhco:api http execution/request_operation POST /v1/request -- invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream
-// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000" }
+// vhco:api http execution/request_operation POST /v1/request -- invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream; a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header
+// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000", "headers": "traceparent? — W3C 00-<trace-id>-<parent-id>-<flags>" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
-// vhco:api http audit/inspect_effects GET /v1/io -- the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
-// vhco:request { "query": "by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv" }
+// vhco:api http audit/inspect_effects GET /v1/io -- the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
+// vhco:request { "query": "by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv, report=bool" }
 // vhco:response { "bundle": "FileDigest", "policy": "FileDigest|null", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]" }
 // vhco:api http policy/generate_policy POST /v1/policy/generate -- least-privilege policy draft; never writes files
 // vhco:request { "ids": "string[]", "all": "bool" }
@@ -44,7 +44,9 @@
 // vhco:response { "id": "string", "output": "JSON Schema", "emits": "JSON Schema|null", "receives": "JSON Schema|null", "errors": "[{code, description}]" }
 
 use super::builtins::visible;
-use super::setup_serve::{ServeState, error_response, json_response};
+use super::setup_serve::{
+    ServeState, error_response, json_response, note_access, trace_context, with_traceparent,
+};
 use crate::domain::contracts::{Completion, DataEvent};
 use crate::domain::ports::DataSink;
 use crate::domain::{RivetError, RivetResult};
@@ -124,6 +126,7 @@ async fn describe(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
+    note_access(|n| n.operation = Some("rivet.describe".into()));
     if !visible(&st.runtime, &who, &id) {
         return error_response(&RivetError::not_found(
             "not_found.operation",
@@ -181,6 +184,9 @@ async fn request(
         Ok(b) => b,
         Err(e) => return error_response(&e),
     };
+    let op = body.id.clone();
+    note_access(|n| n.operation = Some(op));
+    let trace = trace_context(&headers);
     if !sse
         && !body.id.starts_with("rivet.")
         && visible(&st.runtime, &who, &body.id)
@@ -195,17 +201,21 @@ async fn request(
             ),
         ));
     }
-    let mut req = st.runtime.new_request(&body.id, body.params, who);
+    let mut req = st
+        .runtime
+        .new_request_traced(&body.id, body.params, who, trace.as_ref());
     if let Some(ms) = body.deadline_ms {
         req.deadline_ms = ms;
     }
+    let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
     if !sse {
-        return match st.runtime.dispatch_request(req, None).await {
+        let r = match st.runtime.dispatch_request(req, None).await {
             Ok(c) => json_response(200, c.to_json()),
             Err(e) => error_response(&e),
         };
+        return with_traceparent(r, &tid, &rid);
     }
-    sse_response(st, req).await
+    with_traceparent(sse_response(st, req).await, &tid, &rid)
 }
 
 enum Msg {
@@ -228,12 +238,26 @@ impl DataSink for ChannelSink {
     }
 }
 
-/// Aborts the request when the SSE body is dropped (client disconnect).
-struct AbortOnDrop(tokio::task::JoinHandle<()>);
+/// When the SSE body is dropped (client disconnect) the request is cancelled
+/// through its token (it closes its resources within the grace); the task is
+/// aborted only if it is still running after the grace.
+struct AbortOnDrop(
+    tokio::task::JoinHandle<()>,
+    crate::domain::cancel::CancelToken,
+);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
-        self.0.abort();
+        if self.0.is_finished() {
+            return;
+        }
+        self.1
+            .cancel(crate::domain::cancel::CancelReason::Cancelled);
+        let task = self.0.abort_handle();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            task.abort();
+        });
     }
 }
 
@@ -242,11 +266,12 @@ async fn sse_response(st: Arc<ServeState>, req: crate::domain::contracts::Reques
     let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
     let sink: Arc<dyn DataSink> = Arc::new(ChannelSink(tx.clone()));
     let rt = st.runtime.clone();
+    let token = req.cancel.clone();
     let task = tokio::spawn(async move {
         let out = rt.dispatch_request(req, Some(sink)).await;
         let _ = tx.send(Msg::Done(out)).await;
     });
-    let guard = AbortOnDrop(task);
+    let guard = AbortOnDrop(task, token);
     // Errors before the first data item keep their HTTP status (headers not sent yet).
     let first = rx.recv().await;
     if let Some(Msg::Done(Err(e))) = &first {
@@ -305,6 +330,7 @@ async fn io_manifest(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
+    note_access(|n| n.operation = Some("rivet.io".into()));
     let mut params = crate::domain::Value::Object(Vec::new());
     for (k, v) in q {
         let value = match v.as_str() {
@@ -314,10 +340,17 @@ async fn io_manifest(
         };
         params.set(&k, value);
     }
-    match st.runtime.request_as(who, "rivet.io", params, None).await {
+    // The result is the bare IoManifest unless format=table|markdown|csv
+    // (or report=true) asked for the rendered report.
+    let req =
+        st.runtime
+            .new_request_traced("rivet.io", params, who, trace_context(&headers).as_ref());
+    let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
+    let r = match st.runtime.dispatch_request(req, None).await {
         Ok(c) => json_response(200, c.result.to_json()),
         Err(e) => error_response(&e),
-    }
+    };
+    with_traceparent(r, &tid, &rid)
 }
 
 /// `POST /v1/policy/generate {ids?, all?}` → the `rivet.policy.generate` built-in.
@@ -331,6 +364,7 @@ async fn policy_generate(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
+    note_access(|n| n.operation = Some("rivet.policy.generate".into()));
     let params = if body.is_empty() {
         crate::domain::Value::Object(Vec::new())
     } else {
@@ -344,12 +378,16 @@ async fn policy_generate(
             }
         }
     };
-    match st
-        .runtime
-        .request_as(who, "rivet.policy.generate", params, None)
-        .await
-    {
+    let req = st.runtime.new_request_traced(
+        "rivet.policy.generate",
+        params,
+        who,
+        trace_context(&headers).as_ref(),
+    );
+    let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
+    let r = match st.runtime.dispatch_request(req, None).await {
         Ok(c) => json_response(200, c.result.to_json()),
         Err(e) => error_response(&e),
-    }
+    };
+    with_traceparent(r, &tid, &rid)
 }

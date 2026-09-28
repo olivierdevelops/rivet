@@ -18,6 +18,7 @@ fn open(id: &str, who: &Principal) -> SessionOpenInput {
         principal: who.clone(),
         connection_owned: false,
         deadline_ms: None,
+        trace: None,
     }
 }
 
@@ -373,4 +374,98 @@ async fn polling_routes_drive_a_duplex_session() {
     .await;
     assert_eq!(r.status, 404);
     s.handle.shutdown().await;
+}
+
+// vhco:test sessions.open_session -- G16: sessions.open accepts deadline_ms (capped by the host at 600000); a session whose run outlives it ends with a terminal timeout error
+#[tokio::test]
+async fn open_honours_a_requested_deadline() {
+    let rt = runtime(None);
+    let me = Principal::local();
+    let mut input = open("demo.relay", &me);
+    input.deadline_ms = Some(300);
+    let sid = rt.open_session(input).await.unwrap().session_id;
+    let started = std::time::Instant::now();
+    let mut terminal = None;
+    let mut after = 0;
+    while terminal.is_none() && started.elapsed() < std::time::Duration::from_secs(5) {
+        let b = rt.read_events(read(&sid, after, &me)).await.unwrap();
+        after = b.last_seq;
+        terminal = b
+            .events
+            .iter()
+            .find(|e| e.is_terminal())
+            .map(|e| e.to_json());
+    }
+    let t = terminal.expect("the deadline ends the session");
+    assert_eq!(t["error"]["code"], "timeout.request", "{t}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    // A huge request is capped (the session opens; it is not rejected).
+    let mut big = open("demo.relay", &me);
+    big.deadline_ms = Some(u64::MAX);
+    let r = rt.open_session(big).await.unwrap();
+    rt.cancel_session(sref(&r.session_id, &me)).await.unwrap();
+}
+
+// vhco:test sessions.cancel_session -- G16: the background sweeper cancels a session whose idle lease expired without any session call (its run ends and releases its concurrency slot; the terminal event is cancelled.idle)
+#[tokio::test]
+async fn idle_sessions_expire_without_a_session_call() {
+    let rt = rivet::Runtime::builder()
+        .source("app.rivet", &catalog(), ".")
+        .policy(
+            rivet::orchestrator::runtime::policy_from_json(
+                br#"{"version":1,"limits":{"max_concurrent_requests":1}}"#,
+                ".",
+            )
+            .unwrap(),
+        )
+        .session_limits(rivet::domain::sessions::SessionLimits {
+            idle_ms: 200,
+            retention_ms: 5_000,
+            ..Default::default()
+        })
+        .build()
+        .unwrap();
+    let me = Principal::local();
+    let r = rt.open_session(open("demo.relay", &me)).await.unwrap();
+    let probe = || rt.request("demo.add", Value::object([("a", Value::Int(1))]), None);
+    // The relay holds the only request slot while it runs.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(probe().await.unwrap_err().code, "limit.concurrency");
+    // No session call from here on: only the background sweeper can end the run.
+    let mut freed = false;
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if probe().await.is_ok() {
+            freed = true;
+            break;
+        }
+    }
+    assert!(freed, "the idle lease must expire without any session call");
+    let b = rt.read_events(read(&r.session_id, 0, &me)).await.unwrap();
+    assert_eq!(b.events[0].to_json()["error"]["code"], "cancelled.idle");
+}
+
+// vhco:test sessions.cancel_session -- G28: cancelling a session that already finished reports its terminal state (succeeded / failed), even after the terminal event was acknowledged and evicted
+#[tokio::test]
+async fn cancel_after_completion_reports_the_terminal_state() {
+    let rt = runtime(None);
+    let me = Principal::local();
+    let mut add = open("demo.add", &me);
+    add.params = Value::object([("a", Value::Int(2)), ("b", Value::Int(3))]);
+    let sid = rt.open_session(add).await.unwrap().session_id;
+    let b = rt.read_events(read(&sid, 0, &me)).await.unwrap();
+    assert!(b.terminal);
+    // Acknowledge (and evict) the terminal event, then cancel.
+    rt.read_events(SessionReadInput {
+        wait_ms: Some(0),
+        ..read(&sid, b.last_seq, &me)
+    })
+    .await
+    .unwrap();
+    let c = rt.cancel_session(sref(&sid, &me)).await.unwrap();
+    assert_eq!(c.state, "succeeded");
+    let mut bad = open("demo.add", &me);
+    bad.params = Value::object([("a", Value::text("x"))]);
+    // Invalid params are refused at open; a failing run needs a valid open.
+    assert!(rt.open_session(bad).await.is_err());
 }

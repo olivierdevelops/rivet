@@ -766,3 +766,224 @@ async fn http_multipart_and_xml_bodies() {
         ))
     );
 }
+
+// ---------------------------------------------------------------------------
+// G15 — structured cancellation: cancel and deadline expiry close `with`
+// handles gracefully (reverse order, within the 5 s grace) instead of dropping
+// them, and reap child processes.
+// ---------------------------------------------------------------------------
+
+/// What a WebSocket peer observed: the names of the connections that ended
+/// with a client Close frame (in order) and the ones that just vanished.
+#[derive(Default)]
+struct CloseLog {
+    closed: std::sync::Mutex<Vec<String>>,
+    abrupt: std::sync::atomic::AtomicUsize,
+    hellos: std::sync::atomic::AtomicUsize,
+}
+
+/// WebSocket fixture: each connection first sends `{"name": N}`; the server
+/// records whether the connection later ends with a proper close handshake.
+async fn ws_close_observer() -> (u16, std::sync::Arc<CloseLog>) {
+    use futures_util::StreamExt;
+    use tokio_tungstenite::tungstenite::Message;
+    let log = std::sync::Arc::new(CloseLog::default());
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    let seen = std::sync::Arc::clone(&log);
+    tokio::spawn(async move {
+        while let Ok((sock, _)) = l.accept().await {
+            let seen = std::sync::Arc::clone(&seen);
+            tokio::spawn(async move {
+                let Ok(mut ws) = tokio_tungstenite::accept_async(sock).await else {
+                    return;
+                };
+                let mut name = String::new();
+                loop {
+                    match ws.next().await {
+                        Some(Ok(Message::Text(t))) => {
+                            let v: serde_json::Value =
+                                serde_json::from_str(t.as_str()).unwrap_or_default();
+                            name = v["name"].as_str().unwrap_or("").to_string();
+                            seen.hellos.fetch_add(1, Ordering::SeqCst);
+                        }
+                        Some(Ok(Message::Close(_))) => {
+                            seen.closed.lock().unwrap().push(name);
+                            // Let tungstenite answer the handshake.
+                            while let Some(Ok(_)) = ws.next().await {}
+                            return;
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(_)) | None => {
+                            seen.abrupt.fetch_add(1, Ordering::SeqCst);
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+    });
+    (port, log)
+}
+
+/// Two nested WebSockets, then a long poll: the body only ends by cancel or deadline.
+fn nested_ws_op(port: u16) -> String {
+    op(&format!(
+        "with websocket \"ws://127.0.0.1:{port}/outer\" as outer\n    outer.send json {{name: \"outer\"}}\n    with websocket \"ws://127.0.0.1:{port}/inner\" as inner\n        inner.send json {{name: \"inner\"}}\n        status = poll every \"50ms\" timeout \"60s\"\n            until false\n            yield 1\n        end\n    end\nend\nreturn 1"
+    ))
+}
+
+async fn wait_for(what: &str, mut ok: impl FnMut() -> bool) {
+    for _ in 0..200 {
+        if ok() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("timed out waiting for {what}");
+}
+
+// vhco:test execution.cancel_request -- G15: cancelling a running request closes its open WebSockets with a close handshake in reverse acquisition order (inner, then outer) within the grace, and the caller gets exactly one terminal `cancelled` error (exit 130)
+#[tokio::test]
+async fn cancel_closes_handles_gracefully_in_reverse_order() {
+    let (port, log) = ws_close_observer().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let rt = runtime(
+        &nested_ws_op(port),
+        tmp.path().to_str().unwrap(),
+        &net_policy(&[format!("ws://127.0.0.1:{port}")]),
+    );
+    let req = rt.new_request(
+        "t.run",
+        Value::Null,
+        rivet::domain::contracts::Principal::local(),
+    );
+    let id = req.request_id.clone();
+    let rt2 = rt.clone();
+    let task = tokio::spawn(async move { rt2.dispatch_request(req, None).await });
+    wait_for("both hellos", || log.hellos.load(Ordering::SeqCst) == 2).await;
+    let started = std::time::Instant::now();
+    rt.cancel(&id, rivet::domain::contracts::Principal::local())
+        .unwrap();
+    let e = task.await.unwrap().unwrap_err();
+    assert_eq!(e.kind, ErrorKind::Cancelled, "{e:?}");
+    assert_eq!(e.exit_code(), 130);
+    assert!(e.suppressed.is_empty(), "clean closes: {:?}", e.suppressed);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "within the grace"
+    );
+    wait_for("close handshakes", || log.closed.lock().unwrap().len() == 2).await;
+    assert_eq!(
+        *log.closed.lock().unwrap(),
+        vec!["inner".to_string(), "outer".to_string()],
+        "reverse acquisition order"
+    );
+    assert_eq!(
+        log.abrupt.load(Ordering::SeqCst),
+        0,
+        "no handle was just dropped"
+    );
+}
+
+// vhco:test execution.request_operation -- G15: when the request deadline expires while the body waits, the open WebSockets are closed with a close handshake (not dropped) and the caller gets one terminal timeout.request error (exit 6)
+#[tokio::test]
+async fn deadline_expiry_closes_handles_gracefully() {
+    let (port, log) = ws_close_observer().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let rt = runtime(
+        &nested_ws_op(port),
+        tmp.path().to_str().unwrap(),
+        &net_policy(&[format!("ws://127.0.0.1:{port}")]),
+    );
+    let mut req = rt.new_request(
+        "t.run",
+        Value::Null,
+        rivet::domain::contracts::Principal::local(),
+    );
+    req.deadline_ms = 400;
+    let started = std::time::Instant::now();
+    let e = rt.dispatch_request(req, None).await.unwrap_err();
+    assert_eq!(
+        (e.kind, e.code.as_str()),
+        (ErrorKind::Timeout, "timeout.request"),
+        "{e:?}"
+    );
+    assert_eq!(e.exit_code(), 6);
+    assert!(started.elapsed() < Duration::from_secs(5));
+    wait_for("close handshakes", || log.closed.lock().unwrap().len() == 2).await;
+    assert_eq!(
+        *log.closed.lock().unwrap(),
+        vec!["inner".to_string(), "outer".to_string()]
+    );
+    assert_eq!(log.abrupt.load(Ordering::SeqCst), 0);
+}
+
+// vhco:test transports.run_process -- G15: cancelling a request with a streamed child process terminates it gracefully (SIGTERM reaches its trap, not a bare SIGKILL) and the child is reaped before the caller gets `cancelled`
+#[cfg(unix)]
+#[tokio::test]
+async fn cancel_terminates_and_reaps_child_processes() {
+    // A child that records a graceful SIGTERM (the sandbox forbids fork, so no
+    // shell loop): perl's builtin sleep and a TERM handler writing out/term.
+    if !std::path::Path::new("/usr/bin/perl").exists() {
+        eprintln!("skipped: /usr/bin/perl is not available");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    std::fs::create_dir_all(root.join("out")).unwrap();
+    let policy = r#"{"version":1,"grants":[
+        {"capability":"allow_exec","targets":["/usr/bin/perl"]},
+        {"capability":"allow_write","targets":["./out/**"]}]}"#;
+    let script = r#"$| = 1; $SIG{TERM} = sub { open(my $f, '>', 'out/term'); print $f "term\n"; close($f); exit 0 }; open(my $p, '>', 'out/pid'); print $p "$$\n"; close($p); print "ready\n"; sleep 60;"#;
+    let src = op(&format!(
+        "n = 0\nwith command \"/usr/bin/perl\" as p\n    args [\"-e\", {}]\n    stream stdout lines\n    for line in p.stdout\n        n += 1\n    end\nend\nreturn n",
+        serde_json::to_string(script).unwrap()
+    ));
+    let rt = runtime(&src, root.to_str().unwrap(), policy);
+    let req = rt.new_request(
+        "t.run",
+        Value::Null,
+        rivet::domain::contracts::Principal::local(),
+    );
+    let id = req.request_id.clone();
+    let rt2 = rt.clone();
+    let task = tokio::spawn(async move { rt2.dispatch_request(req, None).await });
+    let pid_file = root.join("out/pid");
+    for _ in 0..40 {
+        if task.is_finished() || pid_file.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(!task.is_finished(), "the run ended early: {:?}", task.await);
+    wait_for("the child to start", || {
+        std::fs::read_to_string(&pid_file).is_ok_and(|s| s.trim().parse::<i32>().is_ok())
+    })
+    .await;
+    // Give the shell time to install its trap.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let pid: i32 = std::fs::read_to_string(&pid_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    rt.cancel(&id, rivet::domain::contracts::Principal::local())
+        .unwrap();
+    let e = task.await.unwrap().unwrap_err();
+    assert_eq!(e.kind, ErrorKind::Cancelled, "{e:?}");
+    assert_eq!(
+        std::fs::read_to_string(root.join("out/term"))
+            .unwrap_or_default()
+            .trim(),
+        "term",
+        "the child got SIGTERM through the graceful close, not only SIGKILL"
+    );
+    // Reaped: no process (not even a zombie) has the pid any more.
+    // SAFETY: signal 0 only checks for existence.
+    let alive = unsafe { libc::kill(pid, 0) } == 0;
+    assert!(
+        !alive,
+        "child {pid} must be reaped when the caller sees `cancelled`"
+    );
+}
