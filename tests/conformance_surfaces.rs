@@ -180,6 +180,7 @@ async fn local_and_remote_cli_agree() {
         (vec!["outputs", "--all"], None),
         (vec!["outputs"], None),
         (vec!["io", "demo.add"], None),
+        (vec!["io", "demo.add", "--trace", "req_unknown"], None),
         (vec!["io", "--by", "target", "--format", "json"], None),
         (vec!["trace", "show", "req_unknown"], None),
     ];
