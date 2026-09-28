@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 5
+document_revision: 6
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,9 +16,9 @@ affected_versions:
   to: null
 applicable_environments: [development, server, embedded]
 audience: [developers, operators, integrators, reviewers]
-scope: Navigation and status for docs/manuals/ — the current-state manual set MAN-2026-0001 … MAN-2026-0008 for Rivet 0.1.0.
-reason: Every documentation directory needs an index.md (AGENTS.md "Directory Indexes"); PLAN-2026-0001 rows D-34 and TASK-089.
-related_documents: [MAN-2026-0001, MAN-2026-0002, MAN-2026-0003, MAN-2026-0004, MAN-2026-0005, MAN-2026-0006, MAN-2026-0007, MAN-2026-0008, PLAN-2026-0001]
+scope: Navigation and status for docs/manuals/ — the current-state manual set MAN-2026-0001 … MAN-2026-0010 (0.1.0 released; 0.2.0 release candidate documented).
+reason: Every documentation directory needs an index.md (AGENTS.md "Directory Indexes"); PLAN-2026-0001 rows D-34 and TASK-089; PLAN-2026-0002 row D-28.
+related_documents: [MAN-2026-0001, MAN-2026-0002, MAN-2026-0003, MAN-2026-0004, MAN-2026-0005, MAN-2026-0006, MAN-2026-0007, MAN-2026-0008, MAN-2026-0009, MAN-2026-0010, MIG-2026-0001, PLAN-2026-0001, PLAN-2026-0002]
 supersedes: null
 superseded_by: null
 tags: [rivet, manual, index]
@@ -80,15 +80,22 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
 | [MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md) | Calling Rivet from C, Python and Go (librivet) | C/Python/Go developers | active |
 | [MAN-2026-0010](man-2026-0010-editor-support-and-highlighting.md) | Editor support and syntax highlighting | script authors, tool authors | active |
 
-All ten apply to Rivet **0.2.0** and were verified against the 0.2.0 release candidate (`main` at `e7ed8ed`,
-2026-09-29). Clients of 0.1.0 read [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md) first.
+All ten describe the **0.2.0 release candidate** (in progress; the latest published release is 0.1.0). MAN-0009/0010
+were verified at `e7ed8ed`; MAN-0001…0008 were re-captured on 2026-09-29 from `cargo build --release --features cli`
+with the source at `6f9943f` (the only source change after `e7ed8ed`). Supported platforms: macOS and Linux.
+Clients of 0.1.0 read [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md) first.
 
 ## Recently added or updated
 
-- 2026-09-29: 0.2.0 — MAN-2026-0009 (C ABI and FFI) and MAN-2026-0010 (editors and highlighting) added; all eight
-  existing volumes updated (envelopes on every surface, `--data`/`--input`/`--pretty`, globals, modules, the
-  `rivet-runtime` facade and Cargo features, `unsupported.feature`, `rivet highlight`); MAN-2026-0001 gains
-  "What's New in 0.2.0" and the platform facts (macOS and Linux; Windows not supported).
+- 2026-09-29 (envelope sweep, TASK-070/072): MAN-2026-0001…0008 re-captured as 0.2.0 envelopes; new sections —
+  MAN-0001 "What's New in 0.2.0" and 0.2.0 catalogue rows, MAN-0004 `rivet highlight` and `--json` envelopes,
+  MAN-0005 "Globals in targets" and "One policy across modules", MAN-0006 "Envelopes on every surface" and
+  "Deprecation monitoring", MAN-0007 dependency/features and "Load files as module objects", MAN-0008 "Cargo
+  features per protocol".
+- 2026-09-29: 0.2.0 — MAN-2026-0009 (C ABI and FFI) and MAN-2026-0010 (editors and highlighting) added; the eight
+  existing volumes scheduled for the 0.2.0 update (envelopes on every surface, `--data`/`--input`/`--pretty`,
+  globals, modules, the `rivet-runtime` facade and Cargo features, `unsupported.feature`, `rivet highlight`), which
+  the entry above completed; MAN-2026-0003 received its Globals and Modules chapters.
 
 - 2026-09-28: `perch install` now builds and installs globally with `bman add`.
 
@@ -120,7 +127,11 @@ None.
   open` unavailable, no `rivet.capabilities`, multicast manifest mismatch) are fixed in commit `829ca43`; the
   remaining limitations are the [Known Limitations](man-2026-0001-rivet-manual.md#known-limitations) chapter.
 - The two defects found at `829ca43` (`rivet.trace.export` not dispatched; MCP `tools/list` missing two built-ins)
-  were fixed in commit `2a751ab` (INC-2026-0007) and the volumes were updated; no known defect is open.
+  were fixed in commit `2a751ab` (INC-2026-0007).
+- Defects found by the 0.2.0 sweep, documented where they show and reported for triage (not fixed here): WS
+  refused-input terminal records lack `seq` and report `data_count: 0`; `rivet highlight` drops the header tokens of
+  an unclosed block; inline `output object … open true` is accepted but ignored; the remote CLI sends no `deadline_ms`
+  over WebSocket.
 
 ## Related directories
 
@@ -132,6 +143,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-29 | Claude | Envelope sweep finished (TASK-070/072): MAN-0001…0008 re-captured on the 0.2.0-rc (source `6f9943f`) with their new 0.2.0 sections; verification line corrected; sweep defects listed. |
 | 5 | 2026-09-29 | Claude | 0.2.0: MAN-2026-0009 and MAN-2026-0010 rows; reading-order diagram with ten volumes; status re-verified on the 0.2.0 release candidate |
 | 4 | 2026-09-28 | Claude | Recorded the fix-batch update of all eight volumes (commits 829ca43 and 2a751ab) and the Known Limitations chapter. Perch entries unchanged. |
 | 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |

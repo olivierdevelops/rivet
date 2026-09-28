@@ -4,8 +4,8 @@ title: "Rivet protocols and connectors"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,23 +16,23 @@ affected_versions:
   to: null
 applicable_environments: [development, server, embedded]
 audience: [integrators, developers, operators]
-scope: When and how to use each 0.1.0 transport and connector — HTTP/1.1 and HTTP/2, response streams, HTTP/3, WebSocket client, TCP and Unix sockets, processes and the OS sandbox, UDP, QUIC, gRPC, OAuth 2.0 and MCP client connectors — with the grants each needs, errors and recovery.
-reason: PLAN-2026-0001 row D-41 — integrator guide for the implemented protocol adapters; examples run against local fixtures (HTTP, TCP, Unix, UDP, OAuth, MCP) or verified up to the policy/DNS boundary where no fixture server was available (WebSocket, QUIC, HTTP/3, gRPC).
-related_documents: [MAN-2026-0001, MAN-2026-0003, MAN-2026-0005, MAN-2026-0006, SYS-2026-0006, ADR-0003, DEMO-2026-0003, DEMO-2026-0004, DEMO-2026-0006, DEMO-2026-0007, DEMO-2026-0008, DEMO-2026-0009, DEMO-2026-0010, DEMO-2026-0011]
+scope: When and how to use each transport and connector — HTTP/1.1 and HTTP/2, response streams, HTTP/3, WebSocket client, TCP and Unix sockets, processes and the OS sandbox, UDP, QUIC, gRPC, OAuth 2.0 and MCP client connectors — with the grants each needs, the Cargo feature each needs (0.2.0, `unsupported.feature`), errors and recovery.
+reason: PLAN-2026-0001 row D-41 and PLAN-2026-0002 rows D-27, D-46 — integrator guide for the implemented protocol adapters; examples run against local fixtures (HTTP, TCP, Unix, UDP, OAuth, MCP) or verified up to the policy/DNS boundary where no fixture server was available (WebSocket, QUIC, HTTP/3, gRPC).
+related_documents: [PLAN-2026-0002, ADR-0005, API-2026-0006, INC-2026-0011, MAN-2026-0007, MAN-2026-0001, MAN-2026-0003, MAN-2026-0005, MAN-2026-0006, SYS-2026-0006, ADR-0003, DEMO-2026-0003, DEMO-2026-0004, DEMO-2026-0006, DEMO-2026-0007, DEMO-2026-0008, DEMO-2026-0009, DEMO-2026-0010, DEMO-2026-0011]
 supersedes: null
 superseded_by: null
-tags: [rivet, manual, http, http3, websocket, tcp, udp, quic, grpc, oauth, mcp, sandbox]
+tags: [rivet, manual, http, http3, websocket, tcp, udp, quic, grpc, oauth, mcp, sandbox, cargo-features]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (source at 6f9943f)"
+next_review_date: 2026-10-29
 ---
 
 # Rivet protocols and connectors
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** transports, http, datagrams, quic, grpc, connectors, auth, mcp, policy, files
@@ -42,13 +42,15 @@ next_review_date: 2026-10-28
 Pick the right transport, write it, grant it, and recover when it fails. Part of the
 [Rivet manual](man-2026-0001-rivet-manual.md). Language basics are in
 [MAN-2026-0003](man-2026-0003-language-guide.md); grant syntax in
-[MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md).
+[MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md). The latest published release is 0.1.0; **0.2.0 is
+in progress**: request outputs below are 0.2.0 envelopes ([API-2026-0006](../api/api-2026-0006-envelopes.md)), and
+some protocols now depend on a **Cargo feature** of the build ([§Cargo features per protocol](#cargo-features-per-protocol)).
 
 ## Reading Order
 
 ```text
- choose ─► HTTP/1.1+2 ─► response streams ─► HTTP/3 ─► WebSocket ─► TCP/Unix ─► processes + sandbox
-        ─► UDP ─► QUIC ─► gRPC ─► OAuth 2.0 ─► MCP connectors ─► errors
+ choose ─► which Cargo feature? ─► HTTP/1.1+2 ─► response streams ─► HTTP/3 ─► WebSocket ─► TCP/Unix
+        ─► processes + sandbox ─► UDP ─► QUIC ─► gRPC ─► OAuth 2.0 ─► MCP connectors ─► errors
 ```
 
 ## Concepts
@@ -76,7 +78,7 @@ Common rules for every transport:
   `effects: "none"`.
 - Private, loopback and link-local addresses are denied unless granted literally (MAN-2026-0005).
 - `with` blocks close their handles in reverse order within 5 s on any exit.
-- No connection pooling in 0.1.0: every request opens its own connections.
+- No connection pooling: every request opens its own connections.
 - Mutations are never replayed automatically; `retry` applies only where you declare it.
 - Size bounds default to **8 MiB**: a buffered HTTP response body (`max_body N` overrides), one stream item (SSE
   event, JSON line, text line), a socket or QUIC frame (`max_frame N` overrides), a process's collected output,
@@ -86,10 +88,70 @@ Common rules for every transport:
   URL, header, body, query, socket or UDP payload, gRPC/MCP message; files, processes, Unix sockets and pipes never
   receive it (`permission.denied`, `details.secret`; MAN-2026-0003).
 
+### Cargo features per protocol
+
+From 0.2.0 the `rivet-runtime` crate has Cargo features (ADR-0005). The defaults (`serve`, `grpc`, `quic`, `oauth`)
+include every protocol; a lean build drops some. **A compiled-out adapter never degrades silently**: the bundle
+fails **at load**, before anything runs, with `unsupported.feature` (exit 5, HTTP 501, `details.feature`), and every
+use is reported (the first as the error, the rest in `suppressed`).
+
+| Protocol / form | Cargo feature | Without it |
+|---|---|---|
+| HTTP/1.1, HTTP/2, response streams, WebSocket client, TCP, Unix, UDP, processes, files, MCP client connectors | always built | — |
+| `with quic …`, HTTP/3 (`version 3`, `version prefer [3, …]`) | `quic` | `unsupported.feature` (`quic`) |
+| `connector … grpc`, `grpc X.Method` | `grpc` | `unsupported.feature` (`grpc`) |
+| `auth NAME oauth2` profiles, `store keychain` | `oauth` | `unsupported.feature` (`oauth`) |
+| `rivet serve` (the MCP **server**, REST, SSE, polling, WebSocket server) | `serve` | `rivet serve` exits 5, `unsupported.feature` (`serve`) |
+| the `rivet` binary | `cli` | no binary (library only) |
+
+```text
+ build features ──▶ rivet.capabilities data.build_features   e.g. ["serve","grpc","quic","oauth","cli"]
+                     (protocol rows of `features` follow the build: grpc/quic_v1/http3/oauth2_* "unsupported" when compiled out)
+ load bundle ──▶ each use of a compiled-out adapter ──▶ unsupported.feature, details.feature ──▶ rebuild with it
+```
+
+Captured with a lean binary (`cargo build --release -p rivet-runtime --no-default-features --features cli`, source
+`6f9943f`) on the demo bundles:
+
+```text
+$ rivet --file app.rivet check                                   # docs/demos/09-quic              [exit 5]
+error[unsupported.feature]: a QUIC exchange in `engine.status` needs the `quic` feature, which this build was compiled without (rebuild rivet-runtime with `--features quic`)
+  --> app.rivet:7:5
+   |
+  7|     with quic "quic://engine.example.com:4433" as connection
+   |     ^
+error[unsupported.feature]: HTTP/3 (`version 3` or `version prefer [3, …]`) in `items.http3` needs the `quic` feature, which this build was compiled without (rebuild rivet-runtime with `--features quic`)
+  --> app.rivet:26:5
+   |
+ 26|     response = http get "https://api.example.com/items"
+   |     ^
+
+$ rivet --file app.rivet check                                   # docs/demos/10-grpc (first of five)  [exit 5]
+error[unsupported.feature]: gRPC connector `users` needs the `grpc` feature, which this build was compiled without (rebuild rivet-runtime with `--features grpc`)
+  --> app.rivet:1:1
+   |
+  1| connector users grpc
+   | ^
+
+$ rivet --file app.rivet check --json                            # docs/demos/07-oauth2            [exit 5]
+{"request_id":"","trace_id":"","operation":"rivet.check","type":"result","status":"error","data":null,"error":{"kind":"unsupported","code":"unsupported.feature","message":"auth profile `crm_service` needs the `oauth` feature, which this build was compiled without (rebuild rivet-runtime with `--features oauth`)","retryable":false,"source":{"file":"app.rivet","line":1,"column":1,"end_line":11,"end_column":4},"details":{"feature":"oauth"}},"effects":"none","data_count":0}
+
+$ rivet --file app.rivet serve --listen 127.0.0.1:18958          # docs/demos/01-catalog           [exit 5]
+{"request_id":"","trace_id":"","operation":"rivet.serve","type":"result","status":"error","data":null,"error":{"kind":"unsupported","code":"unsupported.feature","message":"`rivet serve` needs the `serve` feature, which this build was compiled without (rebuild rivet-runtime with `--features serve`)","retryable":false,"details":{"feature":"serve"}},"effects":"none","data_count":0}
+
+$ rivet --file app.rivet request rivet.capabilities              # the lean build reports itself (abridged)
+… "serve":{"surfaces":["cli","library"],…},"build_features":["cli"] …   grpc, quic_v1, http3, oauth2_pkce: "unsupported"; mcp: "supported"
+```
+
+The same refusal reaches a library host at `Runtime::builder().build()` and a C host at `rivet_runtime_new`.
+Choosing features for a Rust dependency: [MAN-2026-0007](man-2026-0007-embedding-library.md#add-the-dependency-and-choose-features).
+
 ## Task-Oriented Workflows
 
-Local fixture examples below ran against small Python servers on `127.0.0.1` with `rivet 0.1.0-dev` (commit
-`f40d4aa`); IDs vary per run.
+Local fixture examples below ran against small Python servers on `127.0.0.1`. Outputs shown as envelopes (SSE, TCP,
+OAuth client credentials, MCP bridge) were re-captured on 2026-09-29 from the 0.2.0 release candidate on ports
+18970–18973; tables of values were verified with `rivet 0.1.0-dev` (commit `f40d4aa`) and the value shapes are
+unchanged. IDs vary per run.
 
 ### HTTP/1.1 and HTTP/2
 
@@ -171,10 +233,10 @@ end
 ```
 
 ```text
-$ rivet request --file app.rivet chat.reply --stream
-{"request_id":"req_01a2bcbd6d","trace_id":"tr_01a2bcbd6d","seq":1,"type":"data","data":"Hel"}
-{"request_id":"req_01a2bcbd6d","trace_id":"tr_01a2bcbd6d","seq":2,"type":"data","data":"lo"}
-{"request_id":"req_01a2bcbd6d","trace_id":"tr_01a2bcbd6d","result":"Hello","data_count":2,"effects":"none","type":"result"}
+$ rivet request --file app.rivet chat.reply --stream          # SSE fixture on 127.0.0.1:18972 (the URL above, re-pointed)
+{"request_id":"req_0199e3210d","trace_id":"tr_0199e3210d","operation":"chat.reply","type":"data","seq":1,"data":"Hel","error":null}
+{"request_id":"req_0199e3210d","trace_id":"tr_0199e3210d","operation":"chat.reply","type":"data","seq":2,"data":"lo","error":null}
+{"request_id":"req_0199e3210d","trace_id":"tr_0199e3210d","operation":"chat.reply","type":"result","seq":3,"status":"ok","data":"Hello","error":null,"effects":"none","data_count":2}
 ```
 
 | `stream` | Item |
@@ -188,7 +250,7 @@ $ rivet request --file app.rivet chat.reply --stream
 
 | Option | Behaviour | Failure |
 |---|---|---|
-| `version 3` | HTTP/3 only; never falls back | `protocol` `http.version_unavailable` (exit 5), e.g. "HTTP/3 is not available: HTTP/3 needs an https:// URL", `details.request_sent: false` |
+| `version 3` (needs the `quic` Cargo feature) | HTTP/3 only; never falls back | `protocol` `http.version_unavailable` (exit 5), e.g. "HTTP/3 is not available: HTTP/3 needs an https:// URL", `details.request_sent: false` |
 | `version prefer [3, 2]` | try HTTP/3; fall back to HTTP/2 **only before any request bytes were sent** | 3 must be first: `version prefer [2, 3]` → `validation.http_version` (exit 2, at run time) |
 | (none) | HTTP/1.1 or HTTP/2 | — |
 
@@ -232,8 +294,13 @@ operation tcp.echo
 end
 ```
 
-Grant `{"capability": "allow_network", "targets": ["tcp://127.0.0.1:18493"]}` →
-`{"result":{"echo":{"hello":"tcp"}},…,"effects":"committed"}`.
+Grant `{"capability": "allow_network", "targets": ["tcp://127.0.0.1:18493"]}`. Against a newline-JSON echo fixture
+(re-pointed to `127.0.0.1:18973`):
+
+```text
+$ rivet request --file app.rivet tcp.echo
+{"request_id":"req_0198d471ad","trace_id":"tr_0198d471ad","operation":"tcp.echo","type":"result","status":"ok","data":{"echo":{"hello":"tcp"}},"error":null,"effects":"committed","data_count":0}
+```
 
 Unix sockets use `allow_unix` with the socket path (`allow_read` does not cover sockets):
 
@@ -299,8 +366,8 @@ Sandbox backends ([ADR-0003](../decisions/adr-0003-process-sandbox-backends.md))
 | Platform | Backend | 0.1.0 state |
 |---|---|---|
 | macOS | Seatbelt | active: child confined to the policy's read/write/exec grants; no network; no fork for children |
-| Linux | Landlock + seccomp | built but gated: refuses (`unsupported.sandbox_backend`) until verified on kernel ≥ 6.12 |
-| other | none | `unsupported.sandbox_backend` |
+| Linux | Landlock + seccomp | built but **gated**: refuses (`unsupported.sandbox_backend`, exit 5 / HTTP 501) "until the T-08 conformance suite passes on Linux CI (kernel >= 6.12, Landlock ABI 6)"; `rivet.capabilities` reports `"status":"gated"` |
+| Windows | none | not a supported platform in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)) |
 
 With **no** `policy.json`, processes are denied anyway (no `allow_exec`). Grants that the sandbox cannot express
 exactly (`access` lists, globs other than `DIR/**`) fail before spawning rather than being widened.
@@ -446,14 +513,21 @@ Grants (verified wording):
 
 `allow_auth` targets are `PROFILE/ACCOUNT/VERB` and accept globs (`crm_device/ada/*`).
 
-Client credentials against a local token endpoint and resource server:
+Client credentials against the [07-oauth2](../demos/07-oauth2/README.md) fixture (`fixtures/oauth_fixture.py`, a
+token endpoint and a resource server, re-pointed to `127.0.0.1:18970`/`18971` in a scratch copy as the demo's step 3
+describes):
 
 ```text
-$ CRM_CLIENT_SECRET=s3cret rivet request --file app.rivet contacts.list
-{"request_id":"req_01287d6885","trace_id":"tr_01287d6885","result":{"contacts":[{"name":"Ada"}]},"data_count":0,"effects":"none"}
+$ CRM_CLIENT_SECRET=demo-secret-not-real rivet request --file app.rivet contacts.list
+{"request_id":"req_01d9f64cad","trace_id":"tr_01d9f64cad","operation":"contacts.list","type":"result","status":"ok","data":{"contacts":[{"name":"Ada Lovelace","email":"ada@example.com"},{"name":"Grace Hopper","email":"grace@example.com"}]},"error":null,"effects":"none","data_count":0}
+
+$ rivet request --file app.rivet contacts.list                  # CRM_CLIENT_SECRET unset               [exit 5]
+{"request_id":"req_01d7ab5fed","trace_id":"tr_01d7ab5fed","operation":"contacts.list","type":"result","status":"error","data":null,"error":{"kind":"application","code":"auth.client_secret_missing","message":"auth profile `crm_service`: client secret env CRM_CLIENT_SECRET is not set","retryable":false,"source":{"file":"app.rivet","line":20,"column":5,"end_line":23,"end_column":8},"operation_id":"contacts.list"},"effects":"none","data_count":0}
 ```
 
-Device code on one server (transactions and `store memory` live in the serving process):
+Device code on one server (transactions and `store memory` live in the serving process; captured with 0.1.0 at
+`f40d4aa` — `auth complete --params` is that command's own, non-deprecated flag, and in 0.2.0 each `→` value below is
+the `data` of the answer's envelope):
 
 ```text
  rivet --endpoint E auth begin crm_device --account ada
@@ -494,11 +568,13 @@ the server offers.
        │ bundle does not load until 4:  not_found.mcp_snapshot (4) / mcp.snapshot_unapproved (2)
 ```
 
-Verified end to end with a second Rivet as the MCP server (stdio):
+Verified end to end with a second Rivet as the MCP server (stdio), on 2026-09-29 with the 0.2.0 release candidate.
+**0.2.0 change:** when the peer is Rivet 0.2.0, the tool result's `structuredContent` is the peer's **envelope**, so
+the value is `structuredContent.data` (0.1.0 peers answered `structuredContent.result`):
 
 ```rivet
 connector peer mcp
-    transport command "/path/to/rivet/target/debug/rivet"
+    transport command "/path/to/rivet/target/release/rivet"
         args ["--file", "/path/to/rivet/docs/demos/01-catalog/app.rivet", "serve", "--stdio"]
     end
     schema "./schemas/peer.json"
@@ -511,7 +587,7 @@ operation bridge.add
     param a integer required description "First operand."
     output json description "The peer's sum."
     r = (request "peer.tools.demo.add" {a: a, b: 40})
-    return r.structuredContent.result
+    return r.structuredContent.data
 end
 ```
 
@@ -519,12 +595,12 @@ end
 {
   "version": 1,
   "grants": [
-    {"capability": "allow_exec",  "targets": ["/path/to/rivet/target/debug/rivet"]},
+    {"capability": "allow_exec",  "targets": ["/path/to/rivet/target/release/rivet"]},
     {"capability": "allow_read",  "targets": ["/path/to/rivet/docs/demos/01-catalog/**"]},
     {"capability": "allow_write", "targets": ["./schemas/**"]},
     {"capability": "allow_mcp",   "targets": ["peer/discover", "peer/tools/demo.add"]}
   ],
-  "approved": {"snapshots": ["sha256:9173a4bbfd55693b49cfd2d68c793dac5496b8bd7c461d0fcae145c9b57cc491"]}
+  "approved": {"snapshots": ["sha256:50a29864e26241a1b0a9a3dc4be6eb06ceb0ac267063a6497059931b2a6aae34"]}
 }
 ```
 
@@ -533,17 +609,31 @@ serves; the `allow_write` grant is for the snapshot file and must not be `access
 refuses.)
 
 ```text
-$ rivet check --file app.rivet
-error[not_found.mcp_snapshot]: cannot read snapshot ./schemas/peer.json of connector `peer` …
+$ rivet check --file app.rivet                                                                     [exit 4]
+error[not_found.mcp_snapshot]: cannot read snapshot ./schemas/peer.json of connector `peer`: No such file or directory (os error 2)
+  --> app.rivet:1:1
+   |
+  1| connector peer mcp
+   | ^
   = hint: create it with `rivet connectors sync peer --output ./schemas/peer.json`, review it and approve its sha256 in policy.json
-$ rivet connectors --file app.rivet sync peer --output ./schemas/peer.json
-{"connector":"peer","path":"./schemas/peer.json","sha256":"sha256:9173a4bb…","protocolVersion":"2025-11-25","tools":["demo.greet","demo.add",…],"resources":[],"prompts":[]}
+$ rivet connectors --file app.rivet sync peer --output ./schemas/peer.json                        # stdout (abridged) + stderr hint
+{"request_id":"req_01944ee165","trace_id":"tr_01944ee165","operation":"rivet.connectors.sync","type":"result","status":"ok","data":{"connector":"peer","path":"./schemas/peer.json","sha256":"sha256:50a29864e26241a1b0a9a3dc4be6eb06ceb0ac267063a6497059931b2a6aae34","protocolVersion":"2025-11-25","tools":["demo.greet","demo.add","demo.health","demo.countdown","rivet.request",…],"resources":[],"prompts":[]},"error":null,"effects":"committed","data_count":0}
+wrote candidate snapshot ./schemas/peer.json (sha256:50a29864…6aae34); after review, approve it in policy.json: "approved": {"snapshots": ["sha256:50a29864…6aae34"]}
 $ rivet check --file app.rivet            # before approving                                  [exit 2]
-error[mcp.snapshot_unapproved]: snapshot ./schemas/peer.json of connector `peer` is not reviewed: sha256:9173a4bb… is not listed in policy.json approved.snapshots
+error[mcp.snapshot_unapproved]: snapshot ./schemas/peer.json of connector `peer` is not reviewed: sha256:50a29864…6aae34 is not listed in policy.json approved.snapshots
 $ rivet check --file app.rivet            # after approving
 ok: 1 operations, 1 connectors, 0 auth profiles
-$ rivet request --file app.rivet bridge.add --params '{"a":2}'
-{"request_id":"req_013839c10d","trace_id":"tr_013839c10d","result":42,"data_count":0,"effects":"committed"}
+$ rivet request --file app.rivet bridge.add --data '{"a":2}'
+{"request_id":"req_018f2ae7fd","trace_id":"tr_018f2ae7fd","operation":"bridge.add","type":"result","status":"ok","data":42,"error":null,"effects":"unknown","data_count":0}
+$ rivet request --file app.rivet peer.tools.demo.add --data '{"a":1,"b":2}'                        # the imported tool itself
+{"request_id":"req_018dd57aa5","trace_id":"tr_018dd57aa5","operation":"peer.tools.demo.add","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{…}"}],"structuredContent":{"request_id":"req_018caab1a5","trace_id":"tr_018caab1a5","operation":"demo.add","type":"result","status":"ok","data":3,"error":null,"effects":"none","data_count":0},"isError":false},"error":null,"effects":"unknown","data_count":0}
+```
+
+```text
+ envelope nesting when both sides are Rivet 0.2.0
+   bridge answer   {…,"operation":"peer.tools.demo.add","status":"ok","data": ⟨MCP tool result⟩, "effects":"unknown"}
+   MCP tool result {"content":[…], "structuredContent": ⟨peer envelope⟩, "isError": false}
+   peer envelope   {…,"operation":"demo.add","status":"ok","data": 3, …}      ─▶ read r.structuredContent.data
 ```
 
 - The snapshot starts with `"format": "rivet.mcp.snapshot/1"`; re-running `sync` on an unchanged server yields
@@ -615,14 +705,17 @@ commit `829ca43`; the `connectors sync` refusal was re-run against [06-mcp-bridg
 | `mcp.schema_drift` | MCP | server changed since review | exit 5, nothing sent | sync, review, approve again | after re-approval | MCP |
 | `limit.response_body`, `limit.frame`, `limit.stream_item`, `limit.process_output`, `limit.mcp_message` | all | a payload exceeds its bound (default 8 MiB) | exit 5 | raise `max_body` / `max_frame`, or stream | yes, after change | size bounds |
 | `permission.denied` (`details.secret`) | all | a secret would reach a sink outside its bound origins | exit 3, nothing sent | send it only to its `for` origin | no | secrets |
+| `unsupported.feature` (`details.feature` `grpc`, `quic`, `oauth`, `serve`) | load | the build lacks that Cargo feature | exit 5 / HTTP 501, nothing runs | rebuild with the feature (default features include all) | no | Cargo features |
 
 ## Limitations
 
 The protocol rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.md#known-limitations):
 
 - No connection pooling; no Alt-Svc discovery (HTTP/3 only when requested).
-- Process sandbox active on macOS only; the Linux sandbox is gated until verified on kernel ≥ 6.12; Windows and
-  other OSes are unsupported (`unsupported.sandbox_backend`).
+- Process sandbox active on macOS only; the Linux sandbox is gated until verified on kernel ≥ 6.12
+  (`unsupported.sandbox_backend`, exit 5 / 501). Supported platforms are macOS and Linux; Windows is not
+  ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
+- A lean build refuses bundles that need a compiled-out feature (`unsupported.feature`); it never falls back.
 - MCP client: a 401 invalidates the token lease without retrying the call.
 - MCP: no legacy HTTP+SSE transport and no resource templates.
 - Stage C forms are refused: `with pipe`, TCP/Unix `tls`, `reconnect`, `interactive true`, custom codecs.
@@ -640,14 +733,17 @@ policy and DNS boundaries; their wire behaviour is covered by the conformance su
 | HTTP/3, QUIC v1 | 0.1.0 | — | — | all |
 | WebSocket, TCP, Unix, UDP | 0.1.0 | — | — | all (Unix sockets: Unix-like OS) |
 | Processes + Seatbelt sandbox | 0.1.0 | — | — | macOS (Linux gated) |
-| gRPC, OAuth 2.0, MCP client connectors | 0.1.0 | — | — | all |
+| gRPC, OAuth 2.0, MCP client connectors | 0.1.0 | 0.2.0: gRPC and OAuth behind the `grpc` / `oauth` features (default on) | — | macOS, Linux |
+| HTTP/3, QUIC behind the `quic` feature; `unsupported.feature` | 0.2.0 | — | — | macOS, Linux |
+| MCP peer answers as envelopes (`structuredContent.data`) | 0.2.0 | — | `structuredContent.result` of 0.1.0 peers | all |
 
 ## Related Documents
 
 - [Rivet manual](man-2026-0001-rivet-manual.md) · [Language guide](man-2026-0003-language-guide.md) ·
   [Policy guide](man-2026-0005-policy-and-io-manifest-guide.md) · [Serving](man-2026-0006-serving-and-surfaces.md)
 - [SYS-2026-0006 OAuth and credentials](../system/integrations/sys-2026-0006-oauth-and-credentials.md)
-- [ADR-0003 process sandbox backends](../decisions/adr-0003-process-sandbox-backends.md)
+- [ADR-0003 process sandbox backends](../decisions/adr-0003-process-sandbox-backends.md) · [ADR-0005 workspace, package and features](../decisions/adr-0005-workspace-package-and-features.md)
+- [MAN-2026-0007 embedding (dependency and features)](man-2026-0007-embedding-library.md) · [API-2026-0006 envelopes](../api/api-2026-0006-envelopes.md)
 - [REF-2026-0002 examples S19–S30, S52–S61, S81–S102, S110–S118](../references/ref-2026-0002-language-and-usage.md)
 
 ## Change History
@@ -656,3 +752,4 @@ policy and DNS boundaries; their wire behaviour is covered by the conformance su
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial protocols and connectors guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa with local fixtures. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`http.status` messages name the explicit port): 8 MiB size defaults and the host byte budget, secret sinks, multicast manifest now mirrors the runtime (workaround removed), OAuth token reuse and cache key, opaque MCP effects `unknown`, `mcp.schema_drift` drift check, sync output check first, MCP 401 lease invalidation; limitations aligned with MAN-2026-0001. |
+| 3 | 2026-09-29 | Claude | 0.2.0 (D-27, D-46): new **Cargo features per protocol** section (feature table, flow, real `unsupported.feature` output of a lean build on 09-quic, 10-grpc, 07-oauth2 and `serve`); SSE, TCP, OAuth client-credentials and MCP bridge outputs re-captured as envelopes on the 0.2.0-rc; MCP bridge reads `structuredContent.data` from a 0.2.0 peer (and reports `effects: "unknown"`); Linux sandbox gated / Windows unsupported; error, limitation and version rows. |

@@ -4,38 +4,38 @@ title: "Rivet policy and I/O manifest guide"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [policy, audit, files, transports, auth, connectors, cli, serve]
+components: [policy, audit, files, transports, auth, connectors, cli, serve, language]
 affected_versions:
   from: "0.1.0"
   to: null
 applicable_environments: [development, server, embedded]
 audience: [administrators, operators, security-reviewers, developers]
-scope: Writing policy.json (schema v1), access verbs, network targets and private ranges, limits, the generated I/O manifest (rivet io views, --check-policy, --strict, --needs, --check-files, --trace), policy generate, and the review workflow that ties them together.
-reason: PLAN-2026-0001 row D-38 — administrator guide for the implemented policy broker and I/O manifest; every example executed against the 0.1.0-dev build.
-related_documents: [MAN-2026-0001, MAN-2026-0004, MAN-2026-0006, MAN-2026-0008, SYS-2026-0003, SYS-2026-0008, RUN-2026-0002, DEMO-2026-0011, DEMO-2026-0002, DEMO-2026-0008]
+scope: Writing policy.json (schema v1), access verbs, network targets and private ranges, limits, the generated I/O manifest (rivet io views, --check-policy, --strict, --needs, --check-files, --trace), policy generate, globals that keep targets exact, one policy across imported modules, and the review workflow that ties them together.
+reason: PLAN-2026-0001 row D-38 and PLAN-2026-0002 rows D-24, D-46 — administrator guide for the implemented policy broker and I/O manifest; every example executed against the build.
+related_documents: [PLAN-2026-0002, MAN-2026-0003, API-2026-0006, SEC-2026-0001, MAN-2026-0001, MAN-2026-0004, MAN-2026-0006, MAN-2026-0008, SYS-2026-0003, SYS-2026-0008, RUN-2026-0002, DEMO-2026-0011, DEMO-2026-0002, DEMO-2026-0008]
 supersedes: null
 superseded_by: null
 tags: [rivet, manual, policy, sandbox, io-manifest, least-privilege]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (source at 6f9943f)"
+next_review_date: 2026-10-29
 ---
 
 # Rivet policy and I/O manifest guide
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
-> **Affected Components:** policy, audit, files, transports, auth, connectors, cli, serve
+> **Affected Components:** policy, audit, files, transports, auth, connectors, cli, serve, language
 
 ## Purpose
 
@@ -43,10 +43,16 @@ Decide — and prove — what a Rivet bundle may touch. `policy.json` is the onl
 manifest (`rivet io`) lists every effect site so you can review it, check it against the policy, and generate a
 least-privilege draft. Part of the [Rivet manual](man-2026-0001-rivet-manual.md).
 
+The latest published release is 0.1.0; **0.2.0 is in progress**. New for policy authors in 0.2.0: **globals** keep
+targets exact (so grants can be exact), and **one policy governs a bundle and every module it imports**. Outputs of
+`rivet request` are 0.2.0 envelopes ([API-2026-0006](../api/api-2026-0006-envelopes.md)). Examples were captured on
+2026-09-29 from the 0.2.0 release candidate (source `6f9943f`); IDs differ on every run.
+
 ## Reading Order
 
 ```text
  how policy is found ─► write policy.json ─► access verbs ─► network + private ranges ─► limits
+   ─► globals in targets ─► one policy across modules
    ─► review I/O (rivet io) ─► check against policy ─► needed files ─► generate a draft ─► trace
    ─► the review workflow (all of the above in order)
 ```
@@ -144,9 +150,9 @@ Result:
 
 ```text
 $ rivet request --file app.rivet data.read
-{"request_id":"req_018cb08bbd","trace_id":"tr_018cb08bbd","result":{"message":"public demo data"},"data_count":0,"effects":"none"}
-$ rivet request --file app.rivet data.private                                                   [exit 3]
-{"…","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/private/secret.json denied: deny allow_read ./data/private/**","retryable":false,"effects":"none",…,"details":{"capability":"allow_read","access":"read","target":"./data/private/secret.json"}}}
+{"request_id":"req_0115a3a0f5","trace_id":"tr_0115a3a0f5","operation":"data.read","type":"result","status":"ok","data":{"message":"public demo data"},"error":null,"effects":"none","data_count":0}
+$ rivet request --file app.rivet data.private                                                   [exit 3, stderr]
+{"request_id":"req_015515eddd","trace_id":"tr_015515eddd","operation":"data.private","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/private/secret.json denied: deny allow_read ./data/private/**","retryable":false,"source":{"file":"app.rivet","line":26,"column":5,"end_line":26,"end_column":59},"operation_id":"data.private","details":{"capability":"allow_read","access":"read","target":"./data/private/secret.json"}},"effects":"none","data_count":0}
 ```
 
 Validation failures — each is `policy.invalid`, exit 2, and nothing runs (not even `check` or `serve`):
@@ -249,7 +255,8 @@ With no `policy.json`: `policy   none — no policy.json: every new application 
 still run)`. With an ID, the operation's sites and decisions are appended (MAN-2026-0004). A `"*"` target is
 flagged `⚠ broad: "*" allows every target`.
 
-**Explain one concrete call.** `policy explain ID --params JSON` fills the operation's param-dependent targets
+**Explain one concrete call.** `policy explain ID --params JSON` (this command's own flag; not the deprecated
+`request --params`) fills the operation's param-dependent targets
 from those params, evaluates each against the policy exactly as the broker would, and **exits 3** when any is
 denied — a pre-flight check that issues no permit and touches nothing (scratch bundle, commit `829ca43`;
 `demo.read` = `return file read path as text`, policy granting `allow_read ./data/**`):
@@ -275,8 +282,9 @@ Why: a caller (an agent, a multi-tenant front end, a library host) wants a reque
 than the server's `policy.json` — for example only one tenant's directory.
 
 `restrict` is `{"grants": [...]}` in the policy.json grant format. It is accepted on `POST /v1/request`,
-`POST /v1/requests` (polling), WebSocket `request` frames, MCP `tools/call` params and the library
-(`Runtime::request_restricted`). Each broker decision of that request **and its nested calls** must pass the
+`POST /v1/requests` (polling), WebSocket `request` frames, MCP `tools/call` params, `rivet request --input` and the
+library (`Runtime::request_restricted`, `InputEnvelope::restrict`, `"restrict"` in the C ABI input) — it is a key of
+the 0.2.0 input envelope. Each broker decision of that request **and its nested calls** must pass the
 loaded policy **and** the restriction; a restriction naming a target the policy does not grant adds nothing.
 Any key other than `grants`, or a malformed grant, is `policy.invalid` with a `/restrict/…` pointer (422, exit 2).
 
@@ -287,16 +295,143 @@ Any key other than `grants`, or a malformed grant, is `policy.invalid` with a `/
    (no restrict)                                    read data/a.txt   ─► allowed
 ```
 
-Captured on `rivet serve --listen 127.0.0.1:18901` (commit `829ca43`):
+Captured on `rivet serve --listen 127.0.0.1:18952` (a scratch bundle: `demo.read` = `return file read path as text`,
+policy `allow_read ./data/**`; the full session is in [API-2026-0001](../api/api-2026-0001-http-rest-sse-polling.md#examples)):
 
 ```text
-$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"demo.read","params":{"path":"data/a.txt"},
+$ curl -s http://127.0.0.1:18952/v1/request -H 'content-type: application/json' -d '{"operation":"demo.read","data":{"path":"data/a.txt"},
        "restrict":{"grants":[{"capability":"allow_read","targets":["./data/other/**"],"access":["read"]}]}}'     # 403
-{…"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt",…}}
+{"request_id":"req_0599d1cc19","trace_id":"tr_0599d1cc19","operation":"demo.read","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt",…,"details":{"capability":"allow_read","access":"read","target":"data/a.txt"}},"effects":"none","data_count":0}
 
-$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"demo.read","params":{"path":"data/a.txt"},"restrict":{"bogus":1}}'   # 422
-{…"error":{"kind":"validation","code":"policy.invalid","message":"restrict accepts only `grants` (got `bogus`); it can narrow, never grant",…,"details":{"pointer":"/restrict/bogus"}}}
+$ curl -s http://127.0.0.1:18952/v1/request -H 'content-type: application/json' -d '{"operation":"demo.read","data":{"path":"data/a.txt"},"restrict":{"bogus":1}}'   # 422
+{"request_id":"req_079c557633","trace_id":"tr_079c557633","operation":"demo.read","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"policy.invalid","message":"restrict accepts only `grants` (got `bogus`); it can narrow, never grant","retryable":false,"operation_id":"demo.read","details":{"pointer":"/restrict/bogus"}},"effects":"none","data_count":0}
 ```
+
+### Globals in targets
+
+Why (0.2.0): a base URL or directory repeated in every operation is error-prone, and a target built from a
+**parameter** can only be granted by a glob. A `global` is a constant fixed at load time
+([MAN-2026-0003 §Globals](man-2026-0003-language-guide.md#globals)); the manifest substitutes it, so a target built
+**only from literals and globals is `exact`** and `policy generate` drafts an exact grant. A target that also uses a
+parameter stays `param_dependent` (the 0.1.0 rule): the global fixes its host and path prefix, the parameter does not.
+
+```text
+ global API = "https://api.example.com"            rivet io                             policy generate
+ http get "${API}/users"         ──────────▶ https://api.example.com/users      exact  ─▶ allow_network https://api.example.com:443
+ http get "${API}/users/${id}"   ──────────▶ https://api.example.com/users/{id} param_dependent (same origin grant)
+ global OUT = "./out"
+ file create "${OUT}/note.txt" … ──────────▶ ./out/note.txt                     exact  ─▶ allow_write ./out/note.txt create
+ global T = env "HOME"           ──────────▶ check.global_not_constant (exit 2): a global can never hold an env value or a secret
+```
+
+Captured on a scratch bundle (`users.list` calls `${API}/users`, `users.get` calls `${API}/users/${id}`,
+`users.save` creates `${OUT}/note.txt`):
+
+```text
+$ rivet io --file app.rivet
+OPERATION   KIND     ACCESS       TARGET                              KNOWLEDGE        SOURCE
+users.get   network  connect GET  https://api.example.com/users/{id}  param_dependent  app.rivet:21
+users.list  network  connect GET  https://api.example.com/users       exact            app.rivet:10
+users.save  file     create       ./out/note.txt                      exact            app.rivet:29
+
+$ rivet io --file app.rivet --by target
+TARGET                       ACCESS       CAPABILITY     ORIGIN       PHASE    NEEDS FILE  USED BY
+https://api.example.com:443  connect GET  allow_network  http get     connect  —           users.get, users.list
+./out/note.txt               create       allow_write    file create  body     no          users.save
+
+$ rivet policy --file app.rivet generate --all
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_write", "targets": ["./out/note.txt"], "access": ["create"]},
+    {"capability": "allow_network", "targets": ["https://api.example.com:443"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}
+policy generate: 2 grants, 0 review items
+```
+
+`rivet io --strict` exits 0 on this bundle: no site is dynamic (a `param_dependent` site is not dynamic). A global
+that tries to read the environment fails at compile time, so no grant can leak into a constant:
+
+```text
+$ rivet check --file g1.rivet                                   # global BASE = env "HOME"            [exit 2]
+error[check.global_not_constant]: global `BASE` cannot perform `env`; globals are constants fixed at load time
+  --> g1.rivet:1:15
+   |
+  1| global BASE = env "HOME"
+   |               ^^^^^^^^^^
+  = hint: move the effect into the operation that uses it
+```
+
+Demo: `docs/demos/14-globals/` (DEMO-2026-0016, being added).
+
+### One policy across modules
+
+Why (0.2.0): a bundle may `import` other `.rivet` files ([MAN-2026-0003 §Modules](man-2026-0003-language-guide.md#modules-import)),
+and a host may `rt.load` / `rivet_load` more at run time. **Exactly one policy governs all of them**: the entry
+bundle's `policy.json` (or `--policy`, or the library host's policy and ceiling). A `policy.json` sitting beside an
+imported file is **ignored** and reported as the warning `check.module_policy_ignored`; paths in a module resolve
+against the **runtime root** (the entry file's directory), and an import that escapes the root is
+`permission.import_outside_root` (exit 3).
+
+```text
+ app.rivet ── import "./lib/billing.rivet" as billing public
+ policy.json  ◀══ the ONLY policy: governs app.* and billing.*
+ lib/billing.rivet   file read "./data/billing.json"   (resolved from the root: ./data/billing.json)
+ lib/policy.json     ✗ ignored  ─▶ warning[check.module_policy_ignored]
+ rivet io            lists sites of every file (SOURCE lib/billing.rivet:5); bootstrap lists every file read
+```
+
+Captured on a scratch bundle (`app.summary` calls `billing.plan`, which reads `./data/billing.json`;
+`lib/policy.json` grants that read, the entry `policy.json` is `{"version":1}` at first):
+
+```text
+$ rivet check --file app.rivet
+warning[check.module_policy_ignored]: the policy.json beside lib/billing.rivet is ignored: module `billing` runs under the loader's policy
+  --> app.rivet:1:1
+   |
+  1| import "./lib/billing.rivet" as billing public
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: grant what the module needs in the entry bundle's policy.json (or the host policy)
+ok: 2 operations, 0 connectors, 0 auth profiles
+
+$ rivet io --file app.rivet --include-bootstrap
+OPERATION     KIND  ACCESS  TARGET               KNOWLEDGE  SOURCE
+app.summary   (calls billing.plan — see above)              app.rivet:7
+billing.plan  file  read    ./data/billing.json  exact      lib/billing.rivet:5
+
+BOOTSTRAP (runtime-internal; listed, not governed by policy.json)
+KIND  ACCESS       TARGET
+file  read         ./app.rivet
+file  read         ./lib/billing.rivet
+file  read         ./policy.json
+file  read         system CA bundle
+file  read         /etc/resolv.conf / system resolver
+file  read         tzdata
+file  read         descriptor/schema files named by connectors (none here)
+pipe  read, write  stdin, stdout, stderr
+
+$ rivet request --file app.rivet billing.plan                   # the module's own policy grants nothing   [exit 3]
+{"request_id":"req_01061840a5","trace_id":"tr_01061840a5","operation":"billing.plan","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/billing.json denied: no grant for allow_read ./data/billing.json","retryable":false,"source":{"file":"lib/billing.rivet","line":5,"column":5,"end_line":5,"end_column":51},"operation_id":"billing.plan","details":{"capability":"allow_read","access":"read","target":"./data/billing.json"}},"effects":"none","data_count":0}
+```
+
+After granting `allow_read ./data/**` (access `read`) in the **entry** `policy.json`:
+
+```text
+$ rivet io --file app.rivet --check-policy
+OPERATION     KIND  ACCESS  TARGET               KNOWLEDGE  SOURCE               DECISION
+app.summary   (calls billing.plan — see above)              app.rivet:7
+billing.plan  file  read    ./data/billing.json  exact      lib/billing.rivet:5  allowed
+1 allowed
+
+$ rivet request --file app.rivet app.summary
+{"request_id":"req_01058e01cd","trace_id":"tr_01058e01cd","operation":"app.summary","type":"result","status":"ok","data":"{\"plan\":\"pro\"}","error":null,"effects":"none","data_count":0}
+```
+
+Connector and auth-profile **names** stay unique across all files (`check.import_collision`), because the single
+policy grants them by name (`allow_mcp NAME/…`, `allow_auth PROFILE/…`). Demo: `docs/demos/17-modules/`
+(DEMO-2026-0019, being added).
 
 ### Review I/O with rivet io
 
@@ -495,8 +630,9 @@ empty trace store (`not_found.trace`).
 ### Verified Demo
 
 [11-sandbox (DEMO-2026-0011)](../demos/11-sandbox/README.md), plus [02-file-crud](../demos/02-file-crud/README.md)
-and [08-udp](../demos/08-udp/README.md); every example above was executed with `rivet 0.1.0-dev` (commit
-`f40d4aa`; `explain --params` and `restrict` at `829ca43`).
+and [08-udp](../demos/08-udp/README.md). Request outputs, `restrict`, globals and modules were captured on 2026-09-29
+from the 0.2.0 release candidate (source `6f9943f`); table views unchanged since 0.1.0 were verified at `f40d4aa` /
+`829ca43`. Demos 14-globals and 17-modules are being added (`docs/demos/14-globals/`, `docs/demos/17-modules/`).
 
 ## Errors and Recovery Reference
 
@@ -511,7 +647,11 @@ and [08-udp](../demos/08-udp/README.md); every example above was executed with `
 | `not_found.trace` | `trace show`, `trace export`, `io --trace` | request not in this process's store | exit 4 | query the serving process | no | trace |
 | `policy explain … --params` exit 3 | CLI | a concrete target would be denied | table + `denied:` line | add a grant or change the params | — | explain |
 | `limit.buffered_bytes` | sessions / streams | `limits.max_buffered_bytes` reached host-wide | 429, exit 5 | drain sessions, raise the limit | yes, after backoff | limits |
-| `policy.invalid` `/restrict/…` | HTTP, MCP, WS, polling, library | malformed `restrict` | 422, exit 2 | send `{"grants":[…]}` only | no | restrict |
+| `policy.invalid` `/restrict/…` | HTTP, MCP, WS, polling, library, C | malformed `restrict` | 422, exit 2 | send `{"grants":[…]}` only | no | restrict |
+| `check.global_not_constant` | compile | a global uses `env`, `secret`, an effect, a param or a local | exit 2 | compute it inside the operation | no | globals |
+| `warning[check.module_policy_ignored]` | compile | a `policy.json` beside an imported module | exit 0 | move its grants to the entry policy | — | modules |
+| `permission.import_outside_root` | compile, `rt.load` | an import escapes the runtime root | exit 3 | keep modules under the root | no | modules |
+| `unsupported.sandbox_backend` | process start (Linux) | the Linux sandbox is gated | exit 5 / 501 | run process operations on macOS | no | sandbox |
 
 ## Limitations
 
@@ -521,6 +661,10 @@ The policy rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.m
 - The `*` principal pattern in `serve.principals` also matches `rivet.auth.*` (their use is governed by
   `allow_auth` grants).
 - No persistent trace store: traces are in memory, per process, and bounded.
+
+- Platforms: macOS and Linux; Windows is not supported ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
+  The process sandbox is active on macOS and gated on Linux.
+- Modules cannot bring their own policy; imports are local files under the root (no URL imports).
 
 Behaviour to plan for (by design): the process sandbox cannot express `access`-narrowed or arbitrary-glob
 read/write grants (MAN-2026-0008), and dynamic targets can only be reviewed, never pre-granted exactly.
@@ -532,7 +676,9 @@ read/write grants (MAN-2026-0008), and dynamic targets can only be reviewed, nev
 | policy.json schema v1 | 0.1.0 | — | — | all |
 | `rivet io`, `--check-policy`, `--strict`, `--needs`, `--check-files`, `--trace` | 0.1.0 | — | — | all (`--check-files` local only) |
 | `policy explain` (incl. `--params`), `policy generate` | 0.1.0 | — | — | all |
-| per-request `restrict`, library ceiling | 0.1.0 | — | — | server, embedded |
+| per-request `restrict`, library ceiling | 0.1.0 | 0.2.0: a key of the input envelope (CLI `--input`, C ABI too) | — | server, embedded |
+| globals in targets (`exact`) | 0.2.0 | — | — | all |
+| one policy across modules, `check.module_policy_ignored` | 0.2.0 | — | — | all |
 
 ## Related Documents
 
@@ -541,6 +687,7 @@ read/write grants (MAN-2026-0008), and dynamic targets can only be reviewed, nev
 - [SYS-2026-0003 policy broker and I/O manifest](../system/components/sys-2026-0003-policy-broker-and-io-manifest.md) ·
   [SYS-2026-0008 policy.json reference](../system/configuration/sys-2026-0008-policy-json-reference.md)
 - [RUN-2026-0002 roll out a policy change](../runbooks/run-2026-0002-roll-out-policy-change.md)
+- [MAN-2026-0003 language guide (globals, modules)](man-2026-0003-language-guide.md) · [SEC-2026-0001 policy and sandbox model](../security/sec-2026-0001-policy-and-sandbox-model.md) · [API-2026-0006 envelopes](../api/api-2026-0006-envelopes.md)
 
 ## Change History
 
@@ -548,3 +695,4 @@ read/write grants (MAN-2026-0008), and dynamic targets can only be reviewed, nev
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial policy and I/O manifest guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`— no I/O` call rows): `policy explain --params` (exit 3), per-request `restrict` section, host ceiling, enforced `max_buffered_bytes`, limit field widths, `approved.overlaps` unused, `update` needs `stat`, URL path segment matching, multicast manifest mirrors runtime; limitations aligned with MAN-2026-0001. |
+| 3 | 2026-09-29 | Claude | 0.2.0 (D-24, D-46): **Globals in targets** (literal + global targets are `exact`, drafts exact grants; params stay `param_dependent`; `check.global_not_constant`) and **One policy across modules** (entry policy only, `check.module_policy_ignored`, root-relative paths, manifest and bootstrap across files, denial then grant) sections with real output; request and `restrict` examples re-captured as envelopes; error rows; platforms; version rows. |
