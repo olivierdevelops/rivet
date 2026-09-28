@@ -2,3 +2,4 @@
 
 pub mod expr;
 pub mod lower;
+pub mod modules;

@@ -1,5 +1,7 @@
 use super::compile_globals::compile_globals;
+use super::lowering::expr::CallScope;
 use super::lowering::lower::{Lowerer, strict_doc_findings};
+use super::lowering::modules::namespace_modules;
 use super::ports::Parser;
 use crate::domain::ir::CompiledProgram;
 use crate::domain::source::SourceBundle;
@@ -22,6 +24,20 @@ pub fn compile_program(input: &SourceBundle, parser: &dyn Parser) -> RivetResult
     // vhco:step parse parser.parse -- one SyntaxTree per SourceFile, spans are file/line/column (no byte offsets)
     for file in &input.files {
         let tree = parser.parse(file)?;
+        // Calls by operation ID: the file's own IDs and `ALIAS.…` of its imports.
+        lowerer.calls = std::sync::Arc::new(CallScope {
+            ids: tree
+                .nodes
+                .iter()
+                .filter(|n| n.func == "operation" || n.func == "pipeline")
+                .map(|n| n.text("id").to_string())
+                .collect(),
+            aliases: input
+                .module_of(&file.path)
+                .map(|m| m.imports.iter().map(|i| i.alias.clone()).collect())
+                .unwrap_or_default(),
+            any: false,
+        });
         // vhco:todo compile_catalog -- lower every top-level `operation`/`pipeline` into one Operation (ID, display name, description, described params, output, emits, receives, declared errors, body) and every `connector`/`auth NAME oauth2` into a Declaration; file basenames never prefix IDs
         // vhco:step lower lowerer.lower_tree -- header order, leading-options rule, try/catch pairing, effect forms, quoted durations and prefix calls are enforced here with exact spans
         lowerer.lower_tree(
@@ -31,6 +47,16 @@ pub fn compile_program(input: &SourceBundle, parser: &dyn Parser) -> RivetResult
             &mut program.auth_profiles,
         );
     }
+
+    // vhco:todo namespace_modules -- with resolved modules, namespace each imported file's operations as ALIAS.ID (transitively), resolve every literal call target in its own file's scope (own IDs, import aliases, own connectors, rivet.*), refuse unresolvable module calls and calls to another module's private operations (check.unknown_operation), report namespaced IDs that collide with another operation and cross-file connector/auth name clashes (check.import_collision), make operations of non-public modules private, and warn check.module_policy_ignored for a module's own policy.json
+    // vhco:step modules namespace_modules -- ALIAS.ID namespacing, per-file call resolution, visibility and import collisions (only when the bundle has modules)
+    namespace_modules(
+        &mut program,
+        input,
+        &mut lowerer.errors,
+        &mut lowerer.warnings,
+    );
+    program.modules = input.modules.clone();
 
     // vhco:todo check_program -- reject duplicate operation IDs across the whole bundle (registry.duplicate_id, both spans), literal `(request "id" …)` calls to operations that do not exist and are not connector-imported, and static call cycles over literal targets (check.call_cycle); nothing executes
     // vhco:step duplicates check_duplicates -- first declaration wins the span; the second is the error location
@@ -171,7 +197,11 @@ fn source_hash(input: &SourceBundle) -> String {
 
 fn check_duplicates(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
     for (i, op) in program.operations.iter().enumerate() {
-        if let Some(first) = program.operations[..i].iter().find(|o| o.id == op.id) {
+        // Clashes across modules are check.import_collision (namespace_modules).
+        if let Some(first) = program.operations[..i]
+            .iter()
+            .find(|o| o.id == op.id && o.module == op.module)
+        {
             errors.push(
                 RivetError::syntax(
                     "registry.duplicate_id",
@@ -199,9 +229,15 @@ fn check_calls(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
                 .iter()
                 .any(|c| id.starts_with(&format!("{}.", c.name)))
     };
+    // A module call that namespace_modules already refused is not repeated.
+    let refused: Vec<String> = errors
+        .iter()
+        .filter(|e| e.code == "check.unknown_operation")
+        .map(|e| e.message.clone())
+        .collect();
     for op in &program.operations {
         for call in &op.calls {
-            if !known(call) {
+            if !known(call) && !refused.iter().any(|m| m.starts_with(&format!("`{call}` "))) {
                 errors.push(RivetError::syntax(
                     "check.unknown_operation",
                     format!("`{}` calls unknown operation `{call}`", op.id),
@@ -253,6 +289,11 @@ fn check_calls(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
 
 fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
     use crate::domain::ir::{EffectKind, Stmt};
+    // With modules, a file may reference only its own connectors and auth
+    // profiles (they stay inside the module, PROP-2026-0002 R20).
+    fn visible(program: &CompiledProgram, decl_file: &str, from: &str) -> bool {
+        program.modules.is_empty() || decl_file == from
+    }
     fn walk(body: &[Stmt], program: &CompiledProgram, errors: &mut Vec<RivetError>) {
         for s in body {
             let (forms, children): (Vec<&crate::domain::ir::EffectForm>, Vec<&[Stmt]>) = match s {
@@ -280,7 +321,9 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
             for f in forms {
                 for o in f.options_named("auth") {
                     if let Some(name) = o.first_word()
-                        && program.auth_profile(name).is_none()
+                        && !program
+                            .auth_profile(name)
+                            .is_some_and(|p| visible(program, &p.span.file, &o.span.file))
                     {
                         errors.push(RivetError::syntax(
                             "check.unknown_auth_profile",
@@ -293,7 +336,11 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
                     .then(|| crate::domain::grpc::method_ref(&f.head))
                     .flatten()
                     .map(|(connector, _)| connector);
-                if let Some(connector) = grpc_connector.filter(|c| program.connector(c).is_none()) {
+                if let Some(connector) = grpc_connector.filter(|c| {
+                    !program
+                        .connector(c)
+                        .is_some_and(|d| visible(program, &d.span.file, &f.span.file))
+                }) {
                     errors.push(RivetError::syntax(
                         "check.unknown_connector",
                         format!("unknown connector `{connector}`"),
@@ -312,7 +359,9 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
     for c in &program.connectors {
         for o in c.options.iter().filter(|o| o.key == "auth") {
             if let Some(name) = o.first_word()
-                && program.auth_profile(name).is_none()
+                && !program
+                    .auth_profile(name)
+                    .is_some_and(|p| visible(program, &p.span.file, &c.span.file))
             {
                 errors.push(RivetError::syntax(
                     "check.unknown_auth_profile",

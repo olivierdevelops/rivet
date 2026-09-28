@@ -8,10 +8,11 @@
 //!     ├─ request / request_as / dispatch_request ─▶ execution.request_operation (Completion or RivetError)
 //!     ├─ scope(|scope| …): scope.stream / scope.duplex ─▶ execution.request_operation (owned, joined)
 //!     ├─ list / describe / outputs               ─▶ registry use cases
+//!     ├─ load(PATH) / load_as(PATH, ALIAS)       ─▶ registry.load_module ─▶ Module{call, stream, duplex, …}
 //!     └─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
 //! ```
 
-// vhco:surface library kind library calls language/compile_program, language/compile_globals, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface library kind library calls language/compile_program, language/compile_globals, language/resolve_imports, registry/load_module, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", DATA, None)
 // vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", DATA, None)
 // vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", DATA, None)
@@ -20,6 +21,8 @@
 // vhco:trigger library serve/parse_input = Runtime::call_json(INPUT_JSON)
 // vhco:trigger library language/compile_program = Runtime::builder().file(PATH).build()
 // vhco:trigger library language/compile_globals = Runtime::builder().file(PATH).build()
+// vhco:trigger library language/resolve_imports = Runtime::builder().file(PATH).build() | Runtime::load(PATH)
+// vhco:trigger library registry/load_module = Runtime::load(PATH) | Runtime::load_as(PATH, ALIAS)
 // vhco:trigger library policy/load_policy = Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)
 // vhco:trigger library execution/request_operation = Runtime::call(InputEnvelope) | Runtime::request(ID, DATA, sink) | Runtime::scope(|scope| …) scope.stream(ID, DATA) | scope.duplex(ID, DATA)
 // vhco:trigger library registry/describe_operations = Runtime::list() | Runtime::describe(IDS)
@@ -34,6 +37,9 @@
 // vhco:api library execution/request_operation Runtime::call(InputEnvelope) -- invoke one operation in-process and always get a ResponseEnvelope (errors included; to_json / to_json_pretty); Runtime::request(id, data, on_data) stays for `?`-style use and returns Completion or RivetError
 // vhco:request { "operation": "string — operation ID", "data": "Value object (default {})", "deadline_ms": "int?", "restrict": "{grants:[…]}?" }
 // vhco:response { "request_id": "string", "trace_id": "string", "operation": "string", "type": "result", "status": "ok|error|cancelled", "data": "Value|null", "error": "RivetError object|null", "effects": "none|committed|partial|unknown", "data_count": "int" }
+// vhco:api library registry/load_module Runtime::load(PATH) | Runtime::load_as(PATH, ALIAS) -- load a .rivet file below the runtime root as a public module object under its alias (default: the file stem); its operations are ALIAS.ID on every surface, it runs under the loader's policy only, and requests already running keep the previous catalog snapshot
+// vhco:request { "path": "string — relative to the runtime root (or absolute inside it)", "alias": "string? — identifier; default the file stem" }
+// vhco:response { "alias": "string", "file": "string", "public": "bool", "operations": "string[] — the module's own IDs (no alias)", "warnings": "RivetError[] — check.module_policy_ignored" }
 // vhco:api library sessions/open_session Runtime::open_session(SessionOpenInput) -- open a live session (duplex or server-streaming) owned by the principal
 // vhco:request { "id": "string", "params": "Value", "principal": "Principal", "connection_owned": "bool" }
 // vhco:response { "session_id": "string", "request_id": "string", "catalog_version": "string", "input_schema": "json|null", "emits_schema": "json|null", "next_send_seq": "int", "expires_at": "RFC 3339" }
@@ -52,7 +58,6 @@ use crate::features::serve::parse_input::parse_input;
 use crate::features::sessions::{
     cancel_session, finish_input, open_session, read_events, send_input,
 };
-use crate::infra::registry::ProgramRegistry;
 use crate::infra::session_driver::{LaunchFn, MintFn, SessionHost, ValidateFn};
 use std::sync::Arc;
 
@@ -64,7 +69,7 @@ pub type UpgradeFn = dyn Fn() -> Option<Runtime> + Send + Sync;
 /// with the dispatcher's own rules before a session is created.
 pub fn session_host(
     upgrade: Arc<UpgradeFn>,
-    registry: Arc<ProgramRegistry>,
+    registry: Arc<dyn crate::domain::ports::Registry>,
     catalog_version: String,
     limits: SessionLimits,
 ) -> SessionHost {
@@ -473,5 +478,142 @@ impl DuplexHandle {
 
     pub fn into_split(self) -> (DuplexSender, StreamHandle) {
         (self.sender, self.stream)
+    }
+}
+
+/// A `.rivet` file loaded into a runtime (`Runtime::load` / `load_as`,
+/// PROP-2026-0002 R22): its operations are `ALIAS.ID` in the runtime's catalog
+/// and this object addresses them by their short IDs.
+///
+/// ```text
+///  let users = rt.load("./users.rivet")?;       // alias "users"
+///  users.operations()   ─▶ [get, list]           (short IDs)
+///  users.call("get", {"id": 42})  ─▶ ResponseEnvelope{operation: "users.get", …}
+/// ```
+#[derive(Clone)]
+pub struct Module {
+    rt: Runtime,
+    summary: crate::domain::modules::ModuleSummary,
+}
+
+impl Runtime {
+    /// Load `path` (relative to the runtime root) as a public module named
+    /// after its file stem (`./lib/billing.rivet` → `billing`).
+    pub fn load(&self, path: &str) -> RivetResult<Module> {
+        self.load_module(path, None)
+    }
+
+    /// Load `path` as a public module under `alias`.
+    pub fn load_as(&self, path: &str, alias: &str) -> RivetResult<Module> {
+        self.load_module(path, Some(alias.to_string()))
+    }
+
+    fn load_module(&self, path: &str, alias: Option<String>) -> RivetResult<Module> {
+        let input = crate::domain::modules::ModuleLoad {
+            path: path.to_string(),
+            alias,
+        };
+        let summary = self.with_catalog_store(|store| {
+            crate::features::registry::load_module::load_module(&input, store)
+        })?;
+        Ok(Module {
+            rt: self.clone(),
+            summary,
+        })
+    }
+}
+
+impl Module {
+    /// The namespace of the module's operations (`users` in `users.get`).
+    pub fn alias(&self) -> &str {
+        &self.summary.alias
+    }
+
+    /// The loaded file as the runtime read it.
+    pub fn file(&self) -> &str {
+        &self.summary.file
+    }
+
+    /// Load warnings (`check.module_policy_ignored`).
+    pub fn warnings(&self) -> &[RivetError] {
+        &self.summary.warnings
+    }
+
+    pub fn summary(&self) -> &crate::domain::modules::ModuleSummary {
+        &self.summary
+    }
+
+    /// The catalog ID of one of the module's operations (`get` → `users.get`).
+    pub fn qualified(&self, id: &str) -> String {
+        format!("{}.{id}", self.summary.alias)
+    }
+
+    fn short(
+        &self,
+        mut e: crate::domain::contracts::RegistryEntry,
+    ) -> crate::domain::contracts::RegistryEntry {
+        let prefix = format!("{}.", self.summary.alias);
+        if let Some(rest) = e.id.strip_prefix(&prefix) {
+            e.id = rest.to_string();
+        }
+        e
+    }
+
+    /// The module's listed operations (and those of its `public` imports),
+    /// with IDs relative to the alias (`get`, `b.find`).
+    pub fn operations(&self) -> Vec<crate::domain::contracts::RegistryEntry> {
+        let prefix = format!("{}.", self.summary.alias);
+        self.rt
+            .list()
+            .map(|c| c.entries)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|e| e.id.starts_with(&prefix))
+            .map(|e| self.short(e))
+            .collect()
+    }
+
+    /// One operation's descriptor by its short ID.
+    pub fn describe(&self, id: &str) -> RivetResult<crate::domain::contracts::RegistryEntry> {
+        let full = self.qualified(id);
+        self.rt
+            .describe(std::slice::from_ref(&full))?
+            .entries
+            .into_iter()
+            .next()
+            .map(|e| self.short(e))
+            .ok_or_else(|| {
+                RivetError::not_found("not_found.operation", format!("no operation `{full}`"))
+            })
+    }
+
+    /// The declared output (and errors) of one operation by its short ID.
+    pub fn outputs(&self, id: &str) -> RivetResult<crate::domain::contracts::OutputReport> {
+        let full = self.qualified(id);
+        self.rt
+            .outputs(Some(&full), false)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                RivetError::not_found("not_found.operation", format!("no operation `{full}`"))
+            })
+    }
+
+    /// Call one operation by its short ID; always an envelope whose
+    /// `operation` is the namespaced ID.
+    pub async fn call(&self, id: &str, data: serde_json::Value) -> ResponseEnvelope {
+        self.rt
+            .call(InputEnvelope::new(&self.qualified(id)).data(data))
+            .await
+    }
+
+    /// Stream one operation's items, owned by `scope` (like `Scope::stream`).
+    pub async fn stream(&self, scope: &Scope, id: &str, data: Value) -> RivetResult<StreamHandle> {
+        scope.stream(&self.qualified(id), data).await
+    }
+
+    /// Open one `receives` operation as a duplex owned by `scope`.
+    pub async fn duplex(&self, scope: &Scope, id: &str, data: Value) -> RivetResult<DuplexHandle> {
+        scope.duplex(&self.qualified(id), data).await
     }
 }

@@ -1,6 +1,6 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, language/compile_globals, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface cli kind cli calls language/compile_program, language/compile_globals, language/resolve_imports, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON
 // vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
 // vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
@@ -19,6 +19,7 @@
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
 // vhco:trigger cli language/compile_globals = rivet check (globals are evaluated when the bundle loads)
+// vhco:trigger cli language/resolve_imports = rivet check (every import is resolved when the bundle loads)
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
@@ -112,15 +113,23 @@ pub(super) fn fail_as(
             ResponseEnvelope::from_error(operation, e).render(format())
         );
     } else {
-        eprintln!("{}", e.render(source));
+        eprintln!("{}", e.render(own_source(e).as_deref().or(source)));
         for s in e.suppressed.iter().take(20) {
-            eprintln!("{}", s.render(source));
+            eprintln!("{}", s.render(own_source(s).as_deref().or(source)));
         }
         if e.suppressed.len() > 20 {
             eprintln!("… and {} more", e.suppressed.len() - 20);
         }
     }
     e.exit_code()
+}
+
+/// The text of the file a diagnostic points into (an imported module's own
+/// source rather than the entry file's).
+pub(super) fn own_source(e: &RivetError) -> Option<String> {
+    e.source
+        .as_ref()
+        .and_then(|s| std::fs::read_to_string(&s.file).ok())
 }
 
 fn load(cli: &Cli) -> Result<Runtime, (RivetError, Option<String>)> {
@@ -502,7 +511,7 @@ async fn run(cli: Cli) -> i32 {
                 // Same diagnostic shape as an error, labelled `warning[code]`.
                 eprintln!(
                     "{}",
-                    w.render(source.as_deref())
+                    w.render(own_source(w).as_deref().or(source.as_deref()))
                         .replacen("error[", "warning[", 1)
                 );
             }

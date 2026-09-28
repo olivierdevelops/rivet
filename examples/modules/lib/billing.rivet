@@ -1,0 +1,12 @@
+# Imports resolve relative to this file and stay inside the runtime root.
+import "../users.rivet" as people
+
+global rate = 0.2
+
+operation invoice
+    description "An invoice for one user."
+    param user integer required description "The user id."
+    output json description "The invoice."
+    who = (people.get {id: user})
+    return {user: who, amount: 100 * rate}
+end

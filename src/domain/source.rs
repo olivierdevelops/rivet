@@ -88,6 +88,48 @@ pub fn offset_of(text: &str, line: u32, col: u32) -> Option<usize> {
     None
 }
 
+/// A source path relative to the bundle root (`app.rivet`, `lib/users.rivet`):
+/// `./` and a leading `root/` are dropped.
+pub fn rel_to_root(file: &str, root: &str) -> String {
+    let f = file.trim_start_matches("./");
+    let r = root.trim_start_matches("./").trim_end_matches('/');
+    if !r.is_empty()
+        && r != "."
+        && let Some(rest) = f.strip_prefix(&format!("{r}/"))
+    {
+        return rest.to_string();
+    }
+    f.to_string()
+}
+
+/// `root/rel` as the loader reads it (`rel` alone when the root is `.`).
+pub fn join_root(root: &str, rel: &str) -> String {
+    if root.is_empty() || root == "." {
+        rel.to_string()
+    } else {
+        format!("{}/{rel}", root.trim_end_matches('/'))
+    }
+}
+
+/// Resolve an import `path` against the directory of the importing file
+/// `from_rel` (both relative to the root) and normalize it lexically. `None`
+/// when a `..` would leave the root.
+pub fn resolve_rel(from_rel: &str, path: &str) -> Option<String> {
+    let mut parts: Vec<&str> = from_rel.split('/').collect();
+    parts.pop(); // the importing file itself
+    parts.retain(|p| !p.is_empty() && *p != ".");
+    for seg in path.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
 // vhco:domain SourceFile { path: string; text: string }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceFile {
@@ -177,6 +219,23 @@ impl SourceBundle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_paths_stay_inside_the_root() {
+        assert_eq!(
+            resolve_rel("app.rivet", "./users.rivet").as_deref(),
+            Some("users.rivet")
+        );
+        assert_eq!(
+            resolve_rel("lib/a.rivet", "../b/c.rivet").as_deref(),
+            Some("b/c.rivet")
+        );
+        assert_eq!(resolve_rel("app.rivet", "../x.rivet"), None);
+        assert_eq!(resolve_rel("lib/a.rivet", "../../x.rivet"), None);
+        assert_eq!(rel_to_root("./demo/app.rivet", "demo"), "app.rivet");
+        assert_eq!(join_root(".", "a.rivet"), "a.rivet");
+        assert_eq!(join_root("/tmp/x/", "a.rivet"), "/tmp/x/a.rivet");
+    }
 
     #[test]
     fn slices_single_and_multi_line_spans() {

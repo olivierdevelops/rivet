@@ -496,7 +496,16 @@ impl SessionDriver for SessionHost {
             session_id,
             request_id: req.request_id,
             trace_id: req.trace_id,
-            catalog_version: self.catalog_version.clone(),
+            // The catalog the session opened on (module loads publish new
+            // ones); the registry's effect catalog carries its source hash.
+            catalog_version: {
+                let hash = self.registry.effect_sites().bundle_sha256.clone();
+                if hash.is_empty() {
+                    self.catalog_version.clone()
+                } else {
+                    hash
+                }
+            },
             input_schema: entry.receives.as_ref().map(ValueSpec::to_json_schema),
             emits_schema: entry.emits.as_ref().map(ValueSpec::to_json_schema),
             next_send_seq: 1,

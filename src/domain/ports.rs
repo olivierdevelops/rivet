@@ -128,6 +128,26 @@ pub trait FileAccess: Send + Sync {
 /// Loads a whole bundle from disk (host bootstrap, before compilation).
 pub trait SourceLoader: Send + Sync {
     fn load(&self, entry: &str) -> RivetResult<SourceBundle>;
+    /// Read one imported module: `path` is already normalized and inside
+    /// `root` (joined as `root/path` unless `root` is `.`). A symlink anywhere
+    /// below the root is permission.import_outside_root; a missing file is
+    /// not_found.import (PROP-2026-0002 R19, R21).
+    fn read_module(&self, root: &str, path: &str) -> RivetResult<SourceFile>;
+    /// Whether a `policy.json` sits beside the source file `path` (a module's
+    /// own policy is ignored with check.module_policy_ignored, R24).
+    fn policy_beside(&self, path: &str) -> bool;
+}
+
+/// The runtime's current immutable catalog and the way to replace it
+/// (`registry.load_module`, PROP-2026-0002 R22).
+pub trait CatalogStore: Send + Sync {
+    /// The snapshot new requests use now.
+    fn current(&self) -> Arc<super::modules::CatalogSnapshot>;
+    /// Resolve imports and compile `bundle` (roots in `bundle.modules`) under
+    /// the loader's policy, without publishing it.
+    fn compile(&self, bundle: &SourceBundle) -> RivetResult<super::modules::CatalogSnapshot>;
+    /// Swap `next` in atomically; in-flight requests keep their snapshot.
+    fn publish(&self, next: super::modules::CatalogSnapshot) -> RivetResult<()>;
 }
 
 /// One scoped UDP socket (`with udp …`): resolves peers for the broker check,

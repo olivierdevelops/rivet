@@ -290,7 +290,18 @@ pub fn inspect_effects(query: &IoQuery, ports: &AuditPorts) -> RivetResult<IoRep
     }
 
     let bootstrap = if query.include_bootstrap {
-        bootstrap_sites(&catalog.bundle_file, ports.policy, &catalog.load_sites)
+        // Every imported or host-loaded module file is its own bootstrap read (R19).
+        let modules: Vec<String> = program
+            .module_files()
+            .iter()
+            .map(|f| crate::features::audit::support::effect_sites::rel_file(f, &program.root))
+            .collect();
+        bootstrap_sites(
+            &catalog.bundle_file,
+            &modules,
+            ports.policy,
+            &catalog.load_sites,
+        )
     } else {
         Vec::new()
     };
@@ -673,6 +684,7 @@ fn needed(s: &EffectSite, via: Option<String>) -> NeededFile {
 
 fn bootstrap_sites(
     bundle: &str,
+    modules: &[String],
     policy: &dyn PolicyEvaluator,
     load: &[EffectSite],
 ) -> Vec<EffectSite> {
@@ -688,8 +700,12 @@ fn bootstrap_sites(
         s
     };
     let p = policy.policy();
-    let mut out = vec![
-        file(format!("./{bundle} (+ imports)")),
+    let mut out: Vec<EffectSite> = Vec::new();
+    if !bundle.is_empty() {
+        out.push(file(format!("./{bundle}")));
+    }
+    out.extend(modules.iter().map(|m| file(format!("./{m}"))));
+    out.extend([
         file(match (&p.file, p.present) {
             (Some(f), true) => f.clone(),
             _ => "./policy.json (when present)".into(),
@@ -697,7 +713,7 @@ fn bootstrap_sites(
         file("system CA bundle".into()),
         file("/etc/resolv.conf / system resolver".into()),
         file("tzdata".into()),
-    ];
+    ]);
     if load.is_empty() {
         out.push(file(
             "descriptor/schema files named by connectors (none here)".into(),

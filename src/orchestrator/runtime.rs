@@ -16,6 +16,7 @@ use crate::domain::ir::CompiledProgram;
 use crate::domain::mcp::{
     BridgeHops, McpContext, McpImportKind, McpRequest, McpSnapshot, snapshot_hash,
 };
+use crate::domain::modules::CatalogSnapshot;
 use crate::domain::policy::{AccessVerb, Capability, Decision};
 use crate::domain::policy::{EffectIntent, Permit, Policy};
 use crate::domain::ports::GrpcDriver;
@@ -40,6 +41,7 @@ use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
 use crate::features::grpc::invoke_rpc::{check_program as check_grpc_program, invoke_rpc};
 use crate::features::language::compile_program::compile_program;
+use crate::features::language::resolve_imports::resolve_imports;
 use crate::features::policy::authorize_effect::authorize_effect;
 use crate::features::policy::generate_policy::{PolicyGenerateInput, generate_policy};
 use crate::features::policy::load_policy::{load_policy, parse_policy};
@@ -67,8 +69,8 @@ use crate::infra::udp_adapter::UdpAdapter;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, RwLock};
 use tokio::sync::Semaphore;
 
 /// How the host supplies policy.
@@ -85,6 +87,8 @@ pub enum PolicySource {
 pub struct RuntimeBuilder {
     entry: Option<String>,
     source: Option<SourceBundle>,
+    /// `.root(DIR)`: a runtime with no entry file; modules are loaded later.
+    root: Option<String>,
     policy: PolicySource,
     /// `connectors sync`: MCP connectors may lack a reviewed snapshot.
     discovery: bool,
@@ -99,6 +103,7 @@ impl Default for RuntimeBuilder {
         RuntimeBuilder {
             entry: None,
             source: None,
+            root: None,
             policy: PolicySource::Discover,
             discovery: false,
             ceiling: None,
@@ -119,6 +124,13 @@ impl RuntimeBuilder {
         let mut b = SourceBundle::single(path, text);
         b.root = root.to_string();
         self.source = Some(b);
+        self
+    }
+
+    /// Start without an entry file (PROP-2026-0002 R22): `dir` is the runtime
+    /// root; modules come from `Runtime::load` / `load_as` and must live below it.
+    pub fn root(mut self, dir: &str) -> Self {
+        self.root = Some(dir.to_string());
         self
     }
 
@@ -158,17 +170,25 @@ impl RuntimeBuilder {
     }
 
     pub fn build(self) -> RivetResult<Runtime> {
-        let bundle = match (self.source, &self.entry) {
-            (Some(b), _) => b,
-            (None, Some(entry)) => DiskSourceLoader.load(entry)?,
-            (None, None) => {
+        let bundle = match (self.source, &self.entry, &self.root) {
+            (Some(b), _, _) => b,
+            (None, Some(entry), _) => DiskSourceLoader.load(entry)?,
+            (None, None, Some(root)) => SourceBundle {
+                entry: String::new(),
+                root: root.clone(),
+                files: Vec::new(),
+                modules: Vec::new(),
+            },
+            (None, None, None) => {
                 return Err(RivetError::validation(
                     "validation.usage",
-                    "no source: use .file(PATH) or .source(…)",
+                    "no source: use .file(PATH), .source(…) or .root(DIR)",
                 ));
             }
         };
         let parser = CapyParser::new()?;
+        // Every `import` is resolved (and read, below the root) before compiling.
+        let bundle = resolve_imports(&bundle, &parser, &DiskSourceLoader)?;
         let program = Arc::new(compile_program(&bundle, &parser)?);
         let mut policy = match self.policy {
             PolicySource::Given(p) => *p,
@@ -234,10 +254,8 @@ impl Policy {
 }
 
 struct Inner {
-    bundle: SourceBundle,
-    program: Arc<CompiledProgram>,
-    registry: Arc<ProgramRegistry>,
-    driver: Arc<Interpreter>,
+    /// Bundle root: every source, effect path and module lives below it.
+    root: String,
     broker: Arc<PolicyBroker>,
     trace: Arc<MemoryTraceStore>,
     concurrency: Arc<Semaphore>,
@@ -246,14 +264,34 @@ struct Inner {
     sessions: Arc<SessionHost>,
     /// Cancellation signals for running top-level requests.
     requests: Arc<crate::infra::request_control::RunningRequests>,
+    /// Bridge hop state of requests that arrived over MCP, keyed by trace ID.
+    bridges: Mutex<HashMap<String, BridgeHops>>,
+    /// `connectors sync`: MCP connectors may lack a reviewed snapshot.
+    discovery: bool,
+    /// The current catalog and its adapters (PROP-2026-0002 R22): replaced
+    /// whole by a module load; a request holds the `Arc` it started with.
+    snapshot: RwLock<Arc<Snapshot>>,
+    /// Loads are serialized; requests never wait for them.
+    load_lock: Mutex<()>,
+}
+
+/// Everything derived from one compiled catalog: the program, its registry,
+/// interpreter and connector/auth adapters. Immutable once published.
+///
+/// ```text
+///  Runtime ──RwLock<Arc<Snapshot>>──▶ Snapshot v1 ◀── requests started before the load
+///            (swap on load)       └─▶ Snapshot v2 ◀── requests started after it
+/// ```
+struct Snapshot {
+    catalog: Arc<CatalogSnapshot>,
+    registry: Arc<ProgramRegistry>,
+    driver: Arc<Interpreter>,
     /// MCP client connectors (reviewed snapshots + sessions).
     mcp: Arc<McpPeer>,
     /// The traced evaluator adapters see (for use cases run by the host).
     evaluator: Arc<dyn PolicyEvaluator>,
     /// Policed files (connector snapshot writes by `connectors sync`).
     files: Arc<dyn FileAccess>,
-    /// Bridge hop state of requests that arrived over MCP, keyed by trace ID.
-    bridges: Mutex<HashMap<String, BridgeHops>>,
     /// OAuth transactions, account state and the credential store (`rivet.auth.*`).
     oauth: Arc<OAuthAdapter>,
     /// The authorized credential provider (auth.acquire_credential) for MCP connectors.
@@ -465,8 +503,11 @@ fn register_transports(interp: &mut Interpreter, root: &str) {
 }
 
 /// The dispatcher handed to the interpreter for nested `(request …)` calls.
+/// Nested calls stay on the snapshot their interpreter belongs to, so a
+/// request started before a module load finishes on its own catalog.
 struct NestedDispatcher {
     runtime: std::sync::Weak<Inner>,
+    snapshot: std::sync::Weak<Snapshot>,
 }
 
 #[async_trait]
@@ -494,7 +535,11 @@ impl Dispatcher for NestedDispatcher {
             }
         }
         let runtime = Runtime { inner };
-        let task = tokio::spawn(async move { runtime.dispatch_request(request, sink).await });
+        let pinned = self.snapshot.upgrade();
+        let task =
+            tokio::spawn(
+                async move { runtime.dispatch_request_pinned(request, sink, pinned).await },
+            );
         let _guard = AbortOnDrop(task.abort_handle());
         match task.await {
             Ok(out) => out,
@@ -505,6 +550,199 @@ impl Dispatcher for NestedDispatcher {
                 "the nested request was cancelled",
             )),
         }
+    }
+}
+
+impl Snapshot {
+    /// Build the adapters of one catalog. `prev` is the snapshot being
+    /// replaced by a module load: its OAuth adapter (pending authorizations,
+    /// account state) is kept when the auth profiles did not change.
+    fn build(
+        catalog: &Arc<CatalogSnapshot>,
+        broker: &Arc<PolicyBroker>,
+        trace: &Arc<MemoryTraceStore>,
+        discovery: bool,
+        prev: Option<&Snapshot>,
+    ) -> RivetResult<Arc<Snapshot>> {
+        let program = Arc::clone(&catalog.program);
+        let root = catalog.bundle.root.as_str();
+        let policy = broker.policy().clone();
+        let effects = analyze_program(&program);
+        let mut index: SiteIndex = HashMap::new();
+        for op in &effects.operations {
+            for s in &op.sites {
+                for v in &s.access {
+                    index
+                        .entry((op.operation_id.clone(), s.statement_line, s.capability, *v))
+                        .or_default()
+                        .push((s.effect_id.clone(), s.target.template.clone()));
+                }
+            }
+        }
+        let evaluator: Arc<dyn PolicyEvaluator> = Arc::new(TracedEvaluator {
+            root: root.to_string(),
+            broker: Arc::clone(broker),
+            trace: Arc::clone(trace),
+            index,
+            attempts: Mutex::new(HashMap::new()),
+        });
+        let files: Arc<dyn FileAccess> = Arc::new(PolicedFiles {
+            evaluator: Arc::clone(&evaluator),
+            raw: ConfinedFiles::new(root),
+        });
+        // MCP connectors: reviewed snapshots are bootstrap reads checked against
+        // policy.json approved.snapshots before anything is served.
+        let mcp_catalog = McpPeer::load(&program, root, &policy.approved.snapshots, discovery)?;
+        // An internal module's connector imports are callable, never listed.
+        let mut import_entries = mcp_catalog.import_entries();
+        for e in &mut import_entries {
+            let connector = mcp_catalog.import(&e.id).map(|i| i.connector.clone());
+            let declared_in =
+                connector.and_then(|c| program.connector(&c).map(|d| d.span.file.clone()));
+            if let Some(m) = declared_in.and_then(|f| program.module_of(&f))
+                && !m.public
+            {
+                e.private = true;
+            }
+        }
+        let mcp = Arc::new(McpPeer::new(
+            mcp_catalog,
+            root,
+            Arc::clone(&evaluator),
+            mcp_http(),
+            mcp_spawn(root),
+            Arc::clone(&files),
+        ));
+        let host_evaluator = Arc::clone(&evaluator);
+        let host_files = Arc::clone(&files);
+        let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
+        // OAuth (WS-F): profiles are validated at load; the adapter reaches token
+        // endpoints only through the brokered exchange_http use case.
+        let oauth = match prev {
+            Some(p) if p.catalog.program.auth_profiles == program.auth_profiles => {
+                Arc::clone(&p.oauth)
+            }
+            _ => Arc::new(OAuthAdapter::load(
+                &program,
+                crate::orchestrator::transports::exchange_http_fn(),
+            )?),
+        };
+        let credentials: Arc<dyn CredentialProvider> = Arc::new(AuthorizedCredentials {
+            raw: Arc::clone(&oauth),
+        });
+        crate::orchestrator::transports::register(
+            &mut interp,
+            files,
+            root,
+            Some(Arc::clone(&credentials)),
+        );
+        register_transports(&mut interp, root);
+        super::file_streams::register(&mut interp, root);
+        // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
+        // call modes fail the load before anything dials.
+        let grpc = Arc::new(GrpcTransport::load(&program, root)?);
+        check_grpc_program(&program, grpc.catalog())?;
+        let grpc_credentials = Arc::clone(&credentials);
+        let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
+            let driver = Arc::clone(&grpc);
+            let creds = Arc::clone(&grpc_credentials);
+            Box::pin(async move {
+                invoke_rpc(plan, policy.as_ref(), driver.as_ref(), Some(creds.as_ref())).await
+            })
+        });
+        interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
+        let registry = Arc::new(
+            ProgramRegistry::new(Arc::clone(&program))
+                .with_imports(import_entries)
+                .with_effects(effects),
+        );
+        Ok(Arc::new(Snapshot {
+            catalog: Arc::clone(catalog),
+            registry,
+            driver: Arc::new(interp),
+            mcp,
+            evaluator: host_evaluator,
+            files: host_files,
+            oauth,
+            credentials,
+        }))
+    }
+
+    /// Connect the interpreter to the runtime: DAGs run the execution.run_dag
+    /// use case and nested requests dispatch on this same snapshot.
+    fn wire(self: &Arc<Snapshot>, inner: &Arc<Inner>) {
+        self.driver.set_dag_executor(Arc::new(DagUseCase));
+        self.driver.set_dispatcher(Arc::new(NestedDispatcher {
+            runtime: Arc::downgrade(inner),
+            snapshot: Arc::downgrade(self),
+        }));
+    }
+}
+
+/// `registry.load_module`'s CatalogStore: compiles under the loader's policy
+/// and swaps the runtime's snapshot (loads are serialized by the caller).
+pub(super) struct RuntimeCatalog<'a> {
+    rt: &'a Runtime,
+}
+
+impl crate::domain::ports::CatalogStore for RuntimeCatalog<'_> {
+    fn current(&self) -> Arc<CatalogSnapshot> {
+        self.rt.catalog()
+    }
+
+    fn compile(&self, bundle: &SourceBundle) -> RivetResult<CatalogSnapshot> {
+        let parser = CapyParser::new()?;
+        let resolved = resolve_imports(bundle, &parser, &DiskSourceLoader)?;
+        let program = compile_program(&resolved, &parser)?;
+        Ok(CatalogSnapshot::new(resolved, Arc::new(program)))
+    }
+
+    fn publish(&self, next: CatalogSnapshot) -> RivetResult<()> {
+        let inner = &self.rt.inner;
+        let current = self.rt.snap();
+        let next = Snapshot::build(
+            &Arc::new(next),
+            &inner.broker,
+            &inner.trace,
+            inner.discovery,
+            Some(&current),
+        )?;
+        next.wire(inner);
+        let mut slot = inner.snapshot.write().unwrap_or_else(|e| e.into_inner());
+        *slot = next;
+        Ok(())
+    }
+}
+
+/// The registry the long-lived session host sees: always the current snapshot's.
+struct CurrentRegistry {
+    runtime: std::sync::Weak<Inner>,
+}
+
+impl CurrentRegistry {
+    fn current(&self) -> Option<Arc<ProgramRegistry>> {
+        let inner = self.runtime.upgrade()?;
+        let g = inner.snapshot.read().unwrap_or_else(|e| e.into_inner());
+        Some(Arc::clone(&g.registry))
+    }
+}
+
+impl Registry for CurrentRegistry {
+    fn describe(&self, query: &CatalogQuery) -> RivetResult<Catalog> {
+        match self.current() {
+            Some(r) => r.describe(query),
+            None => Ok(Catalog::default()),
+        }
+    }
+
+    fn program(&self) -> Arc<CompiledProgram> {
+        self.current()
+            .map(|r| r.program())
+            .unwrap_or_else(|| Arc::new(CompiledProgram::default()))
+    }
+
+    fn effect_sites(&self) -> Arc<crate::domain::io_manifest::EffectCatalog> {
+        self.current().map(|r| r.effect_sites()).unwrap_or_default()
     }
 }
 
@@ -525,96 +763,22 @@ impl Runtime {
                 authorize_effect(i, p, root)
             });
         let broker = Arc::new(PolicyBroker::new(policy.clone(), &bundle.root, decide));
-        let effects = analyze_program(&program);
-        let mut index: SiteIndex = HashMap::new();
-        for op in &effects.operations {
-            for s in &op.sites {
-                for v in &s.access {
-                    index
-                        .entry((op.operation_id.clone(), s.statement_line, s.capability, *v))
-                        .or_default()
-                        .push((s.effect_id.clone(), s.target.template.clone()));
-                }
-            }
-        }
         let trace = Arc::new(MemoryTraceStore::default());
-        let evaluator: Arc<dyn PolicyEvaluator> = Arc::new(TracedEvaluator {
-            root: bundle.root.clone(),
-            broker: Arc::clone(&broker),
-            trace: Arc::clone(&trace),
-            index,
-            attempts: Mutex::new(HashMap::new()),
-        });
-        let files: Arc<dyn FileAccess> = Arc::new(PolicedFiles {
-            evaluator: Arc::clone(&evaluator),
-            raw: ConfinedFiles::new(&bundle.root),
-        });
-        // MCP connectors: reviewed snapshots are bootstrap reads checked against
-        // policy.json approved.snapshots before anything is served.
-        let mcp_catalog = McpPeer::load(
-            &program,
-            &bundle.root,
-            &policy.approved.snapshots,
-            discovery,
-        )?;
-        let import_entries = mcp_catalog.import_entries();
-        let mcp = Arc::new(McpPeer::new(
-            mcp_catalog,
-            &bundle.root,
-            Arc::clone(&evaluator),
-            mcp_http(),
-            mcp_spawn(&bundle.root),
-            Arc::clone(&files),
-        ));
-        let host_evaluator = Arc::clone(&evaluator);
-        let host_files = Arc::clone(&files);
-        let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
-        // OAuth (WS-F): profiles are validated at load; the adapter reaches token
-        // endpoints only through the brokered exchange_http use case.
-        let oauth = Arc::new(OAuthAdapter::load(
-            &program,
-            crate::orchestrator::transports::exchange_http_fn(),
-        )?);
-        let credentials: Arc<dyn CredentialProvider> = Arc::new(AuthorizedCredentials {
-            raw: Arc::clone(&oauth),
-        });
-        let mcp_credentials = Arc::clone(&credentials);
-        crate::orchestrator::transports::register(
-            &mut interp,
-            files,
-            &bundle.root,
-            Some(Arc::clone(&credentials)),
-        );
-        register_transports(&mut interp, &bundle.root);
-        super::file_streams::register(&mut interp, &bundle.root);
-        // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
-        // call modes fail the load before anything dials.
-        let grpc = Arc::new(GrpcTransport::load(&program, &bundle.root)?);
-        check_grpc_program(&program, grpc.catalog())?;
-        let grpc_credentials = Arc::clone(&credentials);
-        let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
-            let driver = Arc::clone(&grpc);
-            let creds = Arc::clone(&grpc_credentials);
-            Box::pin(async move {
-                invoke_rpc(plan, policy.as_ref(), driver.as_ref(), Some(creds.as_ref())).await
-            })
-        });
-        interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
-        let driver = Arc::new(interp);
-        let registry = Arc::new(
-            ProgramRegistry::new(Arc::clone(&program))
-                .with_imports(import_entries)
-                .with_effects(effects),
-        );
-        let catalog_version = program.source_hash.clone();
+        let root = bundle.root.clone();
+        let catalog = Arc::new(CatalogSnapshot::new(bundle, program));
+        let snapshot = Snapshot::build(&catalog, &broker, &trace, discovery, None)?;
+        let catalog_version = catalog.version.clone();
         let inner = Arc::new_cyclic(|weak: &std::sync::Weak<Inner>| {
             let w = weak.clone();
             let upgrade: Arc<super::setup_library::UpgradeFn> =
                 Arc::new(move || w.upgrade().map(|inner| Runtime { inner }));
+            let registry: Arc<dyn Registry> = Arc::new(CurrentRegistry {
+                runtime: weak.clone(),
+            });
             let sessions = Arc::new(
                 super::setup_library::session_host(
                     upgrade,
-                    registry.clone(),
+                    registry,
                     catalog_version,
                     session_limits,
                 )
@@ -623,10 +787,7 @@ impl Runtime {
                 )),
             );
             Inner {
-                bundle,
-                program,
-                registry,
-                driver,
+                root,
                 broker,
                 trace,
                 concurrency: Arc::new(Semaphore::new(
@@ -635,27 +796,51 @@ impl Runtime {
                 counter: AtomicU64::new(0),
                 sessions,
                 requests: Arc::new(crate::infra::request_control::RunningRequests::default()),
-                mcp,
-                evaluator: host_evaluator,
-                files: host_files,
                 bridges: Mutex::new(HashMap::new()),
-                oauth,
-                credentials: mcp_credentials,
+                discovery,
+                snapshot: RwLock::new(Arc::clone(&snapshot)),
+                load_lock: Mutex::new(()),
             }
         });
-        inner.driver.set_dag_executor(Arc::new(DagUseCase));
-        inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
-            runtime: Arc::downgrade(&inner),
-        }));
+        snapshot.wire(&inner);
         Ok(Runtime { inner })
     }
 
-    pub fn program(&self) -> Arc<CompiledProgram> {
-        Arc::clone(&self.inner.program)
+    /// Serialize module loads and hand `f` the runtime's CatalogStore.
+    pub(super) fn with_catalog_store<T>(
+        &self,
+        f: impl FnOnce(&RuntimeCatalog<'_>) -> RivetResult<T>,
+    ) -> RivetResult<T> {
+        let _guard = self
+            .inner
+            .load_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        f(&RuntimeCatalog { rt: self })
     }
 
-    pub fn bundle(&self) -> &SourceBundle {
-        &self.inner.bundle
+    /// The catalog snapshot new requests use now.
+    fn snap(&self) -> Arc<Snapshot> {
+        let g = self
+            .inner
+            .snapshot
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        Arc::clone(&g)
+    }
+
+    /// The current immutable catalog (bundle files, modules and program).
+    pub fn catalog(&self) -> Arc<CatalogSnapshot> {
+        Arc::clone(&self.snap().catalog)
+    }
+
+    pub fn program(&self) -> Arc<CompiledProgram> {
+        Arc::clone(&self.snap().catalog.program)
+    }
+
+    /// The current bundle: the entry file (if any) and every resolved module.
+    pub fn bundle(&self) -> SourceBundle {
+        self.snap().catalog.bundle.clone()
     }
 
     pub fn policy(&self) -> &Policy {
@@ -817,25 +1002,40 @@ impl Runtime {
         req: Request,
         sink: Option<Arc<dyn DataSink>>,
     ) -> RivetResult<Completion> {
+        self.dispatch_request_pinned(req, sink, None).await
+    }
+
+    /// `dispatch_request` on a given catalog snapshot (nested calls stay on
+    /// their parent's snapshot); `None` takes the current one.
+    async fn dispatch_request_pinned(
+        &self,
+        req: Request,
+        sink: Option<Arc<dyn DataSink>>,
+        pinned: Option<Arc<Snapshot>>,
+    ) -> RivetResult<Completion> {
+        let snap = pinned.unwrap_or_else(|| self.snap());
         // A top-level request's error always names that request, even when it
         // was raised by a nested call (DAG node, `request`, generic dispatch).
         let top = (req.depth == 0).then(|| (req.request_id.clone(), req.trace_id.clone()));
-        self.dispatch_scoped(req, sink).await.map_err(|mut e| {
-            if let Some((r, t)) = top {
-                e.request_id = Some(r);
-                e.trace_id = Some(t);
-            }
-            e
-        })
+        self.dispatch_scoped(req, sink, snap)
+            .await
+            .map_err(|mut e| {
+                if let Some((r, t)) = top {
+                    e.request_id = Some(r);
+                    e.trace_id = Some(t);
+                }
+                e
+            })
     }
 
     async fn dispatch_scoped(
         &self,
         req: Request,
         sink: Option<Arc<dyn DataSink>>,
+        snap: Arc<Snapshot>,
     ) -> RivetResult<Completion> {
         let Some(r) = &req.restrict else {
-            return self.dispatch_unrestricted(req, sink).await;
+            return self.dispatch_unrestricted(req, sink, snap).await;
         };
         let parsed = self.parse_restriction(r).map_err(|mut e| {
             e.request_id = Some(req.request_id.clone());
@@ -848,7 +1048,7 @@ impl Runtime {
             .unwrap_or_default();
         stack.push(Arc::new(parsed));
         REQUEST_RESTRICTION
-            .scope(Arc::new(stack), self.dispatch_unrestricted(req, sink))
+            .scope(Arc::new(stack), self.dispatch_unrestricted(req, sink, snap))
             .await
     }
 
@@ -856,6 +1056,7 @@ impl Runtime {
         &self,
         req: Request,
         sink: Option<Arc<dyn DataSink>>,
+        snap: Arc<Snapshot>,
     ) -> RivetResult<Completion> {
         let limits = self.policy().limits.clone();
         if req.depth == 0 {
@@ -875,8 +1076,8 @@ impl Runtime {
         if req.operation_id.starts_with("rivet.") {
             return super::builtins::dispatch_builtin(self, req, sink).await;
         }
-        let imported = self.inner.program.operation(&req.operation_id).is_none()
-            && self.inner.mcp.catalog().owns(&req.operation_id);
+        let imported = snap.catalog.program.operation(&req.operation_id).is_none()
+            && snap.mcp.catalog().owns(&req.operation_id);
         // Host-wide budget shared by top-level requests, nested `(request …)`
         // calls and DAG/map nodes (PROP Increment 7): every in-flight request
         // holds one permit, so the 65th concurrent call fails with limit.concurrency.
@@ -895,13 +1096,13 @@ impl Runtime {
                 e
             })?;
         if imported {
-            return self.dispatch_mcp(req).await;
+            return self.dispatch_mcp(req, &snap).await;
         }
         if req.depth > 0 {
             return request_operation(
                 req,
-                self.inner.registry.as_ref(),
-                self.inner.driver.as_ref(),
+                snap.registry.as_ref(),
+                snap.driver.as_ref(),
                 &limits,
                 sink,
             )
@@ -919,8 +1120,8 @@ impl Runtime {
             .start(&request_id, &req.principal.name, token.clone());
         let run = request_operation(
             req,
-            self.inner.registry.as_ref(),
-            self.inner.driver.as_ref(),
+            snap.registry.as_ref(),
+            snap.driver.as_ref(),
             &limits,
             sink,
         );
@@ -968,7 +1169,8 @@ impl Runtime {
 
     /// Identity of this host in MCP bridge chains.
     fn bridge_identity(&self) -> String {
-        let h = self.inner.program.source_hash.trim_start_matches("sha256:");
+        let hash = self.snap().catalog.version.clone();
+        let h = hash.trim_start_matches("sha256:");
         format!("rivet:{}", &h[..h.len().min(16)])
     }
 
@@ -995,7 +1197,7 @@ impl Runtime {
 
     /// An imported connector operation (`crm.tools.search`): the
     /// `connectors.invoke_mcp` use case under the request deadline.
-    async fn dispatch_mcp(&self, req: Request) -> RivetResult<Completion> {
+    async fn dispatch_mcp(&self, req: Request, snap: &Snapshot) -> RivetResult<Completion> {
         let id = req.operation_id.clone();
         let tag = |mut e: RivetError| {
             e.operation_id.get_or_insert_with(|| id.clone());
@@ -1003,7 +1205,7 @@ impl Runtime {
             e.trace_id.get_or_insert_with(|| req.trace_id.clone());
             e
         };
-        let catalog = self.inner.mcp.catalog();
+        let catalog = snap.mcp.catalog();
         let (connector, method) = id.split_once('.').unwrap_or((id.as_str(), ""));
         let kind = catalog.import(&id).map(|i| i.kind);
         let input = McpRequest {
@@ -1018,9 +1220,9 @@ impl Runtime {
         };
         let run = invoke_mcp(
             input,
-            self.inner.evaluator.as_ref(),
-            self.inner.mcp.as_ref(),
-            Some(self.inner.credentials.as_ref()),
+            snap.evaluator.as_ref(),
+            snap.mcp.as_ref(),
+            Some(snap.credentials.as_ref()),
         );
         let result = match tokio::time::timeout(
             std::time::Duration::from_millis(req.deadline_ms.max(1)),
@@ -1109,11 +1311,12 @@ impl Runtime {
             schema_hash: String::new(),
             context: self.mcp_context("connectors.sync", None),
         };
+        let snap = self.snap();
         let found = invoke_mcp(
             input,
-            self.inner.evaluator.as_ref(),
-            self.inner.mcp.as_ref(),
-            Some(self.inner.credentials.as_ref()),
+            snap.evaluator.as_ref(),
+            snap.mcp.as_ref(),
+            Some(snap.credentials.as_ref()),
         )
         .await?;
         let snapshot_json = found
@@ -1127,7 +1330,7 @@ impl Runtime {
         op.codec = Some(crate::domain::files::Codec::Bytes);
         op.content = Some(Value::Bytes(bytes));
         op.overwrite = false;
-        self.inner.files.apply(op).await?;
+        snap.files.apply(op).await?;
         Ok(ConnectorSync {
             connector: name.to_string(),
             path: output.to_string(),
@@ -1141,7 +1344,7 @@ impl Runtime {
 
     /// Imported MCP operation IDs of this bundle (`crm.tools.search`, …).
     pub fn connector_imports(&self) -> Vec<String> {
-        self.inner
+        self.snap()
             .mcp
             .catalog()
             .imports
@@ -1151,7 +1354,7 @@ impl Runtime {
     }
 
     pub fn list(&self) -> RivetResult<Catalog> {
-        describe_operations(&CatalogQuery::default(), self.inner.registry.as_ref())
+        describe_operations(&CatalogQuery::default(), self.snap().registry.as_ref())
     }
 
     pub fn describe(&self, ids: &[String]) -> RivetResult<Catalog> {
@@ -1160,7 +1363,7 @@ impl Runtime {
                 ids: ids.to_vec(),
                 include_private: false,
             },
-            self.inner.registry.as_ref(),
+            self.snap().registry.as_ref(),
         )
     }
 
@@ -1170,27 +1373,27 @@ impl Runtime {
                 id: id.map(str::to_string),
                 all,
             },
-            self.inner.registry.as_ref(),
+            self.snap().registry.as_ref(),
         )
     }
 
     pub fn registry(&self) -> Arc<dyn Registry> {
-        self.inner.registry.clone()
+        self.snap().registry.clone()
     }
 
     /// Catalog version pinned by sessions (`sha256:` of the bundle sources).
     pub fn catalog_version(&self) -> String {
-        self.inner.program.source_hash.clone()
+        self.snap().catalog.version.clone()
     }
 
     /// The OAuth session driver behind `rivet.auth.*`.
     pub fn oauth(&self) -> Arc<dyn OAuthSessionDriver> {
-        self.inner.oauth.clone()
+        self.snap().oauth.clone()
     }
 
     /// The broker evaluator (traced) used by adapters and built-ins.
     pub fn evaluator(&self) -> Arc<dyn PolicyEvaluator> {
-        Arc::clone(&self.inner.evaluator)
+        Arc::clone(&self.snap().evaluator)
     }
 
     /// The live-session driver shared by polling, WebSocket, MCP and the library.
@@ -1219,16 +1422,19 @@ impl Runtime {
         input: tokio::sync::mpsc::Receiver<Value>,
     ) -> RivetResult<Completion> {
         let request_id = req.request_id.clone();
-        self.inner.driver.attach_input(&request_id, input);
-        let out = self.dispatch_request(req, Some(sink)).await;
-        self.inner.driver.detach_input(&request_id);
+        let snap = self.snap();
+        snap.driver.attach_input(&request_id, input);
+        let out = self
+            .dispatch_request_pinned(req, Some(sink), Some(Arc::clone(&snap)))
+            .await;
+        snap.driver.detach_input(&request_id);
         out
     }
 
     fn static_evaluator(&self) -> StaticEvaluator {
         StaticEvaluator {
             policy: self.policy().clone(),
-            root: self.inner.bundle.root.clone(),
+            root: self.inner.root.clone(),
         }
     }
 
@@ -1237,11 +1443,12 @@ impl Runtime {
     /// through the broker, `trace_request_id` joins this host's trace store.
     pub fn io(&self, query: &IoQuery) -> RivetResult<IoReport> {
         let evaluator = self.static_evaluator();
-        let probe = ConfinedFiles::new(&self.inner.bundle.root);
+        let probe = ConfinedFiles::new(&self.inner.root);
+        let snap = self.snap();
         inspect_effects(
             query,
             &AuditPorts {
-                registry: self.inner.registry.as_ref(),
+                registry: snap.registry.as_ref(),
                 policy: &evaluator,
                 trace: Some(self.inner.trace.as_ref()),
                 probe: Some(&probe),
@@ -1254,7 +1461,7 @@ impl Runtime {
         &self,
         query: &crate::domain::call_graph::GraphQuery,
     ) -> RivetResult<crate::domain::call_graph::CallGraph> {
-        crate::features::audit::build_graph::build_graph(query, self.inner.registry.as_ref())
+        crate::features::audit::build_graph::build_graph(query, self.snap().registry.as_ref())
     }
 
     /// Least-privilege draft for `ids` (empty = every public operation). Never writes.
@@ -1277,7 +1484,7 @@ impl Runtime {
             ..IoQuery::default()
         })?;
         let rebase = output
-            .map(|o| rebase_prefix(o, &self.inner.bundle.root))
+            .map(|o| rebase_prefix(o, &self.inner.root))
             .unwrap_or_default();
         generate_policy(
             &PolicyGenerateInput {
@@ -1308,7 +1515,7 @@ impl Runtime {
         op.codec = Some(crate::domain::files::Codec::Bytes);
         op.content = Some(Value::Bytes(body));
         op.overwrite = false;
-        self.inner.files.apply(op).await?;
+        self.snap().files.apply(op).await?;
         Ok(TraceExport {
             request_id: request_id.to_string(),
             path: path.to_string(),

@@ -16,3 +16,4 @@ pub mod io;
 pub mod orchestrator;
 
 pub use orchestrator::runtime::{Runtime, RuntimeBuilder};
+pub use orchestrator::setup_library::Module;

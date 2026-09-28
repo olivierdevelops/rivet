@@ -5,3 +5,4 @@ pub mod compile_output_spec;
 pub mod compile_program;
 pub mod lowering;
 pub mod ports;
+pub mod resolve_imports;

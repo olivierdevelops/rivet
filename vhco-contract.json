@@ -2011,11 +2011,9 @@
                     "name": "read_module",
                     "in": [
                       {
-                        "name": "root",
                         "type": "string"
                       },
                       {
-                        "name": "path",
                         "type": "string"
                       }
                     ],
@@ -6385,6 +6383,12 @@
           "lane": "loader"
         },
         {
+          "layer": "policy",
+          "ref": "loader.policy_beside",
+          "role": "a module policy.json is ignored (warning)",
+          "lane": "loader"
+        },
+        {
           "layer": "cycles",
           "ref": "find_cycles",
           "role": "check.import_cycle with the path"
@@ -6393,12 +6397,6 @@
           "layer": "public",
           "ref": "mark_public",
           "role": "public iff a chain of public imports reaches the module"
-        },
-        {
-          "layer": "policy",
-          "ref": "loader.policy_beside",
-          "role": "a module policy.json is ignored (warning)",
-          "lane": "loader"
         }
       ]
     },

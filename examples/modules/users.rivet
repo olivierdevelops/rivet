@@ -1,0 +1,15 @@
+# A module: its IDs are short; the host (or an importer) namespaces them.
+global greeting = "Hello"
+
+operation get
+    description "One user by id."
+    param id integer required min 1 description "The user id."
+    output json description "The user."
+    return {id: id, name: "${greeting}, user ${id}"}
+end
+
+operation list
+    description "The first two users (calls inside a module use its own IDs)."
+    output json description "Two users."
+    return [(get {id: 1}), (request "get" {id: 2})]
+end

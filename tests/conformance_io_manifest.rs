@@ -471,7 +471,10 @@ fn s63_s64_entry_and_bootstrap() {
     assert_eq!(code, 0);
     assert!(out.contains("BOOTSTRAP (runtime-internal; listed, not governed by policy.json)"));
     assert!(out.contains("stdin, stdout, stderr"));
-    assert!(out.contains("./app.rivet (+ imports)"));
+    // PROP-2026-0002 R19: the entry file and each imported module are listed
+    // one per row (the 0.1.0 `(+ imports)` placeholder is gone).
+    assert!(out.contains("./app.rivet"));
+    assert!(!out.contains("(+ imports)"));
     let net: Vec<_> = out.lines().take_while(|l| !l.is_empty()).skip(1).collect();
     assert_eq!(net.len(), 3);
 }
