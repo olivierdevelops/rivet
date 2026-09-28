@@ -6,7 +6,7 @@
 //! prefix calls `(f a b)`, grouping `(a + b)`, `not`, unary `-`, and infix
 //! `* / %` > `+ -` > comparisons > `and` > `or` (all left-associative).
 
-use crate::domain::ir::{Arg, BinOp, Expr, TemplatePart};
+use crate::domain::ir::{Arg, BUILTIN_FUNCTIONS, BinOp, Expr, TemplatePart, closest_builtin};
 use crate::domain::source::SourceSpan;
 use crate::domain::{RivetError, RivetResult, Value};
 
@@ -596,8 +596,25 @@ impl<'a> P<'a> {
                         args.push(self.unary()?);
                     }
                     self.expect_close(')')?;
+                    let func = segs.join(".");
+                    if !BUILTIN_FUNCTIONS.contains(&func.as_str()) {
+                        let e = err(
+                            self.map,
+                            "check.unknown_function",
+                            format!("unknown function `{func}`"),
+                            s,
+                            e,
+                        );
+                        return Err(match closest_builtin(&func) {
+                            Some(f) => e.with_hint(format!("did you mean `{f}`?")),
+                            None => e.with_hint(format!(
+                                "built-in functions: {}",
+                                BUILTIN_FUNCTIONS.join(", ")
+                            )),
+                        });
+                    }
                     return Ok(Expr::Call {
-                        func: segs.join("."),
+                        func,
                         args,
                         span: self.map.span(s, e),
                     });
@@ -706,7 +723,7 @@ mod tests {
         assert!(
             matches!(e("(request \"users.get\" {id: id})"), Expr::Call { func, args, .. } if func == "request" && args.len() == 2)
         );
-        assert!(matches!(e("(foo)"), Expr::Call { args, .. } if args.is_empty()));
+        assert!(matches!(e("(text 1)"), Expr::Call { args, .. } if args.len() == 1));
         assert!(matches!(
             e("(a + b) * c"),
             Expr::Binary { op: BinOp::Mul, .. }
@@ -714,6 +731,27 @@ mod tests {
         assert!(
             matches!(e("(base64.decode \"AAEC\")"), Expr::Call { func, .. } if func == "base64.decode")
         );
+    }
+
+    // vhco:test language.compile_program -- an unknown prefix-call name (`(len x)`) is check.unknown_function at the name's span with a did-you-mean over the built-in list
+    #[test]
+    fn unknown_function_is_rejected_with_did_you_mean() {
+        let text = "(len x)";
+        let err = parse_expr(text, &m(text)).unwrap_err();
+        assert_eq!(err.code, "check.unknown_function");
+        assert_eq!(err.hint.as_deref(), Some("did you mean `length`?"));
+        let span = err.source.clone().unwrap();
+        assert_eq!((span.start_col, span.end_col), (2, 5));
+        let text = "{a: (base64.encod \"x\")}";
+        let err = parse_expr(text, &m(text)).unwrap_err();
+        assert_eq!(err.hint.as_deref(), Some("did you mean `base64.encode`?"));
+        let text = "(frobnicate)";
+        let err = parse_expr(text, &m(text)).unwrap_err();
+        assert!(err.hint.unwrap().contains("xml.element"));
+        for f in crate::domain::ir::BUILTIN_FUNCTIONS {
+            let text = format!("({f} 1)");
+            assert!(parse_expr(&text, &m(&text)).is_ok(), "{f}");
+        }
     }
 
     #[test]

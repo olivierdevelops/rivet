@@ -77,8 +77,20 @@ impl CapyParser {
 
 impl Parser for CapyParser {
     fn parse(&self, file: &SourceFile) -> RivetResult<SyntaxTree> {
-        let result = self.library.parse(&file.text);
-        let json_text = ast_json::to_json(&result);
+        let mut json_text = ast_json::to_json(&self.library.parse(&file.text));
+        // G30: Capy's list/object/call-argument grammar only takes primaries,
+        // so `{n: n - 1}` fails there although Rivet's own expression parser
+        // accepts it. Retry with those elements masked (same length, so every
+        // span still slices the ORIGINAL text that lowering re-parses).
+        if has_diagnostics(&json_text) {
+            let masked = mask_infix_elements(&file.text);
+            if masked != file.text {
+                let retry = ast_json::to_json(&self.library.parse(&masked));
+                if !has_diagnostics(&retry) {
+                    json_text = retry;
+                }
+            }
+        }
         let json: Json = serde_json::from_str(&json_text)
             .map_err(|e| RivetError::internal(format!("Capy AST JSON did not parse: {e}")))?;
         let version = json
@@ -119,6 +131,185 @@ impl Parser for CapyParser {
         tree.diagnostics.extend(indentation_diagnostics(file));
         Ok(tree)
     }
+}
+
+fn has_diagnostics(json_text: &str) -> bool {
+    let Ok(json) = serde_json::from_str::<Json>(json_text) else {
+        return true;
+    };
+    let non_empty = |p: &str| {
+        json.pointer(p)
+            .and_then(Json::as_array)
+            .is_some_and(|a| !a.is_empty())
+    };
+    non_empty("/diagnostics") || non_empty("/tree/errors")
+}
+
+/// One open `{`, `[` or `(` while scanning for infix elements.
+struct Frame {
+    open: u8,
+    /// Objects alternate key → value; only values (and list items) are masked.
+    in_value: bool,
+    /// Byte offset where the current element starts.
+    start: usize,
+    /// The current element has an infix operator at this frame's depth.
+    has_op: bool,
+    /// The current element crossed a line break (never masked).
+    multiline: bool,
+    /// The last significant token at this depth ended a value (binary `-`).
+    after_value: bool,
+}
+
+impl Frame {
+    fn new(open: u8, start: usize) -> Frame {
+        Frame {
+            open,
+            in_value: false,
+            start,
+            has_op: false,
+            multiline: false,
+            after_value: false,
+        }
+    }
+
+    /// Mask the element `[start, end)` in `out` when it holds infix.
+    ///
+    /// ```text
+    ///   {n: n - 1, m: 2}   ─▶   {n: "   ", m: 2}
+    ///       ^^^^^                   ^^^^^  same bytes, same columns
+    /// ```
+    fn finish(&self, bytes: &[u8], end: usize, out: &mut [u8]) {
+        let element = self.open == b'[' || (self.open == b'{' && self.in_value);
+        if !element || !self.has_op || self.multiline {
+            return;
+        }
+        let seg = &bytes[self.start..end];
+        let lead = seg.iter().take_while(|b| b.is_ascii_whitespace()).count();
+        let trail = seg
+            .iter()
+            .rev()
+            .take_while(|b| b.is_ascii_whitespace())
+            .count();
+        if lead == seg.len() {
+            return;
+        }
+        let (s, e) = (self.start + lead, end - trail);
+        if e < s + 2 || !bytes[s..e].is_ascii() {
+            return;
+        }
+        out[s] = b'"';
+        out[e - 1] = b'"';
+        for b in &mut out[s + 1..e - 1] {
+            *b = b' ';
+        }
+    }
+}
+
+/// Replace every single-line list item / object value that holds a top-level
+/// infix operator (`n - 1`, `a * 2`, `x and y`, `not z`) with a string literal
+/// of the SAME byte length, so Capy (which only takes primaries there) sees a
+/// plain value while every span still addresses the original text that
+/// Rivet's own expression parser lowers.
+fn mask_infix_elements(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        match c {
+            b'"' | b'\'' | b'`' => {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j] != c {
+                    if bytes[j] == b'\\' {
+                        j += 1;
+                    } else if bytes[j] == b'\n' && c != b'`' {
+                        break;
+                    }
+                    j += 1;
+                }
+                if let Some(f) = stack.last_mut() {
+                    if bytes[i..j.min(bytes.len())].contains(&b'\n') {
+                        f.multiline = true;
+                    }
+                    f.after_value = true;
+                }
+                i = j + 1;
+                continue;
+            }
+            b'#' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'{' | b'[' | b'(' => {
+                if let Some(f) = stack.last_mut() {
+                    f.after_value = false;
+                }
+                stack.push(Frame::new(c, i + 1));
+            }
+            b'}' | b']' | b')' => {
+                if let Some(f) = stack.pop() {
+                    f.finish(bytes, i, &mut out);
+                }
+                if let Some(f) = stack.last_mut() {
+                    f.after_value = true;
+                }
+            }
+            b',' | b'\n' => {
+                if let Some(f) = stack.last_mut() {
+                    let blank = bytes[f.start..i].iter().all(u8::is_ascii_whitespace);
+                    // `key:` with the value on the next line keeps waiting.
+                    if c == b',' || !blank {
+                        f.finish(bytes, i, &mut out);
+                        *f = Frame::new(f.open, i + 1);
+                    }
+                }
+            }
+            b':' => {
+                if let Some(f) = stack.last_mut()
+                    && f.open == b'{'
+                    && !f.in_value
+                {
+                    f.in_value = true;
+                    f.start = i + 1;
+                    f.has_op = false;
+                    f.after_value = false;
+                }
+            }
+            b'+' | b'*' | b'/' | b'%' | b'<' | b'>' | b'=' | b'!' => {
+                if let Some(f) = stack.last_mut() {
+                    f.has_op = true;
+                    f.after_value = false;
+                }
+            }
+            b'-' => {
+                if let Some(f) = stack.last_mut() {
+                    f.has_op |= f.after_value;
+                    f.after_value = false;
+                }
+            }
+            _ if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' => {
+                let mut j = i;
+                while j < bytes.len()
+                    && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' || bytes[j] == b'.')
+                {
+                    j += 1;
+                }
+                if let Some(f) = stack.last_mut() {
+                    let op = matches!(&text[i..j], "and" | "or" | "not");
+                    f.has_op |= op;
+                    f.after_value = !op;
+                }
+                i = j;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
 }
 
 fn span_of(v: Option<&Json>, file: &str) -> Option<SourceSpan> {
@@ -235,7 +426,7 @@ fn convert_diagnostic(d: &Json, file: &SourceFile, keywords: &[String]) -> Synta
             message: format!("the value assigned to `{first_word}` does not parse"),
             span,
             help: Some(
-                "inside lists, objects and call arguments wrap infix expressions in parentheses, e.g. {n: (n - 1)}"
+                "check the value's brackets, commas and object keys, e.g. {n: n - 1, tags: [\"a\"]}"
                     .into(),
             ),
         };
@@ -415,20 +606,46 @@ mod tests {
         assert_eq!(levenshtein("kitten", "sitting"), 3);
     }
 
-    // vhco:test language.compile_program -- an assignment whose value fails to parse (`x = {n: n - 1}`) is syntax.expression with a parenthesize hint, not "unknown statement `x`"
+    // vhco:test language.compile_program -- an assignment whose value fails to parse (`x = {n: }`) is syntax.expression, not "unknown statement `x`"
     #[test]
     fn unparsable_assignment_value_is_not_an_unknown_statement() {
-        let tree = parse(
-            "operation x\n    output json\n    n = 1\n    x = {n: n - 1}\n    return x\nend\n",
-        );
+        let tree =
+            parse("operation x\n    output json\n    n = 1\n    x = {n: }\n    return x\nend\n");
         let d = &tree.diagnostics[0];
         assert_eq!(d.code, "syntax.expression", "{d:?}");
         assert_eq!((d.span.start_line, d.span.start_col), (4, 5));
-        assert!(d.help.as_deref().unwrap().contains("{n: (n - 1)}"));
         let tree = parse(
             "operation x\n    output json\n    n = 1\n    x = {n: (n - 1)}\n    return x\nend\n",
         );
         assert!(tree.is_clean(), "{:?}", tree.diagnostics);
+    }
+
+    // vhco:test language.compile_program -- infix inside objects, lists and call arguments parses (G30) and keeps source spans
+    #[test]
+    fn infix_inside_objects_lists_and_calls_parses() {
+        for value in [
+            "{n: n - 1}",
+            "[n + 1, n * 2]",
+            "(request \"x\" {v: n * 2})",
+            "{a: [n % 2 == 0, not true], b: {c: n / 2 and true}}",
+            "{n: n - 1,\n      m: n + 1}",
+        ] {
+            let src = format!(
+                "operation x\n    output json\n    n = 1\n    x = {value}\n    return x\nend\n"
+            );
+            let tree = parse(&src);
+            assert!(tree.is_clean(), "{value}: {:?}", tree.diagnostics);
+            let assign = &tree.nodes[0].body.as_ref().unwrap()[2];
+            assert_eq!(assign.text("value"), value, "spans slice the original text");
+        }
+    }
+
+    #[test]
+    fn masking_keeps_length_and_skips_strings_and_negatives() {
+        let src = "x = {a: n - 1, b: \"a - b\", c: -1, d: [x+1]}";
+        let masked = mask_infix_elements(src);
+        assert_eq!(masked.len(), src.len());
+        assert_eq!(masked, "x = {a: \"   \", b: \"a - b\", c: -1, d: [\" \"]}");
     }
 
     #[test]

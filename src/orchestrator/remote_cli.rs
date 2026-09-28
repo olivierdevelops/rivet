@@ -36,13 +36,25 @@ fn usage(msg: impl Into<String>) -> RivetError {
     RivetError::validation("validation.usage", msg)
 }
 
-/// `--timeout D` as milliseconds.
+/// `--timeout D` as milliseconds, local and `--endpoint` alike: above the
+/// host cap (the HTTP `deadline_ms` cap, 600000 ms) is a usage error (G19).
 pub fn timeout_ms(t: &Option<String>) -> RivetResult<Option<u64>> {
+    let cap = crate::io::http::MAX_REQUEST_DEADLINE_MS;
     match t {
         None => Ok(None),
-        Some(t) => parse_duration_ms(t)
-            .map(Some)
-            .ok_or_else(|| usage(format!("--timeout {t}: use digits plus ms, s, m or h"))),
+        Some(t) => match parse_duration_ms(t) {
+            None => Err(usage(format!(
+                "--timeout {t}: use digits plus ms, s, m or h"
+            ))),
+            Some(ms) if ms > cap => Err(usage(format!(
+                "--timeout {t} is {ms} ms; the host cap is {cap} ms (10m)"
+            ))
+            .with_details(Value::object([
+                ("timeout_ms", Value::Int(ms as i64)),
+                ("max_ms", Value::Int(cap as i64)),
+            ]))),
+            Some(ms) => Ok(Some(ms)),
+        },
     }
 }
 
@@ -341,9 +353,12 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
                 Err(e) => fail(&e, None, cli.json),
             }
         }
-        Command::Check { .. } | Command::Policy { .. } | Command::Serve(_) => fail(
+        Command::Check { .. }
+        | Command::Graph { .. }
+        | Command::Policy { .. }
+        | Command::Serve(_) => fail(
             &usage(
-                "check, policy and serve work on a local bundle (--file); they are not available with --endpoint",
+                "check, graph, policy and serve work on a local bundle (--file); they are not available with --endpoint",
             ),
             None,
             cli.json,

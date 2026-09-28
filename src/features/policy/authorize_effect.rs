@@ -27,6 +27,13 @@ pub fn authorize_effect(intent: &EffectIntent, policy: &Policy, bundle_root: &st
             ),
         );
     }
+    // vhco:step ceiling policy.ceiling -- a library host ceiling decides too: an attempt it denies is denied whatever policy.json grants (intersection)
+    if let Some(ceiling) = &policy.ceiling {
+        let c = authorize_effect(intent, ceiling, bundle_root);
+        if c.decision == Decision::Denied {
+            return permit(Decision::Denied, format!("host ceiling: {}", c.rule));
+        }
+    }
     let target = normalize_target(&intent.target, intent.capability, bundle_root);
 
     // vhco:step deny policy.deny -- a matching deny entry (with or without access) wins over every grant
@@ -349,6 +356,49 @@ mod tests {
 
     fn policy(json: &str) -> Policy {
         parse_policy(json.as_bytes(), "svc/policy.json", "svc").unwrap()
+    }
+
+    // vhco:test policy.authorize_effect -- G10: with a host ceiling an attempt must be allowed by both policies; a deny (or missing grant) in either wins and limits narrow to the smaller
+    #[test]
+    fn host_ceiling_intersects() {
+        let file = policy(
+            r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**","./etc/**"]},{"capability":"allow_write","targets":["./out/**"]}],"limits":{"max_call_depth":8}}"#,
+        );
+        let ceiling = policy(
+            r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**","./out/**"]},{"capability":"allow_write","targets":["./out/**"]}],"deny":[{"capability":"allow_write","targets":["./out/secret/**"]}],"limits":{"max_call_depth":4}}"#,
+        );
+        let p = file.with_ceiling(ceiling);
+        assert_eq!(p.limits.max_call_depth, 4);
+        let decide = |cap, verb, path: &str| {
+            authorize_effect(
+                &intent(cap, verb, EffectTarget::Path(path.into())),
+                &p,
+                "svc",
+            )
+        };
+        // Both allow.
+        assert_eq!(
+            decide(Capability::Read, AccessVerb::Read, "./data/a").decision,
+            Decision::Allowed
+        );
+        // policy.json grants, the ceiling does not.
+        let d = decide(Capability::Read, AccessVerb::Read, "./etc/x");
+        assert_eq!(d.decision, Decision::Denied);
+        assert!(d.rule.starts_with("host ceiling:"), "{}", d.rule);
+        // The ceiling grants, policy.json does not: a ceiling never grants.
+        assert_eq!(
+            decide(Capability::Read, AccessVerb::Read, "./out/a").decision,
+            Decision::Denied
+        );
+        // A ceiling deny wins over a policy.json grant.
+        assert_eq!(
+            decide(Capability::Write, AccessVerb::Create, "./out/secret/k").decision,
+            Decision::Denied
+        );
+        assert_eq!(
+            decide(Capability::Write, AccessVerb::Create, "./out/ok").decision,
+            Decision::Allowed
+        );
     }
 
     // vhco:test policy.authorize_effect -- no policy.json denies every effect

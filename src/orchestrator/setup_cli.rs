@@ -1,6 +1,6 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --params JSON
 // vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
 // vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
@@ -20,6 +20,7 @@
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
+// vhco:trigger cli audit/build_graph = rivet graph ID [--all] [--json]
 // vhco:trigger cli audit/read_trace = rivet trace show REQ | rivet --endpoint URL trace show REQ (rivet.trace.show)
 // vhco:trigger cli policy/generate_policy = rivet policy generate [ID ...|--all] [--output PATH]
 // vhco:trigger cli connectors/invoke_mcp = rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON
@@ -38,7 +39,6 @@
 
 use crate::domain::contracts::error_envelope;
 use crate::domain::io_manifest::IoQuery;
-use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
 use crate::features::language::lowering::lower::strict_doc_findings;
 use crate::io::cli::{
@@ -196,20 +196,10 @@ async fn run(cli: Cli) -> i32 {
                 params,
                 crate::domain::contracts::Principal::local(),
             );
-            if let Some(t) = &args.timeout {
-                match parse_duration_ms(t) {
-                    Some(ms) => req.deadline_ms = ms,
-                    None => {
-                        return fail(
-                            &RivetError::validation(
-                                "validation.usage",
-                                format!("--timeout {t}: use digits plus ms, s, m or h"),
-                            ),
-                            None,
-                            true,
-                        );
-                    }
-                }
+            match super::remote_cli::timeout_ms(&args.timeout) {
+                Ok(Some(ms)) => req.deadline_ms = ms,
+                Ok(None) => {}
+                Err(e) => return fail(&e, None, true),
             }
             match super::remote_cli::check_input_flags(args) {
                 Ok(true) => {
@@ -395,6 +385,23 @@ async fn run(cli: Cli) -> i32 {
                 Err(e) => fail(&e, None, true),
             }
         }
+        Command::Graph { id, all } => {
+            let query = crate::domain::call_graph::GraphQuery {
+                id: id.clone(),
+                all: *all,
+            };
+            match runtime.graph(&query) {
+                Ok(g) if cli.json => {
+                    let _ = writeln!(stdout, "{}", g.to_json());
+                    0
+                }
+                Ok(g) => {
+                    let _ = write!(stdout, "{}", g.render());
+                    0
+                }
+                Err(e) => fail(&e, None, cli.json),
+            }
+        }
         Command::Io(args) => match runtime.io(&args.to_query(cli.json)) {
             Ok(report) => {
                 let _ = write!(stdout, "{}", report.rendered);
@@ -452,20 +459,10 @@ async fn run(cli: Cli) -> i32 {
             };
             let mut req =
                 runtime.new_request(id, params, crate::domain::contracts::Principal::local());
-            if let Some(t) = &timeout {
-                match parse_duration_ms(t) {
-                    Some(ms) => req.deadline_ms = ms,
-                    None => {
-                        return fail(
-                            &RivetError::validation(
-                                "validation.usage",
-                                format!("--timeout {t}: use digits plus ms, s, m or h"),
-                            ),
-                            None,
-                            true,
-                        );
-                    }
-                }
+            match super::remote_cli::timeout_ms(&timeout) {
+                Ok(Some(ms)) => req.deadline_ms = ms,
+                Ok(None) => {}
+                Err(e) => return fail(&e, None, true),
             }
             match runtime.dispatch_request(req, None).await {
                 Ok(c) => {

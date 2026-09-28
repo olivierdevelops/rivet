@@ -2,14 +2,17 @@
 //! source runs inside the host's Tokio runtime (no nested runtime), streams to
 //! a host `DataSink`, owns cleanup when the host drops a request future
 //! (sockets closed, child processes killed), and exposes outputs, the I/O
-//! manifest, policy drafts, sessions and `policy_from_json`.
+//! manifest, policy drafts, sessions, `Runtime::scope` streams/duplexes,
+//! `Policy::from_file` / `Policy::from_json` and a host `.ceiling(..)`.
 //!
 //! ```text
 //!  host tokio runtime
-//!    └─ Runtime::builder().source(..).policy(policy_from_json(..)).build()
+//!    └─ Runtime::builder().source(..).policy(Policy::from_json(..)?).ceiling(..).build()
 //!         ├─ request(id, params, Some(sink))   ── sink Err ─▶ consumer_failed
+//!         │                                    ── sink consumer_stop() ─▶ cancelled
 //!         ├─ drop(request future)             ── closes sockets, kills children
-//!         ├─ open_session / read_events       ── Envelope stream (scope.stream stand-in)
+//!         ├─ scope(|scope| async move { stream / duplex … })  ── cancelled + joined at scope end
+//!         ├─ open_session / read_events       ── Envelope stream (sessions)
 //!         └─ outputs / io / generate_policy
 //! ```
 #![allow(clippy::result_large_err)]
@@ -22,6 +25,7 @@ use rivet::Runtime;
 use rivet::domain::contracts::{DataEvent, Envelope, Principal};
 use rivet::domain::io_manifest::IoQuery;
 use rivet::domain::outputs::ValueSpec;
+use rivet::domain::policy::Policy;
 use rivet::domain::ports::DataSink;
 use rivet::domain::sessions::{SessionOpenInput, SessionReadInput};
 use rivet::domain::{ErrorKind, RivetError, RivetResult, Value};
@@ -407,5 +411,225 @@ async fn policy_from_json_matches_policy_files() {
             (ErrorKind::Validation, "policy.invalid"),
             "{bad}"
         );
+        let e = Policy::from_json(bad.as_bytes()).unwrap_err();
+        assert_eq!(e.code, "policy.invalid", "{bad}");
     }
+}
+
+const RELAY: &str = "operation demo.relay
+    output integer
+    emits text
+    receives text
+    count = 0
+    for item in incoming
+        emit item
+        count = count + 1
+    end
+    return count
+end
+";
+
+fn data_of(env: &Envelope) -> Value {
+    match env {
+        Envelope::Data(d) => d.data.clone(),
+        other => panic!("expected data, got {other:?}"),
+    }
+}
+
+// vhco:test execution.request_operation -- G24: rt.scope gives scope.stream (ordered Data envelopes, one terminal Result, then None) and scope.duplex (send checked against `receives`, finish_send, next; split halves)
+#[tokio::test]
+async fn scope_stream_and_duplex() {
+    let rt = runtime(&format!("{CATALOG}\n{RELAY}"), ".", r#"{"version":1}"#);
+    let (items, result, relayed) = rt
+        .scope(|scope| async move {
+            let mut s = scope
+                .stream("demo.count", Value::object([("n", Value::Int(3))]))
+                .await?;
+            let mut items = Vec::new();
+            let mut result = None;
+            while let Some(env) = s.next().await? {
+                match env {
+                    Envelope::Result(c) => result = Some(c.result),
+                    other => items.push(data_of(&other)),
+                }
+            }
+            assert!(s.next().await?.is_none(), "None after the terminal");
+
+            let mut d = scope.duplex("demo.relay", Value::Null).await?;
+            d.send(Value::text("a")).await?;
+            let bad = d.send(Value::Int(7)).await.unwrap_err();
+            assert_eq!(bad.code, "validation.input");
+            d.send(Value::text("b")).await?;
+            assert_eq!(data_of(&d.next().await?.unwrap()), Value::text("a"));
+            let (mut tx, mut rx) = d.into_split();
+            let sender = tokio::spawn(async move {
+                tx.finish_send();
+                tx.send(Value::text("late")).await.unwrap_err().code
+            });
+            assert_eq!(data_of(&rx.next().await?.unwrap()), Value::text("b"));
+            let relayed = match rx.next().await? {
+                Some(Envelope::Result(c)) => c.result,
+                other => panic!("expected the result, got {other:?}"),
+            };
+            assert_eq!(sender.await.unwrap(), "conflict.input_finished");
+            Ok((items, result, relayed))
+        })
+        .await
+        .unwrap();
+    assert_eq!(items, vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+    assert_eq!(result, Some(Value::Int(3)));
+    assert_eq!(relayed, Value::Int(2));
+
+    // A duplex needs `receives`; a terminal error surfaces through `next()?`.
+    let e = rt
+        .scope(|scope| async move { scope.duplex("demo.count", Value::Null).await.map(|_| ()) })
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "validation.no_input");
+    let e = rt
+        .scope(|scope| async move {
+            let mut s = scope.stream("demo.add", Value::Null).await?;
+            s.next().await.map(|_| ())
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "validation.required");
+}
+
+// vhco:test execution.request_operation -- G24: everything a scope started is cancelled and joined when the scope body returns: an in-flight HTTP call's socket is already closed when `scope` returns
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scope_cancels_and_joins_what_it_started() {
+    let (port, stats) = slow_server().await;
+    let base = format!("http://127.0.0.1:{port}");
+    let rt = runtime(&effect_src(&base), ".", &effect_policy(&base));
+    let st = Arc::clone(&stats);
+    let started = std::time::Instant::now();
+    rt.scope(|scope| async move {
+        let _slow = scope
+            .stream("t.slow", Value::object([("ms", Value::Int(10_000))]))
+            .await?;
+        let _nested = scope.stream("t.nested", Value::Null).await?;
+        assert!(st.wait_started(2).await, "both calls in flight");
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "cancelled, not awaited"
+    );
+    assert!(
+        stats.wait_aborted(2).await,
+        "both sockets are closed by the scope"
+    );
+    assert_eq!(stats.get(|s| &s.finished), 0);
+}
+
+/// Stops (typed) after `limit` items.
+struct StopTyped {
+    limit: usize,
+    seen: Mutex<Vec<Value>>,
+}
+
+#[async_trait]
+impl DataSink for StopTyped {
+    async fn send(&self, event: DataEvent) -> RivetResult<()> {
+        let mut seen = self.seen.lock().unwrap();
+        if seen.len() >= self.limit {
+            return Err(RivetError::consumer_stop());
+        }
+        seen.push(event.data);
+        Ok(())
+    }
+}
+
+// vhco:test execution.request_operation -- G33: a DataSink that returns the typed stop (RivetError::consumer_stop) ends the request `cancelled` / consumer.stop, not consumer_failed, and no further items are produced
+#[tokio::test]
+async fn data_sink_typed_stop_cancels() {
+    let rt = runtime(CATALOG, ".", r#"{"version":1}"#);
+    let sink = Arc::new(StopTyped {
+        limit: 2,
+        seen: Mutex::new(Vec::new()),
+    });
+    let e = rt
+        .request(
+            "demo.count",
+            Value::object([("n", Value::Int(500))]),
+            Some(sink.clone()),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.kind, e.code.as_str()),
+        (ErrorKind::Cancelled, "consumer.stop")
+    );
+    assert!(e.is_consumer_stop());
+    assert_eq!(
+        *sink.seen.lock().unwrap(),
+        vec![Value::Int(1), Value::Int(2)]
+    );
+}
+
+// vhco:test policy.load_policy -- G10: Policy::from_file / Policy::from_json load the policy.json schema, and builder .ceiling(Policy) intersects: a target must be allowed by both, a ceiling never grants and its deny wins
+#[tokio::test]
+async fn policy_constructors_and_host_ceiling() {
+    let (port, _stats) = slow_server().await;
+    let base = format!("http://127.0.0.1:{port}");
+    let src = effect_src(&base);
+    let fast = || Value::object([("ms", Value::Int(1))]);
+    let build = |policy: Policy, ceiling: Option<Policy>| {
+        let mut b = Runtime::builder()
+            .source("app.rivet", &src, ".")
+            .policy(policy);
+        if let Some(c) = ceiling {
+            b = b.ceiling(c);
+        }
+        b.build().unwrap()
+    };
+    // Policy::from_file: same schema, loaded from disk.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("policy.json");
+    std::fs::write(&path, net_policy(&base)).unwrap();
+    let from_file = Policy::from_file(path.to_str().unwrap()).unwrap();
+    assert!(from_file.sha256.is_some());
+    let rt = build(from_file.clone(), None);
+    assert_eq!(
+        rt.request("t.slow", fast(), None).await.unwrap().result,
+        Value::Int(200)
+    );
+    assert!(Policy::from_file(dir.path().join("nope.json").to_str().unwrap()).is_err());
+
+    // A ceiling that allows the origin keeps the grant.
+    // (A loopback fixture must be named literally in the ceiling too.)
+    let wide = Policy::from_json(
+        format!(r#"{{"version":1,"grants":[{{"capability":"allow_network","targets":["*","{base}"]}}]}}"#)
+            .as_bytes(),
+    )
+    .unwrap();
+    let rt = build(from_file.clone(), Some(wide.clone()));
+    assert_eq!(
+        rt.request("t.slow", fast(), None).await.unwrap().result,
+        Value::Int(200)
+    );
+
+    // A ceiling without the grant, or with a deny, narrows it away.
+    let narrow = Policy::from_json(
+        br#"{"version":1,"grants":[{"capability":"allow_exec","targets":["/bin/sleep"]}]}"#,
+    )
+    .unwrap();
+    let denying = Policy::from_json(
+        format!(r#"{{"version":1,"grants":[{{"capability":"allow_network","targets":["*"]}}],"deny":[{{"capability":"allow_network","targets":["{base}"]}}]}}"#)
+            .as_bytes(),
+    )
+    .unwrap();
+    for ceiling in [narrow, denying] {
+        let rt = build(from_file.clone(), Some(ceiling));
+        let e = rt.request("t.slow", fast(), None).await.unwrap_err();
+        assert_eq!(e.code, "permission.denied");
+        assert!(e.message.contains("host ceiling"), "{}", e.message);
+    }
+    // A ceiling never grants what the loaded policy does not.
+    let rt = build(Policy::from_json(br#"{"version":1}"#).unwrap(), Some(wide));
+    let e = rt.request("t.slow", fast(), None).await.unwrap_err();
+    assert_eq!(e.code, "permission.denied");
 }

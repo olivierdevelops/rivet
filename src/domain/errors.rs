@@ -184,6 +184,9 @@ pub struct RivetError {
 
 pub type RivetResult<T> = Result<T, RivetError>;
 
+/// Code of the typed stop a `DataSink` returns (kind `cancelled`).
+pub const CONSUMER_STOP: &str = "consumer.stop";
+
 impl RivetError {
     pub fn new(kind: ErrorKind, code: impl Into<String>, message: impl Into<String>) -> RivetError {
         RivetError {
@@ -228,6 +231,28 @@ impl RivetError {
 
     pub fn unsupported(code: &str, message: impl Into<String>) -> RivetError {
         RivetError::new(ErrorKind::Unsupported, code, message)
+    }
+
+    /// What a `DataSink` returns to STOP consuming (not a failure): the
+    /// producer stops, cleanup runs and the request ends `cancelled`
+    /// (`consumer.stop`) instead of `consumer_failed`.
+    ///
+    /// ```text
+    ///   sink Ok(())               -> keep producing
+    ///   sink Err(consumer_stop()) -> cancelled / consumer.stop
+    ///   sink Err(anything else)   -> consumer_failed
+    /// ```
+    pub fn consumer_stop() -> RivetError {
+        RivetError::new(
+            ErrorKind::Cancelled,
+            CONSUMER_STOP,
+            "the data consumer stopped the request",
+        )
+    }
+
+    /// True for the typed stop a `DataSink` returns ([`RivetError::consumer_stop`]).
+    pub fn is_consumer_stop(&self) -> bool {
+        self.kind == ErrorKind::Cancelled && self.code == CONSUMER_STOP
     }
 
     pub fn with_span(mut self, span: Option<SourceSpan>) -> RivetError {

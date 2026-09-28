@@ -932,6 +932,7 @@ impl<'a> Machine<'a> {
             trace_id: frame.request.trace_id.clone(),
             operation_id: self.op.id.clone(),
             line: span.start_line,
+            span: Some(span.clone()),
         }
     }
 
@@ -1185,6 +1186,11 @@ impl<'a> Machine<'a> {
             })
             .await
             .map_err(|e| {
+                // A typed stop is the consumer's choice, not a failure: the
+                // request ends cancelled (G33).
+                if e.is_consumer_stop() {
+                    return e.with_span(Some(span.clone()));
+                }
                 let mut err = RivetError::new(
                     ErrorKind::ConsumerFailed,
                     "consumer_failed",
@@ -1879,9 +1885,14 @@ impl<'a> Machine<'a> {
                     )),
                 }
             }
+            // `check` already rejects names outside BUILTIN_FUNCTIONS
+            // (check.unknown_function); `request.stream` only opens in `with`.
             other => Err(runtime_err(
                 "call.unknown",
-                format!("unknown function `{other}`"),
+                format!(
+                    "unknown function `{other}` here; built-in functions: {}",
+                    crate::domain::ir::BUILTIN_FUNCTIONS.join(", ")
+                ),
                 span,
             )),
         }

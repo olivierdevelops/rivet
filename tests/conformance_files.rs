@@ -580,6 +580,42 @@ async fn access_narrowed_create_only() {
     assert!(e.message.contains("create"), "{}", e.message);
 }
 
+// vhco:test files.apply_file_operation -- B2: file decisions in the trace and file permission errors carry the operation ID and the statement's source span
+#[tokio::test]
+async fn file_effects_are_traced_with_operation_and_span() {
+    let b = bundle();
+    std::fs::write(b.path().join("data/in.txt"), "in").unwrap();
+    let body =
+        "x = file read \"./data/in.txt\" as text\nfile create \"./secret.txt\" text x\nreturn x";
+    let rt = runtime(b.path(), &op(body), Some(FULL));
+    let req = rt.new_request(
+        "t.run",
+        Value::Null,
+        rivet::domain::contracts::Principal::local(),
+    );
+    let request_id = req.request_id.clone();
+    let e = rt.dispatch_request(req, None).await.unwrap_err();
+    assert_eq!(code(&e), ("permission.denied", 3));
+    let span = e
+        .source
+        .clone()
+        .expect("the permission error names the statement");
+    assert_eq!((span.file.as_str(), span.start_line), ("app.rivet", 4));
+    let trace = rt.trace(&request_id).unwrap();
+    let files: Vec<_> = trace
+        .events
+        .iter()
+        .filter(|ev| ev.capability.starts_with("allow_"))
+        .collect();
+    assert_eq!(files.len(), 2, "{:?}", trace.events);
+    for (ev, line, decision) in [(files[0], 3, "allowed"), (files[1], 4, "denied")] {
+        assert_eq!(ev.operation_id, "t.run");
+        assert_eq!(ev.decision, decision);
+        let src = ev.source.as_ref().expect("traced with a source span");
+        assert_eq!(src.start_line, line, "{ev:?}");
+    }
+}
+
 // vhco:test files.apply_file_operation -- S66 without policy.json every file verb is denied with zero effects while pure operations still run
 #[tokio::test]
 async fn no_policy_denies_every_file_verb() {

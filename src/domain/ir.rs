@@ -58,6 +58,51 @@ pub enum Expr {
     Neg(Box<Expr>),
 }
 
+/// Every prefix-call function the language knows: `check` rejects any other
+/// name (check.unknown_function) and the interpreter dispatches exactly these.
+///
+/// ```text
+///   (len x)  ──check──▶  check.unknown_function  "did you mean `length`?"
+/// ```
+pub const BUILTIN_FUNCTIONS: &[&str] = &[
+    "request",
+    "request.stream",
+    "length",
+    "base64.encode",
+    "base64.decode",
+    "text",
+    "keys",
+    "xml.element",
+];
+
+/// The built-in function name closest to `name` (edit distance ≤ 3, or a
+/// prefix/containment match such as `len` → `length`).
+pub fn closest_builtin(name: &str) -> Option<&'static str> {
+    fn distance(a: &str, b: &str) -> usize {
+        let b: Vec<char> = b.chars().collect();
+        let mut prev: Vec<usize> = (0..=b.len()).collect();
+        for (i, ca) in a.chars().enumerate() {
+            let mut cur = vec![i + 1];
+            for (j, cb) in b.iter().enumerate() {
+                let cost = usize::from(ca != *cb);
+                cur.push((prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1));
+            }
+            prev = cur;
+        }
+        prev[b.len()]
+    }
+    BUILTIN_FUNCTIONS
+        .iter()
+        .map(|f| {
+            let d = distance(name, f);
+            let related = name.len() >= 3 && (f.starts_with(name) || name.starts_with(f));
+            (if related { d.min(1) } else { d }, *f)
+        })
+        .filter(|(d, _)| *d <= 3)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, f)| f)
+}
+
 impl Expr {
     /// Literal text value, if this is a constant string (no interpolation).
     pub fn const_text(&self) -> Option<String> {

@@ -87,6 +87,8 @@ pub struct RuntimeBuilder {
     policy: PolicySource,
     /// `connectors sync`: MCP connectors may lack a reviewed snapshot.
     discovery: bool,
+    /// Library host ceiling intersected with the loaded policy (G10).
+    ceiling: Option<Policy>,
 }
 
 impl Default for RuntimeBuilder {
@@ -96,6 +98,7 @@ impl Default for RuntimeBuilder {
             source: None,
             policy: PolicySource::Discover,
             discovery: false,
+            ceiling: None,
         }
     }
 }
@@ -125,6 +128,18 @@ impl RuntimeBuilder {
         self
     }
 
+    /// Host ceiling: every attempt must be allowed by BOTH the loaded policy
+    /// (policy.json, `policy_file` or `policy`) and this ceiling; a deny in
+    /// either wins, and limits narrow to the smaller value. Calling it twice
+    /// intersects both ceilings.
+    pub fn ceiling(mut self, ceiling: Policy) -> Self {
+        self.ceiling = Some(match self.ceiling.take() {
+            Some(prev) => prev.with_ceiling(ceiling),
+            None => ceiling,
+        });
+        self
+    }
+
     /// Load for `connectors sync`: an MCP connector whose `schema` file is
     /// missing or not yet approved loads without imports instead of failing.
     pub fn connector_discovery(mut self) -> Self {
@@ -145,7 +160,7 @@ impl RuntimeBuilder {
         };
         let parser = CapyParser::new()?;
         let program = Arc::new(compile_program(&bundle, &parser)?);
-        let policy = match self.policy {
+        let mut policy = match self.policy {
             PolicySource::Given(p) => *p,
             PolicySource::Discover if self.entry.is_none() => Policy::deny_all(&bundle.root),
             PolicySource::Discover => load_policy(
@@ -163,13 +178,49 @@ impl RuntimeBuilder {
                 &DiskPolicyReader,
             )?,
         };
+        // `Policy::from_json(bytes)` has no file: anchor it at the bundle root.
+        fn anchor(p: &mut Policy, root: &str) {
+            if p.base_dir.is_empty() {
+                p.base_dir = root.to_string();
+            }
+            if let Some(c) = p.ceiling.as_mut() {
+                anchor(c, root);
+            }
+        }
+        if let Some(ceiling) = self.ceiling {
+            policy = policy.with_ceiling(ceiling);
+        }
+        anchor(&mut policy, &bundle.root);
         Runtime::assemble(bundle, program, policy, self.discovery)
     }
 }
 
 /// Parse policy JSON with the same strict schema as policy.json (library hosts).
+/// Alias of [`Policy::from_json`] with an explicit base directory.
 pub fn policy_from_json(bytes: &[u8], base_dir: &str) -> RivetResult<Policy> {
     parse_policy(bytes, "<memory>", base_dir)
+}
+
+/// Library constructors (PROP Increment 16): the same strict schema v1 as a
+/// discovered policy.json.
+impl Policy {
+    /// Load and validate a policy file; relative targets resolve against the
+    /// file's own directory and its sha256 becomes the policy hash.
+    pub fn from_file(path: &str) -> RivetResult<Policy> {
+        load_policy(
+            &PolicyLocator {
+                entry: String::new(),
+                explicit_path: Some(path.to_string()),
+            },
+            &DiskPolicyReader,
+        )
+    }
+
+    /// Validate in-memory policy JSON; relative targets resolve against the
+    /// bundle root of the runtime it is given to.
+    pub fn from_json(bytes: &[u8]) -> RivetResult<Policy> {
+        parse_policy(bytes, "<memory>", "")
+    }
 }
 
 struct Inner {
@@ -342,11 +393,15 @@ impl PolicyEvaluator for TracedEvaluator {
 #[async_trait]
 impl FileAccess for PolicedFiles {
     async fn apply(&self, op: FileOperation) -> RivetResult<Value> {
+        // The interpreter runs every file effect inside its effect scope, so
+        // the broker intent (trace + permission error) names the operation and
+        // the statement span (B2).
+        let scope = current_effect_scope().unwrap_or_default();
         apply_file_operation(
             FileRequest {
                 op,
-                operation_id: String::new(),
-                span: None,
+                operation_id: scope.operation_id,
+                span: scope.span,
                 effect_id: None,
             },
             self.evaluator.as_ref(),
@@ -973,6 +1028,14 @@ impl Runtime {
                 probe: Some(&probe),
             },
         )
+    }
+
+    /// The static call graph of one operation (`rivet graph ID [--json]`).
+    pub fn graph(
+        &self,
+        query: &crate::domain::call_graph::GraphQuery,
+    ) -> RivetResult<crate::domain::call_graph::CallGraph> {
+        crate::features::audit::build_graph::build_graph(query, self.inner.registry.as_ref())
     }
 
     /// Least-privilege draft for `ids` (empty = every public operation). Never writes.
