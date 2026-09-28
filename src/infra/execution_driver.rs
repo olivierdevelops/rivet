@@ -378,7 +378,10 @@ impl ExecutionDriver for Interpreter {
             }
         };
         let result = match flow {
-            Flow::Return(v) => v,
+            Flow::Return(v) => {
+                secret_output_guard(&frame, &v, "returned")?;
+                v
+            }
             Flow::Normal => Value::Null,
             Flow::Break => {
                 return Err(RivetError::syntax(
@@ -425,12 +428,102 @@ impl RunState {
     }
 }
 
+/// `scheme://host:port` of a URL (default port filled in), for secret bindings.
+fn origin_key(u: &str) -> Option<(String, String, u16)> {
+    let u = url::Url::parse(u).ok()?;
+    Some((
+        u.scheme().to_ascii_lowercase(),
+        u.host_str()?.to_ascii_lowercase(),
+        u.port_or_known_default()?,
+    ))
+}
+
+fn value_carries(v: &Value, secret: &str) -> bool {
+    match v {
+        Value::Text(t) => t.contains(secret),
+        Value::Bytes(b) => b.windows(secret.len()).any(|w| w == secret.as_bytes()),
+        Value::List(items) => items.iter().any(|i| value_carries(i, secret)),
+        Value::Object(pairs) => pairs
+            .iter()
+            .any(|(k, v)| k.contains(secret) || value_carries(v, secret)),
+        _ => false,
+    }
+}
+
+fn args_carry(args: &[EvalArg], secret: &str) -> bool {
+    args.iter().any(|a| match a {
+        EvalArg::Value(v) => value_carries(v, secret),
+        EvalArg::Word(_) => false,
+    })
+}
+
+/// S140: a secret bound with `for ORIGIN` may only travel (by explicit flow:
+/// interpolation, object construction) to those origins. The destination is the
+/// first URL in the effect head; forms whose destination is not a URL literal
+/// in the head (connectors, sockets without a scheme) are not checked here.
+fn secret_guard(frame: &Frame, f: &EvaluatedForm, span: &SourceSpan) -> RivetResult<()> {
+    if frame.secrets.is_empty() {
+        return Ok(());
+    }
+    let Some(key) = f.head.iter().find_map(|a| match a {
+        EvalArg::Value(Value::Text(t)) => origin_key(t),
+        _ => None,
+    }) else {
+        return Ok(());
+    };
+    let mut names: Vec<&String> = frame.secrets.keys().collect();
+    names.sort();
+    for name in names {
+        let (value, origins) = &frame.secrets[name];
+        if value.is_empty() {
+            continue;
+        }
+        let carried = args_carry(&f.head, value)
+            || f.options.iter().any(|(_, a)| args_carry(a, value))
+            || f.children
+                .iter()
+                .flatten()
+                .any(|(_, a)| args_carry(a, value));
+        if carried && !origins.iter().any(|o| origin_key(o).as_ref() == Some(&key)) {
+            let (scheme, host, port) = &key;
+            return Err(RivetError::permission(format!(
+                "secret `{name}` is bound to {}; it may not be sent to {scheme}://{host}:{port}",
+                origins.join(", ")
+            ))
+            .with_span(Some(span.clone()))
+            .with_details(Value::object([
+                ("secret", Value::text(name)),
+                ("origin", Value::text(format!("{scheme}://{host}:{port}"))),
+            ])));
+        }
+    }
+    Ok(())
+}
+
+/// Returning or emitting a secret value is an error (explicit flows only).
+fn secret_output_guard(frame: &Frame, v: &Value, how: &str) -> RivetResult<()> {
+    let mut names: Vec<&String> = frame.secrets.keys().collect();
+    names.sort();
+    for name in names {
+        let (value, _) = &frame.secrets[name];
+        if !value.is_empty() && value_carries(v, value) {
+            return Err(RivetError::permission(format!(
+                "secret `{name}` cannot be {how}; secrets may only reach their bound origins"
+            ))
+            .with_details(Value::object([("secret", Value::text(name))])));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 struct Frame {
     scopes: Vec<HashMap<String, Value>>,
     request: Request,
     run: Arc<RunState>,
-    secrets: HashMap<String, Vec<String>>,
+    /// `secret NAME … for ORIGIN…`: name → (value, bound origins). The value is
+    /// kept only to recognise explicit flows (S140); it is never rendered.
+    secrets: HashMap<String, (String, Vec<String>)>,
     /// Open resource handles, innermost last.
     handles: Vec<(String, SharedHandle)>,
 }
@@ -779,7 +872,9 @@ impl<'a> Machine<'a> {
                         )
                         .with_span(Some(span.clone()))
                     })?;
-                    frame.secrets.insert(name.clone(), origins.clone());
+                    frame
+                        .secrets
+                        .insert(name.clone(), (value.clone(), origins.clone()));
                     frame.define(name, Value::Text(value));
                     Ok(Flow::Normal)
                 }
@@ -939,6 +1034,7 @@ impl<'a> Machine<'a> {
             },
             _ => match self.interp.adapters.get(form.kind.as_str()) {
                 Some(adapter) => {
+                    secret_guard(frame, &evaluated, span)?;
                     super::trace_store::with_effect_scope(
                         self.effect_scope(frame, span),
                         adapter.open(&ctx, form, evaluated),
@@ -1047,6 +1143,7 @@ impl<'a> Machine<'a> {
     }
 
     async fn emit(&self, frame: &mut Frame, v: Value, span: &SourceSpan) -> RivetResult<()> {
+        secret_output_guard(frame, &v, "emitted").map_err(|e| e.with_span(Some(span.clone())))?;
         if self.op.emits.is_none() {
             return Err(runtime_err(
                 "stream.emits_undeclared",
@@ -1203,6 +1300,7 @@ impl<'a> Machine<'a> {
         span: &SourceSpan,
     ) -> RivetResult<Value> {
         let evaluated = self.evaluate_form(frame, form).await?;
+        secret_guard(frame, &evaluated, span)?;
         let scope = self.effect_scope(frame, span);
         let result = super::trace_store::with_effect_scope(scope, async {
             if form.kind == EffectKind::File {

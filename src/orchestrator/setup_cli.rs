@@ -367,7 +367,9 @@ async fn run(cli: Cli) -> i32 {
                     .grants
                     .iter()
                     .filter(|g| g.targets.iter().any(|t| t == "*"))
-                    .map(|g| serde_json::json!({"capability": g.capability.as_str(), "target": "*"}))
+                    .map(
+                        |g| serde_json::json!({"capability": g.capability.as_str(), "target": "*"}),
+                    )
                     .collect();
                 let mut v = serde_json::json!({"present": p.present, "file": p.file, "sha256": p.sha256, "grants": p.grants.len(), "deny": p.deny.len(), "broad": broad});
                 if let Some(r) = &report {

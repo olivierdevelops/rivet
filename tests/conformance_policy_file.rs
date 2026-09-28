@@ -97,7 +97,15 @@ fn discovery_beside_the_entry_file() {
     );
     let ok = rivet(
         r,
-        &["--file", "services/app.rivet", "--json", "request", "config.read", "--params", "{}"],
+        &[
+            "--file",
+            "services/app.rivet",
+            "--json",
+            "request",
+            "config.read",
+            "--params",
+            "{}",
+        ],
     );
     assert_eq!(ok.code, 0, "{}", ok.stderr);
     assert!(ok.stdout.contains("8080"), "{}", ok.stdout);
@@ -123,7 +131,15 @@ fn discovery_beside_the_entry_file() {
     .unwrap();
     let denied = rivet(
         r,
-        &["--file", "services/app.rivet", "--json", "request", "config.read", "--params", "{}"],
+        &[
+            "--file",
+            "services/app.rivet",
+            "--json",
+            "request",
+            "config.read",
+            "--params",
+            "{}",
+        ],
     );
     assert_eq!(denied.code, 3, "{}", denied.stderr);
     assert_eq!(denied.error()["code"], "permission.denied");
@@ -194,7 +210,15 @@ fn explicit_policy_path() {
     // Without --policy the malformed default is loaded and rejected.
     let bad = rivet(
         d,
-        &["--file", "app.rivet", "--json", "request", "fixture.echo", "--params", r#"{"value":"ok"}"#],
+        &[
+            "--file",
+            "app.rivet",
+            "--json",
+            "request",
+            "fixture.echo",
+            "--params",
+            r#"{"value":"ok"}"#,
+        ],
     );
     assert_eq!(bad.code, 2);
     assert_eq!(bad.error()["code"], "policy.invalid");
@@ -387,7 +411,12 @@ fn schema_errors_name_their_json_pointer() {
 
 // ---------------------------------------------------------------- decisions
 
-fn decide(rt: &Runtime, capability: Capability, verb: AccessVerb, target: EffectTarget) -> Decision {
+fn decide(
+    rt: &Runtime,
+    capability: Capability,
+    verb: AccessVerb,
+    target: EffectTarget,
+) -> Decision {
     rt.evaluator()
         .evaluate(&EffectIntent {
             capability,
@@ -435,14 +464,34 @@ async fn deny_overrides_grants() {
     let cases = [
         (C::Read, V::Read, p("./data/public.json"), Allowed),
         (C::Read, V::Read, p("./data/private/secret.json"), Denied),
-        (C::Read, V::Read, p("./data/x/../private/secret.json"), Denied),
+        (
+            C::Read,
+            V::Read,
+            p("./data/x/../private/secret.json"),
+            Denied,
+        ),
         (C::Read, V::List, p("./data/private"), Denied),
         (C::Write, V::Append, p("./out/audit.log"), Denied),
         (C::Write, V::Update, p("./out/audit.log"), Allowed),
         (C::Write, V::Append, p("./out/other.log"), Allowed),
-        (C::Network, V::Connect, u("https://api.example.com/logs"), Allowed),
-        (C::Network, V::Connect, u("https://internal.example.com/admin"), Denied),
-        (C::Network, V::Connect, u("https://INTERNAL.example.com:443/x"), Denied),
+        (
+            C::Network,
+            V::Connect,
+            u("https://api.example.com/logs"),
+            Allowed,
+        ),
+        (
+            C::Network,
+            V::Connect,
+            u("https://internal.example.com/admin"),
+            Denied,
+        ),
+        (
+            C::Network,
+            V::Connect,
+            u("https://INTERNAL.example.com:443/x"),
+            Denied,
+        ),
     ];
     for (c, v, t, want) in cases {
         let label = format!("{c:?} {v:?} {t:?}");
@@ -462,19 +511,38 @@ async fn access_verbs_narrow_grants() {
         root,
         r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"],"access":["stat"]}]}"#,
     );
-    assert_eq!(decide(&narrowed, C::Read, V::Stat, p("./data/a")), Decision::Allowed);
-    assert_eq!(decide(&narrowed, C::Read, V::Read, p("./data/a")), Decision::Denied);
-    assert_eq!(decide(&narrowed, C::Read, V::List, p("./data")), Decision::Denied);
+    assert_eq!(
+        decide(&narrowed, C::Read, V::Stat, p("./data/a")),
+        Decision::Allowed
+    );
+    assert_eq!(
+        decide(&narrowed, C::Read, V::Read, p("./data/a")),
+        Decision::Denied
+    );
+    assert_eq!(
+        decide(&narrowed, C::Read, V::List, p("./data")),
+        Decision::Denied
+    );
     let full = rt_with(
         root,
         r#"{"version":1,"grants":[{"capability":"allow_write","targets":["./out/**"]}]}"#,
     );
     for v in [V::Create, V::Update, V::Append] {
-        assert_eq!(decide(&full, C::Write, v, p("./out/a")), Decision::Allowed, "{v:?}");
+        assert_eq!(
+            decide(&full, C::Write, v, p("./out/a")),
+            Decision::Allowed,
+            "{v:?}"
+        );
     }
     // allow_write never implies delete or read.
-    assert_eq!(decide(&full, C::Delete, V::Delete, p("./out/a")), Decision::Denied);
-    assert_eq!(decide(&full, C::Read, V::Read, p("./out/a")), Decision::Denied);
+    assert_eq!(
+        decide(&full, C::Delete, V::Delete, p("./out/a")),
+        Decision::Denied
+    );
+    assert_eq!(
+        decide(&full, C::Read, V::Read, p("./out/a")),
+        Decision::Denied
+    );
 }
 
 // vhco:test policy.authorize_effect -- private ranges (RFC1918, 127/8, ::1, 169.254.169.254, fc00::/7, fe80::/10, IPv4-mapped IPv6, localhost) are denied under "*" and allowed only when named literally
@@ -493,7 +561,10 @@ async fn private_ranges_denied_unless_named_literally() {
         ("http://127.0.0.1:9/", "127.0.0.1"),
         ("http://127.8.9.10/", "127.0.0.0/8"),
         ("http://[::1]:8080/", "::1"),
-        ("http://169.254.169.254/latest/meta-data/", "169.254.169.254"),
+        (
+            "http://169.254.169.254/latest/meta-data/",
+            "169.254.169.254",
+        ),
         ("http://[fc00::1]/", "fc00::/7"),
         ("http://[fd12:3456::1]/", "fc00::/7"),
         ("http://[fe80::1]/", "fe80::/10"),
@@ -511,7 +582,11 @@ async fn private_ranges_denied_unless_named_literally() {
         );
     }
     // Public addresses are allowed under "*".
-    for url in ["http://93.184.216.34/", "https://api.example.com/x", "http://[2606:4700::1]/"] {
+    for url in [
+        "http://93.184.216.34/",
+        "https://api.example.com/x",
+        "http://[2606:4700::1]/",
+    ] {
         assert_eq!(
             decide(&star, Capability::Network, AccessVerb::Connect, net(url)),
             Decision::Allowed,
@@ -537,7 +612,12 @@ async fn private_ranges_denied_unless_named_literally() {
         r#"{"version":1,"grants":[{"capability":"allow_network","targets":["*","10.0.0.7"]}]}"#,
     );
     assert_eq!(
-        decide(&one, Capability::Network, AccessVerb::Connect, net("http://10.0.0.8/")),
+        decide(
+            &one,
+            Capability::Network,
+            AccessVerb::Connect,
+            net("http://10.0.0.8/")
+        ),
         Decision::Denied
     );
     // deny_private_ranges false restores plain "*" semantics.
@@ -546,7 +626,12 @@ async fn private_ranges_denied_unless_named_literally() {
         r#"{"version":1,"grants":[{"capability":"allow_network","targets":["*"]}],"network":{"deny_private_ranges":false}}"#,
     );
     assert_eq!(
-        decide(&off, Capability::Network, AccessVerb::Connect, net("http://10.0.0.7/")),
+        decide(
+            &off,
+            Capability::Network,
+            AccessVerb::Connect,
+            net("http://10.0.0.7/")
+        ),
         Decision::Allowed
     );
 }
@@ -585,7 +670,8 @@ async fn per_request_restriction_cannot_widen() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_str().unwrap();
     std::fs::write(tmp.path().join("secret.txt"), "s").unwrap();
-    let src = "operation t.read\n    output text\n    return file read \"./secret.txt\" as text\nend\n";
+    let src =
+        "operation t.read\n    output text\n    return file read \"./secret.txt\" as text\nend\n";
     let rt = Runtime::builder()
         .source("app.rivet", src, root)
         .policy(policy_from_json(br#"{"version":1}"#, root).unwrap())
@@ -645,10 +731,21 @@ fn policy_explain_flags_star() {
     assert_eq!(o.code, 0, "{}", o.stderr);
     let broad: Vec<&str> = o.stdout.lines().filter(|l| l.contains("broad")).collect();
     assert_eq!(broad.len(), 3, "{}", o.stdout);
-    assert!(!o.stdout.lines().any(|l| l.contains("HOME") && l.contains("broad")));
+    assert!(
+        !o.stdout
+            .lines()
+            .any(|l| l.contains("HOME") && l.contains("broad"))
+    );
     let o = rivet(
         tmp.path(),
-        &["--file", "app.rivet", "--json", "policy", "explain", "config.read"],
+        &[
+            "--file",
+            "app.rivet",
+            "--json",
+            "policy",
+            "explain",
+            "config.read",
+        ],
     );
     assert_eq!(o.code, 0, "{}", o.stderr);
     let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();

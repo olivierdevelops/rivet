@@ -26,7 +26,9 @@ const FULL: &str = r#"{"version":1,"grants":[
 
 fn op(body: &str) -> String {
     let indented: String = body.lines().map(|l| format!("    {l}\n")).collect();
-    format!("operation t.run\n    output json\n{indented}end\n\noperation t.pure\n    output integer\n    return 7\nend\n")
+    format!(
+        "operation t.run\n    output json\n{indented}end\n\noperation t.pure\n    output integer\n    return 7\nend\n"
+    )
 }
 
 fn runtime(root: &Path, src: &str, policy: Option<&str>) -> Runtime {
@@ -261,10 +263,7 @@ async fn write_upserts_and_append_needs_existing() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        v.get("a").unwrap().get("created"),
-        Some(&Value::Bool(true))
-    );
+    assert_eq!(v.get("a").unwrap().get("created"), Some(&Value::Bool(true)));
     assert_eq!(
         v.get("b").unwrap().get("appended"),
         Some(&Value::Int("finished\n".len() as i64))
@@ -291,12 +290,9 @@ async fn delete_with_missing_policy() {
     assert!(!b.path().join("out/obsolete.json").exists());
     let v = run(b.path(), body).await.unwrap();
     assert_eq!(v.get("deleted"), Some(&Value::Bool(false)));
-    let e = run(
-        b.path(),
-        "file delete \"./out/obsolete.json\"\nreturn null",
-    )
-    .await
-    .unwrap_err();
+    let e = run(b.path(), "file delete \"./out/obsolete.json\"\nreturn null")
+        .await
+        .unwrap_err();
     assert_eq!((e.kind, e.exit_code()), (ErrorKind::NotFound, 4));
 
     std::fs::create_dir(b.path().join("out/dir")).unwrap();
@@ -338,7 +334,10 @@ async fn list_and_stat() {
             .and_then(Value::as_str)
             .is_some_and(|s| !s.is_empty())
     );
-    assert!(!info.to_display().contains("enabled"), "no contents in stat");
+    assert!(
+        !info.to_display().contains("enabled"),
+        "no contents in stat"
+    );
     let e = run(b.path(), "return file stat \"./data/none.json\"")
         .await
         .unwrap_err();
@@ -614,7 +613,8 @@ async fn delete_grant_and_sibling_prefix() {
     let b = bundle();
     std::fs::create_dir(b.path().join("out2")).unwrap();
     std::fs::write(b.path().join("out/a.txt"), "a").unwrap();
-    let write_only = r#"{"version":1,"grants":[{"capability":"allow_write","targets":["./out/**"]}]}"#;
+    let write_only =
+        r#"{"version":1,"grants":[{"capability":"allow_write","targets":["./out/**"]}]}"#;
     let e = run_with(
         b.path(),
         "return file delete \"./out/a.txt\"",
