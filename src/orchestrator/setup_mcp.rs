@@ -193,15 +193,15 @@ async fn post_mcp(
         Ok(p) => p,
         Err(e) => return error_response(&e),
     };
-    if let Some(v) = header_str(&headers, VERSION_HEADER) {
-        if v != MCP_PROTOCOL_VERSION {
-            return error_response(&RivetError::validation(
-                "mcp.protocol_version",
-                format!(
-                    "unsupported MCP-Protocol-Version {v}; this server speaks {MCP_PROTOCOL_VERSION}"
-                ),
-            ));
-        }
+    if let Some(v) = header_str(&headers, VERSION_HEADER)
+        && v != MCP_PROTOCOL_VERSION
+    {
+        return error_response(&RivetError::validation(
+            "mcp.protocol_version",
+            format!(
+                "unsupported MCP-Protocol-Version {v}; this server speaks {MCP_PROTOCOL_VERSION}"
+            ),
+        ));
     }
     let msg = match parse_message(&body) {
         Ok(m) => m,

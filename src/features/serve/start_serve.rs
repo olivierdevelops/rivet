@@ -96,15 +96,15 @@ fn parse_listen(listen: &str) -> RivetResult<SocketAddr> {
     if let Ok(a) = listen.parse::<SocketAddr>() {
         return Ok(a);
     }
-    if let Some((host, port)) = listen.rsplit_once(':') {
-        if let Ok(port) = port.parse::<u16>() {
-            let host = host.trim_start_matches('[').trim_end_matches(']');
-            if host.eq_ignore_ascii_case("localhost") {
-                return Ok(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
-            }
-            if let Ok(ip) = host.parse::<IpAddr>() {
-                return Ok(SocketAddr::new(ip, port));
-            }
+    if let Some((host, port)) = listen.rsplit_once(':')
+        && let Ok(port) = port.parse::<u16>()
+    {
+        let host = host.trim_start_matches('[').trim_end_matches(']');
+        if host.eq_ignore_ascii_case("localhost") {
+            return Ok(SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port));
+        }
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            return Ok(SocketAddr::new(ip, port));
         }
     }
     Err(RivetError::validation(

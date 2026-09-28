@@ -141,10 +141,10 @@ async fn dispatch_builtin_inner(
             "rivet.outputs" => {
                 let all = p.get("all").and_then(Value::as_bool).unwrap_or(false);
                 let id = p.get("id").and_then(Value::as_str).map(str::to_string);
-                if let Some(id) = &id {
-                    if !visible(rt, &who, id) {
-                        return Err(hidden(id));
-                    }
+                if let Some(id) = &id
+                    && !visible(rt, &who, id)
+                {
+                    return Err(hidden(id));
                 }
                 let reports = rt.outputs(id.as_deref(), all || id.is_none())?;
                 let items: Vec<Json> = reports

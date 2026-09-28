@@ -162,18 +162,19 @@ async fn request(
         Ok(b) => b,
         Err(e) => return error_response(&e),
     };
-    if !sse && !body.id.starts_with("rivet.") && visible(&st.runtime, &who, &body.id) {
-        if let Ok(c) = st.runtime.describe(std::slice::from_ref(&body.id)) {
-            if c.entries[0].streaming() {
-                return error_response(&RivetError::validation(
-                    "stream.required",
-                    format!(
-                        "`{}` streams; use Accept: text/event-stream, POST /v1/requests, /v1/ws or rivet.sessions.open",
-                        body.id
-                    ),
-                ));
-            }
-        }
+    if !sse
+        && !body.id.starts_with("rivet.")
+        && visible(&st.runtime, &who, &body.id)
+        && let Ok(c) = st.runtime.describe(std::slice::from_ref(&body.id))
+        && c.entries[0].streaming()
+    {
+        return error_response(&RivetError::validation(
+            "stream.required",
+            format!(
+                "`{}` streams; use Accept: text/event-stream, POST /v1/requests, /v1/ws or rivet.sessions.open",
+                body.id
+            ),
+        ));
     }
     let req = st.runtime.new_request(&body.id, body.params, who);
     if !sse {
