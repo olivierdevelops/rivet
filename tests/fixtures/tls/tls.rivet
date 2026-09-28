@@ -1,0 +1,34 @@
+operation status.get
+    description "Read service status through a private certificate authority."
+    output json description "Service status."
+    response = http get "https://status.example.com/v1/status"
+        tls ca_file "./certs/ca.pem"
+        decode json
+    end
+    return response.body
+end
+
+operation render.status
+    description "Ask the render service for its status over mutual TLS."
+    output json description "Render status."
+    response = http post "https://render.example.com/v1/status"
+        tls ca_file "./certs/ca.pem"
+        tls cert_file "./certs/client.pem"
+        tls key_file "./certs/client.key"
+        body json {action: "status"}
+        decode json
+    end
+    return response.body
+end
+
+operation report.upload
+    description "Fill the report template, save it, then upload the saved file."
+    output json description "Upload receipt."
+    template = file read "./data/template.json" as json
+    file create "./out/report.json" json template
+    response = http put "https://api.example.com/reports/latest"
+        body file "./out/report.json"
+        decode json
+    end
+    return response.body
+end

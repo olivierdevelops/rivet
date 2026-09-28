@@ -8,6 +8,10 @@ use super::contracts::{
 };
 use super::errors::RivetResult;
 use super::files::FileOperation;
+use super::io_manifest::{
+    EffectCatalog, FileProbeInput, FileProbeResult, PolicyDraftFile, PolicyDraftReceipt,
+    TraceEvent, TraceQuery, TraceResult,
+};
 use super::ir::CompiledProgram;
 use super::policy::{EffectIntent, Permit, Policy};
 use super::source::{SourceBundle, SourceFile};
@@ -25,6 +29,28 @@ pub trait Parser: Send + Sync {
 pub trait Registry: Send + Sync {
     fn describe(&self, query: &CatalogQuery) -> RivetResult<Catalog>;
     fn program(&self) -> Arc<CompiledProgram>;
+    /// Lowered effect sites of every operation (computed once at assembly;
+    /// empty when the host did not attach an effect analysis).
+    fn effect_sites(&self) -> Arc<EffectCatalog> {
+        Arc::new(EffectCatalog::default())
+    }
+}
+
+/// Bounded store of broker decisions/attempts per request (audit trace).
+pub trait TraceStore: Send + Sync {
+    fn record(&self, event: TraceEvent);
+    /// A request's events in order; not_found when the store has none.
+    fn read(&self, query: &TraceQuery) -> RivetResult<TraceResult>;
+}
+
+/// Metadata probe of one needed file (`io --check-files`); never reads content.
+pub trait FileProbe: Send + Sync {
+    fn stat(&self, input: &FileProbeInput) -> FileProbeResult;
+}
+
+/// Writes a generated policy draft, refusing to overwrite any existing path.
+pub trait PolicyDraftWriter: Send + Sync {
+    fn write_new(&self, file: &PolicyDraftFile) -> RivetResult<PolicyDraftReceipt>;
 }
 
 /// Receives streamed data items. Returning an error stops the producer and

@@ -4,6 +4,8 @@ pub mod capy_parser;
 pub mod execution_driver;
 pub mod file_access;
 pub mod policy_broker;
+pub mod policy_draft_writer;
 pub mod policy_file_reader;
 pub mod registry;
 pub mod source_loader;
+pub mod trace_store;

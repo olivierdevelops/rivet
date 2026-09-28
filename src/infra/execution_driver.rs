@@ -717,6 +717,16 @@ impl<'a> Machine<'a> {
         })
     }
 
+    /// Attribution of broker decisions made while this effect runs (audit trace).
+    fn effect_scope(&self, frame: &Frame, span: &SourceSpan) -> super::trace_store::EffectScope {
+        super::trace_store::EffectScope {
+            request_id: frame.request.request_id.clone(),
+            trace_id: frame.request.trace_id.clone(),
+            operation_id: self.op.id.clone(),
+            line: span.start_line,
+        }
+    }
+
     fn ctx(&self, frame: &Frame, span: &SourceSpan) -> EffectCtx {
         EffectCtx {
             operation_id: self.op.id.clone(),
@@ -837,7 +847,13 @@ impl<'a> Machine<'a> {
                 }
             },
             _ => match self.interp.adapters.get(form.kind.as_str()) {
-                Some(adapter) => adapter.open(&ctx, form, evaluated).await,
+                Some(adapter) => {
+                    super::trace_store::with_effect_scope(
+                        self.effect_scope(frame, span),
+                        adapter.open(&ctx, form, evaluated),
+                    )
+                    .await
+                }
                 None => Err(self.unsupported(form, span)),
             },
         };
@@ -1061,14 +1077,18 @@ impl<'a> Machine<'a> {
         span: &SourceSpan,
     ) -> RivetResult<Value> {
         let evaluated = self.evaluate_form(frame, form).await?;
-        let result = if form.kind == EffectKind::File {
-            self.run_file(frame, &evaluated, span).await
-        } else {
-            match self.interp.adapters.get(form.kind.as_str()) {
-                Some(adapter) => adapter.run(&self.ctx(frame, span), form, evaluated).await,
-                None => Err(self.unsupported(form, span)),
+        let scope = self.effect_scope(frame, span);
+        let result = super::trace_store::with_effect_scope(scope, async {
+            if form.kind == EffectKind::File {
+                self.run_file(frame, &evaluated, span).await
+            } else {
+                match self.interp.adapters.get(form.kind.as_str()) {
+                    Some(adapter) => adapter.run(&self.ctx(frame, span), form, evaluated).await,
+                    None => Err(self.unsupported(form, span)),
+                }
             }
-        };
+        })
+        .await;
         if result.is_ok() && mutates(form) {
             frame.run.commit();
         }

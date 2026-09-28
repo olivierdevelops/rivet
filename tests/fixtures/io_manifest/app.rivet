@@ -1,0 +1,87 @@
+operation users.get
+    description "Read one user."
+    param id integer required min 1 description "User ID."
+    output json description "The user."
+    secret api_key from env "API_KEY" for "https://api.example.com:443"
+    response = http get "https://api.example.com/users/${id}"
+        header "Authorization" "Bearer ${api_key}"
+        decode json
+    end
+    return response.body
+end
+
+operation users.create
+    description "Create a user."
+    param name text required description "Display name."
+    output json description "The created user."
+    secret api_key from env "API_KEY" for "https://api.example.com:443"
+    response = http post "https://api.example.com/users"
+        header "Authorization" "Bearer ${api_key}"
+        body json {name: name}
+        decode json
+    end
+    return response.body
+end
+
+pipeline users.snapshot
+    description "Fetch a user and save it once."
+    param id integer required min 1 description "User ID."
+    output json description "The saved user."
+    user = (request "users.get" {id: id})
+    file create "./out/user.json" json user
+    return user
+end
+
+operation report.load
+    description "Load the input report."
+    output json description "Parsed input."
+    report = file read "./data/input.json" as json
+    return report
+end
+
+operation notes.create
+    description "Create one note; never overwrite."
+    param name text required description "Note name."
+    param body text required description "Note text."
+    output json description "Receipt."
+    file create "./out/notes/${name}.json" json {body: body}
+    return {created: name}
+end
+
+operation notes.update
+    description "Replace one existing note."
+    param name text required description "Note name."
+    param body text required description "Note text."
+    output json description "Receipt."
+    file update "./out/notes/${name}.json" json {body: body}
+    return {updated: name}
+end
+
+operation notes.delete
+    description "Delete one note."
+    param name text required description "Note name."
+    output json description "Receipt."
+    file delete "./out/notes/${name}.json"
+    return {deleted: name}
+end
+
+operation sync.push
+    description "Post a heartbeat to the endpoint named in a config file."
+    output json description "Upstream reply."
+    config = file read "./data/endpoint.json" as json
+    response = http post config.url
+        body json {ok: true}
+        decode json
+    end
+    return response.body
+end
+
+operation archive.purge
+    description "Remove the old archive file; no public operation calls it."
+    private true
+    output json description "Receipt."
+    file delete "./out/archive/old.json"
+        missing ok
+    end
+    return {purged: true}
+end
