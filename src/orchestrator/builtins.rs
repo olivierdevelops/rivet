@@ -26,8 +26,10 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 9] = [
+pub const BUILTIN_IDS: [&str; 11] = [
     "rivet.request",
+    "rivet.io",
+    "rivet.policy.generate",
     "rivet.list",
     "rivet.describe",
     "rivet.outputs",
@@ -129,6 +131,64 @@ async fn dispatch_builtin_inner(
                     })
                     .collect();
                 Ok(done(json!({"operations": ops, "next_cursor": null})))
+            }
+            "rivet.io" => {
+                // Inventories reveal internal URLs and paths: only an explicit
+                // `rivet.io` listing (or the local principal) reaches this arm.
+                let list = |k: &str| -> Vec<String> {
+                    match p.get(k) {
+                        Some(Value::List(items)) => items.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+                        Some(Value::Text(s)) => s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect(),
+                        _ => Vec::new(),
+                    }
+                };
+                let flag = |k: &str| p.get(k).and_then(Value::as_bool).unwrap_or(false);
+                let ids = list("ids");
+                for id in &ids {
+                    if !visible(rt, &who, id) {
+                        return Err(hidden(id));
+                    }
+                }
+                if flag("check_files") {
+                    return Err(RivetError::validation(
+                        "validation.check_files_remote",
+                        "check_files probes the host's files and is available from the CLI and library only",
+                    ));
+                }
+                let query = crate::domain::io_manifest::IoQuery {
+                    ids,
+                    all: flag("all"),
+                    by: p.get("by").and_then(Value::as_str).unwrap_or("operation").to_string(),
+                    kind: p.get("kind").and_then(Value::as_str).map(str::to_string),
+                    access: list("access"),
+                    format: "json".into(),
+                    check_policy: flag("check_policy"),
+                    needs: flag("needs"),
+                    strict: flag("strict"),
+                    include_bootstrap: flag("include_bootstrap"),
+                    ..crate::domain::io_manifest::IoQuery::default()
+                };
+                let report = rt.io(&query)?;
+                Ok(done(report.manifest.to_json()))
+            }
+            "rivet.policy.generate" => {
+                let ids: Vec<String> = match p.get("ids") {
+                    Some(Value::List(items)) => items.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+                    _ => Vec::new(),
+                };
+                for id in &ids {
+                    if !visible(rt, &who, id) {
+                        return Err(hidden(id));
+                    }
+                }
+                let all = p.get("all").and_then(Value::as_bool).unwrap_or(false);
+                // Never writes files from a surface: the draft is returned.
+                let draft = rt.generate_policy_draft(&ids, all, None)?;
+                Ok(done(json!({
+                    "policy": draft.policy_json(),
+                    "review": draft.review.iter().map(|s| s.to_json()).collect::<Vec<_>>(),
+                    "complete": draft.complete,
+                })))
             }
             "rivet.describe" => {
                 let id = text(p, "id")?;

@@ -7,10 +7,12 @@
 //!  GET /v1/operations[/{id}[/outputs]]   ─▶ catalog filtered by the principal's authorization
 //! ```
 
-// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session
+// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, audit/inspect_effects, policy/generate_policy
 // vhco:trigger http execution/request_operation = POST /v1/request
 // vhco:trigger http registry/describe_operations = GET /v1/operations | GET /v1/operations/{id}
 // vhco:trigger http registry/inspect_outputs = GET /v1/operations/{id}/outputs
+// vhco:trigger http audit/inspect_effects = GET /v1/io?by=target&kind=file&check_policy=true
+// vhco:trigger http policy/generate_policy = POST /v1/policy/generate
 // vhco:trigger http serve/authenticate_principal = Authorization: Bearer TOKEN on every route
 // vhco:trigger http serve/authorize_operation = serve.principals check on every route
 // vhco:trigger http sessions/open_session = POST /v1/request {"id":"rivet.sessions.open"}
@@ -21,6 +23,11 @@
 // vhco:api http execution/request_operation POST /v1/request -- invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream
 // vhco:request { "id": "string — operation ID", "params": "object" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
+// vhco:api http audit/inspect_effects GET /v1/io -- the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
+// vhco:response { "bundle": "FileDigest", "policy": "FileDigest|null", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]" }
+// vhco:api http policy/generate_policy POST /v1/policy/generate -- least-privilege policy draft; never writes files
+// vhco:request { "ids": "string[]", "all": "bool" }
+// vhco:response { "policy": "policy.json v1", "review": "EffectSite[]", "complete": "bool" }
 // vhco:api http registry/describe_operations GET /v1/operations -- authorized operation summaries
 // vhco:response { "operations": "[{id, name, description, streaming}]", "next_cursor": "null" }
 // vhco:api http registry/inspect_outputs GET /v1/operations/{id}/outputs -- declared output, emits, receives and errors JSON Schema
@@ -52,7 +59,9 @@ pub fn routes(state: Arc<ServeState>, with_request: bool) -> Router {
     let mut r = Router::new()
         .route("/v1/operations", get(list))
         .route("/v1/operations/{id}", get(describe))
-        .route("/v1/operations/{id}/outputs", get(outputs));
+        .route("/v1/operations/{id}/outputs", get(outputs))
+        .route("/v1/io", get(io_manifest))
+        .route("/v1/policy/generate", post(policy_generate));
     if with_request {
         r = r.route("/v1/request", post(request));
     }
@@ -270,4 +279,64 @@ async fn sse_response(st: Arc<ServeState>, req: crate::domain::contracts::Reques
         Body::from_stream(stream),
     )
         .into_response()
+}
+
+/// `GET /v1/io?...` → the `rivet.io` built-in for the authenticated principal.
+async fn io_manifest(
+    State(st): St,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let who = match st.authenticate("http", &headers, peer) {
+        Ok(p) => p,
+        Err(e) => return error_response(&e),
+    };
+    let mut params = crate::domain::Value::Object(Vec::new());
+    for (k, v) in q {
+        let value = match v.as_str() {
+            "true" => crate::domain::Value::Bool(true),
+            "false" => crate::domain::Value::Bool(false),
+            _ => crate::domain::Value::Text(v),
+        };
+        params.set(&k, value);
+    }
+    match st.runtime.request_as(who, "rivet.io", params, None).await {
+        Ok(c) => json_response(200, c.result.to_json()),
+        Err(e) => error_response(&e),
+    }
+}
+
+/// `POST /v1/policy/generate {ids?, all?}` → the `rivet.policy.generate` built-in.
+async fn policy_generate(
+    State(st): St,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let who = match st.authenticate("http", &headers, peer) {
+        Ok(p) => p,
+        Err(e) => return error_response(&e),
+    };
+    let params = if body.is_empty() {
+        crate::domain::Value::Object(Vec::new())
+    } else {
+        match serde_json::from_slice::<serde_json::Value>(&body) {
+            Ok(j) => crate::domain::Value::from_json(&j),
+            Err(e) => {
+                return error_response(&RivetError::validation(
+                    "validation.body",
+                    format!("request body is not JSON: {e}"),
+                ));
+            }
+        }
+    };
+    match st
+        .runtime
+        .request_as(who, "rivet.policy.generate", params, None)
+        .await
+    {
+        Ok(c) => json_response(200, c.result.to_json()),
+        Err(e) => error_response(&e),
+    }
 }

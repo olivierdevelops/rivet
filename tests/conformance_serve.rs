@@ -500,3 +500,60 @@ async fn socket_close_cancels_refs() {
     assert!(ok, "closing the socket must cancel its refs");
     s.handle.shutdown().await;
 }
+
+// vhco:test audit.inspect_effects -- GET /v1/io needs an explicit rivet.io listing for a network principal; wildcards do not match rivet.*; check_files is refused remotely
+#[tokio::test]
+async fn io_manifest_exposure_requires_explicit_listing() {
+    let wild = sha256_hex("tok-wild");
+    let listed = sha256_hex("tok-listed");
+    let policy = json!({"version":1,"serve":{
+        "auth":{"type":"bearer","tokens":[{"principal":"wild","sha256":wild},{"principal":"auditor","sha256":listed}]},
+        "principals":{"wild":{"operations":["*"]},"auditor":{"operations":["rivet.io","rivet.policy.generate","demo.*"]}}}})
+    .to_string();
+    let s = serve(Some(&policy)).await;
+    let r = http(
+        s.addr,
+        "GET",
+        "/v1/io?by=target",
+        &[("authorization", "Bearer tok-wild")],
+        "",
+    )
+    .await;
+    assert_eq!(r.status, 403, "{}", r.text);
+    let r = http(
+        s.addr,
+        "GET",
+        "/v1/io?by=target",
+        &[("authorization", "Bearer tok-listed")],
+        "",
+    )
+    .await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert!(r.json()["sites"].is_array());
+    let r = http(
+        s.addr,
+        "GET",
+        "/v1/io?check_files=true",
+        &[("authorization", "Bearer tok-listed")],
+        "",
+    )
+    .await;
+    assert_eq!(r.status, 422);
+    let r = post(
+        s.addr,
+        "/v1/policy/generate",
+        json!({"all": true}),
+        &[("authorization", "Bearer tok-listed")],
+    )
+    .await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert_eq!(r.json()["policy"]["version"], 1);
+    let r = post(
+        s.addr,
+        "/v1/policy/generate",
+        json!({"all": true}),
+        &[("authorization", "Bearer tok-wild")],
+    )
+    .await;
+    assert_eq!(r.status, 403);
+}
