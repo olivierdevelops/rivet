@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 13
+document_revision: 14
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -103,6 +103,7 @@ index paths) is resolved; there is no open incident.
 | Runtime and usage | [Rivet manual](manuals/man-2026-0001-rivet-manual.md), [CLI reference](manuals/man-2026-0004-cli-reference.md) |
 | Architecture | Five Rust code buckets, 14 features and six surfaces in the [hand-authored contract](../vhco-contract.json) |
 | Developer workflow | [Contributor setup](onboarding/onb-2026-0001-contributor-setup.md), [AGENTS.md](../AGENTS.md) |
+| Code review standards | [Orchestrator and cross-package implementation standard](standards/std-2026-0001-orchestrator-and-cross-package-review.md) |
 | Design and decisions | [Implemented proposal](proposals/implemented/prop-2026-0001-rivet-runtime.md), [decisions index](decisions/index.md) |
 | Test evidence | [Testing index](testing/index.md), [validation report](reports/rpt-2026-0001-validation-of-plan-2026-0001.md) |
 | Protocol and sandbox limits | [Protocols and connectors](manuals/man-2026-0008-protocols-and-connectors.md), [ADR-0003](decisions/adr-0003-process-sandbox-backends.md) |
@@ -117,6 +118,7 @@ tree. Platform support beyond the locally verified environment requires the corr
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 14 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard to current documentation. |
 | 13 | 2026-09-28 | Claude | PLAN-2026-0002 P2b, P2f and P2e done (globals, file modules, highlighting); INC-2026-0009 resolved. |
 | 12 | 2026-09-28 | Claude | PLAN-2026-0002 P1 and P2a done (envelopes on `main`; docs follow in P4). |
 | 11 | 2026-09-28 | Claude | Linked PLAN-2026-0002 (v0.2.0 in progress). |

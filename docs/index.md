@@ -58,7 +58,7 @@ docs/
 │   └── draft/           (empty)
 ├── references/          REF-2026-0001 request + evidence, REF-2026-0002 numbered examples S01–S159
 ├── demos/               twelve draft sample folders (index.md = status, README.md = walkthroughs)
-└── standards/           supplied rules baseline
+└── standards/           project implementation and review standards
 ```
 
 ## Reading order and active documents

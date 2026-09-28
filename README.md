@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 10
+document_revision: 11
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -46,6 +46,7 @@ Start with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and
 - [Original project brief](PROJECT.md)
 - [Hand-authored design contract](vhco-contract.json)
 - [Documentation current state](docs/README.md) and [navigation](docs/index.md)
+- [Orchestrator and cross-package implementation standard](docs/standards/std-2026-0001-orchestrator-and-cross-package-review.md)
 
 ## Build, install and develop
 
@@ -236,6 +237,7 @@ approved by the maintainer on 2026-09-28.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 11 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard. |
 | 10 | 2026-09-28 | Claude | TASK-069: verified quickstart (deny-by-default → io → policy generate → allowed) and the current limitations table. |
 | 9 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
 | 8 | 2026-09-28 | Codex | Added approved Perch build/install/development commands and corrected the obsolete pre-implementation status. |

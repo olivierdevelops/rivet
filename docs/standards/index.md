@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 5
+document_revision: 6
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -30,7 +30,7 @@ next_review_date: 2026-10-27
 
 # Rivet standards baseline
 
-This index lists existing supplied requirements; it does not activate new standards. The explicit user Rust request supersedes inherited Go/email_provider project-facts text. DOCUMENTATION §§4.2, 12.1 and 21 govern proposal coverage; AGENTS adds the required complexity, reference-engine and forecast sections.
+This index lists active project standards and supplied requirements. The explicit user Rust request supersedes inherited Go/email_provider project-facts text. DOCUMENTATION §§4.2, 12.1 and 21 govern proposal coverage; AGENTS adds the required complexity, reference-engine and forecast sections.
 
 ## Reading order and active documents
 
@@ -39,14 +39,19 @@ This index lists existing supplied requirements; it does not activate new standa
 - [Original brief](../../PROJECT.md)
 - [Proposal validation](../proposals/implemented/prop-2026-0001-rivet-runtime.md#project-validation)
 
+## Active standards
+
+- [Orchestrator and cross-package implementation standard](std-2026-0001-orchestrator-and-cross-package-review.md)
+
 ## Status and maintenance
 
-No standard changed in design revision 5. Nothing deprecated, superseded or archived. Update this index when a document changes lifecycle or a new related document is added.
+Revision 6 adds the orchestrator and cross-package implementation standard. Nothing is deprecated, superseded or archived. Update this index when a document changes lifecycle or a new related document is added.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-29 | Codex | Added the active orchestrator, dependency-injection and cross-package review standard. |
 | 5 | 2026-09-28 | Claude | Removed a stale proposal-status paragraph copied from other indexes; recorded that no standard changed in revision 5. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |
 | 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |
