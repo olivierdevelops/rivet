@@ -509,11 +509,23 @@ async fn http_rivet_serve_peer() {
         .await
         .unwrap();
     assert_eq!(c.result, Value::Int(42));
+    // G22: an opaque remote tool call is `unknown`, whether wrapped or called directly.
+    assert_eq!(c.effects, rivet::domain::EffectsStatus::Unknown);
+    let direct = rt
+        .request(
+            "peer.tools.demo.add",
+            Value::object([("a", Value::Int(1)), ("b", Value::Int(1))]),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(direct.effects, rivet::domain::EffectsStatus::Unknown);
     let e = rt
         .request("peer.tools.demo.bad", Value::Null, None)
         .await
         .unwrap_err();
     assert_eq!(e.code, "mcp.tool_failed");
+    assert_eq!(e.effects, rivet::domain::EffectsStatus::Unknown);
 
     // Without the network grant every POST is refused before connecting.
     write(

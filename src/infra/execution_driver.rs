@@ -415,7 +415,9 @@ impl ExecutionDriver for Interpreter {
 
 struct RunState {
     data_seq: AtomicU64,
-    /// 0 none, 1 committed.
+    /// 0 none, 1 committed, 2 partial, 3 unknown — only ever raised (fetch_max):
+    /// an opaque remote call (MCP tool, nested request reporting unknown) makes the
+    /// whole request `unknown`, never `committed` (G22).
     effects: AtomicU8,
     deadline: Instant,
     sink: Option<Arc<dyn DataSink>>,
@@ -423,15 +425,27 @@ struct RunState {
 
 impl RunState {
     fn effects(&self) -> EffectsStatus {
-        if self.effects.load(Ordering::SeqCst) > 0 {
-            EffectsStatus::Committed
-        } else {
-            EffectsStatus::None
+        match self.effects.load(Ordering::SeqCst) {
+            0 => EffectsStatus::None,
+            1 => EffectsStatus::Committed,
+            2 => EffectsStatus::Partial,
+            _ => EffectsStatus::Unknown,
         }
     }
 
     fn commit(&self) {
-        self.effects.store(1, Ordering::SeqCst);
+        self.mark(EffectsStatus::Committed);
+    }
+
+    /// Fold a nested status in: unknown > partial > committed > none.
+    fn mark(&self, status: EffectsStatus) {
+        let rank = match status {
+            EffectsStatus::None => 0,
+            EffectsStatus::Committed => 1,
+            EffectsStatus::Partial => 2,
+            EffectsStatus::Unknown => 3,
+        };
+        self.effects.fetch_max(rank, Ordering::SeqCst);
     }
 }
 
@@ -1805,13 +1819,16 @@ impl<'a> Machine<'a> {
                         .max(1) as u64,
                     include_private: true,
                 };
-                let completion = dispatcher
-                    .dispatch(child, None)
-                    .await
-                    .map_err(|e| e.with_span(Some(span.clone())))?;
-                if completion.effects != EffectsStatus::None {
-                    frame.run.commit();
-                }
+                let completion = match dispatcher.dispatch(child, None).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        frame.run.mark(e.effects);
+                        return Err(e.with_span(Some(span.clone())));
+                    }
+                };
+                // The callee's status is folded in as is: an opaque remote MCP call
+                // (`unknown`) keeps the wrapping request `unknown`, not `committed`.
+                frame.run.mark(completion.effects);
                 Ok(completion.result)
             }
             "length" => {
