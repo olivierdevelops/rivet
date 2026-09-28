@@ -77,6 +77,7 @@ This page lists the TEST documents (DOCUMENTATION §27). Each one maps to one ro
 | [TEST-2026-0029](test-2026-0029-samples.md) | T-29 — regression / corpus (UC-01 / R2, R14) | PASS |
 | [TEST-2026-0030](test-2026-0030-demos-e2e.md) | T-30 — manual / e2e (all UCs / R1–R26) | PARTIAL |
 | [TEST-2026-0031](test-2026-0031-documentation.md) | T-31 — documentation (R14) | PASS |
+| [TEST-2026-0032](test-2026-0032-traceability.md) | T-32 — traceability (R1–R26) | PASS |
 
 The table has 28 PASS and 4 PARTIAL results. Every PARTIAL result is PASS on macOS; the plan also requires Linux and Windows runs (and, for T-30, a run against the published artifact), which wait on CI and a git remote (TASK-051).
 

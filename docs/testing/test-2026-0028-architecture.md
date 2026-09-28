@@ -16,7 +16,7 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R14]
 environment: "macOS (aarch64-apple-darwin), Rust 1.90.0, cargo-deny 0.20.2, vhco CLI; Linux and Windows not executed (no CI runner: TASK-051 blocked on a git remote)"
 executed_by: Claude (automated)
-executed_at: 2026-09-28T06:38:38Z
+executed_at: 2026-09-28T10:45:52Z
 result: PASS
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-28.
@@ -48,7 +48,7 @@ VHCO structure and drift
 
 ## Preconditions
 
-A clean checkout at commit `19bd7c3`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
+A clean checkout at commit `f15a82b`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
 
 ## Test Environment
 
@@ -87,12 +87,11 @@ PASS
 ✓ code matches vhco-contract.json
 ✓ 1 guarantee(s) hold
   ✓ http-routes-documented [api.every_route_has_request_response] — all 7 routes are documented with request + response
-✓ wrote /Users/oliverlaleau/Documents/projects/rivet/vhco.json
 ```
 
 ## Evidence Sources
 
-- Command above, run at commit `19bd7c3`.
+- Command above, run at commit `f15a82b`.
 - Test source: —.
 
 ## Executed By
@@ -101,7 +100,7 @@ Claude (automated run).
 
 ## Executed At
 
-2026-09-28T06:38:38Z
+2026-09-28T10:45:52Z
 
 ## Defects Raised
 
@@ -116,4 +115,4 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-28 | Claude | Executed and recorded at commit `19bd7c3`. |
+| 1 | 2026-09-28 | Claude | Executed and recorded at commit `f15a82b`. |

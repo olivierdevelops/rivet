@@ -16,7 +16,7 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R1]
 environment: "macOS (aarch64-apple-darwin), Rust 1.90.0, cargo-deny 0.20.2, vhco CLI; Linux and Windows not executed (no CI runner: TASK-051 blocked on a git remote)"
 executed_by: Claude (automated)
-executed_at: 2026-09-28T06:38:38Z
+executed_at: 2026-09-28T10:45:52Z
 result: PARTIAL
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-27.
@@ -48,7 +48,7 @@ fmt, clippy `-D warnings`, `cargo deny`, release build on three OSes
 
 ## Preconditions
 
-A clean checkout at commit `19bd7c3`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
+A clean checkout at commit `f15a82b`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
 
 ## Test Environment
 
@@ -84,18 +84,17 @@ PARTIAL
 
 ```text
 FMT_OK
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.29s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.40s
 CLIPPY_RC=0
 advisories ok, bans ok, licenses ok, sources ok
 DENY_RC=0
-   Compiling rivet v0.1.0-dev (/Users/oliverlaleau/Documents/projects/rivet)
-    Finished `release` profile [optimized] target(s) in 31.80s
+    Finished `release` profile [optimized] target(s) in 29.55s
 REL_RC=0
 ```
 
 ## Evidence Sources
 
-- Command above, run at commit `19bd7c3`.
+- Command above, run at commit `f15a82b`.
 - Test source: CI or local.
 
 ## Executed By
@@ -104,7 +103,7 @@ Claude (automated run).
 
 ## Executed At
 
-2026-09-28T06:38:38Z
+2026-09-28T10:45:52Z
 
 ## Defects Raised
 
@@ -119,4 +118,4 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-28 | Claude | Executed and recorded at commit `19bd7c3`. |
+| 1 | 2026-09-28 | Claude | Executed and recorded at commit `f15a82b`. |

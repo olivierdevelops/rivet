@@ -16,7 +16,7 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R14]
 environment: "macOS (aarch64-apple-darwin), Rust 1.90.0, cargo-deny 0.20.2, vhco CLI; Linux and Windows not executed (no CI runner: TASK-051 blocked on a git remote)"
 executed_by: Claude (automated)
-executed_at: 2026-09-28T06:39:18Z
+executed_at: 2026-09-28T10:45:54Z
 result: PASS
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-31.
@@ -48,7 +48,7 @@ Front matter, IDs, links, anchors, fences, headers, revisions, index membership;
 
 ## Preconditions
 
-A clean checkout at commit `19bd7c3`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
+A clean checkout at commit `f15a82b`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
 
 ## Test Environment
 
@@ -74,7 +74,7 @@ Tests executed:
 
 ## Actual Results
 
-scripts/check_docs.py found 0 problems in 118 files. vhco docs check found 0 errors. Its 56 warnings are all DOC-DIR-001 and DOC-NAME-001 on the 28 directory index.md pages that AGENTS.md (Directory Indexes) requires. vhco's naming rule asks to rename or move them, which conflicts with the project rule, so the warnings are accepted. None of them block.
+scripts/check_docs.py found 0 problems in 128 files. vhco docs check found 0 errors. Its 59 warnings are all DOC-DIR-001 and DOC-NAME-001 on the directory index.md pages that AGENTS.md (Directory Indexes) requires. vhco's naming rule asks to rename or move them, which conflicts with the project rule, so the warnings are accepted. None of them block.
 
 ## Result
 
@@ -83,16 +83,16 @@ PASS
 ## Evidence
 
 ```text
-check_docs: 118 files, 0 problem(s)
-56 findings (0 error, 56 warning)
+check_docs: 128 files, 0 problem(s)
+59 findings (0 error, 59 warning)
 warnings by rule:
-  28 DOC-DIR-001
-  28 DOC-NAME-001
+  30 DOC-DIR-001
+  29 DOC-NAME-001
 ```
 
 ## Evidence Sources
 
-- Command above, run at commit `19bd7c3`.
+- Command above, run at commit `f15a82b`.
 - Test source: `scripts/check_docs.py`.
 
 ## Executed By
@@ -101,7 +101,7 @@ Claude (automated run).
 
 ## Executed At
 
-2026-09-28T06:39:18Z
+2026-09-28T10:45:54Z
 
 ## Defects Raised
 
@@ -116,4 +116,4 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-28 | Claude | Executed and recorded at commit `19bd7c3`. |
+| 1 | 2026-09-28 | Claude | Executed and recorded at commit `f15a82b`. |

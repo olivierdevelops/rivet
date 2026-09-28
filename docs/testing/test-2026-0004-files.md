@@ -16,7 +16,7 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R5, PLAN-2026-0001 R11]
 environment: "macOS (aarch64-apple-darwin), Rust 1.90.0; Linux and Windows not executed (no CI runner: TASK-051 blocked on a git remote)"
 executed_by: Claude (automated)
-executed_at: 2026-09-28T06:36:45Z
+executed_at: 2026-09-28T10:44:19Z
 result: PASS
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-04.
@@ -49,7 +49,7 @@ Symlink escape, version race, hard link, missing/full disk
 
 ## Preconditions
 
-A clean checkout at commit `19bd7c3`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
+A clean checkout at commit `f15a82b`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
 
 ## Test Environment
 
@@ -69,6 +69,7 @@ Tests executed:
 
 - `access_narrowed_create_only`
 - `atomic_replace_never_leaves_temp_files`
+- `codec_named_variables_keep_keywords`
 - `copy_and_move_guard_the_destination`
 - `create_is_exclusive`
 - `delete_grant_and_sibling_prefix`
@@ -86,6 +87,7 @@ Tests executed:
 - `scoped_write_and_append_are_authorized_per_mode`
 - `symlinked_directory_component_is_refused`
 - `symlinked_file_is_refused`
+- `trailing_chunk_size_on_the_with_line_applies`
 - `update_replaces_existing_only`
 - `update_with_version_guard`
 - `write_upserts_and_append_needs_existing`
@@ -96,7 +98,7 @@ Correct guards; nothing mutated outside the root
 
 ## Actual Results
 
-22 passed, 0 failed, 0 ignored.
+24 passed, 0 failed, 0 ignored.
 
 ## Result
 
@@ -105,12 +107,12 @@ PASS
 ## Evidence
 
 ```text
-test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
 ```
 
 ## Evidence Sources
 
-- Command above, run at commit `19bd7c3`.
+- Command above, run at commit `f15a82b`.
 - Test source: `tests/conformance_files.rs`.
 
 ## Executed By
@@ -119,7 +121,7 @@ Claude (automated run).
 
 ## Executed At
 
-2026-09-28T06:36:45Z
+2026-09-28T10:44:19Z
 
 ## Defects Raised
 
@@ -134,4 +136,4 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-28 | Claude | Executed and recorded at commit `19bd7c3`. |
+| 1 | 2026-09-28 | Claude | Executed and recorded at commit `f15a82b`. |

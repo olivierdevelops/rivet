@@ -16,7 +16,7 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R20]
 environment: "macOS (aarch64-apple-darwin), Rust 1.90.0; Linux and Windows not executed (no CI runner: TASK-051 blocked on a git remote)"
 executed_by: Claude (automated)
-executed_at: 2026-09-28T06:37:10Z
+executed_at: 2026-09-28T10:44:46Z
 result: PASS
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-16.
@@ -48,7 +48,7 @@ Multi-op file; duplicate in second declaration/import; private helper
 
 ## Preconditions
 
-A clean checkout at commit `19bd7c3`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
+A clean checkout at commit `f15a82b`; Rust toolchain from `rust-toolchain.toml`; fixtures are started in-process on `127.0.0.1:0` by the tests (no external services).
 
 ## Test Environment
 
@@ -88,12 +88,12 @@ PASS
 ## Evidence
 
 ```text
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.56s
 ```
 
 ## Evidence Sources
 
-- Command above, run at commit `19bd7c3`.
+- Command above, run at commit `f15a82b`.
 - Test source: `tests/conformance_operation_catalog.rs`.
 
 ## Executed By
@@ -102,7 +102,7 @@ Claude (automated run).
 
 ## Executed At
 
-2026-09-28T06:37:10Z
+2026-09-28T10:44:46Z
 
 ## Defects Raised
 
@@ -117,4 +117,4 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| 1 | 2026-09-28 | Claude | Executed and recorded at commit `19bd7c3`. |
+| 1 | 2026-09-28 | Claude | Executed and recorded at commit `f15a82b`. |

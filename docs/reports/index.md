@@ -43,7 +43,7 @@ This page lists findings, assessments and validation reports (DOCUMENTATION §4.
 
 | Report | Status | Summary |
 |---|---|---|
-| [RPT-2026-0001](rpt-2026-0001-validation-of-plan-2026-0001.md) | draft | Validation of PLAN-2026-0001 (R1–R26) for v0.1.0 |
+| [RPT-2026-0001](rpt-2026-0001-validation-of-plan-2026-0001.md) | completed | Validation of PLAN-2026-0001 (R1–R26) for v0.1.0 |
 
 ## Recently added or updated
 
