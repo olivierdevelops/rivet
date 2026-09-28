@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 8
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -37,6 +37,8 @@ docs/
 ├── README.md            current state, risks, gates
 ├── index.md             this navigation page
 ├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox (all approved)
+├── incidents/           INC-2026-0001 … 0004 (all resolved; found during implementation)
+├── troubleshooting/     TRBL-2026-0001 … 0003
 ├── research/            RES-2026-0001 Capy spike · 0002 crates · 0003 sandbox (completed)
 ├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
 ├── proposals/           design proposals by lifecycle
@@ -52,6 +54,8 @@ docs/
 - [Current state](README.md)
 - [Decisions](decisions/index.md)
 - [Research](research/index.md)
+- [Incidents](incidents/index.md)
+- [Troubleshooting](troubleshooting/index.md)
 - [Proposals](proposals/index.md), then [approved proposals](proposals/approved/index.md)
 - [Plans](plans/index.md)
 - [References](references/index.md)
@@ -72,6 +76,7 @@ document is added. The references explain the proposal; the standards describe h
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-28 | Claude | Added incidents/ and troubleshooting/ to navigation. |
 | 8 | 2026-09-28 | Claude | Added research/ to navigation; ADR-0002/0003 approved; P1 complete. |
 | 7 | 2026-09-28 | Claude | Added decisions/ and proposals/approved/ to navigation; status after ADR-0001 approval and design revision 8. |
 | 6 | 2026-09-28 | Claude | Added plans/ with PLAN-2026-0001 to navigation. |
