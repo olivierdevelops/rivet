@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -39,14 +39,15 @@ Incidents in the `active` lifecycle state. See the [incidents index](../index.md
 
 | Incident | Severity | Summary |
 |---|---|---|
-| — | — | No active incidents. |
+| [INC-2026-0011](inc-2026-0011-windows-port-failures.md) | S3 | Windows port failures (W-01…W-13) catalogued when Windows was dropped from CI |
 
 ```text
- active/  (empty)          INC-2026-0009 ──fix 93388c1──▶ ../resolved/
+ active/  INC-2026-0011 (Windows port, open)     INC-2026-0010 ──fix──▶ ../resolved/
 ```
 
 ## Recently added or updated
 
+- 2026-09-29: INC-2026-0011 added (Windows dropped from CI; bugs catalogued).
 - 2026-09-28: INC-2026-0009 resolved (commit `93388c1`, P2e) and moved to [resolved](../resolved/index.md).
 - 2026-09-28: INC-2026-0009 added (PLAN-2026-0002 P2b).
 - 2026-09-28: created during PLAN-2026-0001 P3.
@@ -63,6 +64,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-29 | Claude | INC-2026-0011 (active). |
 | 3 | 2026-09-28 | Claude | INC-2026-0009 resolved and moved to resolved/. |
 | 2 | 2026-09-28 | Claude | INC-2026-0009. |
 | 1 | 2026-09-28 | Claude | Created. |
