@@ -323,7 +323,12 @@ async fn run(cli: Cli) -> i32 {
             } else {
                 Vec::new()
             };
-            for w in &program.warnings {
+            // With --strict-docs an undeclared `fail` code is reported once, as an error.
+            for w in program
+                .warnings
+                .iter()
+                .filter(|w| !(*strict_docs && w.code == "docs.undeclared_error"))
+            {
                 eprintln!("warning: {}", w.render(source.as_deref()));
             }
             if let Some(first) = findings.first() {

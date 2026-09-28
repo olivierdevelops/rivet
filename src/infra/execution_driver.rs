@@ -538,6 +538,23 @@ impl<'a> Machine<'a> {
             match stmt {
                 Stmt::Assign {
                     var,
+                    rhs: rhs @ (Rhs::Map { .. } | Rhs::Poll { .. }),
+                    span,
+                    ..
+                } => match self.block_value(frame, rhs, span).await? {
+                    // `return` inside a map/poll body exits the whole operation.
+                    Flow::Return(v) => Ok(Flow::Return(v)),
+                    Flow::Yield(v) => {
+                        frame.assign(var, v);
+                        Ok(Flow::Normal)
+                    }
+                    Flow::Normal | Flow::Break => {
+                        frame.assign(var, Value::Null);
+                        Ok(Flow::Normal)
+                    }
+                },
+                Stmt::Assign {
+                    var,
                     rhs,
                     options,
                     span,
@@ -1119,19 +1136,42 @@ impl<'a> Machine<'a> {
                 }
                 Rhs::Effect(form) => self.run_effect(frame, form, span).await,
                 Rhs::Member(call) => self.member(frame, call, span).await,
-                Rhs::Map {
-                    item,
-                    iter,
-                    limit,
-                    body,
-                } => self.run_map(frame, item, iter, *limit, body, span).await,
-                Rhs::Poll {
-                    every,
-                    timeout,
-                    body,
-                } => self.run_poll(frame, *every, *timeout, body, span).await,
+                Rhs::Map { .. } | Rhs::Poll { .. } => {
+                    match self.block_value(frame, rhs, span).await? {
+                        Flow::Yield(v) => Ok(v),
+                        _ => Err(runtime_err(
+                            "syntax.yield",
+                            "`return` inside `map`/`poll` exits the operation; this position needs a value",
+                            span,
+                        )),
+                    }
+                }
             }
         })
+    }
+
+    /// Run a `map`/`poll` block: `Flow::Yield(value)` is the block value,
+    /// `Flow::Return(value)` a `return` that exits the whole operation.
+    async fn block_value(
+        &self,
+        frame: &mut Frame,
+        rhs: &Rhs,
+        span: &SourceSpan,
+    ) -> RivetResult<Flow> {
+        match rhs {
+            Rhs::Map {
+                item,
+                iter,
+                limit,
+                body,
+            } => self.run_map(frame, item, iter, *limit, body, span).await,
+            Rhs::Poll {
+                every,
+                timeout,
+                body,
+            } => self.run_poll(frame, *every, *timeout, body, span).await,
+            _ => Err(RivetError::internal("block_value needs map or poll")),
+        }
     }
 
     async fn evaluate_form(
@@ -1301,7 +1341,7 @@ impl<'a> Machine<'a> {
         limit: Option<i64>,
         body: &[Stmt],
         span: &SourceSpan,
-    ) -> RivetResult<Value> {
+    ) -> RivetResult<Flow> {
         let items = match self.eval(frame, iter).await? {
             Value::List(items) => items,
             other => {
@@ -1335,13 +1375,8 @@ impl<'a> Machine<'a> {
             };
             match r? {
                 Flow::Yield(v) => results[i] = Some(v),
-                Flow::Return(_) => {
-                    return Err(runtime_err(
-                        "syntax.yield",
-                        "`return` inside `map` exits the operation; use `yield` for the item value",
-                        span,
-                    ));
-                }
+                // `return` exits the whole operation; items still running are dropped.
+                Flow::Return(v) => return Ok(Flow::Return(v)),
                 _ => {
                     return Err(runtime_err(
                         "syntax.map_yield",
@@ -1351,12 +1386,12 @@ impl<'a> Machine<'a> {
                 }
             }
         }
-        Ok(Value::List(
+        Ok(Flow::Yield(Value::List(
             results
                 .into_iter()
                 .map(|v| v.unwrap_or(Value::Null))
                 .collect(),
-        ))
+        )))
     }
 
     async fn run_poll(
@@ -1366,7 +1401,7 @@ impl<'a> Machine<'a> {
         timeout: Option<u64>,
         body: &[Stmt],
         span: &SourceSpan,
-    ) -> RivetResult<Value> {
+    ) -> RivetResult<Flow> {
         let start = Instant::now();
         let every = Duration::from_millis(every.unwrap_or(1_000));
         let limit = Duration::from_millis(timeout.unwrap_or(30_000));
@@ -1387,13 +1422,9 @@ impl<'a> Machine<'a> {
                         yielded = Some(v);
                         break;
                     }
-                    Ok(Flow::Return(_)) => {
+                    Ok(Flow::Return(v)) => {
                         frame.scopes.pop();
-                        return Err(runtime_err(
-                            "syntax.yield",
-                            "use `yield` for the poll value",
-                            span,
-                        ));
+                        return Ok(Flow::Return(v));
                     }
                     Ok(Flow::Break) => break,
                     Err(e) => {
@@ -1404,7 +1435,7 @@ impl<'a> Machine<'a> {
             }
             frame.scopes.pop();
             if done {
-                return Ok(yielded.unwrap_or(Value::Null));
+                return Ok(Flow::Yield(yielded.unwrap_or(Value::Null)));
             }
             if start.elapsed() + every > limit {
                 return Err(RivetError::new(

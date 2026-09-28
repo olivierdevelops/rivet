@@ -1300,14 +1300,29 @@ impl Lowerer {
                 }
             }
         }
-        // Cycle check (Kahn).
-        let mut indeg: Vec<usize> = nodes.iter().map(|n| n.after.len()).collect();
+        // Cycle check (Kahn). In-degree counts distinct, declared dependencies:
+        // `after [a, a]` or an unknown name must not look like a cycle.
+        let mut indeg: Vec<usize> = nodes
+            .iter()
+            .map(|n| {
+                let mut deps: Vec<&String> = n
+                    .after
+                    .iter()
+                    .filter(|d| names.contains(&d.as_str()))
+                    .collect();
+                deps.sort();
+                deps.dedup();
+                deps.len()
+            })
+            .collect();
         let mut ready: Vec<usize> = (0..nodes.len()).filter(|&i| indeg[i] == 0).collect();
         let mut seen = 0;
         while let Some(i) = ready.pop() {
             seen += 1;
             for (j, m) in nodes.iter().enumerate() {
-                if m.after.contains(&nodes[i].name) {
+                // Guarded: a duplicated node name (already a syntax error) may be
+                // popped twice and must not underflow the counter.
+                if m.after.contains(&nodes[i].name) && indeg[j] > 0 {
                     indeg[j] -= 1;
                     if indeg[j] == 0 {
                         ready.push(j);

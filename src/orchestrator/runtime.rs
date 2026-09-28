@@ -396,7 +396,28 @@ impl Dispatcher for NestedDispatcher {
                 "runtime shut down",
             )
         })?;
-        Runtime { inner }.dispatch_request(request, sink).await
+        // Each nested request runs as its own task so poll recursion does not
+        // grow the caller's stack with every level (depth 16 overflowed a 2 MiB
+        // thread stack). Dropping the parent aborts the child task (cleanup
+        // still runs in its drop path), keeping scoped cancellation.
+        struct AbortOnDrop(tokio::task::AbortHandle);
+        impl Drop for AbortOnDrop {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let runtime = Runtime { inner };
+        let task = tokio::spawn(async move { runtime.dispatch_request(request, sink).await });
+        let _guard = AbortOnDrop(task.abort_handle());
+        match task.await {
+            Ok(out) => out,
+            Err(e) if e.is_panic() => Err(RivetError::internal("a nested request panicked")),
+            Err(_) => Err(RivetError::new(
+                ErrorKind::Cancelled,
+                "cancelled.request",
+                "the nested request was cancelled",
+            )),
+        }
     }
 }
 
@@ -615,26 +636,23 @@ impl Runtime {
         }
         let imported = self.inner.program.operation(&req.operation_id).is_none()
             && self.inner.mcp.catalog().owns(&req.operation_id);
-        // Host-wide budget shared by nested calls and DAG nodes; nested calls run
-        // inside their parent's permit, so only top-level requests acquire one.
-        let _permit = if req.depth == 0 {
-            Some(
-                Arc::clone(&self.inner.concurrency)
-                    .try_acquire_owned()
-                    .map_err(|_| {
-                        RivetError::new(
-                            ErrorKind::Limit,
-                            "limit.concurrency",
-                            format!(
-                                "limits.max_concurrent_requests ({}) reached",
-                                limits.max_concurrent_requests
-                            ),
-                        )
-                    })?,
-            )
-        } else {
-            None
-        };
+        // Host-wide budget shared by top-level requests, nested `(request …)`
+        // calls and DAG/map nodes (PROP Increment 7): every in-flight request
+        // holds one permit, so the 65th concurrent call fails with limit.concurrency.
+        let _permit = Arc::clone(&self.inner.concurrency)
+            .try_acquire_owned()
+            .map_err(|_| {
+                let mut e = RivetError::new(
+                    ErrorKind::Limit,
+                    "limit.concurrency",
+                    format!(
+                        "limits.max_concurrent_requests ({}) reached",
+                        limits.max_concurrent_requests
+                    ),
+                );
+                e.operation_id = Some(req.operation_id.clone());
+                e
+            })?;
         if imported {
             return self.dispatch_mcp(req).await;
         }

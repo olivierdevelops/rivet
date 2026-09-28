@@ -84,7 +84,9 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
                     }
                 }
             }
-            if running.is_empty() {
+            // After a fatal failure (and one propagation pass) stop waiting:
+            // still-running siblings are cancelled when `running` drops, not awaited.
+            if running.is_empty() || fatal.is_some() {
                 break;
             }
             // vhco:step wait next -- the next finished node, bounded by the dag timeout
@@ -153,23 +155,26 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
             error: errors[i].clone(),
         })
         .collect();
-    if let Some(e) = &mut fatal
-        && e.details == Value::Null {
-            e.details = Value::object([(
-                "nodes",
-                Value::List(
-                    nodes
-                        .iter()
-                        .map(|x| {
-                            Value::object([
-                                ("id", Value::text(&x.id)),
-                                ("status", Value::text(x.status.as_str())),
-                            ])
-                        })
-                        .collect(),
-                ),
-            )]);
+    // The node list is attached whether or not the failing node's error already
+    // carried object details (`fail "code" {}` must not hide the node statuses).
+    if let Some(e) = &mut fatal {
+        let list = Value::List(
+            nodes
+                .iter()
+                .map(|x| {
+                    Value::object([
+                        ("id", Value::text(&x.id)),
+                        ("status", Value::text(x.status.as_str())),
+                    ])
+                })
+                .collect(),
+        );
+        match &mut e.details {
+            Value::Null => e.details = Value::object([("nodes", list)]),
+            d @ Value::Object(_) if d.get("nodes").is_none() => d.set("nodes", list),
+            _ => {}
         }
+    }
     DagCompletion {
         nodes,
         fatal,
@@ -225,6 +230,51 @@ mod tests {
         assert_eq!(statuses(&c), vec!["succeeded", "failed", "blocked"]);
         assert!(c.fatal.is_none());
         assert_eq!(c.nodes[0].envelope().get("result"), Some(&Value::Int(8)));
+    }
+
+    /// Node 0 is slow (would take 30 s); every other node fails at once.
+    struct SlowSibling;
+
+    #[async_trait]
+    impl DagNodeRunner for SlowSibling {
+        async fn run_node(
+            &self,
+            index: usize,
+            _dependencies: Vec<(String, Value)>,
+        ) -> Result<Value, RivetError> {
+            if index == 0 {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                return Ok(Value::Int(1));
+            }
+            Err(RivetError::new(ErrorKind::Application, "x.fail", "boom"))
+        }
+    }
+
+    // vhco:test execution.run_dag -- regression: under fail fast a running sibling is cancelled at the first failure instead of awaited (S138: user cancelled, enrich skipped, summary blocked)
+    #[tokio::test]
+    async fn fail_fast_cancels_running_siblings() {
+        let input = DagInput {
+            nodes: vec![
+                spec("user", &[]),
+                spec("orders", &[]),
+                spec("enrich", &["user"]),
+                spec("summary", &["user", "orders"]),
+            ],
+            failure: FailurePolicy::Fast,
+            limit: 2,
+            timeout_ms: None,
+        };
+        let started = Instant::now();
+        let c = run_dag(input, &SlowSibling).await;
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "must not wait for the slow sibling"
+        );
+        assert_eq!(
+            statuses(&c),
+            vec!["cancelled", "failed", "skipped", "blocked"]
+        );
+        assert_eq!(c.fatal.as_ref().unwrap().code, "x.fail");
     }
 
     // vhco:test execution.run_dag -- fail fast (the default) makes the first failure fatal and skips never-started nodes

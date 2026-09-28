@@ -172,7 +172,10 @@ fn check_param(p: &ParamSpec, v: Value) -> RivetResult<Value> {
         }
         (ValueSpec::Integer, v @ Value::Int(_)) => v,
         (ValueSpec::Integer, v) => return Err(bad("an integer", &v)),
-        (ValueSpec::Number, v @ (Value::Int(_) | Value::Float(_))) => v,
+        // A `number` parameter is a number even when the caller wrote `2`:
+        // `(a + b) / 2` with a=2, b=5 is 3.5 (S121), not integer division.
+        (ValueSpec::Number, Value::Int(i)) => Value::Float(i as f64),
+        (ValueSpec::Number, v @ Value::Float(_)) => v,
         (ValueSpec::Number, v) => return Err(bad("a number", &v)),
         (ValueSpec::Text, v @ Value::Text(_)) => v,
         (ValueSpec::Text, v) => return Err(bad("text", &v)),
@@ -310,5 +313,14 @@ mod tests {
                 .code,
             "validation.type"
         );
+    }
+
+    // vhco:test execution.request_operation -- regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division
+    #[test]
+    fn number_params_are_numbers() {
+        let mut e = entry();
+        e.params[0].spec = ValueSpec::Number;
+        let v = validate_params(&e, &Value::object([("a", Value::Int(5))])).unwrap();
+        assert_eq!(v.get("a"), Some(&Value::Float(5.0)));
     }
 }

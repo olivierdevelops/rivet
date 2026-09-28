@@ -58,6 +58,17 @@ pub fn validate_output(input: &OutputCheck) -> OutputVerdict {
     if total > MAX_VIOLATIONS {
         details.set("truncated", Value::Int((total - MAX_VIOLATIONS) as i64));
     }
+    // S128 summary: field paths that are missing / not allowed in a closed object.
+    for (key, found) in [("missing", "missing"), ("unexpected", "unexpected field")] {
+        let paths: Vec<Value> = violations
+            .iter()
+            .filter(|v| v.found == found)
+            .map(|v| Value::text(&v.path))
+            .collect();
+        if !paths.is_empty() {
+            details.set(key, Value::List(paths));
+        }
+    }
     let mut error = RivetError::new(
         ErrorKind::OutputInvalid,
         "output.invalid",
@@ -97,6 +108,42 @@ mod tests {
         assert_eq!(e.code, "output.invalid");
         assert_eq!(e.exit_code(), 5);
         assert_eq!(e.effects, EffectsStatus::Committed);
+    }
+
+    // vhco:test execution.validate_output -- S128: a closed object missing `name` with an extra `display` reports details.missing and details.unexpected
+    #[test]
+    fn closed_object_summary_lists_missing_and_unexpected() {
+        use crate::domain::outputs::FieldSpec;
+        let field = |name: &str, spec: ValueSpec| FieldSpec {
+            name: name.into(),
+            spec,
+            required: true,
+            description: None,
+        };
+        let v = validate_output(&OutputCheck {
+            operation_id: "users.brief".into(),
+            spec: OutputSpec {
+                spec: ValueSpec::Object {
+                    fields: vec![
+                        field("id", ValueSpec::Integer),
+                        field("name", ValueSpec::Text),
+                    ],
+                    open: false,
+                },
+                description: None,
+            },
+            result: Value::object([("id", Value::Int(42)), ("display", Value::text("Ada"))]),
+            effects: EffectsStatus::Committed,
+        });
+        let d = v.error.unwrap().details;
+        assert_eq!(
+            d.get("missing"),
+            Some(&Value::List(vec![Value::text("name")]))
+        );
+        assert_eq!(
+            d.get("unexpected"),
+            Some(&Value::List(vec![Value::text("display")]))
+        );
     }
 
     #[test]
