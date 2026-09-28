@@ -22,6 +22,8 @@ pub struct EffectScope {
     pub trace_id: String,
     pub operation_id: String,
     pub line: u32,
+    /// DAG node evaluating the effect, when inside a `dag` block.
+    pub node_id: Option<String>,
 }
 
 tokio::task_local! {

@@ -100,6 +100,15 @@ fn callback(params: &Value) -> RivetResult<Option<SecretCallback>> {
     }))
 }
 
+/// The trace of `req` as a W3C context, so sessions a built-in opens share it.
+fn outer_trace(req: &Request) -> Option<crate::domain::contracts::TraceContext> {
+    Some(crate::domain::contracts::TraceContext {
+        trace_id: req.trace_id.clone(),
+        parent_id: crate::domain::contracts::span_id(&req.request_id),
+        flags: 1,
+    })
+}
+
 /// Whether `principal` may see/call `id` (hidden IDs look like unknown ones).
 pub fn visible(rt: &Runtime, principal: &crate::domain::contracts::Principal, id: &str) -> bool {
     authorize_operation(&OperationAccess {
@@ -235,12 +244,14 @@ async fn dispatch_builtin_inner(
                     trace_request_id: p.get("trace").and_then(Value::as_str).map(str::to_string),
                     ..crate::domain::io_manifest::IoQuery::default()
                 };
-                // `format` (table|markdown|csv|json) asks for the rendered
-                // IoReport {format, by, rendered, diagnostics, exit_code, manifest}
-                // (what a remote `rivet io` prints); without it the result is the IoManifest.
-                let Some(format) = p.get("format").and_then(Value::as_str) else {
+                // `format` table|markdown|csv (or `report: true`, what a remote
+                // `rivet io` sends) asks for the rendered IoReport {format, by,
+                // rendered, diagnostics, exit_code, manifest}; otherwise — no
+                // format or format json — the result is the bare IoManifest.
+                let format = p.get("format").and_then(Value::as_str).unwrap_or("json");
+                if !flag("report") && !matches!(format, "table" | "markdown" | "csv") {
                     return Ok(done(rt.io(&query)?.manifest.to_json()));
-                };
+                }
                 let report = rt.io(&crate::domain::io_manifest::IoQuery {
                     format: format.to_string(),
                     ..query
@@ -320,7 +331,7 @@ async fn dispatch_builtin_inner(
                 let params = p.get("params").cloned().unwrap_or(Value::Null);
                 if id.starts_with("rivet.") && id != "rivet.request" {
                     let inner = rt
-                        .request_as(who.clone(), &id, params, sink.clone())
+                        .dispatch_request(rt.follow_request(&req, &id, params), sink.clone())
                         .await?;
                     return Ok(Completion {
                         request_id: req.request_id.clone(),
@@ -342,6 +353,7 @@ async fn dispatch_builtin_inner(
                             principal: who.clone(),
                             connection_owned: false,
                             deadline_ms: None,
+                            trace: outer_trace(&req),
                         },
                         rt.sessions().as_ref(),
                     )
@@ -349,7 +361,7 @@ async fn dispatch_builtin_inner(
                     return Ok(done(r.to_json()));
                 }
                 let inner = rt
-                    .request_as(who.clone(), &id, params, sink.clone())
+                    .dispatch_request(rt.follow_request(&req, &id, params), sink.clone())
                     .await?;
                 Ok(Completion {
                     request_id: req.request_id.clone(),
@@ -370,7 +382,9 @@ async fn dispatch_builtin_inner(
                         params: p.get("params").cloned().unwrap_or(Value::Null),
                         principal: who.clone(),
                         connection_owned: false,
-                        deadline_ms: None,
+                        // Requested total deadline; the driver caps it at 600000 ms.
+                        deadline_ms: uint(p, "deadline_ms")?,
+                        trace: outer_trace(&req),
                     },
                     rt.sessions().as_ref(),
                 )

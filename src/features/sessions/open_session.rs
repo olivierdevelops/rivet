@@ -71,6 +71,7 @@ mod tests {
             principal: Principal::local(),
             connection_owned: false,
             deadline_ms: None,
+            trace: None,
         };
         assert_eq!(
             open_session(mk(" ", Value::Null), &Refuse)

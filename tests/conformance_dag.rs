@@ -170,14 +170,17 @@ async fn fail_independent_keeps_independent_results() {
     .await;
     let c = rt.request("t.indep", Value::Null, None).await.unwrap();
     let r = &c.result;
-    assert_eq!(
-        r.get("good").unwrap(),
-        &Value::object([
-            ("status", Value::text("succeeded")),
-            ("result", Value::text("ok")),
-            ("error", Value::Null),
-        ])
-    );
+    let good = r.get("good").unwrap();
+    assert_eq!(good.get("status"), Some(&Value::text("succeeded")));
+    assert_eq!(good.get("result"), Some(&Value::text("ok")));
+    assert_eq!(good.get("error"), Some(&Value::Null));
+    // G14: nodes that ran carry RFC 3339 started_at / ended_at in their envelope.
+    for k in ["started_at", "ended_at"] {
+        let Some(Value::Text(t)) = good.get(k) else {
+            panic!("{k} missing: {good:?}")
+        };
+        assert!(t.ends_with('Z') && t.len() == 24, "{t}");
+    }
     let bad = r.get("bad").unwrap();
     assert_eq!(bad.get("status"), Some(&Value::text("failed")));
     assert_eq!(bad.get("result"), Some(&Value::Null));
@@ -195,6 +198,8 @@ async fn fail_independent_keeps_independent_results() {
             ("status", Value::text("blocked")),
             ("result", Value::Null),
             ("error", Value::Null),
+            ("started_at", Value::Null),
+            ("ended_at", Value::Null),
         ])
     );
 }

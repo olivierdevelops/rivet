@@ -1,5 +1,6 @@
 //! Request, completion, stream and catalog contracts shared by every surface.
 
+use super::cancel::CancelToken;
 use super::errors::{EffectsStatus, RivetError};
 use super::ir::OperationKind;
 use super::outputs::{DeclaredError, OutputSpec, ParamSpec, ValueSpec, params_schema};
@@ -23,7 +24,7 @@ impl Principal {
     }
 }
 
-// vhco:domain Request { request_id: string; trace_id: string; operation_id: string; params: Value; principal: Principal; parent_request_id?: string; depth: int; deadline_ms: int; include_private: bool }
+// vhco:domain Request { request_id: string; trace_id: string; operation_id: string; params: Value; principal: Principal; parent_request_id?: string; parent_span_id?: string; depth: int; deadline_ms: int; include_private: bool; cancel: CancelToken }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     pub request_id: String,
@@ -36,10 +37,120 @@ pub struct Request {
     pub deadline_ms: u64,
     /// In-bundle calls may reach private helpers; external surfaces never set this.
     pub include_private: bool,
+    /// W3C parent span: the caller's `traceparent` parent-id on a top-level
+    /// request, the parent request's span ([`span_id`]) on a nested one.
+    pub parent_span_id: Option<String>,
+    /// Structured cancellation of this request's scope (a child of the
+    /// parent's token for nested requests).
+    pub cancel: CancelToken,
 }
 
 /// Default request deadline (PROP-2026-0001 defaults).
 pub const DEFAULT_DEADLINE_MS: u64 = 30_000;
+
+/// Host cap on any caller-requested deadline (`deadline_ms`, `--timeout`, sessions.open): 10 minutes.
+pub const MAX_DEADLINE_MS: u64 = 600_000;
+
+// vhco:domain TraceContext { trace_id: string; parent_id: string; flags: int }
+/// A valid W3C `traceparent` (version 00): 32-hex trace-id, 16-hex parent-id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TraceContext {
+    pub trace_id: String,
+    pub parent_id: String,
+    pub flags: u8,
+}
+
+impl TraceContext {
+    /// Parse `00-<trace-id>-<parent-id>-<flags>`; invalid or all-zero IDs are `None`
+    /// (the caller then mints its own trace id, as W3C requires).
+    pub fn parse(header: &str) -> Option<TraceContext> {
+        let parts: Vec<&str> = header.trim().split('-').collect();
+        let hex = |s: &str, n: usize| {
+            s.len() == n
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        if parts.len() < 4 || !hex(parts[0], 2) || parts[0] == "ff" {
+            return None;
+        }
+        if parts[0] == "00" && parts.len() != 4 {
+            return None;
+        }
+        let (trace, parent, flags) = (parts[1], parts[2], parts[3]);
+        if !hex(trace, 32) || !hex(parent, 16) || !hex(flags, 2) {
+            return None;
+        }
+        if trace.bytes().all(|b| b == b'0') || parent.bytes().all(|b| b == b'0') {
+            return None;
+        }
+        Some(TraceContext {
+            trace_id: trace.to_string(),
+            parent_id: parent.to_string(),
+            flags: u8::from_str_radix(flags, 16).ok()?,
+        })
+    }
+}
+
+fn fnv64(seed: u64, s: &str) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64 ^ seed;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    // Avoid the all-zero ID W3C forbids.
+    if h == 0 { 1 } else { h }
+}
+
+/// The 32-hex W3C trace-id of a Rivet trace id: itself when it already is one
+/// (it came from a caller's `traceparent`), otherwise a stable hash of it.
+pub fn w3c_trace_id(trace_id: &str) -> String {
+    let is_hex = trace_id.len() == 32
+        && trace_id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if is_hex {
+        return trace_id.to_string();
+    }
+    format!("{:016x}{:016x}", fnv64(1, trace_id), fnv64(2, trace_id))
+}
+
+/// The 16-hex W3C span (parent-id) of one request, stable for its request id.
+pub fn span_id(request_id: &str) -> String {
+    format!("{:016x}", fnv64(3, request_id))
+}
+
+/// The `traceparent` a surface emits for one request (sampled flag set).
+pub fn traceparent_header(trace_id: &str, request_id: &str) -> String {
+    format!("00-{}-{}-01", w3c_trace_id(trace_id), span_id(request_id))
+}
+
+/// UTC RFC 3339 timestamp with millisecond precision.
+pub fn rfc3339_millis(t: std::time::SystemTime) -> String {
+    let d = t
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = d.as_secs() as i64;
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // civil_from_days (H. Hinnant)
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}-{m:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60,
+        d.subsec_millis()
+    )
+}
 
 // vhco:domain Completion { request_id: string; trace_id: string; result: Value; data_count: int; effects: EffectsStatus }
 #[derive(Clone, Debug, PartialEq)]
@@ -367,5 +478,38 @@ impl OutputReport {
             "receives": self.receives.as_ref().map(ValueSpec::to_json_schema),
             "errors": self.errors.iter().map(|e| json!({"code": e.code, "description": e.description})).collect::<Vec<_>>(),
         })
+    }
+}
+
+#[cfg(test)]
+mod trace_tests {
+    use super::*;
+
+    #[test]
+    fn traceparent_parse_and_emit() {
+        let h = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        let c = TraceContext::parse(h).unwrap();
+        assert_eq!(c.trace_id, "4bf92f3577b34da6a3ce929d0e0e4736");
+        assert_eq!(c.parent_id, "00f067aa0ba902b7");
+        for bad in [
+            "00-00000000000000000000000000000000-00f067aa0ba902b7-01",
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
+            "00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01",
+            "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-x",
+            "garbage",
+        ] {
+            assert!(TraceContext::parse(bad).is_none(), "{bad}");
+        }
+        assert_eq!(w3c_trace_id(&c.trace_id), c.trace_id);
+        let own = w3c_trace_id("tr_01abcdef12");
+        assert_eq!(own.len(), 32);
+        assert_eq!(own, w3c_trace_id("tr_01abcdef12"));
+        let emitted = traceparent_header("tr_01abcdef12", "req_01");
+        assert!(TraceContext::parse(&emitted).is_some());
+        assert_ne!(span_id("req_01"), span_id("req_02"));
+        let t =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(1_709_164_800_123);
+        assert_eq!(rfc3339_millis(t), "2024-02-29T00:00:00.123Z");
     }
 }

@@ -1,11 +1,58 @@
 use super::ports::{DataSink, ExecutionDriver, Registry};
 use super::validate_output::{OutputCheck, validate_output};
-use crate::domain::contracts::{CatalogQuery, Completion, ExecutionPlan, RegistryEntry, Request};
+use crate::domain::contracts::{
+    CatalogQuery, Completion, DataEvent, ExecutionPlan, RegistryEntry, Request,
+};
 use crate::domain::errors::ErrorKind;
 use crate::domain::outputs::{ParamSpec, ValueSpec};
 use crate::domain::policy::PolicyLimits;
 use crate::domain::{RivetError, RivetResult, Value};
-use std::sync::Arc;
+use async_trait::async_trait;
+use std::sync::{Arc, Mutex};
+
+/// Checks every emitted item against the declared `emits` spec before it
+/// reaches the consumer; the first violation stops the producer and becomes
+/// the request's `output.invalid` error (with the item's seq).
+struct EmitCheck {
+    spec: ValueSpec,
+    inner: Option<Arc<dyn DataSink>>,
+    violation: Mutex<Option<RivetError>>,
+}
+
+#[async_trait]
+impl DataSink for EmitCheck {
+    async fn send(&self, event: DataEvent) -> RivetResult<()> {
+        let mut violations = Vec::new();
+        self.spec.check(&event.data, "", &mut violations);
+        if let Some(v) = violations.first() {
+            let e = RivetError::new(
+                ErrorKind::OutputInvalid,
+                "output.invalid",
+                format!(
+                    "emitted item {} at {} must be {}, got {}",
+                    event.seq,
+                    if v.path.is_empty() { "$" } else { &v.path },
+                    v.expected,
+                    v.found
+                ),
+            )
+            .with_details(Value::object([
+                ("seq", Value::Int(event.seq as i64)),
+                ("path", Value::text(&v.path)),
+                ("expected", Value::text(&v.expected)),
+                ("found", Value::text(&v.found)),
+            ]));
+            if let Ok(mut slot) = self.violation.lock() {
+                slot.get_or_insert(e.clone());
+            }
+            return Err(e);
+        }
+        match &self.inner {
+            Some(sink) => sink.send(event).await,
+            None => Ok(()),
+        }
+    }
+}
 
 // vhco:usecase execution.request_operation(input: Request) -> Completion needs ExecutionDriver, ScopeSupervisor
 // vhco:label Request an operation
@@ -48,13 +95,37 @@ pub async fn request_operation(
         ));
     }
 
-    // vhco:todo drive_scoped -- drive the compiled body through the injected driver; emitted items flow to the sink with awaited demand; cancellation propagates without replaying emitted data
-    // vhco:step drive driver.drive -- the driver owns the scope: resources close in reverse order on success, error, break and cancel
+    // vhco:todo drive_scoped -- drive the compiled body through the injected driver; every emitted item is checked against the declared `emits` spec before it reaches the sink (first violation → output.invalid with details.seq, producer stopped); items flow to the sink with awaited demand; cancellation (the request's structured token: caller cancel or deadline) propagates without replaying emitted data
+    // vhco:step emits EmitCheck -- wrap the sink so each data item is validated (declared json items are opaque)
+    let check = entry.emits.clone().map(|spec| {
+        Arc::new(EmitCheck {
+            spec,
+            inner: sink.clone(),
+            violation: Mutex::new(None),
+        })
+    });
+    let sink: Option<Arc<dyn DataSink>> = match &check {
+        Some(c) => Some(c.clone()),
+        None => sink,
+    };
+    // vhco:step drive driver.drive -- the driver owns the scope: resources close in reverse order on success, error, break, cancellation and deadline expiry
     let plan = ExecutionPlan {
         request: input.clone(),
         params,
     };
-    let outcome = driver.drive(plan, sink).await.map_err(|e| tag(e, &input))?;
+    // vhco:error emit_invalid -- an emitted item violates `emits` => output.invalid (500, exit 5) with details.seq and the run's effects returns
+    let outcome = driver.drive(plan, sink).await.map_err(|e| {
+        let violation = check
+            .as_ref()
+            .and_then(|c| c.violation.lock().ok().and_then(|mut v| v.take()));
+        match violation {
+            Some(mut v) => {
+                v.effects = e.effects;
+                tag(v, &input)
+            }
+            None => tag(e, &input),
+        }
+    })?;
 
     // vhco:todo finish_scope -- the scope is joined inside drive; validate the final result against the declared OutputSpec BEFORE building the Completion; mismatch → output.invalid (500, exit 5) with effects preserved; exactly one completion or primary error
     // vhco:step check validate_output -- structural check of the result
@@ -313,6 +384,76 @@ mod tests {
                 .code,
             "validation.type"
         );
+    }
+
+    struct Emitter;
+
+    #[async_trait]
+    impl ExecutionDriver for Emitter {
+        async fn drive(
+            &self,
+            plan: ExecutionPlan,
+            sink: Option<Arc<dyn DataSink>>,
+        ) -> RivetResult<crate::domain::contracts::RunOutcome> {
+            let sink = sink.expect("an emitting operation always gets a checking sink");
+            for (seq, data) in [(1, Value::Int(1)), (2, Value::text("two"))] {
+                sink.send(DataEvent {
+                    request_id: plan.request.request_id.clone(),
+                    trace_id: plan.request.trace_id.clone(),
+                    seq,
+                    data,
+                })
+                .await
+                .map_err(|e| {
+                    RivetError::new(ErrorKind::ConsumerFailed, "consumer_failed", e.message)
+                })?;
+            }
+            Ok(crate::domain::contracts::RunOutcome {
+                result: Value::Int(2),
+                data_count: 2,
+                effects: Default::default(),
+            })
+        }
+    }
+
+    struct OneEntry(RegistryEntry);
+
+    impl Registry for OneEntry {
+        fn describe(&self, _: &CatalogQuery) -> RivetResult<crate::domain::contracts::Catalog> {
+            Ok(crate::domain::contracts::Catalog {
+                entries: vec![self.0.clone()],
+            })
+        }
+        fn program(&self) -> Arc<crate::domain::ir::CompiledProgram> {
+            unreachable!()
+        }
+    }
+
+    // vhco:test execution.request_operation -- G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)
+    #[tokio::test]
+    async fn emitted_items_are_validated() {
+        let mut e = entry();
+        e.params.clear();
+        e.emits = Some(ValueSpec::Integer);
+        let req = Request {
+            request_id: "req_1".into(),
+            trace_id: "tr_1".into(),
+            operation_id: "demo.add".into(),
+            params: Value::Null,
+            principal: crate::domain::contracts::Principal::local(),
+            parent_request_id: None,
+            depth: 0,
+            deadline_ms: 1000,
+            include_private: false,
+            parent_span_id: None,
+            cancel: Default::default(),
+        };
+        let err = request_operation(req, &OneEntry(e), &Emitter, &PolicyLimits::default(), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "output.invalid");
+        assert_eq!(err.details.get("seq"), Some(&Value::Int(2)));
+        assert_eq!(err.request_id.as_deref(), Some("req_1"));
     }
 
     // vhco:test execution.request_operation -- regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division

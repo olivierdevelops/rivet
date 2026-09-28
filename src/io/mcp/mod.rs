@@ -6,7 +6,9 @@
 //!  tools/list ─▶ one direct tool per authorized public operation
 //!               {name:id, title:name, description, inputSchema:params, outputSchema:Completion{result:output}}
 //!               streaming ops add _meta {"rivet/delivery":"session"} and return a SessionReceipt
-//!             + built-ins rivet.request / list / describe / outputs / sessions.*
+//!             + every built-in the principal may call (rivet.request / list / describe /
+//!               outputs / sessions.* / io / policy.generate / trace.show /
+//!               connectors.sync / auth.*), filtered by the caller's authorization
 //!  tools/call ─▶ {content:[{type:text,text:JSON}], structuredContent:JSON, isError}
 //! ```
 
@@ -207,6 +209,90 @@ pub fn builtin_tools() -> Vec<Json> {
             json!({"session_id": sid}),
             &["session_id"],
         ),
+        builtin(
+            "rivet.io",
+            "Show the I/O manifest",
+            "Every effect site of the selected operations (targets, access, capability, policy decision). Reveals internal URLs and paths.",
+            json!({
+                "ids": {"type": "array", "items": {"type": "string"}},
+                "all": {"type": "boolean"},
+                "by": {"type": "string", "enum": ["operation", "target", "capability"]},
+                "kind": {"type": "string"},
+                "access": {"type": "array", "items": {"type": "string"}},
+                "check_policy": {"type": "boolean"},
+                "needs": {"type": "boolean"},
+                "strict": {"type": "boolean"},
+                "include_bootstrap": {"type": "boolean"},
+                "trace": {"type": "string", "description": "Join the recorded attempts of this request ID."},
+                "format": {"type": "string", "enum": ["json", "table", "markdown", "csv"]},
+                "report": {"type": "boolean", "description": "Return the rendered IoReport instead of the bare manifest."}
+            }),
+            &[],
+        ),
+        builtin(
+            "rivet.policy.generate",
+            "Generate a policy draft",
+            "Least-privilege policy.json draft for the selected operations; never writes files.",
+            json!({"ids": {"type": "array", "items": {"type": "string"}}, "all": {"type": "boolean"}}),
+            &[],
+        ),
+        builtin(
+            "rivet.trace.show",
+            "Show a request trace",
+            "This host's recorded broker decisions and attempts for one request.",
+            json!({"request_id": {"type": "string"}}),
+            &["request_id"],
+        ),
+        builtin(
+            "rivet.connectors.sync",
+            "Sync an MCP connector snapshot",
+            "Discover a connector's tools/resources/prompts and create a candidate snapshot file (never overwrites).",
+            json!({"name": {"type": "string"}, "output": {"type": "string", "description": "Bundle-relative path of the new snapshot file."}}),
+            &["name", "output"],
+        ),
+        builtin(
+            "rivet.auth.begin",
+            "Begin OAuth authorization",
+            "Start an authorization transaction for a profile and account.",
+            json!({"profile": {"type": "string"}, "account": {"type": "string"}}),
+            &["profile", "account"],
+        ),
+        builtin(
+            "rivet.auth.complete",
+            "Complete OAuth authorization",
+            "Finish a transaction with the redirect callback (or wait for a device grant).",
+            json!({
+                "transaction_id": {"type": "string"},
+                "callback": {"type": "object", "properties": {
+                    "code": {"type": "string"}, "state": {"type": "string"},
+                    "redirect_uri": {"type": "string"}, "issuer": {"type": "string"},
+                    "error": {"type": "string"}
+                }},
+                "wait": {"type": "boolean"}
+            }),
+            &["transaction_id"],
+        ),
+        builtin(
+            "rivet.auth.status",
+            "Show credential status",
+            "Whether an account is connected (never returns token material).",
+            json!({"profile": {"type": "string"}, "account": {"type": "string"}}),
+            &["profile", "account"],
+        ),
+        builtin(
+            "rivet.auth.disconnect",
+            "Disconnect an account",
+            "Revoke (where supported) and delete an account's stored credentials.",
+            json!({"profile": {"type": "string"}, "account": {"type": "string"}}),
+            &["profile", "account"],
+        ),
+        builtin(
+            "rivet.auth.cancel",
+            "Cancel an authorization",
+            "Cancel a pending authorization transaction.",
+            json!({"transaction_id": {"type": "string"}}),
+            &["transaction_id"],
+        ),
     ]
 }
 
@@ -239,6 +325,14 @@ mod tests {
             parse_message(b"[]").unwrap_err()["error"]["code"],
             INVALID_REQUEST
         );
-        assert_eq!(builtin_tools().len(), 9);
+        let names: Vec<String> = builtin_tools()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names.len(), 18);
+        for t in builtin_tools() {
+            assert_eq!(t["inputSchema"]["type"], "object");
+            assert!(t["outputSchema"].is_object());
+        }
     }
 }

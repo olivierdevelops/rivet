@@ -390,6 +390,7 @@ async fn private_helper_is_hidden_but_callable_in_bundle() {
             principal: rivet::domain::contracts::Principal::local(),
             connection_owned: false,
             deadline_ms: None,
+            trace: None,
         })
         .await
         .unwrap_err();

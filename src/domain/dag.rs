@@ -54,18 +54,39 @@ pub struct DagInput {
     pub timeout_ms: Option<u64>,
 }
 
-// vhco:domain NodeStatus { id: String; status: NodeState; result: Value; error: Option<RivetError> }
+// vhco:domain NodeStatus { id: String; status: NodeState; result: Value; error: Option<RivetError>; started_at: Option<String>; ended_at: Option<String> }
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeStatus {
     pub id: String,
     pub status: NodeState,
     pub result: Value,
     pub error: Option<RivetError>,
+    /// RFC 3339 (UTC, ms) when the node started running; absent if it never ran.
+    pub started_at: Option<String>,
+    /// RFC 3339 (UTC, ms) when the node finished (succeeded, failed or cancelled).
+    pub ended_at: Option<String>,
 }
 
 impl NodeStatus {
-    /// The `{status, result, error}` envelope a node name evaluates to.
+    /// `{id, status, started_at?, ended_at?}` — the per-node summary carried by
+    /// a fatal DAG error's details and by traces.
+    pub fn summary(&self) -> Value {
+        let mut v = Value::object([
+            ("id", Value::text(&self.id)),
+            ("status", Value::text(self.status.as_str())),
+        ]);
+        if let Some(t) = &self.started_at {
+            v.set("started_at", Value::text(t));
+        }
+        if let Some(t) = &self.ended_at {
+            v.set("ended_at", Value::text(t));
+        }
+        v
+    }
+
+    /// The `{status, result, error, started_at, ended_at}` envelope a node name evaluates to.
     pub fn envelope(&self) -> Value {
+        let time = |t: &Option<String>| t.as_ref().map(Value::text).unwrap_or(Value::Null);
         Value::object([
             ("status", Value::text(self.status.as_str())),
             (
@@ -83,6 +104,8 @@ impl NodeStatus {
                     .map(|e| e.to_value())
                     .unwrap_or(Value::Null),
             ),
+            ("started_at", time(&self.started_at)),
+            ("ended_at", time(&self.ended_at)),
         ])
     }
 }
@@ -100,11 +123,17 @@ pub struct DagCompletion {
 /// in scope. Implemented by the interpreter; the DAG use case owns scheduling.
 #[async_trait]
 pub trait DagNodeRunner: Send + Sync {
+    /// Evaluate node `index`. After [`DagNodeRunner::cancel_nodes`] a running
+    /// node unwinds (closing its resources) and returns within the cleanup grace.
     async fn run_node(
         &self,
         index: usize,
         dependencies: Vec<(String, Value)>,
     ) -> Result<Value, RivetError>;
+    /// Wall clock for the nodes' `started_at` / `ended_at`.
+    fn now(&self) -> std::time::SystemTime;
+    /// Signal every running node to cancel (fail fast, dag timeout).
+    fn cancel_nodes(&self);
 }
 
 /// The DAG scheduler as seen by the interpreter (the orchestrator injects the

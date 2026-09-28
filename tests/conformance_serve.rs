@@ -4,7 +4,8 @@
 
 mod support;
 
-use serde_json::json;
+use serde_json::{Value as Json, json};
+use std::net::SocketAddr;
 use support::*;
 
 // vhco:test serve.start_serve -- one listener answers REST, SSE, polling, WebSocket and MCP for the same catalog with identical results
@@ -556,4 +557,363 @@ async fn io_manifest_exposure_requires_explicit_listing() {
     )
     .await;
     assert_eq!(r.status, 403);
+}
+
+// ---------------------------------------------------------------------------
+// Fix-C: MCP built-ins (G7), health/access log/SIGTERM (G12), W3C
+// traceparent (G25), bare /v1/io (G26), WS refused input frames (G17/G27).
+// ---------------------------------------------------------------------------
+
+async fn serve_logged(
+    policy: Option<&str>,
+) -> (Server, std::sync::Arc<std::sync::Mutex<Vec<Json>>>) {
+    let rt = runtime(policy);
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Json>::new()));
+    let sink = std::sync::Arc::clone(&lines);
+    let handle = rivet::orchestrator::setup_serve::start(
+        rt.clone(),
+        rivet::orchestrator::setup_serve::ServeOptions {
+            listen: Some("127.0.0.1:0".into()),
+            access_log: Some(std::sync::Arc::new(move |line: &str| {
+                sink.lock()
+                    .unwrap()
+                    .push(serde_json::from_str(line).unwrap());
+            })),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let addr = handle.addr.unwrap();
+    (Server { rt, addr, handle }, lines)
+}
+
+fn tool_names(list: &Json) -> Vec<String> {
+    list["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+// vhco:test serve.authorize_operation -- G7: MCP tools/list lists every built-in the principal may call with schemas: the local principal sees rivet.io/policy.generate/trace.show/connectors.sync and rivet.auth.*; a wildcard network principal does not see the sensitive ones unless listed exactly
+#[tokio::test]
+async fn mcp_tools_list_includes_callable_builtins() {
+    let s = serve(None).await;
+    let sid = mcp_init(s.addr, &[]).await;
+    let r = mcp_raw(
+        s.addr,
+        &sid,
+        &[],
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+    )
+    .await;
+    let list = r.json()["result"].clone();
+    let names = tool_names(&list);
+    for want in [
+        "rivet.request",
+        "rivet.io",
+        "rivet.policy.generate",
+        "rivet.trace.show",
+        "rivet.connectors.sync",
+        "rivet.auth.begin",
+        "rivet.auth.status",
+        "demo.add",
+    ] {
+        assert!(names.iter().any(|n| n == want), "{want} missing: {names:?}");
+    }
+    for t in list["tools"].as_array().unwrap() {
+        assert_eq!(t["inputSchema"]["type"], "object", "{t}");
+        assert!(t["outputSchema"].is_object(), "{t}");
+    }
+    s.handle.shutdown().await;
+
+    let wild = sha256_hex("tok-wild");
+    let listed = sha256_hex("tok-listed");
+    let policy = json!({"version":1,"serve":{
+        "auth":{"type":"bearer","tokens":[{"principal":"wild","sha256":wild},{"principal":"auditor","sha256":listed}]},
+        "principals":{"wild":{"operations":["*"]},"auditor":{"operations":["rivet.io","demo.*"]}}}})
+    .to_string();
+    let s = serve(Some(&policy)).await;
+    for (token, sees_io) in [("Bearer tok-wild", false), ("Bearer tok-listed", true)] {
+        let auth = [("authorization", token)];
+        let sid = mcp_init(s.addr, &auth).await;
+        let r = mcp_raw(
+            s.addr,
+            &sid,
+            &auth,
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+        )
+        .await;
+        let names = tool_names(&r.json()["result"]);
+        assert_eq!(
+            names.iter().any(|n| n == "rivet.io"),
+            sees_io,
+            "{token}: {names:?}"
+        );
+        assert!(!names.iter().any(|n| n == "rivet.trace.show"), "{token}");
+        assert!(
+            !names.iter().any(|n| n == "rivet.connectors.sync"),
+            "{token}"
+        );
+        assert!(names.iter().any(|n| n == "rivet.request"), "{token}");
+    }
+    s.handle.shutdown().await;
+}
+
+// vhco:test serve.start_serve -- G12: GET /v1/health answers {status:"ok", catalog_version} unauthenticated on loopback, and every request produces one access-log line (time, surface, method, route, principal, operation, status, duration_ms) that never contains params or tokens
+#[tokio::test]
+async fn health_and_access_log() {
+    let (s, lines) = serve_logged(None).await;
+    let r = http(s.addr, "GET", "/v1/health", &[], "").await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert_eq!(r.json()["status"], "ok");
+    assert_eq!(r.json()["catalog_version"], s.rt.catalog_version());
+    let r = post(
+        s.addr,
+        "/v1/request",
+        json!({"id":"demo.greet","params":{"person":"S3CRET-PARAM"}}),
+        &[],
+    )
+    .await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    let r = http(s.addr, "GET", "/v1/operations/demo.add?x=QUERYVAL", &[], "").await;
+    assert_eq!(r.status, 200);
+    let log = lines.lock().unwrap().clone();
+    assert_eq!(log.len(), 3, "{log:?}");
+    let req = &log[1];
+    for k in [
+        "time",
+        "surface",
+        "method",
+        "route",
+        "principal",
+        "operation",
+        "status",
+        "duration_ms",
+    ] {
+        assert!(req.get(k).is_some(), "{k} missing: {req}");
+    }
+    assert_eq!(req["surface"], "http");
+    assert_eq!(req["method"], "POST");
+    assert_eq!(req["route"], "/v1/request");
+    assert_eq!(req["principal"], "local");
+    assert_eq!(req["operation"], "demo.greet");
+    assert_eq!(req["status"], 200);
+    assert_eq!(log[0]["route"], "/v1/health");
+    assert_eq!(log[2]["route"], "/v1/operations/{id}");
+    let text = serde_json::to_string(&log).unwrap();
+    assert!(
+        !text.contains("S3CRET-PARAM") && !text.contains("QUERYVAL"),
+        "{text}"
+    );
+    s.handle.shutdown().await;
+
+    // Non-loopback semantics are covered by serve.auth: with bearer auth on a
+    // loopback bind health stays open.
+    let hash = sha256_hex("tok");
+    let policy = json!({"version":1,"serve":{"auth":{"type":"bearer","tokens":[{"principal":"ada","sha256":hash}]}}}).to_string();
+    let s = serve(Some(&policy)).await;
+    assert_eq!(http(s.addr, "GET", "/v1/health", &[], "").await.status, 200);
+    s.handle.shutdown().await;
+}
+
+// vhco:test execution.request_operation -- G25: a valid W3C traceparent on POST /v1/request becomes the request's trace id and every answer carries a traceparent header; nested requests keep the trace id; invalid headers are ignored
+#[tokio::test]
+async fn traceparent_is_accepted_and_emitted() {
+    let s = serve(None).await;
+    let tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    let r = post(
+        s.addr,
+        "/v1/request",
+        json!({"id":"demo.add","params":{"a":2,"b":3}}),
+        &[("traceparent", tp)],
+    )
+    .await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    assert_eq!(r.json()["trace_id"], "4bf92f3577b34da6a3ce929d0e0e4736");
+    let out = r.headers["traceparent"].to_str().unwrap().to_string();
+    let parts: Vec<&str> = out.split('-').collect();
+    assert_eq!(parts[0], "00");
+    assert_eq!(parts[1], "4bf92f3577b34da6a3ce929d0e0e4736");
+    assert_ne!(
+        parts[2], "00f067aa0ba902b7",
+        "our own span, not the caller's"
+    );
+    // rivet.request dispatches a nested request that keeps the trace id.
+    let r = post(
+        s.addr,
+        "/v1/request",
+        json!({"id":"rivet.request","params":{"id":"demo.add","params":{"a":1}}}),
+        &[("traceparent", tp)],
+    )
+    .await;
+    assert_eq!(r.json()["trace_id"], "4bf92f3577b34da6a3ce929d0e0e4736");
+    // An invalid header is ignored: Rivet mints its own trace and still emits one.
+    let r = post(
+        s.addr,
+        "/v1/request",
+        json!({"id":"demo.add","params":{"a":1}}),
+        &[("traceparent", "00-zz-00f067aa0ba902b7-01")],
+    )
+    .await;
+    assert!(r.json()["trace_id"].as_str().unwrap().starts_with("tr_"));
+    let emitted = r.headers["traceparent"].to_str().unwrap();
+    assert_eq!(emitted.len(), 55, "{emitted}");
+    // Polling and MCP accept it too.
+    let r = post(
+        s.addr,
+        "/v1/requests",
+        json!({"id":"demo.add","params":{"a":1}}),
+        &[("traceparent", tp)],
+    )
+    .await;
+    assert_eq!(r.status, 202);
+    assert_eq!(r.json()["trace_id"], "4bf92f3577b34da6a3ce929d0e0e4736");
+    assert!(r.headers.get("traceparent").is_some());
+    let sid = mcp_init(s.addr, &[]).await;
+    let r = mcp_raw(
+        s.addr,
+        &sid,
+        &[("traceparent", tp)],
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"demo.add","arguments":{"a":1}}}),
+    )
+    .await;
+    assert_eq!(
+        r.json()["result"]["structuredContent"]["trace_id"],
+        "4bf92f3577b34da6a3ce929d0e0e4736"
+    );
+    assert!(
+        r.headers["traceparent"]
+            .to_str()
+            .unwrap()
+            .contains("4bf92f3577b34da6a3ce929d0e0e4736")
+    );
+    s.handle.shutdown().await;
+}
+
+// vhco:test audit.inspect_effects -- G26: GET /v1/io returns the bare IoManifest JSON (also for format=json); format=table|markdown|csv returns the rendered report
+#[tokio::test]
+async fn io_route_returns_the_bare_manifest() {
+    let s = serve(None).await;
+    for q in ["/v1/io", "/v1/io?format=json"] {
+        let r = http(s.addr, "GET", q, &[], "").await;
+        assert_eq!(r.status, 200, "{}", r.text);
+        let j = r.json();
+        assert!(j["sites"].is_array(), "{q}: {j}");
+        assert!(j.get("rendered").is_none(), "{q}");
+    }
+    let r = http(s.addr, "GET", "/v1/io?format=table", &[], "").await;
+    let j = r.json();
+    assert!(j["rendered"].is_string(), "{j}");
+    assert!(j["manifest"]["sites"].is_array());
+    s.handle.shutdown().await;
+}
+
+// vhco:test serve.multiplex_ws -- G17/G27: a refused input frame on /v1/ws gets an error frame for its ref with the specific code (conflict.input_sequence), and that is the ref's only terminal frame
+#[tokio::test]
+async fn ws_refused_input_sends_the_specific_error() {
+    let s = serve(None).await;
+    let mut ws = ws_connect(s.addr, &[]).await.unwrap();
+    ws_send(
+        &mut ws,
+        json!({"type":"request","ref":"r1","id":"demo.relay","params":{}}),
+    )
+    .await;
+    ws_send(
+        &mut ws,
+        json!({"type":"input","ref":"r1","seq":1,"data":"a"}),
+    )
+    .await;
+    assert_eq!(ws_recv(&mut ws).await["data"], "a");
+    ws_send(
+        &mut ws,
+        json!({"type":"input","ref":"r1","seq":5,"data":"b"}),
+    )
+    .await;
+    let f = ws_recv(&mut ws).await;
+    assert_eq!(f["type"], "error", "{f}");
+    assert_eq!(f["ref"], "r1");
+    assert_eq!(f["error"]["code"], "conflict.input_sequence", "{f}");
+    // No second terminal frame for r1; a new ref still works on the socket.
+    ws_send(
+        &mut ws,
+        json!({"type":"request","ref":"r2","id":"demo.add","params":{"a":1}}),
+    )
+    .await;
+    let frames = ws_until_terminal(&mut ws, &["r2"]).await;
+    assert!(
+        frames.iter().all(|f| f["ref"] != "r1"),
+        "r1 already ended: {frames:?}"
+    );
+    // A schema-invalid input item is refused with validation.input and its seq.
+    ws_send(
+        &mut ws,
+        json!({"type":"request","ref":"r3","id":"demo.relay","params":{}}),
+    )
+    .await;
+    ws_send(&mut ws, json!({"type":"input","ref":"r3","seq":1,"data":7})).await;
+    let f = ws_recv(&mut ws).await;
+    assert_eq!(f["error"]["code"], "validation.input", "{f}");
+    assert_eq!(f["error"]["details"]["seq"], 1, "{f}");
+    s.handle.shutdown().await;
+}
+
+// vhco:test serve.start_serve -- G12: SIGTERM drains like SIGINT: the in-flight request is cancelled (not dropped), its response is sent, and `rivet serve` exits 0 with one access-log line per request on stderr
+#[cfg(unix)]
+#[tokio::test]
+async fn sigterm_drains_and_exits_zero() {
+    use tokio::io::AsyncBufReadExt;
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("app.rivet"),
+        "operation slow.op\n    param note text default \"x\"\n    output json\n    status = poll every \"50ms\" timeout \"60s\"\n        until false\n        yield 1\n    end\n    return status\nend\n",
+    )
+    .unwrap();
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
+        .args(["--file", "app.rivet", "serve", "--listen", "127.0.0.1:0"])
+        .current_dir(tmp.path())
+        .stderr(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut err = tokio::io::BufReader::new(child.stderr.take().unwrap()).lines();
+    let receipt: Json = serde_json::from_str(&err.next_line().await.unwrap().unwrap()).unwrap();
+    let addr: SocketAddr = receipt["listen_addr"].as_str().unwrap().parse().unwrap();
+    let slow = tokio::spawn(async move {
+        post(
+            addr,
+            "/v1/request",
+            json!({"id":"slow.op","params":{"note":"PARAM-VALUE"}}),
+            &[],
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // SAFETY: signalling our own child process.
+    unsafe {
+        libc::kill(child.id().unwrap() as i32, libc::SIGTERM);
+    }
+    let status = tokio::time::timeout(std::time::Duration::from_secs(12), child.wait())
+        .await
+        .expect("serve exits after draining")
+        .unwrap();
+    assert_eq!(status.code(), Some(0));
+    let r = slow.await.unwrap();
+    assert_eq!(r.status, 409, "{}", r.text);
+    assert_eq!(r.json()["error"]["kind"], "cancelled");
+    let mut rest = Vec::new();
+    while let Ok(Some(l)) = err.next_line().await {
+        rest.push(l);
+    }
+    let access: Vec<Json> = rest
+        .iter()
+        .filter_map(|l| serde_json::from_str::<Json>(l).ok())
+        .filter(|j| j.get("route").is_some())
+        .collect();
+    assert_eq!(access.len(), 1, "{rest:?}");
+    assert_eq!(access[0]["operation"], "slow.op");
+    assert_eq!(access[0]["status"], 409);
+    assert!(!rest.join("\n").contains("PARAM-VALUE"));
 }

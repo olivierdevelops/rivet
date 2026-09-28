@@ -11,7 +11,7 @@
 //! are pure data so every surface (HTTP session operations, polling, WebSocket,
 //! MCP, library) shares one implementation.
 
-use super::contracts::{Completion, Envelope, Principal};
+use super::contracts::{Completion, Envelope, Principal, TraceContext};
 use super::errors::{ErrorKind, RivetError, RivetResult};
 use super::value::Value;
 use serde_json::{Value as Json, json};
@@ -66,7 +66,7 @@ impl SessionLimits {
 /// Maximum WebSocket refs in flight per connection (same as sessions per principal).
 pub const MAX_WS_REFS: usize = 8;
 
-// vhco:domain SessionOpenInput { id: string; params: Value; principal: Principal; connection_owned: bool; deadline_ms?: int }
+// vhco:domain SessionOpenInput { id: string; params: Value; principal: Principal; connection_owned: bool; deadline_ms?: int; trace?: TraceContext }
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionOpenInput {
     pub id: String,
@@ -75,7 +75,11 @@ pub struct SessionOpenInput {
     /// WebSocket refs are owned by their connection and do not count against
     /// the per-principal session limit (the connection enforces its own 8).
     pub connection_owned: bool,
+    /// Requested total operation deadline; default 30 s, capped by the host at
+    /// [`super::contracts::MAX_DEADLINE_MS`].
     pub deadline_ms: Option<u64>,
+    /// The caller's W3C `traceparent` (its trace-id becomes the session's trace id).
+    pub trace: Option<TraceContext>,
 }
 
 // vhco:domain SessionReceipt { session_id: string; request_id: string; trace_id: string; catalog_version: string; input_schema?: Json; emits_schema?: Json; next_send_seq: int; expires_at: string; events_url?: string }

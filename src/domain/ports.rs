@@ -251,10 +251,17 @@ pub trait ServeListener: Send {
     ) -> RivetResult<super::serve::MountReceipt>;
 }
 
-/// Outbound side of one WebSocket connection.
+/// Outbound side of one WebSocket connection. Every in-flight ref has its
+/// own bounded lane (16 frames): a slow ref back-pressures only itself.
 #[async_trait]
 pub trait WsConnection: Send + Sync {
+    /// A frame of an in-flight ref, in order on that ref's lane. The ref's
+    /// first terminal frame (result/error) closes the lane; later frames for
+    /// it are discarded, so a ref never gets two terminal frames.
     async fn send(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
+    /// An immediate answer to a client frame that is not part of an in-flight
+    /// ref's stream (malformed frame, refused request, unknown or duplicate ref).
+    async fn reply(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
 }
 
 // vhco:domain CancelRequest { request_id: string; principal: Principal }

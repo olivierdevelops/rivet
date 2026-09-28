@@ -1,12 +1,23 @@
 //! Tree-walking interpreter for compiled operations (satisfies ExecutionDriver).
 //!
 //! Every effect goes through a port (FileAccess, PolicyEvaluator, protocol
-//! adapters); nested `(request …)` calls re-enter the shared dispatcher. The
-//! whole run is bounded by the request deadline; DAG, `concurrent` and `map`
-//! branches run cooperatively inside the request's own task and are dropped
-//! (cancelled) together, so nothing outlives the request scope.
+//! adapters); nested `(request …)` calls re-enter the shared dispatcher.
+//!
+//! Cancellation is structured (PROP-2026-0001 Increments 2–3):
+//!
+//! ```text
+//!  request token ─┬─ deadline (+250 ms backstop) fires it with `timeout`
+//!                 ├─ caller cancel / session cancel / shutdown fires it with `cancelled`
+//!                 └─ child tokens: nested requests, request.stream, concurrent/map/DAG groups, scopes
+//!  every statement, effect, handle operation, sleep and nested call observes the token
+//!        ─▶ the error unwinds through `with` scopes, which close handles (reverse order)
+//!           within the cleanup grace ─▶ one terminal `cancelled`/`timeout` error with
+//!           cleanup failures suppressed on it
+//!  only if the body is still running when the grace ends is its future dropped (last resort)
+//! ```
 
-use crate::domain::contracts::{DataEvent, ExecutionPlan, Request, RunOutcome};
+use crate::domain::cancel::{CancelReason, CancelToken};
+use crate::domain::contracts::{DataEvent, ExecutionPlan, Request, RunOutcome, span_id};
 use crate::domain::errors::{EffectsStatus, ErrorKind};
 use crate::domain::files::{Codec, FileOperation, FileVerb};
 use crate::domain::ir::{
@@ -24,7 +35,7 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// Adapter for protocol effects not built into the interpreter (HTTP, sockets,
@@ -209,6 +220,9 @@ pub struct EffectCtx {
     pub policy: Arc<dyn PolicyEvaluator>,
     pub span: SourceSpan,
     pub deadline: Instant,
+    /// The calling scope's cancellation; adapters may observe it to stop early
+    /// (the interpreter already abandons a pending effect when it fires).
+    pub cancel: CancelToken,
 }
 
 impl EffectCtx {
@@ -331,11 +345,13 @@ impl ExecutionDriver for Interpreter {
             .clone();
         let deadline_ms = plan.request.deadline_ms.max(1);
         let deadline = Instant::now() + Duration::from_millis(deadline_ms);
+        let token = plan.request.cancel.clone();
         let run = Arc::new(RunState {
             data_seq: AtomicU64::new(0),
             effects: AtomicU8::new(0),
             deadline,
             sink,
+            grace_until: Mutex::new(None),
         });
         let mut frame = Frame::new(&plan.request, Arc::clone(&run));
         let feed = self
@@ -353,7 +369,11 @@ impl ExecutionDriver for Interpreter {
                     ),
                 ));
             };
-            let handle: Box<dyn ResourceHandle> = Box::new(IncomingHandle { rx });
+            let handle: Box<dyn ResourceHandle> = Box::new(IncomingHandle {
+                rx,
+                spec: op.receives.clone(),
+                seq: 0,
+            });
             frame.handles.push((
                 "incoming".to_string(),
                 Arc::new(tokio::sync::Mutex::new(Some(handle))),
@@ -368,22 +388,50 @@ impl ExecutionDriver for Interpreter {
             interp: self,
             op: &op,
         };
-        let body = machine.exec_block(&mut frame, &op.body);
-        // Adapters honour `deadline` themselves and report typed errors (for example
-        // auth.refresh_uncertain); the request timeout is a backstop that fires a
-        // short margin later so it never pre-empts a more specific error.
-        let backstop = Duration::from_millis(deadline_ms) + DEADLINE_BACKSTOP;
-        let flow = match tokio::time::timeout(backstop, body).await {
-            Ok(r) => r.map_err(|e| e.with_effects(run.effects()))?,
-            Err(_) => {
-                return Err(RivetError::new(
-                    ErrorKind::Timeout,
-                    "timeout.request",
-                    format!("`{}` exceeded its {deadline_ms} ms deadline", op.id),
-                )
-                .with_effects(run.effects()));
+        let outcome = {
+            let body = machine.exec_block(&mut frame, &op.body);
+            tokio::pin!(body);
+            // Adapters honour `deadline` themselves and report typed errors (for example
+            // auth.refresh_uncertain); the request deadline fires the token a short
+            // margin later so it never pre-empts a more specific error.
+            let expiry = tokio::time::sleep_until((deadline + DEADLINE_BACKSTOP).into());
+            tokio::pin!(expiry);
+            let mut grace: Option<std::pin::Pin<Box<tokio::time::Sleep>>> = None;
+            loop {
+                tokio::select! {
+                    r = &mut body => break r,
+                    _ = &mut expiry, if !token.is_cancelled() => {
+                        token.cancel(CancelReason::Timeout);
+                    }
+                    _ = token.cancelled(), if grace.is_none() => {
+                        // Cleanup starts now: the body unwinds and closes its handles
+                        // within the grace; after it the body is dropped (last resort).
+                        let until = Instant::now() + CLEANUP_GRACE;
+                        if let Ok(mut g) = run.grace_until.lock() {
+                            g.get_or_insert(until);
+                        }
+                        grace = Some(Box::pin(tokio::time::sleep_until(
+                            (until + DEADLINE_BACKSTOP).into(),
+                        )));
+                    }
+                    _ = async { if let Some(g) = grace.as_mut() { g.await } }, if grace.is_some() => {
+                        let reason = token.reason().unwrap_or(CancelReason::Cancelled);
+                        let mut e = cancel_error(&op.id, deadline_ms, reason, None);
+                        e.suppressed.push(RivetError::new(
+                            ErrorKind::Cleanup,
+                            "cleanup.timeout",
+                            format!(
+                                "`{}` did not finish its cleanup within {} s; its remaining work was dropped",
+                                op.id,
+                                CLEANUP_GRACE.as_secs()
+                            ),
+                        ));
+                        break Err(e);
+                    }
+                }
             }
         };
+        let flow = outcome.map_err(|e| e.with_effects(run.effects()))?;
         let result = match flow {
             Flow::Return(v) => {
                 secret_output_guard(&frame, &v, "returned")?;
@@ -419,9 +467,22 @@ struct RunState {
     effects: AtomicU8,
     deadline: Instant,
     sink: Option<Arc<dyn DataSink>>,
+    /// End of the cleanup grace once the request token fired.
+    grace_until: Mutex<Option<Instant>>,
 }
 
 impl RunState {
+    /// Bound for one handle close: the rest of the grace after cancellation,
+    /// the full grace otherwise.
+    fn close_budget(&self) -> Duration {
+        match self.grace_until.lock().ok().and_then(|g| *g) {
+            Some(until) => until
+                .saturating_duration_since(Instant::now())
+                .max(Duration::from_millis(50)),
+            None => CLEANUP_GRACE,
+        }
+    }
+
     fn effects(&self) -> EffectsStatus {
         if self.effects.load(Ordering::SeqCst) > 0 {
             EffectsStatus::Committed
@@ -533,6 +594,10 @@ struct Frame {
     secrets: HashMap<String, (String, Vec<String>)>,
     /// Open resource handles, innermost last.
     handles: Vec<(String, SharedHandle)>,
+    /// Cancellation of the innermost enclosing scope (request, group or node).
+    cancel: CancelToken,
+    /// DAG node whose expression this frame evaluates (trace attribution).
+    node_id: Option<String>,
 }
 
 impl Frame {
@@ -543,6 +608,8 @@ impl Frame {
             run,
             secrets: HashMap::new(),
             handles: Vec::new(),
+            cancel: request.cancel.clone(),
+            node_id: None,
         }
     }
 
@@ -596,6 +663,62 @@ fn runtime_err(code: &str, msg: impl Into<String>, span: &SourceSpan) -> RivetEr
     RivetError::new(ErrorKind::Validation, code, msg).with_span(Some(span.clone()))
 }
 
+/// The terminal error of a cancelled scope: `cancelled.request` or `timeout.request`.
+fn cancel_error(
+    op_id: &str,
+    deadline_ms: u64,
+    reason: CancelReason,
+    span: Option<&SourceSpan>,
+) -> RivetError {
+    let e = match reason {
+        CancelReason::Cancelled => RivetError::new(
+            ErrorKind::Cancelled,
+            "cancelled.request",
+            format!("`{op_id}` was cancelled"),
+        ),
+        CancelReason::Timeout => RivetError::new(
+            ErrorKind::Timeout,
+            "timeout.request",
+            format!("`{op_id}` exceeded its {deadline_ms} ms deadline"),
+        ),
+    };
+    e.with_span(span.cloned())
+}
+
+/// Await `fut` unless `token` fires first; then the pending operation is
+/// abandoned (its handle stays owned by the scope, which closes it).
+async fn guarded<T>(
+    token: &CancelToken,
+    on_cancel: impl FnOnce(CancelReason) -> RivetError,
+    fut: impl std::future::Future<Output = RivetResult<T>>,
+) -> RivetResult<T> {
+    tokio::select! {
+        biased;
+        r = token.cancelled() => Err(on_cancel(r)),
+        v = fut => v,
+    }
+}
+
+/// Await a child that observes `token` itself (nested request, node): when
+/// the token fires, keep awaiting it for the cleanup grace so it can close its
+/// resources; only then give up on it.
+async fn joined<T>(
+    token: &CancelToken,
+    grace: Duration,
+    on_cancel: impl FnOnce(CancelReason) -> RivetError,
+    fut: impl std::future::Future<Output = RivetResult<T>>,
+) -> RivetResult<T> {
+    tokio::pin!(fut);
+    tokio::select! {
+        biased;
+        v = &mut fut => v,
+        r = token.cancelled() => match tokio::time::timeout(grace, &mut fut).await {
+            Ok(v) => v,
+            Err(_) => Err(on_cancel(r)),
+        },
+    }
+}
+
 impl<'a> Machine<'a> {
     fn exec_block<'b>(
         &'b self,
@@ -604,6 +727,9 @@ impl<'a> Machine<'a> {
     ) -> BoxFuture<'b, RivetResult<Flow>> {
         Box::pin(async move {
             for stmt in body {
+                if let Some(r) = frame.cancel.reason() {
+                    return Err(self.cancelled(frame, r, stmt.span()));
+                }
                 if Instant::now() >= frame.run.deadline {
                     return Err(RivetError::new(
                         ErrorKind::Timeout,
@@ -619,6 +745,51 @@ impl<'a> Machine<'a> {
             }
             Ok(Flow::Normal)
         })
+    }
+
+    /// The terminal error for a token that fired at `span`.
+    fn cancelled(&self, frame: &Frame, reason: CancelReason, span: &SourceSpan) -> RivetError {
+        let mut e = cancel_error(&self.op.id, frame.request.deadline_ms, reason, Some(span));
+        e.operation_id = Some(self.op.id.clone());
+        e
+    }
+
+    /// Run `body` under a child token for at most `limit`; on expiry cancel the
+    /// child, let the body unwind (closing its handles) within the grace, then
+    /// report `on_timeout`.
+    async fn bounded(
+        &self,
+        frame: &mut Frame,
+        limit: Duration,
+        on_timeout: RivetError,
+        body: &[Stmt],
+    ) -> RivetResult<Flow> {
+        let child = frame.cancel.child();
+        let parent = std::mem::replace(&mut frame.cancel, child.clone());
+        let grace = frame.run.close_budget();
+        let r = {
+            let fut = self.scoped(frame, body);
+            tokio::pin!(fut);
+            tokio::select! {
+                v = &mut fut => v,
+                _ = tokio::time::sleep(limit) => {
+                    child.cancel(CancelReason::Cancelled);
+                    match tokio::time::timeout(grace, &mut fut).await {
+                        // A parent cancel that raced the limit keeps its own error.
+                        Ok(Err(e)) if parent.is_cancelled() => Err(e),
+                        Ok(Err(mut e)) if e.kind == ErrorKind::Cancelled => {
+                            let mut t = on_timeout;
+                            t.suppressed.append(&mut e.suppressed);
+                            Err(t)
+                        }
+                        Ok(other) => other,
+                        Err(_) => Err(on_timeout),
+                    }
+                }
+            }
+        };
+        frame.cancel = parent;
+        r
     }
 
     /// Run a nested block in its own lexical scope.
@@ -755,11 +926,10 @@ impl<'a> Machine<'a> {
                     {
                         loop {
                             let ctx = self.ctx(frame, span);
-                            let item = if let Some(s) = shared_of(&handle).await {
-                                s.next(&ctx)
-                                    .await
-                                    .map_err(|e| e.with_span(Some(span.clone())))?
-                            } else {
+                            let pull = async {
+                                if let Some(s) = shared_of(&handle).await {
+                                    return s.next(&ctx).await;
+                                }
                                 let mut guard = handle.lock().await;
                                 let h = guard.as_mut().ok_or_else(|| {
                                     RivetError::new(
@@ -768,13 +938,16 @@ impl<'a> Machine<'a> {
                                         format!("`{}` is already closed", path[0]),
                                     )
                                 })?;
-                                let pulled = if path.len() == 1 {
+                                if path.len() == 1 {
                                     h.next(&ctx).await
                                 } else {
                                     h.next_of(&ctx, &path[1..].join(".")).await
-                                };
-                                pulled.map_err(|e| e.with_span(Some(span.clone())))?
+                                }
                             };
+                            let item =
+                                guarded(&frame.cancel, |r| self.cancelled(frame, r, span), pull)
+                                    .await
+                                    .map_err(|e| e.with_span(Some(span.clone())))?;
                             let Some(item) = item else { break };
                             frame.scopes.push(HashMap::from([(var.clone(), item)]));
                             let r = self.exec_block(frame, body).await;
@@ -815,7 +988,9 @@ impl<'a> Machine<'a> {
                     handler,
                     ..
                 } => match self.scoped(frame, body).await {
-                    Err(e) if catches(filter, &e) => {
+                    // Cancellation is control flow: once the scope's token fired
+                    // no catch revives it (not even `catch error kind timeout`).
+                    Err(e) if !frame.cancel.is_cancelled() && catches(filter, &e) => {
                         frame
                             .scopes
                             .push(HashMap::from([("error".to_string(), e.to_value())]));
@@ -840,20 +1015,16 @@ impl<'a> Machine<'a> {
                     body,
                     span,
                 } => match timeout_ms {
-                    Some(ms) => match tokio::time::timeout(
-                        Duration::from_millis(*ms),
-                        self.scoped(frame, body),
-                    )
-                    .await
-                    {
-                        Ok(r) => r,
-                        Err(_) => Err(RivetError::new(
+                    Some(ms) => {
+                        let on_timeout = RivetError::new(
                             ErrorKind::Timeout,
                             "timeout.scope",
                             format!("scope exceeded {ms} ms"),
                         )
-                        .with_span(Some(span.clone()))),
-                    },
+                        .with_span(Some(span.clone()));
+                        self.bounded(frame, Duration::from_millis(*ms), on_timeout, body)
+                            .await
+                    }
                     None => self.scoped(frame, body).await,
                 },
                 Stmt::Dag {
@@ -932,6 +1103,7 @@ impl<'a> Machine<'a> {
             trace_id: frame.request.trace_id.clone(),
             operation_id: self.op.id.clone(),
             line: span.start_line,
+            node_id: frame.node_id.clone(),
         }
     }
 
@@ -942,6 +1114,7 @@ impl<'a> Machine<'a> {
             policy: Arc::clone(&self.interp.policy),
             span: span.clone(),
             deadline: frame.run.deadline,
+            cancel: frame.cancel.clone(),
         }
     }
 
@@ -982,9 +1155,11 @@ impl<'a> Machine<'a> {
             args.push(self.eval_arg(frame, a).await?);
         }
         let ctx = self.ctx(frame, span);
-        let r = if let Some(s) = shared_of(&handle).await {
-            s.call(&ctx, &method, args).await
-        } else {
+        let method_ref = &method;
+        let op = async move {
+            if let Some(s) = shared_of(&handle).await {
+                return s.call(&ctx, method_ref, args).await;
+            }
             let mut guard = handle.lock().await;
             let h = guard.as_mut().ok_or_else(|| {
                 RivetError::new(
@@ -993,9 +1168,11 @@ impl<'a> Machine<'a> {
                     format!("`{name}` is already closed"),
                 )
             })?;
-            h.call(&ctx, &method, args).await
-        }
-        .map_err(|e| e.with_span(Some(span.clone())));
+            h.call(&ctx, method_ref, args).await
+        };
+        let r = guarded(&frame.cancel, |r| self.cancelled(frame, r, span), op)
+            .await
+            .map_err(|e| e.with_span(Some(span.clone())));
         if r.is_ok() && (method.contains("send") || method.contains("write")) {
             frame.run.commit();
         }
@@ -1059,9 +1236,13 @@ impl<'a> Machine<'a> {
             _ => match self.interp.adapters.get(form.kind.as_str()) {
                 Some(adapter) => {
                     secret_guard(frame, &evaluated, span)?;
-                    super::trace_store::with_effect_scope(
-                        self.effect_scope(frame, span),
-                        adapter.open(&ctx, form, evaluated),
+                    guarded(
+                        &frame.cancel,
+                        |r| self.cancelled(frame, r, span),
+                        super::trace_store::with_effect_scope(
+                            self.effect_scope(frame, span),
+                            adapter.open(&ctx, form, evaluated),
+                        ),
                     )
                     .await
                 }
@@ -1081,18 +1262,19 @@ impl<'a> Machine<'a> {
         {
             frame.handles.remove(pos);
         }
-        // Always close, after success, error, break or return; the primary error wins.
+        // Always close — after success, error, break, return, cancellation or
+        // deadline expiry — never interrupted by the token (disposal is a
+        // non-transferable cleanup capability), bounded by the rest of the
+        // grace. Inner scopes close first, so handles close in reverse order.
         let taken = handle.lock().await.take();
+        let budget = frame.run.close_budget();
         let closed = match taken {
-            Some(h) => match tokio::time::timeout(CLEANUP_GRACE, h.close()).await {
+            Some(h) => match tokio::time::timeout(budget, h.close()).await {
                 Ok(r) => r,
                 Err(_) => Err(RivetError::new(
                     ErrorKind::Cleanup,
                     "cleanup.timeout",
-                    format!(
-                        "`{name}` did not close within {} s",
-                        CLEANUP_GRACE.as_secs()
-                    ),
+                    format!("`{name}` did not close within {} ms", budget.as_millis()),
                 )),
             },
             None => Ok(()),
@@ -1140,6 +1322,7 @@ impl<'a> Machine<'a> {
                 .get()
                 .ok_or_else(|| RivetError::internal("nested dispatcher not configured"))?,
         );
+        let token = frame.cancel.child();
         let child = Request {
             request_id: format!("{}.s{}", frame.request.request_id, rand_suffix()),
             trace_id: frame.request.trace_id.clone(),
@@ -1155,6 +1338,8 @@ impl<'a> Machine<'a> {
                 .as_millis()
                 .max(1) as u64,
             include_private: true,
+            parent_span_id: Some(span_id(&frame.request.request_id)),
+            cancel: token.clone(),
         };
         let (tx, rx) = tokio::sync::mpsc::channel::<Value>(16);
         let sink: Arc<dyn DataSink> = Arc::new(ChannelSink { tx });
@@ -1163,6 +1348,7 @@ impl<'a> Machine<'a> {
             rx,
             task: Some(task),
             completion: None,
+            token,
         }))
     }
 
@@ -1349,29 +1535,25 @@ impl<'a> Machine<'a> {
         let evaluated = self.evaluate_form(frame, form).await?;
         secret_guard(frame, &evaluated, span)?;
         let scope = self.effect_scope(frame, span);
-        let result = super::trace_store::with_effect_scope(scope, async {
+        let ctx = self.ctx(frame, span);
+        let work = super::trace_store::with_effect_scope(scope, async {
             if form.kind == EffectKind::File {
-                self.run_file(frame, &evaluated, span).await
+                self.run_file(&evaluated, span).await
             } else {
                 match self.interp.adapters.get(form.kind.as_str()) {
-                    Some(adapter) => adapter.run(&self.ctx(frame, span), form, evaluated).await,
+                    Some(adapter) => adapter.run(&ctx, form, evaluated).await,
                     None => Err(self.unsupported(form, span)),
                 }
             }
-        })
-        .await;
+        });
+        let result = guarded(&frame.cancel, |r| self.cancelled(frame, r, span), work).await;
         if result.is_ok() && mutates(form) {
             frame.run.commit();
         }
         result.map_err(|e| e.with_span(Some(span.clone())))
     }
 
-    async fn run_file(
-        &self,
-        frame: &mut Frame,
-        f: &EvaluatedForm,
-        span: &SourceSpan,
-    ) -> RivetResult<Value> {
+    async fn run_file(&self, f: &EvaluatedForm, span: &SourceSpan) -> RivetResult<Value> {
         let bad = |m: &str| runtime_err("file.form", m.to_string(), span);
         let verb = f
             .head
@@ -1434,7 +1616,6 @@ impl<'a> Machine<'a> {
             }
         }
         // Authorization happens in the files use case wrapped behind FileAccess.
-        let _ = frame;
         self.interp.files.apply(op).await
     }
 
@@ -1461,12 +1642,16 @@ impl<'a> Machine<'a> {
         let mut results: Vec<Option<Value>> = vec![None; items.len()];
         let mut pending = items.into_iter().enumerate();
         let mut running = FuturesUnordered::new();
-        loop {
+        // Items share one group token: an early exit cancels the siblings and
+        // joins them (their scopes close their handles) before returning.
+        let group = frame.cancel.child();
+        let early: Option<RivetResult<Flow>> = loop {
             while running.len() < limit {
                 let Some((i, value)) = pending.next() else {
                     break;
                 };
                 let mut child = frame.clone();
+                child.cancel = group.clone();
                 child
                     .scopes
                     .push(HashMap::from([(item.to_string(), value)]));
@@ -1476,20 +1661,26 @@ impl<'a> Machine<'a> {
                 });
             }
             let Some((i, r)) = running.next().await else {
-                break;
+                break None;
             };
-            match r? {
-                Flow::Yield(v) => results[i] = Some(v),
-                // `return` exits the whole operation; items still running are dropped.
-                Flow::Return(v) => return Ok(Flow::Return(v)),
-                _ => {
-                    return Err(runtime_err(
+            match r {
+                Ok(Flow::Yield(v)) => results[i] = Some(v),
+                // `return` exits the whole operation.
+                Ok(Flow::Return(v)) => break Some(Ok(Flow::Return(v))),
+                Ok(_) => {
+                    break Some(Err(runtime_err(
                         "syntax.map_yield",
                         "a `map` body finished without `yield`",
                         span,
-                    ));
+                    )));
                 }
+                Err(e) => break Some(Err(e)),
             }
+        };
+        if let Some(exit) = early {
+            group.cancel(CancelReason::Cancelled);
+            join_all(&mut running, frame.run.close_budget()).await;
+            return exit;
         }
         Ok(Flow::Yield(Value::List(
             results
@@ -1550,7 +1741,12 @@ impl<'a> Machine<'a> {
                 )
                 .with_span(Some(span.clone())));
             }
-            tokio::time::sleep(every).await;
+            let token = frame.cancel.clone();
+            guarded(&token, |r| self.cancelled(frame, r, span), async {
+                tokio::time::sleep(every).await;
+                Ok(())
+            })
+            .await?;
         }
     }
 
@@ -1562,46 +1758,77 @@ impl<'a> Machine<'a> {
         span: &SourceSpan,
     ) -> RivetResult<Flow> {
         let limit = options.limit.unwrap_or(tasks.len() as i64).max(1) as usize;
-        let group = async {
-            let mut pending = tasks.iter();
-            let mut running = FuturesUnordered::new();
-            let mut first_error: Option<RivetError> = None;
-            loop {
+        // One token for the group: fail fast and the group timeout cancel the
+        // running tasks, which unwind (closing their handles) and are joined.
+        let token = frame.cancel.child();
+        let mut pending = tasks.iter();
+        let mut running = FuturesUnordered::new();
+        let mut first_error: Option<RivetError> = None;
+        let expiry = options
+            .timeout_ms
+            .map(|ms| Instant::now() + Duration::from_millis(ms));
+        loop {
+            if first_error.is_none() || options.failure != FailurePolicy::Fast {
                 while running.len() < limit {
                     let Some((name, body)) = pending.next() else {
                         break;
                     };
                     let mut child = frame.clone();
+                    child.cancel = token.clone();
                     running
                         .push(async move { (name.clone(), self.scoped(&mut child, body).await) });
                 }
-                let Some((_name, r)) = running.next().await else {
-                    break;
-                };
-                if let Err(e) = r {
-                    if options.failure == FailurePolicy::Fast {
-                        return Err(e);
+            }
+            let next = match expiry {
+                Some(at) => {
+                    match tokio::time::timeout(
+                        at.saturating_duration_since(Instant::now()),
+                        running.next(),
+                    )
+                    .await
+                    {
+                        Ok(n) => n,
+                        Err(_) => {
+                            let ms = options.timeout_ms.unwrap_or_default();
+                            token.cancel(CancelReason::Cancelled);
+                            join_all(&mut running, frame.run.close_budget()).await;
+                            return Err(RivetError::new(
+                                ErrorKind::Timeout,
+                                "timeout.concurrent",
+                                format!("concurrent group exceeded {ms} ms"),
+                            )
+                            .with_span(Some(span.clone())));
+                        }
                     }
-                    first_error.get_or_insert(e);
+                }
+                None => running.next().await,
+            };
+            let Some((_name, r)) = next else {
+                break;
+            };
+            if let Err(e) = r {
+                let fast = options.failure == FailurePolicy::Fast;
+                if first_error.is_none() && fast {
+                    token.cancel(CancelReason::Cancelled);
+                }
+                // Siblings cancelled by the first failure report `cancelled`;
+                // the first failure stays the primary error.
+                match &mut first_error {
+                    None => first_error = Some(e),
+                    Some(primary) if e.kind != ErrorKind::Cancelled && !fast => {
+                        primary.suppressed.push(e)
+                    }
+                    Some(_) => {}
+                }
+                if fast {
+                    join_all(&mut running, frame.run.close_budget()).await;
+                    break;
                 }
             }
-            match first_error {
-                Some(e) => Err(e),
-                None => Ok(Flow::Normal),
-            }
-        };
-        match options.timeout_ms {
-            Some(ms) => tokio::time::timeout(Duration::from_millis(ms), group)
-                .await
-                .unwrap_or_else(|_| {
-                    Err(RivetError::new(
-                        ErrorKind::Timeout,
-                        "timeout.concurrent",
-                        format!("concurrent group exceeded {ms} ms"),
-                    )
-                    .with_span(Some(span.clone())))
-                }),
-            None => group.await,
+        }
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(Flow::Normal),
         }
     }
 
@@ -1634,6 +1861,7 @@ impl<'a> Machine<'a> {
             machine: self,
             base: frame.clone(),
             nodes,
+            group: frame.cancel.child(),
         };
         let completion = executor.run(input, &runner).await;
         // Every node name now evaluates to its {status, result, error} envelope.
@@ -1676,9 +1904,10 @@ impl<'a> Machine<'a> {
                             ));
                         }
                         let ctx = self.ctx(frame, span);
-                        let mut v = if let Some(s) = shared_of(&handle).await {
-                            s.property(&ctx, &path[1]).await
-                        } else {
+                        let read = async {
+                            if let Some(s) = shared_of(&handle).await {
+                                return s.property(&ctx, &path[1]).await;
+                            }
                             let mut guard = handle.lock().await;
                             let h = guard.as_mut().ok_or_else(|| {
                                 RivetError::new(
@@ -1688,8 +1917,11 @@ impl<'a> Machine<'a> {
                                 )
                             })?;
                             h.property(&ctx, &path[1]).await
-                        }
-                        .map_err(|e| e.with_span(Some(span.clone())))?;
+                        };
+                        let mut v =
+                            guarded(&frame.cancel, |r| self.cancelled(frame, r, span), read)
+                                .await
+                                .map_err(|e| e.with_span(Some(span.clone())))?;
                         for seg in &path[2..] {
                             v = v.get(seg).cloned().ok_or_else(|| {
                                 runtime_err("value.missing_key", format!("no key `{seg}`"), span)
@@ -1804,11 +2036,19 @@ impl<'a> Machine<'a> {
                         .as_millis()
                         .max(1) as u64,
                     include_private: true,
+                    parent_span_id: Some(span_id(&frame.request.request_id)),
+                    cancel: frame.cancel.child(),
                 };
-                let completion = dispatcher
-                    .dispatch(child, None)
-                    .await
-                    .map_err(|e| e.with_span(Some(span.clone())))?;
+                // The child observes its own (child) token and unwinds; the
+                // parent waits for its cleanup instead of dropping it.
+                let completion = joined(
+                    &frame.cancel,
+                    frame.run.close_budget(),
+                    |r| self.cancelled(frame, r, span),
+                    dispatcher.dispatch(child, None),
+                )
+                .await
+                .map_err(|e| e.with_span(Some(span.clone())))?;
                 if completion.effects != EffectsStatus::None {
                     frame.run.commit();
                 }
@@ -2081,6 +2321,8 @@ struct RequestStreamHandle {
     rx: tokio::sync::mpsc::Receiver<Value>,
     task: Option<tokio::task::JoinHandle<RivetResult<crate::domain::contracts::Completion>>>,
     completion: Option<crate::domain::contracts::Completion>,
+    /// The child request's token (a child of the owning scope's).
+    token: CancelToken,
 }
 
 impl RequestStreamHandle {
@@ -2127,23 +2369,73 @@ impl ResourceHandle for RequestStreamHandle {
     }
 
     async fn close(mut self: Box<Self>) -> RivetResult<()> {
-        if let Some(task) = self.task.take() {
-            task.abort();
-            let _ = task.await;
+        if let Some(mut task) = self.task.take() {
+            // Cancel the child request and join its cleanup; the caller bounds
+            // this close by the grace, after which the task is aborted.
+            self.token.cancel(CancelReason::Cancelled);
+            self.rx.close();
+            let abort = task.abort_handle();
+            let _guard = AbortOnDrop(abort);
+            let _ = (&mut task).await;
         }
         Ok(())
     }
 }
 
+/// Aborts a spawned child when the join is given up (grace exceeded).
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Join every future still in a group (after its token fired) within `grace`;
+/// whatever has not finished by then is dropped.
+async fn join_all<F: std::future::Future>(running: &mut FuturesUnordered<F>, grace: Duration) {
+    let _ = tokio::time::timeout(grace, async { while running.next().await.is_some() {} }).await;
+}
+
 /// `for message in incoming`: the run's live input feed (read-only iterable).
+/// Every item is checked against the declared `receives` spec (surfaces check
+/// too; this is the last line for any feeder).
 struct IncomingHandle {
     rx: tokio::sync::mpsc::Receiver<Value>,
+    spec: Option<crate::domain::outputs::ValueSpec>,
+    seq: u64,
 }
 
 #[async_trait]
 impl ResourceHandle for IncomingHandle {
     async fn next(&mut self, _ctx: &EffectCtx) -> RivetResult<Option<Value>> {
-        Ok(self.rx.recv().await)
+        let Some(item) = self.rx.recv().await else {
+            return Ok(None);
+        };
+        self.seq += 1;
+        if let Some(spec) = &self.spec {
+            let mut violations = Vec::new();
+            spec.check(&item, "", &mut violations);
+            if let Some(v) = violations.first() {
+                return Err(RivetError::validation(
+                    "validation.input",
+                    format!(
+                        "input item {} at {} must be {}, got {}",
+                        self.seq,
+                        if v.path.is_empty() { "$" } else { &v.path },
+                        v.expected,
+                        v.found
+                    ),
+                )
+                .with_details(Value::object([
+                    ("seq", Value::Int(self.seq as i64)),
+                    ("path", Value::text(&v.path)),
+                    ("expected", Value::text(&v.expected)),
+                    ("found", Value::text(&v.found)),
+                ])));
+            }
+        }
+        Ok(Some(item))
     }
 }
 
@@ -2153,6 +2445,8 @@ struct NodeRunner<'m> {
     machine: &'m Machine<'m>,
     base: Frame,
     nodes: &'m [DagNode],
+    /// Token shared by the DAG's nodes (fail fast / dag timeout cancel it).
+    group: CancelToken,
 }
 
 #[async_trait]
@@ -2163,9 +2457,38 @@ impl crate::domain::dag::DagNodeRunner for NodeRunner<'_> {
         dependencies: Vec<(String, Value)>,
     ) -> RivetResult<Value> {
         let mut child = self.base.clone();
+        child.cancel = self.group.clone();
+        child.node_id = Some(self.nodes[index].name.clone());
         for (name, envelope) in dependencies {
             child.define(&name, envelope);
         }
-        self.machine.eval(&mut child, &self.nodes[index].expr).await
+        // A cancelled node unwinds through its own scopes; the join is bounded
+        // by the grace so the scheduler always gets the node back.
+        let grace = self.base.run.close_budget();
+        let span = self.nodes[index].span.clone();
+        let group = self.group.clone();
+        let fut = self.machine.eval(&mut child, &self.nodes[index].expr);
+        joined(
+            &group,
+            grace,
+            |r| {
+                cancel_error(
+                    &self.machine.op.id,
+                    self.base.request.deadline_ms,
+                    r,
+                    Some(&span),
+                )
+            },
+            fut,
+        )
+        .await
+    }
+
+    fn now(&self) -> std::time::SystemTime {
+        std::time::SystemTime::now()
+    }
+
+    fn cancel_nodes(&self) {
+        self.group.cancel(CancelReason::Cancelled);
     }
 }

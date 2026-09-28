@@ -58,6 +58,7 @@ pub fn session_host(
     upgrade: Arc<UpgradeFn>,
     registry: Arc<ProgramRegistry>,
     catalog_version: String,
+    limits: SessionLimits,
 ) -> SessionHost {
     let up = Arc::clone(&upgrade);
     let launch: Arc<LaunchFn> = Arc::new(move |req, sink, input| {
@@ -86,17 +87,12 @@ pub fn session_host(
             depth: 0,
             deadline_ms: 1,
             include_private: false,
+            parent_span_id: None,
+            cancel: crate::domain::cancel::CancelToken::new(),
         },
     });
     let validate: Arc<ValidateFn> = Arc::new(validate_params);
-    SessionHost::new(
-        registry,
-        launch,
-        mint,
-        validate,
-        catalog_version,
-        SessionLimits::default(),
-    )
+    SessionHost::new(registry, launch, mint, validate, catalog_version, limits)
 }
 
 impl Runtime {

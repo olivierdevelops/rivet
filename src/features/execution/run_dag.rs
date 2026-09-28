@@ -1,4 +1,5 @@
 use super::ports::DagNodeRunner;
+use crate::domain::contracts::rfc3339_millis;
 use crate::domain::dag::{DagCompletion, DagInput, NodeState, NodeStatus};
 use crate::domain::errors::{EffectsStatus, ErrorKind};
 use crate::domain::ir::FailurePolicy;
@@ -18,6 +19,8 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
     let mut state = vec![NodeState::Pending; n];
     let mut results = vec![Value::Null; n];
     let mut errors: Vec<Option<RivetError>> = vec![None; n];
+    let mut started: Vec<Option<String>> = vec![None; n];
+    let mut ended: Vec<Option<String>> = vec![None; n];
     let mut fatal: Option<RivetError> = None;
     let limit = input.limit.max(1);
     let deadline = input
@@ -75,17 +78,21 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
                                         status: NodeState::Succeeded,
                                         result: results[j].clone(),
                                         error: None,
+                                        started_at: started[j].clone(),
+                                        ended_at: ended[j].clone(),
                                     }
                                     .envelope(),
                                 )
                             })
                             .collect();
+                        // vhco:step stamp runner.now -- started_at is the wall clock when the node starts running
+                        started[i] = Some(rfc3339_millis(runner.now()));
                         running.push(async move { (i, runner.run_node(i, deps).await) });
                     }
                 }
             }
-            // After a fatal failure (and one propagation pass) stop waiting:
-            // still-running siblings are cancelled when `running` drops, not awaited.
+            // After a fatal failure (and one propagation pass) stop scheduling;
+            // still-running siblings are cancelled and joined below.
             if running.is_empty() || fatal.is_some() {
                 break;
             }
@@ -111,6 +118,7 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
                 None => running.next().await,
             };
             let Some((i, r)) = next else { break };
+            ended[i] = Some(rfc3339_millis(runner.now()));
             match r {
                 Ok(v) => {
                     state[i] = NodeState::Succeeded;
@@ -127,7 +135,28 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
                 }
             }
         }
-        // Dropping `running` here cancels every node still in flight.
+        // vhco:step cancel runner.cancel_nodes -- after a fatal error (fail fast or dag timeout) running nodes are signalled and joined: each unwinds its own scopes (closing handles) and reports back within the cleanup grace
+        if fatal.is_some() && !running.is_empty() {
+            runner.cancel_nodes();
+            while let Some((i, r)) = running.next().await {
+                ended[i] = Some(rfc3339_millis(runner.now()));
+                match r {
+                    Ok(v) => {
+                        state[i] = NodeState::Succeeded;
+                        results[i] = v;
+                    }
+                    Err(mut e) => {
+                        e.node_id = Some(input.nodes[i].id.clone());
+                        state[i] = if matches!(e.kind, ErrorKind::Cancelled | ErrorKind::Timeout) {
+                            NodeState::Cancelled
+                        } else {
+                            NodeState::Failed
+                        };
+                        errors[i] = Some(e);
+                    }
+                }
+            }
+        }
     }
     // vhco:todo report_nodes -- still-running nodes become cancelled; never-started nodes become skipped after a fatal error and blocked otherwise; each node's envelope is {status, result (null unless succeeded), error}; the fatal error carries the node list in details
     // vhco:step settle state -- final statuses and envelopes
@@ -153,22 +182,14 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
             status: state[i],
             result: results[i].clone(),
             error: errors[i].clone(),
+            started_at: started[i].clone(),
+            ended_at: ended[i].clone(),
         })
         .collect();
     // The node list is attached whether or not the failing node's error already
     // carried object details (`fail "code" {}` must not hide the node statuses).
     if let Some(e) = &mut fatal {
-        let list = Value::List(
-            nodes
-                .iter()
-                .map(|x| {
-                    Value::object([
-                        ("id", Value::text(&x.id)),
-                        ("status", Value::text(x.status.as_str())),
-                    ])
-                })
-                .collect(),
-        );
+        let list = Value::List(nodes.iter().map(NodeStatus::summary).collect());
         match &mut e.details {
             Value::Null => e.details = Value::object([("nodes", list)]),
             d @ Value::Object(_) if d.get("nodes").is_none() => d.set("nodes", list),
@@ -204,6 +225,12 @@ mod tests {
                 Err(code) => Err(RivetError::new(ErrorKind::Application, code, "boom")),
             }
         }
+
+        fn now(&self) -> std::time::SystemTime {
+            std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000)
+        }
+
+        fn cancel_nodes(&self) {}
     }
 
     fn spec(id: &str, after: &[&str]) -> DagNodeSpec {
@@ -232,8 +259,8 @@ mod tests {
         assert_eq!(c.nodes[0].envelope().get("result"), Some(&Value::Int(8)));
     }
 
-    /// Node 0 is slow (would take 30 s); every other node fails at once.
-    struct SlowSibling;
+    /// Node 0 is slow (would take 30 s unless cancelled); every other node fails at once.
+    struct SlowSibling(crate::domain::cancel::CancelToken);
 
     #[async_trait]
     impl DagNodeRunner for SlowSibling {
@@ -243,10 +270,23 @@ mod tests {
             _dependencies: Vec<(String, Value)>,
         ) -> Result<Value, RivetError> {
             if index == 0 {
-                tokio::time::sleep(Duration::from_secs(30)).await;
-                return Ok(Value::Int(1));
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => return Ok(Value::Int(1)),
+                    _ = self.0.cancelled() => {
+                        return Err(RivetError::new(ErrorKind::Cancelled, "cancelled.request", "cancelled"));
+                    }
+                }
             }
             Err(RivetError::new(ErrorKind::Application, "x.fail", "boom"))
+        }
+
+        fn now(&self) -> std::time::SystemTime {
+            std::time::SystemTime::now()
+        }
+
+        fn cancel_nodes(&self) {
+            self.0
+                .cancel(crate::domain::cancel::CancelReason::Cancelled);
         }
     }
 
@@ -265,7 +305,7 @@ mod tests {
             timeout_ms: None,
         };
         let started = Instant::now();
-        let c = run_dag(input, &SlowSibling).await;
+        let c = run_dag(input, &SlowSibling(Default::default())).await;
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "must not wait for the slow sibling"
@@ -275,6 +315,35 @@ mod tests {
             vec!["cancelled", "failed", "skipped", "blocked"]
         );
         assert_eq!(c.fatal.as_ref().unwrap().code, "x.fail");
+        // The cancelled sibling was joined: it has both timestamps; the skipped one none.
+        assert!(c.nodes[0].started_at.is_some() && c.nodes[0].ended_at.is_some());
+        assert!(c.nodes[2].started_at.is_none());
+    }
+
+    // vhco:test execution.run_dag -- G14: nodes that ran carry RFC 3339 started_at/ended_at in DagCompletion, the envelope and the fatal error's node list
+    #[tokio::test]
+    async fn node_timestamps_are_reported() {
+        let input = DagInput {
+            nodes: vec![spec("a", &[]), spec("b", &["a"]), spec("c", &["b"])],
+            failure: FailurePolicy::Fast,
+            limit: 2,
+            timeout_ms: None,
+        };
+        let c = run_dag(input, &Runner(vec![Ok(1), Err("x.fail"), Ok(3)])).await;
+        let a = &c.nodes[0];
+        assert_eq!(a.started_at.as_deref(), Some("2023-11-14T22:13:20.000Z"));
+        assert_eq!(a.ended_at.as_deref(), Some("2023-11-14T22:13:20.000Z"));
+        assert_eq!(
+            a.envelope().get("started_at"),
+            Some(&Value::text("2023-11-14T22:13:20.000Z"))
+        );
+        assert_eq!(c.nodes[2].envelope().get("started_at"), Some(&Value::Null));
+        let details = &c.fatal.as_ref().unwrap().details;
+        let Some(Value::List(nodes)) = details.get("nodes") else {
+            panic!("fatal error must list the nodes: {details:?}")
+        };
+        assert!(nodes[1].get("ended_at").is_some());
+        assert!(nodes[2].get("started_at").is_none());
     }
 
     // vhco:test execution.run_dag -- fail fast (the default) makes the first failure fatal and skips never-started nodes
