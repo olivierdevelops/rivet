@@ -1,0 +1,52 @@
+operation notes.create
+    name "Create a note"
+    description "Create a new JSON note without overwriting an existing file."
+    param text text required description "Initial note text."
+    output object description "Confirmation that the note file was created."
+        field created boolean required description "Always true on success."
+    end
+    error "conflict.already_exists" description "out/note.json already exists; it is left unchanged."
+    file create "./out/note.json" json {text: text}
+    return {created: true}
+end
+
+operation notes.read
+    name "Read a note"
+    description "Read and decode the stored note."
+    output object description "The stored note."
+        field text text required description "Current note text."
+    end
+    note = file read "./out/note.json" as json
+    return note
+end
+
+operation notes.update
+    name "Update a note"
+    description "Replace an existing note; fail when the target is missing."
+    param text text required description "Replacement note text."
+    output object description "Confirmation that the existing note was replaced."
+        field updated boolean required description "Always true on success."
+    end
+    file update "./out/note.json" json {text: text}
+    return {updated: true}
+end
+
+operation notes.delete
+    name "Delete a note"
+    description "Delete the demo note; allow it to be already absent."
+    output object description "Confirmation that no note file remains."
+        field absent boolean required description "True whether the file was deleted or already missing."
+    end
+    file delete "./out/note.json"
+        missing ok
+    end
+    return {absent: true}
+end
+
+operation notes.list
+    name "List demo files"
+    description "List names and metadata in the demo output directory."
+    output list json description "One metadata object per directory entry, sorted by name."
+    entries = file list "./out"
+    return entries
+end

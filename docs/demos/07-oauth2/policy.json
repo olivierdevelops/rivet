@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_auth", "targets": ["crm_service/service/use"]},
+    {"capability": "allow_credentials", "targets": ["crm_service/service"]},
+    {"capability": "allow_env", "targets": ["CRM_CLIENT_SECRET"]},
+    {"capability": "allow_network", "targets": ["https://auth.example.com:443", "https://api.example.com:443"]}
+  ],
+  "deny": [],
+  "network": {"deny_private_ranges": true},
+  "serve": {
+    "surfaces": ["http", "mcp"],
+    "auth": {"type": "none"}
+  }
+}

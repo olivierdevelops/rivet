@@ -1,0 +1,27 @@
+operation telemetry.status
+    name "Read UDP status"
+    description "Send one status datagram and wait for a bounded reply."
+    output object description "Status reported by the UDP peer."
+        field state text required description "Peer state; the fixture answers \"ready\"."
+    end
+    with udp "127.0.0.1:7000" as socket
+        max_datagram 8192
+        socket.send json {command: "status"}
+        return socket.receive json timeout "1s"
+    end
+end
+
+operation telemetry.receive
+    name "Receive one datagram"
+    description "Receive once and reply only to an authorized peer."
+    output object description "The received datagram and its sender."
+        field peer text required description "Sender address as host:port."
+        field value json required description "Decoded JSON datagram payload."
+    end
+    with udp bind "127.0.0.1:7001" as socket
+        max_datagram 1024
+        message = socket.receive_from json timeout "5s"
+        socket.send_to message.peer json {received: true}
+        return {peer: message.peer, value: message.data}
+    end
+end

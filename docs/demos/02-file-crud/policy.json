@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read", "targets": ["./out", "./out/**"]},
+    {"capability": "allow_write", "targets": ["./out/**"]},
+    {"capability": "allow_delete", "targets": ["./out/**"]}
+  ],
+  "deny": []
+}

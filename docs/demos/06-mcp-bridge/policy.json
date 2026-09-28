@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": ["https://mcp.example.com:443"]},
+    {"capability": "allow_mcp", "targets": ["crm/tools/search"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}

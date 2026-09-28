@@ -1,0 +1,40 @@
+operation demo.echo
+    name "Pure echo"
+    description "Return input without I/O."
+    param value text required description "Text to echo."
+    output text description "The value parameter, unchanged."
+    return value
+end
+
+operation data.read
+    name "Read public data"
+    description "Read only the explicitly allowed public JSON file."
+    output object description "Content of data/public.json."
+        field message text required description "Public demo message."
+    end
+    value = file read "./data/public.json" as json
+    return value
+end
+
+operation data.private
+    name "Try a denied read"
+    description "Attempt a path denied by the example policy."
+    output object description "Content of data/private/secret.json; never returned under the shipped policy."
+        field message text required description "Synthetic fixture message."
+    end
+    error "permission.denied" description "policy.json denies ./data/private/**; deny overrides grants."
+    value = file read "./data/private/secret.json" as json
+    return value
+end
+
+operation data.snapshot
+    name "Write a snapshot"
+    description "Read public data and create a new output file."
+    output object description "The snapshot that was written to out/snapshot.json."
+        field message text required description "Public demo message copied from data.read."
+    end
+    error "conflict.already_exists" description "out/snapshot.json already exists; it is left unchanged."
+    value = (request "data.read" {})
+    file create "./out/snapshot.json" json value
+    return value
+end

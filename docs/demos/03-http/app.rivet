@@ -1,0 +1,47 @@
+operation users.get
+    name "Get a user"
+    description "Read a user; map only an explicit upstream 404 to a declared error."
+    param id integer required min 1 description "Positive fixture user ID."
+    output object description "The requested user."
+        field id integer required description "Stable user ID."
+        field name text required description "Display name."
+    end
+    error "users.not_found" description "The fixture service answered 404 for this ID."
+    response = http get "https://api.example.com/users/${id}"
+        retry 3 on status [429, 503] backoff exponential base "100ms" max "2s" jitter true
+        accept status [200, 404]
+        decode json
+    end
+    if response.status == 404
+        fail "users.not_found" {id: id}
+    end
+    return response.body
+end
+
+operation users.create
+    name "Create a user"
+    description "POST one user without automatic replay."
+    param name text required description "Display name for the new user."
+    output object description "The user as created by the service."
+        field id integer required description "Service-assigned user ID."
+        field name text required description "Display name as stored."
+    end
+    response = http post "https://api.example.com/users"
+        body json {name: name}
+        decode json
+    end
+    return response.body
+end
+
+operation users.search
+    name "Search users"
+    description "Encode the search term as a query parameter."
+    param query text required description "Search text; URL encoding is automatic."
+    output list json description "Matching user objects, at most 10."
+    response = http get "https://api.example.com/search"
+        query q query
+        query limit 10
+        decode json
+    end
+    return response.body
+end

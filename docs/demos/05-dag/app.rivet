@@ -1,0 +1,59 @@
+operation math.double
+    name "Double a value"
+    description "Pure helper used as independent DAG work."
+    private true
+    param value integer required description "Value to double."
+    output integer description "Twice the input value."
+    return value * 2
+end
+
+operation math.sum
+    name "Sum two values"
+    description "Join two successful integer results."
+    private true
+    param a integer required description "First value."
+    param b integer required description "Second value."
+    output integer description "Sum of a and b."
+    return a + b
+end
+
+operation fixture.fail
+    name "Fail deliberately"
+    description "Return a typed fixture error."
+    private true
+    output integer description "Never produced; this helper always fails."
+    error "fixture.failure" description "Intentional failure used to show DAG blocking."
+    fail "fixture.failure" {reason: "intentional demo"}
+end
+
+pipeline report.total
+    name "Compute a DAG total"
+    description "Run two nodes independently and combine their results."
+    param a integer required description "First starting value."
+    param b integer required description "Second starting value."
+    output object description "Combined DAG result."
+        field total integer required description "(a * 2) + (b * 2)."
+    end
+    dag limit 2 timeout "5s" fail fast
+        node first = (request "math.double" {value: a})
+        node second = (request "math.double" {value: b})
+        node total after [first, second] = (request "math.sum" {a: first.result, b: second.result})
+    end
+    return {total: total.result}
+end
+
+pipeline report.partial
+    name "Inspect a partial DAG"
+    description "Keep independent success and report a blocked dependent node."
+    output object description "Final status of each DAG node."
+        field good text required description "Status of the independent node: succeeded."
+        field bad text required description "Status of the failing node: failed."
+        field blocked text required description "Status of the dependent node: blocked."
+    end
+    dag limit 2 fail independent
+        node good = (request "math.double" {value: 4})
+        node bad = (request "fixture.fail" {})
+        node blocked after [bad] = (request "math.double" {value: bad.result})
+    end
+    return {good: good.status, bad: bad.status, blocked: blocked.status}
+end

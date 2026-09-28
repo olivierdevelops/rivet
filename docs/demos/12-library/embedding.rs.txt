@@ -1,0 +1,35 @@
+// PROPOSED API SKETCH, not a compilable crate or a runtime implementation.
+// It follows the canonical Rust sketch in the revision 5 change spec (E11) line for line.
+// The host supplies the async executor (Tokio), serde_json::json! and the source bytes.
+// No public Rust crate/API exists yet. include_str! is relative to the eventual source file.
+//
+//   policy.json ──Policy::from_file──┐
+//   app.rivet  ──.source(src)────────┼──> Runtime::builder().build()
+//                                    │        │
+//                  rt.request ───────┘        ├──> Completion        (unary)
+//                  rt.scope / scope.stream ───├──> Envelope stream   (emits)
+//                  rt.outputs ────────────────└──> OutputSpec        (declared outputs)
+
+let src = include_str!("app.rivet");
+
+let rt = Runtime::builder().source(src).policy(Policy::from_file("policy.json")?).build()?;
+let c: Completion = rt.request("demo.add", json!({"a":2,"b":3}), None).await?;
+assert_eq!(c.result, json!(5));
+
+rt.scope(|scope| async move {
+    let mut s = scope.stream("events.count", json!({})).await?;   // or scope.duplex(...)
+    while let Some(item) = s.next().await? { /* Result<Option<Envelope>> */ }
+    Ok(())
+}).await?;
+
+let spec: OutputSpec = rt.outputs("demo.add")?;
+// spec.output  -> integer, description "Sum of a and b."
+// spec.emits   -> None;  spec.receives -> None;  spec.errors -> []
+
+// Notes (E11):
+// - next() returns Result<Option<Envelope>>; data items for events.count are 1, 2, 3, and the
+//   stream ends after the terminal result envelope {"count": 3}.
+// - Closures are `async move` (Rust 2024 async closures).
+// - Sinks passed to request must be Send + 'static; this sketch passes None (unary call).
+// - The runtime owns and joins cleanup when a request future is dropped.
+// - Nested requests carry parent_request_id; W3C traceparent is accepted/emitted on HTTP surfaces.

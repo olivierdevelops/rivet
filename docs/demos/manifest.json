@@ -1,0 +1,152 @@
+{
+  "status": "draft-design-only",
+  "runtime_verified": false,
+  "source_reference": "REF-2026-0002",
+  "last_updated": "2026-09-28",
+  "policy_discovery": "policy.json beside app.rivet is auto-loaded; --policy PATH selects another file; no file = deny-by-default",
+  "bundles": [
+    {
+      "folder": "01-catalog",
+      "title": "One file, four operations, every access point",
+      "stage": "A; MCP in B",
+      "policy": null,
+      "alternate_policies": ["policies/team.json"],
+      "operations": {
+        "demo.greet": "Return a greeting.",
+        "demo.add": "Add two integers; b defaults to zero.",
+        "demo.health": "Return a pure readiness response.",
+        "demo.countdown": "Emit 3, 2, 1 and return a summary; drives SSE, polling and WebSocket."
+      }
+    },
+    {
+      "folder": "02-file-crud",
+      "title": "Create, read, update and delete a file",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "notes.create": "Exclusive create.",
+        "notes.read": "Read JSON.",
+        "notes.update": "Existing-only replacement.",
+        "notes.delete": "Idempotent delete.",
+        "notes.list": "List output metadata."
+      }
+    },
+    {
+      "folder": "03-http",
+      "title": "HTTP requests and typed recovery",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "users.get": "GET with bounded safe read retries; 404 becomes declared error users.not_found.",
+        "users.create": "POST JSON without automatic retry.",
+        "users.search": "Encoded query parameters."
+      }
+    },
+    {
+      "folder": "04-streaming",
+      "title": "Streaming data and contextual cleanup",
+      "stage": "A; WebSocket in B",
+      "policy": "policy.json",
+      "alternate_policies": ["policies/websocket.json"],
+      "operations": {
+        "events.count": "Pure finite data stream.",
+        "files.chunks": "Read bounded binary chunks.",
+        "socket.ping": "Scoped WebSocket exchange."
+      }
+    },
+    {
+      "folder": "05-dag",
+      "title": "DAG dependencies and partial failures",
+      "stage": "A",
+      "policy": null,
+      "alternate_policies": [],
+      "operations": {
+        "report.total": "Parallel pure nodes followed by a join.",
+        "report.partial": "Independent success, failure and blocked descendant."
+      }
+    },
+    {
+      "folder": "06-mcp-bridge",
+      "title": "Bridge a remote MCP connector into local operations",
+      "stage": "B",
+      "policy": "policy.json",
+      "alternate_policies": ["policies/sync.json"],
+      "operations": {
+        "contacts.find": "Forward to the pinned crm.tools.search import."
+      }
+    },
+    {
+      "folder": "07-oauth2",
+      "title": "OAuth 2.0 without returning tokens",
+      "stage": "B",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "contacts.list": "Use client credentials and call the protected contacts endpoint."
+      }
+    },
+    {
+      "folder": "08-udp",
+      "title": "UDP request and separately authorized reply",
+      "stage": "B",
+      "policy": "policy.json",
+      "alternate_policies": ["policies/receive.json"],
+      "operations": {
+        "telemetry.status": "Query one UDP peer.",
+        "telemetry.receive": "Bind, receive and authorize a reply."
+      }
+    },
+    {
+      "folder": "09-quic",
+      "title": "QUIC streams and HTTP3",
+      "stage": "B",
+      "policy": "policy.json",
+      "alternate_policies": ["policies/http3.json"],
+      "operations": {
+        "engine.status": "Reliable bidirectional QUIC stream.",
+        "items.http3": "Explicit HTTP3 request."
+      }
+    },
+    {
+      "folder": "10-grpc",
+      "title": "All four gRPC call modes",
+      "stage": "B",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "users.grpc_get": "Unary GetUser.",
+        "users.watch": "Server-streaming Watch.",
+        "users.upload": "Client-streaming Upload of a finite list.",
+        "chat.exchange": "Live bidirectional Chat."
+      }
+    },
+    {
+      "folder": "11-sandbox",
+      "title": "Deny-by-default sandbox and the I/O manifest",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": ["policies/empty.json", "policies/read-only.json", "policies/create-only.json"],
+      "operations": {
+        "demo.echo": "Pure work succeeds with no I/O grants.",
+        "data.read": "Read a granted file.",
+        "data.private": "Intentional deny case.",
+        "data.snapshot": "Transitive read plus exclusive write."
+      }
+    },
+    {
+      "folder": "12-library",
+      "title": "Embed Rivet as a Rust library",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "demo.greet": "Same pure operation as the catalog sample.",
+        "demo.add": "Typed library request.",
+        "demo.health": "Pure readiness call.",
+        "events.count": "Scoped stream consumed with next()."
+      }
+    }
+  ]
+}

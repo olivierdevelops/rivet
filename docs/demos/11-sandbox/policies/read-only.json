@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read", "targets": ["../data/**"]}
+  ],
+  "deny": [
+    {"capability": "allow_read", "targets": ["../data/private/**"]}
+  ]
+}

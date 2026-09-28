@@ -1,0 +1,15 @@
+{
+  "project": {
+    "summary": "Rivet design-only repository; Rust implementation pending approval."
+  },
+  "language": {
+    "name": "rust",
+    "ext": ".rs"
+  },
+  "documentation": {
+    "readme": "README.md",
+    "dirs": [
+      "docs"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read", "targets": ["./data/**"]},
+    {"capability": "allow_write", "targets": ["./out/**"]}
+  ],
+  "deny": [
+    {"capability": "allow_read", "targets": ["./data/private/**"]}
+  ],
+  "serve": {
+    "surfaces": ["http"],
+    "auth": {"type": "none"}
+  }
+}

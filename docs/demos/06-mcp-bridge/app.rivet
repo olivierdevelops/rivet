@@ -1,0 +1,18 @@
+connector crm mcp
+    transport http "https://mcp.example.com/mcp"
+    schema "./schemas/crm.json"
+    expose tools ["search"]
+end
+
+operation contacts.find
+    name "Find contacts"
+    description "Call a reviewed remote MCP search tool through the shared registry."
+    param query text required description "Contact search text."
+    output object description "The remote MCP tool result, preserved as returned."
+        field content list json required description "MCP content blocks returned by the remote tool."
+        field structuredContent json optional description "Structured result; the fixture returns {contacts:[...]}."
+        field isError boolean required description "False on success; a true value becomes mcp.tool_failed instead."
+    end
+    error "mcp.tool_failed" description "The remote tool returned isError: true."
+    return (request "crm.tools.search" {query: query})
+end

@@ -1,0 +1,85 @@
+connector users grpc
+    endpoint "https://users.example.com:443"
+    descriptor "./schemas/users.pb"
+    service "example.Users"
+end
+
+operation users.grpc_get
+    name "Get a user over gRPC"
+    description "Read one user from the gRPC service."
+    param id text required description "User ID."
+    output object description "The example.User message."
+        field id text required description "User ID as stored by the service."
+        field name text required description "Display name."
+    end
+    response = grpc users.GetUser
+        timeout "5s"
+        message {id: id}
+    end
+    return response.message
+end
+
+operation users.watch
+    name "Watch user changes"
+    description "Emit changes until the server completes or the deadline expires."
+    param topic text required description "Subscription topic."
+    output json description "gRPC completion (final OK status and bounded trailers); opaque, not structurally checked."
+    emits object description "One example.ChatMessage per server message."
+        field text text required description "Change message text."
+    end
+    with grpc users.Watch as rpc
+        timeout "20s"
+        message {topic: topic}
+        for message in rpc
+            emit message
+        end
+        return rpc.completion
+    end
+end
+
+operation users.upload
+    name "Upload messages"
+    description "Upload a finite batch and return the accepted count."
+    param items json required description "Array of objects with a text field."
+    output object description "The example.UploadReply message."
+        field count integer required description "Number of messages the service accepted."
+    end
+    with grpc users.Upload as rpc
+        timeout "10s"
+        for item in items
+            rpc.send item
+        end
+        rpc.finish_send
+        response = rpc.result
+        return response.message
+    end
+end
+
+operation chat.exchange
+    name "Chat with the service"
+    description "Send and receive chat messages within one bounded call."
+    output json description "gRPC completion (final OK status and bounded trailers); opaque, not structurally checked."
+    emits object description "One echoed example.ChatMessage per server message."
+        field text text required description "Echoed message text."
+    end
+    receives object description "One example.ChatMessage per caller input item."
+        field text text required description "Message text to send."
+    end
+    with grpc users.Chat as rpc
+        timeout "30s"
+        concurrent limit 2 fail fast
+            task send
+                for message in incoming
+                    rpc.send message
+                end
+                rpc.finish_send
+            end
+            task receive
+                for message in rpc
+                    emit message
+                end
+            end
+        end
+        return rpc.completion
+    end
+end

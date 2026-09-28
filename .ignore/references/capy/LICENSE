@@ -1,0 +1,67 @@
+Capy Source-Available License (v1)
+
+Copyright (c) 2026 Capy authors. All rights reserved.
+
+This software (the "Software") is made publicly readable for the
+purposes of evaluation, education, and personal experimentation only.
+By accessing or using the Software you agree to all of the terms
+below.
+
+1. Permitted use
+
+   You may:
+
+   (a) View, read, and study the source code.
+   (b) Clone the repository onto a personal machine, build the
+       Software locally, and run it for personal evaluation,
+       learning, or non-production tinkering.
+
+2. Prohibited use
+
+   Without prior written permission from the copyright holder, you
+   may NOT:
+
+   (a) Use the Software, in whole or in part, in any commercial
+       product, service, or internal business workflow.
+   (b) Redistribute the Software, modified or unmodified, in source
+       or binary form, including by hosting it on a public network
+       service or bundling it with another product.
+   (c) Create derivative works, forks, or ports — including
+       translations to other languages or runtimes — for any purpose
+       other than your own private, non-public study.
+   (d) Remove, alter, or obscure this license, the copyright notice,
+       or any author attribution.
+   (e) Use the Software's name, logo, or any contributor's name to
+       promote derived materials without permission.
+
+3. No contribution license
+
+   Unsolicited contributions (pull requests, patches, design
+   suggestions submitted as code) are not accepted at this time and
+   convey no rights to the contributor. If you submit code, you
+   irrevocably grant the copyright holder a perpetual, worldwide,
+   royalty-free license to use, modify, and relicense that code, and
+   you waive any claim to it. We may close or delete unsolicited
+   contributions without review.
+
+4. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+   OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY
+   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+   CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. Termination
+
+   Any breach of this license automatically terminates your rights
+   under it. Upon termination you must delete all copies of the
+   Software in your possession.
+
+6. Contact
+
+   For commercial licensing, redistribution rights, or any other
+   permissions not granted above, contact the copyright holder
+   through the project's repository.

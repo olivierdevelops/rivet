@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": ["quic://engine.example.com:4433"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}

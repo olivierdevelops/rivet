@@ -1,0 +1,38 @@
+operation demo.greet
+    name "Greet a person"
+    description "Return a greeting for the supplied person."
+    param person text required description "The person's display name."
+    output text description "Greeting that contains the person's name."
+    return "Hello, ${person}!"
+end
+
+operation demo.add
+    name "Add two integers"
+    description "Add two signed integers and return their sum."
+    param a integer required description "First operand."
+    param b integer default 0 description "Second operand; defaults to zero."
+    output integer description "Sum of a and b."
+    return a + b
+end
+
+operation demo.health
+    name "Check availability"
+    description "Return a constant readiness response without I/O."
+    output object description "Readiness report for this catalog."
+        field ready boolean required description "True whenever the host can run pure operations."
+    end
+    return {ready: true}
+end
+
+operation demo.countdown
+    name "Count down"
+    description "Emit 3, 2, 1 as data items and then return a summary."
+    output object description "Summary returned after the last item."
+        field count integer required description "Number of items emitted."
+    end
+    emits integer description "One countdown value per item."
+    for value in [3, 2, 1]
+        emit value
+    end
+    return {count: 3}
+end

@@ -1,0 +1,41 @@
+operation events.count
+    name "Emit a finite sequence"
+    description "Emit three integers and then return a summary."
+    output object description "Summary returned after the last item."
+        field count integer required description "Number of items emitted."
+    end
+    emits integer description "One of 1, 2, 3, in order."
+    for value in [1, 2, 3]
+        emit value
+    end
+    return {count: 3}
+end
+
+operation files.chunks
+    name "Read bytes in a scope"
+    description "Emit bounded chunks from a bundled text input."
+    output json description "Always null; the file content is delivered as emitted chunks."
+    emits bytes description "Up to 65536 bytes of data/lines.txt per item, in file order."
+    with file open "./data/lines.txt" mode read as reader
+        chunk_size 65536
+        for chunk in reader
+            emit chunk
+        end
+    end
+    return null
+end
+
+operation socket.ping
+    name "Scoped WebSocket ping"
+    description "Send one ping and return one response before disposing the socket."
+    output object description "First message received after the ping."
+        open true
+        field type text required description "Message type; the fixture answers \"pong\"."
+    end
+    with websocket "wss://api.example.com/realtime" as socket
+        timeout "20s"
+        socket.send json {type: "ping"}
+        event = socket.receive json
+        return event
+    end
+end

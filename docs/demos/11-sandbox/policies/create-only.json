@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read", "targets": ["../data/public.json"], "access": ["read"]},
+    {"capability": "allow_write", "targets": ["../out/**"], "access": ["create"]}
+  ]
+}

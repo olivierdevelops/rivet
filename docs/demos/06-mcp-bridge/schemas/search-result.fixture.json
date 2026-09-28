@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"
+      }
+    ],
+    "structuredContent": {
+      "contacts": [
+        {
+          "id": "42",
+          "name": "Ada"
+        }
+      ]
+    },
+    "isError": false
+  }
+}

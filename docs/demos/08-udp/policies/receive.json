@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_listen", "targets": ["udp://127.0.0.1:7001"]},
+    {"capability": "allow_network", "targets": ["udp://127.0.0.1:7002"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}

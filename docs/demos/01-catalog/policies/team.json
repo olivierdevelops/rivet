@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "limits": {
+    "max_concurrent_requests": 64,
+    "max_call_depth": 16
+  },
+  "serve": {
+    "surfaces": [
+      "http",
+      "sse",
+      "poll",
+      "mcp"
+    ],
+    "auth": {
+      "type": "bearer",
+      "tokens": [
+        {
+          "principal": "ada",
+          "sha256": "bf7e9889975e8d9483fed456e9651d9c73470c82857bc3e6384222a1d5f7f9c6"
+        },
+        {
+          "principal": "ci",
+          "sha256": "a6c6871b8f3568d985f17c7458aff2582992a5007442b589ed5af28854bb8501"
+        }
+      ]
+    },
+    "principals": {
+      "ada": {
+        "operations": [
+          "demo.*"
+        ]
+      },
+      "ci": {
+        "operations": [
+          "demo.health"
+        ]
+      }
+    }
+  }
+}

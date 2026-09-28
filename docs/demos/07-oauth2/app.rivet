@@ -1,0 +1,25 @@
+auth crm_service oauth2
+    flow client_credentials
+    issuer "https://auth.example.com"
+    token_url "https://auth.example.com/token"
+    client_id "rivet-service"
+    client_secret env "CRM_CLIENT_SECRET"
+    client_auth basic
+    scopes ["contacts.read"]
+    resource_origins ["https://api.example.com:443"]
+    store memory
+end
+
+operation contacts.list
+    name "List protected contacts"
+    description "Acquire a service credential and call the authorized resource origin."
+    output object description "The contacts API payload; never contains the access token."
+        open true
+        field contacts list json required description "Contact objects returned by the resource server."
+    end
+    response = http get "https://api.example.com/contacts"
+        auth crm_service account "service"
+        decode json
+    end
+    return response.body
+end

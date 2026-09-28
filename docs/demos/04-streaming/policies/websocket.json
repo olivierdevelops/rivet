@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": ["wss://api.example.com:443"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}

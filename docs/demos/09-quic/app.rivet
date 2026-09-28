@@ -1,0 +1,31 @@
+operation engine.status
+    name "Read QUIC status"
+    description "Use a scoped QUIC connection and a length-prefixed bidirectional stream."
+    output object description "Engine status frame returned on the QUIC stream."
+        field state text required description "Engine state; the fixture answers \"ready\"."
+    end
+    with quic "quic://engine.example.com:4433" as connection
+        alpn "rivet-rpc/1"
+        max_streams 8
+        migration false
+        with connection.open bidi as stream
+            framing length32 endian big max_frame 1048576
+            stream.send json {action: "status"}
+            return stream.receive json timeout "5s"
+        end
+    end
+end
+
+operation items.http3
+    name "Fetch items over HTTP3"
+    description "Require HTTP3 for a read without silently falling back."
+    output object description "Items plus the negotiated HTTP version."
+        field items list json required description "Items returned by GET /items."
+        field version integer required description "Negotiated HTTP version; always 3."
+    end
+    response = http get "https://api.example.com/items"
+        version 3
+        decode json
+    end
+    return {items: response.body.items, version: response.version}
+end

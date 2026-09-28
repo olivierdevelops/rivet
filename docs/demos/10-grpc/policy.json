@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": ["https://users.example.com:443"]},
+    {
+      "capability": "allow_grpc",
+      "targets": [
+        "users/example.Users/GetUser",
+        "users/example.Users/Watch",
+        "users/example.Users/Upload",
+        "users/example.Users/Chat"
+      ]
+    }
+  ],
+  "deny": [],
+  "network": {"deny_private_ranges": true},
+  "limits": {"max_concurrent_requests": 64, "max_call_depth": 16},
+  "serve": {
+    "surfaces": ["http", "sse", "poll", "ws", "mcp"],
+    "auth": {"type": "none"}
+  }
+}

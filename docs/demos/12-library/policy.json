@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "limits": {
+    "max_concurrent_requests": 64,
+    "max_call_depth": 16,
+    "max_buffered_bytes": 268435456
+  }
+}

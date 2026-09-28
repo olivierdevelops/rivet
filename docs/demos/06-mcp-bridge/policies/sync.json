@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "grants": [
+    {
+      "capability": "allow_network",
+      "targets": [
+        "https://mcp.example.com:443"
+      ]
+    },
+    {
+      "capability": "allow_mcp",
+      "targets": [
+        "crm/discover"
+      ]
+    },
+    {
+      "capability": "allow_write",
+      "targets": [
+        "../schemas/crm.next.json"
+      ]
+    }
+  ],
+  "network": {
+    "deny_private_ranges": true
+  }
+}

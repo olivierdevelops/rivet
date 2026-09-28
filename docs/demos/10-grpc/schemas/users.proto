@@ -1,0 +1,14 @@
+syntax = "proto3";
+package example;
+
+service Users {
+  rpc GetUser (GetUserRequest) returns (User);
+  rpc Watch (WatchRequest) returns (stream ChatMessage);
+  rpc Upload (stream ChatMessage) returns (UploadReply);
+  rpc Chat (stream ChatMessage) returns (stream ChatMessage);
+}
+message GetUserRequest { string id = 1; }
+message User { string id = 1; string name = 2; }
+message WatchRequest { string topic = 1; }
+message ChatMessage { string text = 1; }
+message UploadReply { int32 count = 1; }
