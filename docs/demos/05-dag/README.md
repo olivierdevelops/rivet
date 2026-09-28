@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -63,7 +63,7 @@ The private helpers `math.double`, `math.sum` and `fixture.fail` are not in the 
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17, review fix E6) and S44–S47 and S109. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17, review fix E6) and S44–S47 and S109. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -157,7 +157,7 @@ rivet --file app.rivet io --all --check-policy
 **I/O manifest.** `--all` adds the three private helpers. Following every DAG node transitively still finds no effect site:
 
 ```text
-TARGET   ACCESS   CAPABILITY   USED BY
+TARGET   ACCESS   CAPABILITY   ORIGIN   PHASE   NEEDS FILE   USED BY
 (no application effect sites: report.partial, report.total and private
  helpers fixture.fail, math.double, math.sum are pure)
 ```
@@ -194,12 +194,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` header gains ORIGIN, PHASE, NEEDS FILE (still no sites); verified-against revision 8. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: `io --all --by target` shows no sites; `io --all --check-policy` exits 0 under deny-by-default. |
 | 2 | 2026-09-28 | Claude | UQ-17: Capy prefix `(request …)` calls, `timeout "5s"`, declared outputs and `fixture.failure` error; removed `--sandbox ""` (no policy.json = deny-by-default); node envelope/state machine per E6; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

@@ -1,0 +1,655 @@
+# rivet.capy — Rivet surface grammar (spike v0)
+# Capy owns statement shapes, blocks, value expressions and spans.
+# Rivet lowering owns option-tail validation and semantics.
+extension json
+
+comments
+    line "#"
+end
+
+type OpId
+    pattern "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"
+end
+
+# ---------------------------------------------------------------- closers
+function end
+end
+
+# ---------------------------------------------------------------- declarations
+function operation
+    arg literal "operation"
+    arg capture id dotted_ident
+    block_closer end
+end
+
+function pipeline
+    arg literal "pipeline"
+    arg capture id dotted_ident
+    block_closer end
+end
+
+function connector
+    arg literal "connector"
+    arg capture name ident
+    arg capture kind ident
+    block_closer end
+end
+
+function auth_profile
+    arg literal "auth"
+    arg capture name ident
+    arg capture kind ident
+    when_followed_by indent
+    block_closer end
+end
+
+function auth_use
+    arg literal "auth"
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+# ---------------------------------------------------------------- header lines
+function name
+    arg literal "name"
+    arg capture value string
+end
+
+function description
+    arg literal "description"
+    arg capture value string
+end
+
+function private
+    arg literal "private"
+    arg capture value bool
+end
+
+function param
+    arg literal "param"
+    arg capture name ident
+    arg capture rest tail
+end
+
+function output_block
+    arg literal "output"
+    arg capture rest tail
+    when_followed_by indent
+    block_closer end
+end
+
+function output
+    arg literal "output"
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+function emits_block
+    arg literal "emits"
+    arg capture rest tail
+    when_followed_by indent
+    block_closer end
+end
+
+function emits
+    arg literal "emits"
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+function receives_block
+    arg literal "receives"
+    arg capture rest tail
+    when_followed_by indent
+    block_closer end
+end
+
+function receives
+    arg literal "receives"
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+function field_block
+    arg literal "field"
+    arg capture name ident
+    arg capture rest tail
+    when_followed_by indent
+    block_closer end
+end
+
+function field
+    arg literal "field"
+    arg capture name ident
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+function declared_error
+    arg literal "error"
+    arg capture code string
+    arg capture rest tail default ""
+end
+
+function secret
+    arg literal "secret"
+    arg capture name ident
+    arg capture rest tail
+end
+
+# ---------------------------------------------------------------- body statements
+function return
+    arg literal "return"
+    arg capture value any
+    arg capture rest tail default ""
+end
+
+function yield
+    arg literal "yield"
+    arg capture value any
+    arg capture rest tail default ""
+end
+
+function emit
+    arg literal "emit"
+    arg capture value any
+    arg capture rest tail default ""
+end
+
+function fail
+    arg literal "fail"
+    arg capture code string
+    arg capture details any default "null"
+end
+
+function break
+    arg literal "break"
+end
+
+function if
+    arg literal "if"
+    arg capture cond any
+    block_closer end
+end
+
+function while
+    arg literal "while"
+    arg capture cond any
+    block_closer end
+end
+
+function for
+    arg literal "for"
+    arg capture var ident
+    arg literal "in"
+    arg capture iter any
+    block_closer end
+end
+
+# try body ends at the dedent; the following `catch … end` sibling is paired by Rivet lowering
+function try
+    arg literal "try"
+    block_dedent
+end
+
+function catch
+    arg literal "catch"
+    arg capture filter tail
+    block_closer end
+end
+
+function dag
+    arg literal "dag"
+    arg capture rest tail default ""
+    block_closer end
+end
+
+function node
+    arg literal "node"
+    arg capture name ident
+    arg literal "="
+    arg capture value any
+end
+
+function node_after
+    arg literal "node"
+    arg capture name ident
+    arg literal "after"
+    arg capture deps any
+    arg literal "="
+    arg capture value any
+end
+
+function concurrent
+    arg literal "concurrent"
+    arg capture rest tail default ""
+    block_closer end
+end
+
+function task
+    arg literal "task"
+    arg capture name ident
+    block_closer end
+end
+
+function iterate
+    arg literal "iterate"
+    arg capture rest tail
+    block_closer end
+end
+
+function with
+    arg literal "with"
+    arg capture rest tail
+    block_closer end
+end
+
+function file
+    arg literal "file"
+    arg capture rest tail
+    when_not_followed_by indent
+end
+
+function file_block
+    arg literal "file"
+    arg capture rest tail
+    when_followed_by indent
+    block_closer end
+end
+
+# results = map item in [..] limit N \n ... yield v \n end
+function assign_map
+    arg capture var ident
+    arg literal "="
+    arg literal "map"
+    arg capture item ident
+    arg literal "in"
+    arg capture iter any
+    arg capture rest tail default ""
+    block_closer end
+end
+
+# status = poll every "1s" until … \n … end
+function assign_poll
+    arg capture var ident
+    arg literal "="
+    arg literal "poll"
+    arg capture rest tail default ""
+    block_closer end
+end
+
+# x = value [rest]            (flat)
+function assign
+    priority -1
+    arg capture var ident
+    arg literal "="
+    arg capture value any
+    arg capture rest tail default ""
+    when_not_followed_by indent
+end
+
+# x = http get "url" \n options... end
+function assign_block
+    priority -1
+    arg capture var ident
+    arg literal "="
+    arg capture value any
+    arg capture rest tail default ""
+    when_followed_by indent
+    block_closer end
+end
+
+# x += value
+function append_assign
+    arg capture var ident
+    arg literal "+="
+    arg capture value any
+end
+
+# socket.send json {...}  /  rpc.finish_send  /  process.stdin.send json {...}
+function member_call
+    priority -2
+    arg capture obj ident
+    arg literal "."
+    arg capture method dotted_ident
+    arg capture rest tail default ""
+end
+
+# (request "id" {...})  — bare call statement; only a parenthesised prefix call
+type ParenCall
+    group_open "("
+    group_close ")"
+end
+
+function call_stmt
+    priority -3
+    bare
+    arg capture call ParenCall
+end
+
+# ---------------------------------------------------------------- option lines (arguments validated by Rivet per resource)
+
+function opt_decode
+    arg literal "decode"
+    arg capture rest tail default ""
+end
+
+function opt_timeout
+    arg literal "timeout"
+    arg capture rest tail default ""
+end
+
+function opt_body
+    arg literal "body"
+    arg capture rest tail default ""
+end
+
+function opt_framing
+    arg literal "framing"
+    arg capture rest tail default ""
+end
+
+function opt_max_datagram
+    arg literal "max_datagram"
+    arg capture rest tail default ""
+end
+
+function opt_alpn
+    arg literal "alpn"
+    arg capture rest tail default ""
+end
+
+function opt_stream
+    arg literal "stream"
+    arg capture rest tail default ""
+end
+
+function opt_expose
+    arg literal "expose"
+    arg capture rest tail default ""
+end
+
+function opt_message
+    arg literal "message"
+    arg capture rest tail default ""
+end
+
+function opt_tls
+    arg literal "tls"
+    arg capture rest tail default ""
+end
+
+function opt_flow
+    arg literal "flow"
+    arg capture rest tail default ""
+end
+
+function opt_issuer
+    arg literal "issuer"
+    arg capture rest tail default ""
+end
+
+function opt_token_url
+    arg literal "token_url"
+    arg capture rest tail default ""
+end
+
+function opt_client_id
+    arg literal "client_id"
+    arg capture rest tail default ""
+end
+
+function opt_client_auth
+    arg literal "client_auth"
+    arg capture rest tail default ""
+end
+
+function opt_scopes
+    arg literal "scopes"
+    arg capture rest tail default ""
+end
+
+function opt_resource_origins
+    arg literal "resource_origins"
+    arg capture rest tail default ""
+end
+
+function opt_store
+    arg literal "store"
+    arg capture rest tail default ""
+end
+
+function opt_header
+    arg literal "header"
+    arg capture rest tail default ""
+end
+
+function opt_query
+    arg literal "query"
+    arg capture rest tail default ""
+end
+
+function opt_accept
+    arg literal "accept"
+    arg capture rest tail default ""
+end
+
+function opt_args
+    arg literal "args"
+    arg capture rest tail default ""
+end
+
+function opt_transport
+    arg literal "transport"
+    arg capture rest tail default ""
+end
+
+function opt_schema
+    arg literal "schema"
+    arg capture rest tail default ""
+end
+
+function opt_max_streams
+    arg literal "max_streams"
+    arg capture rest tail default ""
+end
+
+function opt_migration
+    arg literal "migration"
+    arg capture rest tail default ""
+end
+
+function opt_version
+    arg literal "version"
+    arg capture rest tail default ""
+end
+
+function opt_missing
+    arg literal "missing"
+    arg capture rest tail default ""
+end
+
+function opt_client_secret
+    arg literal "client_secret"
+    arg capture rest tail default ""
+end
+
+function opt_endpoint
+    arg literal "endpoint"
+    arg capture rest tail default ""
+end
+
+function opt_descriptor
+    arg literal "descriptor"
+    arg capture rest tail default ""
+end
+
+function opt_service
+    arg literal "service"
+    arg capture rest tail default ""
+end
+
+function opt_env
+    arg literal "env"
+    arg capture rest tail default ""
+end
+
+function opt_overwrite
+    arg literal "overwrite"
+    arg capture rest tail default ""
+end
+
+function opt_chunk_size
+    arg literal "chunk_size"
+    arg capture rest tail default ""
+end
+
+function opt_retry
+    arg literal "retry"
+    arg capture rest tail default ""
+end
+
+function opt_bind
+    arg literal "bind"
+    arg capture rest tail default ""
+end
+
+function opt_interface
+    arg literal "interface"
+    arg capture rest tail default ""
+end
+
+function opt_open
+    arg literal "open"
+    arg capture rest tail default ""
+end
+
+function opt_redirect
+    arg literal "redirect"
+    arg capture rest tail default ""
+end
+
+function opt_unix
+    arg literal "unix"
+    arg capture rest tail default ""
+end
+
+function opt_stdin
+    arg literal "stdin"
+    arg capture rest tail default ""
+end
+
+function opt_interactive
+    arg literal "interactive"
+    arg capture rest tail default ""
+end
+
+function opt_if_version
+    arg literal "if_version"
+    arg capture rest tail default ""
+end
+
+function opt_debounce
+    arg literal "debounce"
+    arg capture rest tail default ""
+end
+
+function opt_until
+    arg literal "until"
+    arg capture rest tail default ""
+end
+
+function opt_allow
+    arg literal "allow"
+    arg capture rest tail default ""
+end
+
+function opt_pkce
+    arg literal "pkce"
+    arg capture rest tail default ""
+end
+
+function opt_authorization_url
+    arg literal "authorization_url"
+    arg capture rest tail default ""
+end
+
+function opt_redirect_uri
+    arg literal "redirect_uri"
+    arg capture rest tail default ""
+end
+
+function opt_device_url
+    arg literal "device_url"
+    arg capture rest tail default ""
+end
+
+function opt_datagrams
+    arg literal "datagrams"
+    arg capture rest tail default ""
+end
+
+function opt_metadata
+    arg literal "metadata"
+    arg capture rest tail default ""
+end
+
+function opt_reconnect
+    arg literal "reconnect"
+    arg capture rest tail default ""
+end
+
+function opt_resume
+    arg literal "resume"
+    arg capture rest tail default ""
+end
+
+function opt_cwd
+    arg literal "cwd"
+    arg capture rest tail default ""
+end
+
+function opt_max_frame
+    arg literal "max_frame"
+    arg capture rest tail default ""
+end
+
+function opt_limit
+    arg literal "limit"
+    arg capture rest tail default ""
+end
+
+function opt_multicast
+    arg literal "multicast"
+    arg capture rest tail default ""
+end
+
+function opt_peer
+    arg literal "peer"
+    arg capture rest tail default ""
+end
+
+function opt_ttl
+    arg literal "ttl"
+    arg capture rest tail default ""
+end
+
+function opt_loopback
+    arg literal "loopback"
+    arg capture rest tail default ""
+end
+
+function opt_max_body
+    arg literal "max_body"
+    arg capture rest tail default ""
+end
+
+function opt_audience
+    arg literal "audience"
+    arg capture rest tail default ""
+end
+
+function opt_resource
+    arg literal "resource"
+    arg capture rest tail default ""
+end

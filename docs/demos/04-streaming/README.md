@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -52,7 +52,7 @@ Streaming data and contextual cleanup. Delivery stage: **A; WebSocket in B**. Re
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S19, S41, S70–S73. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S19, S41, S70–S73. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -160,9 +160,9 @@ rivet --file app.rivet --policy ./policies/websocket.json io socket.ping --check
 **`io --by target`**. `events.count` is pure and contributes no rows:
 
 ```text
-TARGET                      ACCESS              CAPABILITY      USED BY
-./data/lines.txt            read                allow_read      files.chunks
-wss://api.example.com:443   connect GET (ws)    allow_network   socket.ping
+TARGET                      ACCESS              CAPABILITY      ORIGIN            PHASE     NEEDS FILE   USED BY
+./data/lines.txt            read                allow_read      with file open    body      yes          files.chunks
+wss://api.example.com:443   connect GET (ws)    allow_network   with websocket    connect   —            socket.ping
 ```
 
 **`io --check-policy`** with the default [policy.json](policy.json), which grants only `allow_read ./data/**`:
@@ -205,12 +205,13 @@ A streaming operation invoked without `--stream` on the CLI, or without SSE/poll
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE (`with file open` read needs its file). |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: `io --by target` and `io --check-policy` (socket.ping denied under policy.json, allowed under policies/websocket.json). |
 | 2 | 2026-09-28 | Claude | UQ-17: declared outputs/emits with descriptions (`open true` on socket.ping); quoted `timeout "20s"`; `--sandbox` variants replaced by policy.json and policies/websocket.json; serve without `--transport`; `stream.required` code; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -58,7 +58,7 @@ OAuth 2.0 without returning tokens. Delivery stage: **B**. Read [app.rivet](app.
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S84 and S93. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S84 and S93. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -156,12 +156,12 @@ rivet --file app.rivet io --check-policy
 **`io --by target`**. One `http get … auth crm_service` line expands into every effect a token acquisition or refresh may need. They are listed even when a cached token would be reused:
 
 ```text
-TARGET                         ACCESS         CAPABILITY          USED BY
-env CRM_CLIENT_SECRET          read           allow_env           contacts.list (secret, bound to https://auth.example.com:443)
-crm_service/service            read, write    allow_credentials   contacts.list
-crm_service/service            use            allow_auth          contacts.list
-https://auth.example.com:443   connect POST   allow_network       contacts.list (token endpoint)
-https://api.example.com:443    connect GET    allow_network       contacts.list
+TARGET                         ACCESS         CAPABILITY          ORIGIN              PHASE     NEEDS FILE   USED BY
+env CRM_CLIENT_SECRET          read           allow_env           client_secret env   body      —            contacts.list (secret, bound to https://auth.example.com:443)
+crm_service/service            read, write    allow_credentials   auth                body      —            contacts.list
+crm_service/service            use            allow_auth          auth                body      —            contacts.list
+https://auth.example.com:443   connect POST   allow_network       token_url           connect   —            contacts.list (token endpoint)
+https://api.example.com:443    connect GET    allow_network       http get            connect   —            contacts.list
 ```
 
 **`io --check-policy`** with the auto-discovered [policy.json](policy.json). Every site is allowed, so it exits 0:
@@ -208,12 +208,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`client_secret env`, `auth`, `token_url`, `http get`), PHASE and NEEDS FILE. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: env/credential/auth/network sites by target and `io --check-policy` (all allowed). |
 | 2 | 2026-09-28 | Claude | UQ-17: declared open output; policy.json auto-discovered with `serve` surfaces/auth; `serve --listen` replaces `--transport http … --mcp`; outputs route; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

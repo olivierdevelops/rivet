@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -51,7 +51,7 @@ Bridge a remote MCP connector into local operations. Delivery stage: **B**. Read
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S52–S54 and S58–S60. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S52–S54 and S58–S60. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -150,6 +150,7 @@ rivet --file app.rivet check --strict-docs
 rivet --file app.rivet io --by target
 rivet --file app.rivet io --check-policy
 rivet --file app.rivet io --strict --include-bootstrap --format json
+rivet --file app.rivet io --needs --include-bootstrap
 ```
 
 `check --strict-docs` passes: the public operation describes its param, output and fields. The body has no `fail`, and `mcp.tool_failed` is declared for documentation.
@@ -157,9 +158,9 @@ rivet --file app.rivet io --strict --include-bootstrap --format json
 **`io --by target`**. The call to the imported `crm.tools.search` produces two sites: the HTTP transport connection declared on the connector (line 2) and the logical MCP tool call (line 17):
 
 ```text
-TARGET                        ACCESS         CAPABILITY      USED BY
-https://mcp.example.com:443   connect POST   allow_network   contacts.find (via crm.tools.search)
-crm/tools/search              call tool      allow_mcp       contacts.find (via crm.tools.search)
+TARGET                        ACCESS         CAPABILITY      ORIGIN           PHASE     NEEDS FILE   USED BY
+https://mcp.example.com:443   connect POST   allow_network   transport http   connect   —            contacts.find (via crm.tools.search)
+crm/tools/search              call tool      allow_mcp       request          body      —            contacts.find (via crm.tools.search)
 ```
 
 **`io --check-policy`** with the auto-discovered [policy.json](policy.json):
@@ -172,6 +173,24 @@ contacts.find   mcp       call tool      crm/tools/search              opaque_re
 ```
 
 Both sites are allowed, so it exits 0. The tool name is exact, but what the remote server does with it is `opaque_remote`, so the manifest reports `complete: false` and `--strict` exits **7** (inspection incomplete). This is expected and is not a syntax error. Under [policies/sync.json](policies/sync.json), the tool call is `denied` (that file grants only `crm/discover`), and `io --check-policy` exits 3. `connectors sync` is a host command, not an operation, so it is not in the manifest. `--include-bootstrap` lists `./schemas/crm.json` as a descriptor/schema read.
+
+**The connector `schema` file is a bootstrap read, not an operation site.** `schema "./schemas/crm.json"` (app.rivet:3) is a file-valued option at connector level, so it is read when the bundle is assembled. It carries the same site fields as every other site, but it is never granted by policy.json or by `policy generate`:
+
+```text
+KEY         SITE                              ORIGIN                     PHASE   REQUIRES_EXISTING   SECRET
+bootstrap   file read ./schemas/crm.json      option schema              load    yes                 no
+            (app.rivet:3)                     — never granted; a missing file fails the bundle load (not_found, exit 4)
+```
+
+`rivet --file app.rivet io --needs --include-bootstrap` lists it under its own heading:
+
+```text
+bundle load needs:
+  ./schemas/crm.json    (schema)
+contacts.find needs no existing files.
+```
+
+`io --needs` without `--include-bootstrap` prints only `contacts.find needs no existing files.`: the operation needs no existing files of its own. If the schema file were missing, the bundle would not load at all, so it can never be a per-operation need.
 
 `--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: the bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. It is listed for transparency, never granted to scripts. Sandbox guarantees apply to **script-initiated effects through brokered adapters**. `io` performs no I/O and evaluates no source expression. Exit codes: 3 when `--check-policy` finds a reachable site denied or partial; 7 with `--strict` when any site is dynamic or opaque (`complete: false`); otherwise 0.
 
@@ -203,12 +222,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE; connector `schema` shown as a bootstrap `load` read with new fields; `io --needs --include-bootstrap` `bundle load needs` excerpt. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: transport + tool-call sites by target, `io --check-policy` (allowed; denied under policies/sync.json), opaque_remote → `--strict` exit 7. |
 | 2 | 2026-09-28 | Claude | UQ-17: prefix `(request …)` call; declared output and `mcp.tool_failed`; `--sandbox` grants moved to policy.json and policies/sync.json; `serve --stdio` replaces `--transport mcp-stdio`; snapshot approval via policy.json; `io --strict` exit 7; View outputs and strict-docs. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

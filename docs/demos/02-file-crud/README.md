@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -54,7 +54,7 @@ Create, read, update and delete a file. Delivery stage: **A**. Read [app.rivet](
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S33–S39. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S33–S39. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -138,6 +138,7 @@ Delete needs its own `allow_delete`; write authority does not imply it. Write an
 rivet --file app.rivet check --strict-docs
 rivet --file app.rivet io --by target
 rivet --file app.rivet io --check-policy
+rivet --file app.rivet io --needs
 rivet --file app.rivet io --access create,update,delete
 rivet --file app.rivet policy explain notes.delete --params '{}' --json
 ```
@@ -147,11 +148,25 @@ rivet --file app.rivet policy explain notes.delete --params '{}' --json
 **`io --by target`** shows what each path is used for. Every target is a literal path, so knowledge is `exact`:
 
 ```text
-TARGET            ACCESS                               CAPABILITY      USED BY
-./out/note.json   read, stat, create, update, delete   allow_read,     notes.create, notes.delete,
-                                                       allow_write,    notes.read, notes.update
-                                                       allow_delete
-./out             list                                 allow_read      notes.list
+TARGET            ACCESS                               CAPABILITY      ORIGIN         PHASE   NEEDS FILE     USED BY
+./out/note.json   read, stat, create, update, delete   allow_read,     file create,   body    yes: read,     notes.create, notes.delete,
+                                                       allow_write,    file delete,           stat, update   notes.read, notes.update
+                                                       allow_delete    file read,
+                                                                       file update
+./out             list                                 allow_read      file list      body    yes            notes.list
+```
+
+The row for `./out/note.json` is mixed: `file read` and both `file update` sites need an existing note, while `file create` makes it and `file delete … missing ok` tolerates its absence. `io --needs` shows the same thing per operation:
+
+```text
+notes.create needs no existing files.
+notes.delete needs no existing files.
+notes.list needs, before it can run:
+  ./out                 (file list)
+notes.read needs, before it can run:
+  ./out/note.json       (file read)
+notes.update needs, before it can run:
+  ./out/note.json       (file update)
 ```
 
 **Each source verb maps to exactly one access verb.** `file update` produces two sites, because it checks that the file exists (stat) before replacing it:
@@ -211,12 +226,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE (mixed `yes: read, stat, update` row); added `io --needs` output. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: `io --by target`, source-verb → access-verb map (create/update/delete), `io --check-policy` against policy.json, `--access` filter and create-only narrowing. |
 | 2 | 2026-09-28 | Claude | UQ-17: declared/described outputs and a declared conflict error; policy.json auto-discovery replaces `--policy policy.json` and `--sandbox` text; added View outputs, strict-docs, bootstrap and exit-code expectations. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

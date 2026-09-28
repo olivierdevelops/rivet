@@ -3,7 +3,7 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "PROPOSED, NOT APPROVED: revision 6 Rust/Capy runtime with many described operations per file, declared and described outputs viewable from every surface (rivet outputs, GET /v1/operations/{id}/outputs, MCP rivet.outputs, Runtime::outputs), policy configured only by a policy.json file (absent file = deny-by-default for new application I/O), and one `rivet serve` listener that mounts HTTP, SSE, polling, WebSocket and MCP at once behind one authentication -> principal -> operation-authorization path. Revision 6 (UQ-18/R26) adds a generated I/O manifest: `rivet io` lists every effect site with its normalized target (URL, path, host:port, env var, connector method), fine-grained access verbs (read, list, stat, watch, create, update, append, delete, connect, bind, listen, exec, call, use, ...) and the policy capability that permits it, viewable by operation, target or capability, filterable by kind/access, rendered as table/json/markdown/csv, checked against policy.json (--check-policy) and turned into a least-privilege draft by `rivet policy generate`; policy.json grants and deny entries gain optional `access` narrowing. Also covers full gRPC call modes, bounded sessions, OAuth 2.0, UDP and QUIC/HTTP3, Capy prefix-call syntax and a single error registry (code -> kind -> HTTP -> exit -> retryable). Approval gates: G-LIC (Capy owner relicenses to MIT) and the Capy parser spike (every S01-S120 example and docs/demos .rivet file parses cleanly). No runtime implementation exists. Companion draft sample bundles under docs/demos/ illustrate the contract; they do not implement or approve the runtime."
+    "summary": "APPROVED (ADR-0001, 2026-09-28), NOT IMPLEMENTED: revision 8 Rust/Capy runtime with many described operations per file, declared and described outputs viewable from every surface (rivet outputs, GET /v1/operations/{id}/outputs, MCP rivet.outputs, Runtime::outputs), policy configured only by a policy.json file (absent file = deny-by-default for new application I/O), and one `rivet serve` listener that mounts HTTP, SSE, polling, WebSocket and MCP at once behind one authentication -> principal -> operation-authorization path. Revision 6 (UQ-18/R26) adds a generated I/O manifest: `rivet io` lists every effect site with its normalized target (URL, path, host:port, env var, connector method), fine-grained access verbs (read, list, stat, watch, create, update, append, delete, connect, bind, listen, exec, call, use, ...) and the policy capability that permits it, viewable by operation, target or capability, filterable by kind/access, rendered as table/json/markdown/csv, checked against policy.json (--check-policy) and turned into a least-privilege draft by `rivet policy generate`; policy.json grants and deny entries gain optional `access` narrowing. Revision 8 (TASK-005, approved by ADR-0001) adds option-derived file sites: every file-valued option line (tls ca_file/cert_file/key_file, http `body file`, operation-level descriptor) is its own allow_read site; every site carries origin (statement or option), phase (load|before_connect|connect|body|cleanup), requires_existing and secret; `rivet io --needs` lists, per operation, the files that must already exist before it can run, and `--check-files` stats them through the policy broker (exit 4 when one is missing, 3 when stat is not permitted); `policy generate` grants option-derived paths exactly with access [read]. Also covers full gRPC call modes, bounded sessions, OAuth 2.0, UDP and QUIC/HTTP3, Capy prefix-call syntax and a single error registry (code -> kind -> HTTP -> exit -> retryable). Approval gates G-DESIGN, G-CONTRACT and G-LIC are closed (ADR-0001; the maintainer owns Capy); the remaining entry gate for code is the Capy parser spike G-SPIKE (every S01-S159 example and docs/demos .rivet file parses cleanly). No runtime implementation exists. Companion draft sample bundles under docs/demos/ illustrate the contract; they do not implement or approve the runtime."
   },
   "definition": {
     "features": [
@@ -534,6 +534,21 @@
                     "out": "TraceResult"
                   }
                 ]
+              },
+              {
+                "name": "FileProbe",
+                "functions": [
+                  {
+                    "name": "stat",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "FileProbeInput"
+                      }
+                    ],
+                    "out": "FileProbeResult"
+                  }
+                ]
               }
             ],
             "todos": [
@@ -543,11 +558,15 @@
               },
               {
                 "id": "walk_effects",
-                "todo": "Ask Registry.effect_sites for the lowered effect sites of each selected operation from the immutable compiled catalog (never re-parse, never connect). One source line can yield several sites and each is kept: `file update` = stat + update, `with file open ... mode read` = read, an MCP stdio call = process exec + mcp call, an MCP/gRPC HTTP call = network connect + mcp/grpc call, an OAuth `auth` attachment = env read of the client secret + credential read/write + auth use + token-endpoint connect + resource connect. Retain branch conditions, source spans and secrets (with the origins they are bound to). Classify knowledge as exact | bounded | param_dependent | dynamic | opaque_remote | opaque_native; a connector's remote side effects are opaque_remote, a native host callback is opaque_native. With include_bootstrap, list the fixed runtime-internal sites separately under `bootstrap` (bundle + imports, policy.json, CA bundle, resolv.conf/system resolver, tzdata, descriptor/schema files, stdin/stdout/stderr) which are never granted to scripts."
+                "todo": "Ask Registry.effect_sites for the lowered effect sites of each selected operation from the immutable compiled catalog (never re-parse, never connect). One source line can yield several sites and each is kept: `file update` = stat + update, `with file open ... mode read` = read, an MCP stdio call = process exec + mcp call, an MCP/gRPC HTTP call = network connect + mcp/grpc call, an OAuth `auth` attachment = env read of the client secret + credential read/write + auth use + token-endpoint connect + resource connect. Retain branch conditions, source spans and secrets (with the origins they are bound to). Classify knowledge as exact | bounded | param_dependent | dynamic | opaque_remote | opaque_native; a connector's remote side effects are opaque_remote, a native host callback is opaque_native. With include_bootstrap, list the fixed runtime-internal sites separately under `bootstrap` (bundle + imports, policy.json, CA bundle, resolv.conf/system resolver, tzdata, descriptor/schema files, stdin/stdout/stderr) which are never granted to scripts. Every file-valued option line is its own site (kind file, access [read], capability allow_read): `tls ca_file`, `tls cert_file`, `tls key_file` in http/with http/with websocket/with quic/with tcp blocks and in grpc/mcp(http transport) connectors (a connector's option sites appear under every operation that calls it), `body file PATH` and `body multipart` `file NAME PATH` upload sources and an operation-level `descriptor PATH`. Connector-level `descriptor`/`schema` files stay bootstrap reads (never granted to scripts) but carry the same fields."
               },
               {
                 "id": "derive_access",
                 "todo": "Map every site to its access verbs and capability with the fixed table: file read|list|stat|watch -> allow_read; file create|update|append -> allow_write; file delete -> allow_delete; network connect -> allow_network (plus `protocol` http1|http2|http3|ws|sse|grpc|quic|udp|tcp and, for HTTP, `method` GET/POST/...; a WebSocket upgrade is connect with protocol ws); network bind|listen|multicast_join -> allow_listen; process exec -> allow_exec; env read -> allow_env; pipe read|write -> allow_pipe; unix connect|listen -> allow_unix; mcp call (tool|resource|prompt) -> allow_mcp; grpc call (unary|server_stream|client_stream|bidi) -> allow_grpc; auth use|manage|status -> allow_auth; credential read|write -> allow_credentials. Source verbs map one-to-one: `file create` -> create (exclusive), `file update` -> stat + update, `file delete` -> delete, `file list` -> list, `file read` -> read."
+              },
+              {
+                "id": "classify_phase",
+                "todo": "Give every site origin, phase, requires_existing and secret. origin = SiteOrigin{statement} for the statement that produced it (file read, file create, http get, with tcp, grpc, secret, command, ...) or SiteOrigin{option} for an option line (tls ca_file, tls cert_file, tls key_file, body file, descriptor, schema, endpoint, transport command). phase = load (bundle load/assembly: descriptor/schema, operation-level descriptor) | before_connect (read to build a connection: tls files) | connect (open a connection or spawn a process: network/unix connect, process exec) | body (statements and body options: file statements, body file, env read by secret, mcp/grpc calls, send/receive) | cleanup (finally blocks and scope disposal). requires_existing (file sites only; false otherwise) = true when the file must already exist when the operation starts (read, stat, list, update's stat and update, delete without `missing ok`, every option-derived read); false when the site creates it (create, write, append), when a missing file is tolerated (`missing ok`), or when the same operation creates the same normalized target earlier in source order (e.g. `file create ./out/report.json` then `body file ./out/report.json`). A missing requires_existing file fails at that site with not_found (exit 4); for load/before_connect files that happens before the block dials, so the block causes no effect. secret = true when the content read is secret material (tls key_file, env read by a `secret` statement); the path is always shown, the content is never read by inspection and is redacted in traces."
               },
               {
                 "id": "normalize_targets",
@@ -563,11 +582,19 @@
               },
               {
                 "id": "group_view",
-                "todo": "Filter by kind and by access (a site matches when any of its verbs is in the requested list; an access verb that does not belong to the requested kind is validation, exit 2). Build TargetSummary rows by grouping sites on (normalized target origin/path-or-glob, capability) with the union of access verbs, HTTP methods and operation ids (a transitive user is listed as `X (via Y)`); a group's decision is the worst of its sites (denied > partial > unknown > allowed). `by` = operation (default; one row per site ordered by operation id then source line, a transitive call shown as its own `(calls X)` row), target (TargetSummary rows) or capability (TargetSummary rows under allow_read / allow_write / ... headings); any other value is validation (exit 2)."
+                "todo": "Filter by kind and by access (a site matches when any of its verbs is in the requested list; an access verb that does not belong to the requested kind is validation, exit 2). Build TargetSummary rows by grouping sites on (normalized target origin/path-or-glob, capability) with the union of access verbs, HTTP methods and operation ids (a transitive user is listed as `X (via Y)`); a group's decision is the worst of its sites (denied > partial > unknown > allowed). `by` = operation (default; one row per site ordered by operation id then source line, a transitive call shown as its own `(calls X)` row), target (TargetSummary rows) or capability (TargetSummary rows under allow_read / allow_write / ... headings); any other value is validation (exit 2). TargetSummary also carries origins, phases and needs_file (yes | no | `yes: <verbs>` for a mixed row | null for non-file rows); the by=target table columns are TARGET ACCESS CAPABILITY ORIGIN PHASE NEEDS FILE USED BY."
+              },
+              {
+                "id": "needs_view",
+                "todo": "Only when needs (or check_files) is set: build IoManifest.needs as one OperationNeeds per selected operation listing its file sites with requires_existing true as NeededFile{path, effect_id, origin, phase, secret, knowledge, via, source, status:null}; include callee needs reached through literal (request ...) calls with via = the callee id; drop files the same operation creates earlier; show param_dependent paths as their template with knowledge param_dependent. Static: no I/O. Bootstrap load files (descriptor/schema) are listed only with include_bootstrap, under a separate bundle-load group, because loading the bundle already proves they exist. The table form prints `<operation> needs, before it can run:` followed by `path (origin[, secret])` rows, or `<operation> needs no existing files.`; json returns the IoManifest with needs filled. rivet.io takes needs?: boolean and HTTP GET /v1/io?needs=true; check_files is CLI/library only and is never a network parameter."
+              },
+              {
+                "id": "check_files",
+                "todo": "Only when check_files is set (implies needs; CLI --check-files or IoQuery.check_files): for every exact NeededFile ask FileProbe.stat(FileProbeInput{path, effect_id, context}); the file_access adapter first authorizes the probe through PolicyEvaluator as allow_read with access stat (a grant with no access list covers stat) against the effective policy (host ceiling ∩ policy.json) and only then performs a metadata probe plus readability check, never opening or reading content (key files stay unread). Set status = present | missing | unreadable (exists but the OS denies this process read access) | not_permitted (policy does not grant stat; the path is not touched) | not_checkable (param_dependent or dynamic path; not probed). Print each status beside its row and a stderr summary. Exit code: 3 when any file is not_permitted or unreadable (permission, checked first); else 4 (not_found) when any required file is missing; else the normal io exit code."
               },
               {
                 "id": "render_inventory",
-                "todo": "Return IoReport{manifest, by, format, rendered, exit_code} whose manifest is IoManifest{bundle{file,sha256}, policy{file,sha256}|null, complete, sites, targets, bootstrap} with complete=false when any site is dynamic, opaque_remote or opaque_native. Render the requested format from the same data: table (fixed columns OPERATION KIND ACCESS TARGET KNOWLEDGE SOURCE [DECISION] [ATTEMPTS], or TARGET ACCESS CAPABILITY USED BY for by=target/capability), json (the IoManifest itself; HTTP GET /v1/io, MCP rivet.io and rt.io always return this form), markdown (the same tables as Markdown) or csv (one row per site). Exit code: 3 when check_policy found any reachable site denied or partial; else 7 when strict and complete=false (inspection incomplete; never probe a remote endpoint to complete static analysis); else 0. Serve exposure: over the network rivet.io is callable only by a principal whose serve.principals.<name>.operations lists it explicitly; loopback principal local may call it."
+                "todo": "Return IoReport{manifest, by, format, rendered, exit_code} whose manifest is IoManifest{bundle{file,sha256}, policy{file,sha256}|null, complete, sites, targets, bootstrap} with complete=false when any site is dynamic, opaque_remote or opaque_native. Render the requested format from the same data: table (fixed columns OPERATION KIND ACCESS TARGET KNOWLEDGE SOURCE [DECISION] [ATTEMPTS], TARGET ACCESS CAPABILITY ORIGIN PHASE NEEDS FILE USED BY for by=target, TARGET ACCESS USED BY under capability headings for by=capability, and the per-operation needs listing for needs/check_files), json (the IoManifest itself; HTTP GET /v1/io, MCP rivet.io and rt.io always return this form), markdown (the same tables as Markdown) or csv (one row per site). IoManifest also carries needs (empty unless needs/check_files). csv adds origin, phase, requires_existing and secret columns (origin as `statement:file read` / `option:tls key_file`). Exit code: 3 when check_policy found any reachable site denied or partial, or check_files found a file not_permitted or unreadable; else 4 when check_files found a required file missing; else 7 when strict and complete=false (inspection incomplete; never probe a remote endpoint to complete static analysis); else 0. Serve exposure: over the network rivet.io is callable only by a principal whose serve.principals.<name>.operations lists it explicitly; loopback principal local may call it."
               }
             ]
           },
@@ -754,7 +781,7 @@
               },
               {
                 "id": "derive_grant_targets",
-                "todo": "Turn each grantable site into a (capability, target) pair: exact targets as written (./out/user.json, udp://127.0.0.1:7000, crm/tools/search, env name); param_dependent URLs collapse to their origin scheme://host:port; param_dependent paths become their derived glob (./out/notes/*.json); bounded targets use their bound set. File targets are written relative to the directory the draft will live in: the bundle root for stdout, or the --output file's own directory (policy targets always resolve against the policy file's directory)."
+                "todo": "Turn each grantable site into a (capability, target) pair: exact targets as written (./out/user.json, udp://127.0.0.1:7000, crm/tools/search, env name); param_dependent URLs collapse to their origin scheme://host:port; param_dependent paths become their derived glob (./out/notes/*.json); bounded targets use their bound set. File targets are written relative to the directory the draft will live in: the bundle root for stdout, or the --output file's own directory (policy targets always resolve against the policy file's directory). Option-derived file sites (origin.option: tls ca_file, tls cert_file, tls key_file, body file, operation-level descriptor) are always granted as their exact path with access [read] — never widened to a directory glob such as ./certs/**; a param_dependent option path is not granted and becomes a review item. Bootstrap descriptor/schema files are never granted."
               },
               {
                 "id": "narrow_access",
@@ -828,6 +855,16 @@
                       }
                     ],
                     "out": "DisconnectReceipt"
+                  },
+                  {
+                    "name": "cancel",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCancelInput"
+                      }
+                    ],
+                    "out": "AuthCancelReceipt"
                   }
                 ]
               }
@@ -896,6 +933,16 @@
                       }
                     ],
                     "out": "DisconnectReceipt"
+                  },
+                  {
+                    "name": "cancel",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCancelInput"
+                      }
+                    ],
+                    "out": "AuthCancelReceipt"
                   }
                 ]
               }
@@ -964,6 +1011,16 @@
                       }
                     ],
                     "out": "DisconnectReceipt"
+                  },
+                  {
+                    "name": "cancel",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCancelInput"
+                      }
+                    ],
+                    "out": "AuthCancelReceipt"
                   }
                 ]
               }
@@ -1032,6 +1089,16 @@
                       }
                     ],
                     "out": "DisconnectReceipt"
+                  },
+                  {
+                    "name": "cancel",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCancelInput"
+                      }
+                    ],
+                    "out": "AuthCancelReceipt"
                   }
                 ]
               }
@@ -1044,6 +1111,88 @@
               {
                 "id": "forget_local_credentials",
                 "todo": "Delete the local stored credentials and advance the account generation through OAuthSessionDriver; report local_only true because remote provider revocation is not implied, and refuse success if durable deletion fails."
+              }
+            ]
+          },
+          {
+            "name": "cancel_authorization",
+            "label": "Cancel a pending authorization",
+            "in": [
+              {
+                "name": "input",
+                "type": "AuthCancelInput"
+              }
+            ],
+            "out": "AuthCancelReceipt",
+            "needs": [
+              {
+                "name": "OAuthSessionDriver",
+                "functions": [
+                  {
+                    "name": "begin",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthBeginInput"
+                      }
+                    ],
+                    "out": "AuthChallenge"
+                  },
+                  {
+                    "name": "complete",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCompleteInput"
+                      }
+                    ],
+                    "out": "CredentialStatus"
+                  },
+                  {
+                    "name": "status",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "CredentialStatusInput"
+                      }
+                    ],
+                    "out": "CredentialStatus"
+                  },
+                  {
+                    "name": "disconnect",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "DisconnectInput"
+                      }
+                    ],
+                    "out": "DisconnectReceipt"
+                  },
+                  {
+                    "name": "cancel",
+                    "in": [
+                      {
+                        "name": "input",
+                        "type": "AuthCancelInput"
+                      }
+                    ],
+                    "out": "AuthCancelReceipt"
+                  }
+                ]
+              }
+            ],
+            "todos": [
+              {
+                "id": "authorize_cancel",
+                "todo": "rivet.auth.cancel {transaction_id}: resolve the transaction through OAuthSessionDriver and bind it to the authenticated principal that began it (principal-bound); a transaction owned by another principal, or an unknown id, is not_found (exit 4, HTTP 404) without disclosing that it exists. Requires allow_auth manage for the transaction's profile."
+              },
+              {
+                "id": "invalidate_transaction",
+                "todo": "Invalidate the pending transaction through OAuthSessionDriver.cancel: discard its state, PKCE verifier and device code so a later rivet.auth.complete for it fails, stop any in-flight device poll owned by the calling request, and never contact the provider. Return AuthCancelReceipt{transaction_id, state:\"cancelled\"}."
+              },
+              {
+                "id": "idempotent_terminal",
+                "todo": "Idempotent: cancelling an already-cancelled transaction returns the same receipt; a transaction that already reached a terminal state (connected, denied, expired) returns {transaction_id, state:<that terminal state>} unchanged and does not revoke stored credentials (use rivet.auth.disconnect for that). No token material, state or verifier appears in the receipt or the trace."
               }
             ]
           },
@@ -2157,6 +2306,7 @@
           "auth/complete_authorization",
           "auth/credential_status",
           "auth/disconnect_account",
+          "auth/cancel_authorization",
           "datagrams/exchange_datagrams",
           "quic/exchange_quic",
           "grpc/invoke_rpc",
@@ -2191,6 +2341,7 @@
           "auth/complete_authorization",
           "auth/credential_status",
           "auth/disconnect_account",
+          "auth/cancel_authorization",
           "datagrams/exchange_datagrams",
           "quic/exchange_quic",
           "grpc/invoke_rpc",
@@ -2225,6 +2376,7 @@
           "auth/complete_authorization",
           "auth/credential_status",
           "auth/disconnect_account",
+          "auth/cancel_authorization",
           "datagrams/exchange_datagrams",
           "quic/exchange_quic",
           "grpc/invoke_rpc",
@@ -2259,6 +2411,7 @@
           "auth/complete_authorization",
           "auth/credential_status",
           "auth/disconnect_account",
+          "auth/cancel_authorization",
           "datagrams/exchange_datagrams",
           "quic/exchange_quic",
           "grpc/invoke_rpc",
@@ -2330,7 +2483,8 @@
       {
         "name": "file_access",
         "satisfies": [
-          "FileAccess"
+          "FileAccess",
+          "FileProbe"
         ]
       },
       {
@@ -2855,19 +3009,19 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet --file <bundle> io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation|target|capability] [--kind file|network|process|env|pipe|unix|mcp|grpc|auth|credential] [--access VERB[,VERB]] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ]"
+          "invocation": "rivet --file <bundle> io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation|target|capability] [--kind file|network|process|env|pipe|unix|mcp|grpc|auth|credential] [--access VERB[,VERB]] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files]"
         },
         {
           "surface": "http",
-          "invocation": "GET /v1/io?ids=&all=&by=target&kind=file&access=delete&check_policy=true"
+          "invocation": "GET /v1/io?ids=&all=&by=target&kind=file&access=delete&check_policy=true&needs=true"
         },
         {
           "surface": "library",
-          "invocation": "rt.io(IoQuery) -> IoManifest"
+          "invocation": "rt.io(IoQuery{.., needs, check_files}) -> IoManifest"
         },
         {
           "surface": "mcp",
-          "invocation": "tools/call rivet.io {ids?, all?, by?, kind?, access?, check_policy?}"
+          "invocation": "tools/call rivet.io {ids?, all?, by?, kind?, access?, check_policy?, needs?}"
         }
       ],
       "input": [
@@ -2879,14 +3033,15 @@
       "through": [
         "Registry",
         "PolicyEvaluator",
-        "TraceStore"
+        "TraceStore",
+        "FileProbe"
       ],
       "output": "IoReport",
       "handling": [
         {
           "layer": "feature.use_case",
           "ref": "audit.inspect_effects",
-          "role": "Resolve the entry set: explicit ids, else every public operation visible to the query principal (the default); `all` adds private helpers and operations unreachable from any public entry. An unknown or private id without `all` is not_found (exit 4) without disclosing existence. `transitive` defaults to true: follow literal (request \"id\" ...) edges (and connector imports) and record each site's call_chain from the entry (e.g. [data.snapshot, data.read]); each site appears once per entry that reaches it. Nothing is executed and no source expression is evaluated. Ask Registry.effect_sites for the lowered effect sites of each selected operation from the immutable compiled catalog (never re-parse, never connect). One source line can yield several sites and each is kept: `file update` = stat + update, `with file open ... mode read` = read, an MCP stdio call = process exec + mcp call, an MCP/gRPC HTTP call = network connect + mcp/grpc call, an OAuth `auth` attachment = env read of the client secret + credential read/write + auth use + token-endpoint connect + resource connect. Retain branch conditions, source spans and secrets (with the origins they are bound to). Classify knowledge as exact | bounded | param_dependent | dynamic | opaque_remote | opaque_native; a connector's remote side effects are opaque_remote, a native host callback is opaque_native. With include_bootstrap, list the fixed runtime-internal sites separately under `bootstrap` (bundle + imports, policy.json, CA bundle, resolv.conf/system resolver, tzdata, descriptor/schema files, stdin/stdout/stderr) which are never granted to scripts. Map every site to its access verbs and capability with the fixed table: file read|list|stat|watch -> allow_read; file create|update|append -> allow_write; file delete -> allow_delete; network connect -> allow_network (plus `protocol` http1|http2|http3|ws|sse|grpc|quic|udp|tcp and, for HTTP, `method` GET/POST/...; a WebSocket upgrade is connect with protocol ws); network bind|listen|multicast_join -> allow_listen; process exec -> allow_exec; env read -> allow_env; pipe read|write -> allow_pipe; unix connect|listen -> allow_unix; mcp call (tool|resource|prompt) -> allow_mcp; grpc call (unary|server_stream|client_stream|bidi) -> allow_grpc; auth use|manage|status -> allow_auth; credential read|write -> allow_credentials. Source verbs map one-to-one: `file create` -> create (exclusive), `file update` -> stat + update, `file delete` -> delete, `file list` -> list, `file read` -> read. Normalize each target into SiteTarget{template, scheme, host, port, path, glob, params} and a normalized display string: URLs as scheme://host:port with the default port made explicit (https 443, wss 443) plus a path/query template where interpolations become {param} (e.g. https://api.example.com/users/{id}); file paths relative to the bundle root with {param} for interpolated segments and, for param_dependent paths, the derived glob (./out/notes/*.json); UDP/QUIC as udp://host:port or quic://host:port; env vars as `env NAME`; connector methods as connector/kind/name (crm/tools/search, users/example.Users/GetUser); auth as profile/account; processes as argv[0] plus argv template. `params` lists the caller parameters the target depends on; a target computed from a runtime value (e.g. a received datagram's peer) is dynamic and has no glob. Only when check_policy is set: build an EffectIntent (capability, access, method, protocol, target) for each reachable site and ask PolicyEvaluator.evaluate against the effective policy (host ceiling ∩ loaded policy.json, or deny-by-default when absent) without performing I/O. decision = allowed when a grant covers target and every access verb and no deny matches; denied when no grant covers it, a deny matches, or a grant's `access` list omits a used verb; partial when a param_dependent target's derived glob is only partly covered by grants; unknown when the target itself cannot be matched (dynamic, opaque_native). An opaque_remote site whose endpoint or connector method is exact is evaluated normally; only its server-side effects stay outside the manifest (and make complete=false). Record the policy file's path and sha256 in the manifest. Only when trace_request_id is given: read that request's trace from TraceStore (same live host or configured persistent store; otherwise not_found exit 4) and join TraceEvent.effect_id to EffectSite.effect_id, filling attempts {count, last_decision, last_phase} so planned and actual effects appear side by side; trace rows with no matching site are appended as unplanned. Filter by kind and by access (a site matches when any of its verbs is in the requested list; an access verb that does not belong to the requested kind is validation, exit 2). Build TargetSummary rows by grouping sites on (normalized target origin/path-or-glob, capability) with the union of access verbs, HTTP methods and operation ids (a transitive user is listed as `X (via Y)`); a group's decision is the worst of its sites (denied > partial > unknown > allowed). `by` = operation (default; one row per site ordered by operation id then source line, a transitive call shown as its own `(calls X)` row), target (TargetSummary rows) or capability (TargetSummary rows under allow_read / allow_write / ... headings); any other value is validation (exit 2). Return IoReport{manifest, by, format, rendered, exit_code} whose manifest is IoManifest{bundle{file,sha256}, policy{file,sha256}|null, complete, sites, targets, bootstrap} with complete=false when any site is dynamic, opaque_remote or opaque_native. Render the requested format from the same data: table (fixed columns OPERATION KIND ACCESS TARGET KNOWLEDGE SOURCE [DECISION] [ATTEMPTS], or TARGET ACCESS CAPABILITY USED BY for by=target/capability), json (the IoManifest itself; HTTP GET /v1/io, MCP rivet.io and rt.io always return this form), markdown (the same tables as Markdown) or csv (one row per site). Exit code: 3 when check_policy found any reachable site denied or partial; else 7 when strict and complete=false (inspection incomplete; never probe a remote endpoint to complete static analysis); else 0. Serve exposure: over the network rivet.io is callable only by a principal whose serve.principals.<name>.operations lists it explicitly; loopback principal local may call it."
+          "role": "Resolve the entry set: explicit ids, else every public operation visible to the query principal (the default); `all` adds private helpers and operations unreachable from any public entry. An unknown or private id without `all` is not_found (exit 4) without disclosing existence. `transitive` defaults to true: follow literal (request \"id\" ...) edges (and connector imports) and record each site's call_chain from the entry (e.g. [data.snapshot, data.read]); each site appears once per entry that reaches it. Nothing is executed and no source expression is evaluated. Ask Registry.effect_sites for the lowered effect sites of each selected operation from the immutable compiled catalog (never re-parse, never connect). One source line can yield several sites and each is kept: `file update` = stat + update, `with file open ... mode read` = read, an MCP stdio call = process exec + mcp call, an MCP/gRPC HTTP call = network connect + mcp/grpc call, an OAuth `auth` attachment = env read of the client secret + credential read/write + auth use + token-endpoint connect + resource connect. Retain branch conditions, source spans and secrets (with the origins they are bound to). Classify knowledge as exact | bounded | param_dependent | dynamic | opaque_remote | opaque_native; a connector's remote side effects are opaque_remote, a native host callback is opaque_native. With include_bootstrap, list the fixed runtime-internal sites separately under `bootstrap` (bundle + imports, policy.json, CA bundle, resolv.conf/system resolver, tzdata, descriptor/schema files, stdin/stdout/stderr) which are never granted to scripts. Every file-valued option line is its own site (kind file, access [read], capability allow_read): `tls ca_file`, `tls cert_file`, `tls key_file` in http/with http/with websocket/with quic/with tcp blocks and in grpc/mcp(http transport) connectors (a connector's option sites appear under every operation that calls it), `body file PATH` and `body multipart` `file NAME PATH` upload sources and an operation-level `descriptor PATH`. Connector-level `descriptor`/`schema` files stay bootstrap reads (never granted to scripts) but carry the same fields. Map every site to its access verbs and capability with the fixed table: file read|list|stat|watch -> allow_read; file create|update|append -> allow_write; file delete -> allow_delete; network connect -> allow_network (plus `protocol` http1|http2|http3|ws|sse|grpc|quic|udp|tcp and, for HTTP, `method` GET/POST/...; a WebSocket upgrade is connect with protocol ws); network bind|listen|multicast_join -> allow_listen; process exec -> allow_exec; env read -> allow_env; pipe read|write -> allow_pipe; unix connect|listen -> allow_unix; mcp call (tool|resource|prompt) -> allow_mcp; grpc call (unary|server_stream|client_stream|bidi) -> allow_grpc; auth use|manage|status -> allow_auth; credential read|write -> allow_credentials. Source verbs map one-to-one: `file create` -> create (exclusive), `file update` -> stat + update, `file delete` -> delete, `file list` -> list, `file read` -> read. Give every site origin, phase, requires_existing and secret. origin = SiteOrigin{statement} for the statement that produced it (file read, file create, http get, with tcp, grpc, secret, command, ...) or SiteOrigin{option} for an option line (tls ca_file, tls cert_file, tls key_file, body file, descriptor, schema, endpoint, transport command). phase = load (bundle load/assembly: descriptor/schema, operation-level descriptor) | before_connect (read to build a connection: tls files) | connect (open a connection or spawn a process: network/unix connect, process exec) | body (statements and body options: file statements, body file, env read by secret, mcp/grpc calls, send/receive) | cleanup (finally blocks and scope disposal). requires_existing (file sites only; false otherwise) = true when the file must already exist when the operation starts (read, stat, list, update's stat and update, delete without `missing ok`, every option-derived read); false when the site creates it (create, write, append), when a missing file is tolerated (`missing ok`), or when the same operation creates the same normalized target earlier in source order (e.g. `file create ./out/report.json` then `body file ./out/report.json`). A missing requires_existing file fails at that site with not_found (exit 4); for load/before_connect files that happens before the block dials, so the block causes no effect. secret = true when the content read is secret material (tls key_file, env read by a `secret` statement); the path is always shown, the content is never read by inspection and is redacted in traces. Normalize each target into SiteTarget{template, scheme, host, port, path, glob, params} and a normalized display string: URLs as scheme://host:port with the default port made explicit (https 443, wss 443) plus a path/query template where interpolations become {param} (e.g. https://api.example.com/users/{id}); file paths relative to the bundle root with {param} for interpolated segments and, for param_dependent paths, the derived glob (./out/notes/*.json); UDP/QUIC as udp://host:port or quic://host:port; env vars as `env NAME`; connector methods as connector/kind/name (crm/tools/search, users/example.Users/GetUser); auth as profile/account; processes as argv[0] plus argv template. `params` lists the caller parameters the target depends on; a target computed from a runtime value (e.g. a received datagram's peer) is dynamic and has no glob. Only when check_policy is set: build an EffectIntent (capability, access, method, protocol, target) for each reachable site and ask PolicyEvaluator.evaluate against the effective policy (host ceiling ∩ loaded policy.json, or deny-by-default when absent) without performing I/O. decision = allowed when a grant covers target and every access verb and no deny matches; denied when no grant covers it, a deny matches, or a grant's `access` list omits a used verb; partial when a param_dependent target's derived glob is only partly covered by grants; unknown when the target itself cannot be matched (dynamic, opaque_native). An opaque_remote site whose endpoint or connector method is exact is evaluated normally; only its server-side effects stay outside the manifest (and make complete=false). Record the policy file's path and sha256 in the manifest. Only when trace_request_id is given: read that request's trace from TraceStore (same live host or configured persistent store; otherwise not_found exit 4) and join TraceEvent.effect_id to EffectSite.effect_id, filling attempts {count, last_decision, last_phase} so planned and actual effects appear side by side; trace rows with no matching site are appended as unplanned. Filter by kind and by access (a site matches when any of its verbs is in the requested list; an access verb that does not belong to the requested kind is validation, exit 2). Build TargetSummary rows by grouping sites on (normalized target origin/path-or-glob, capability) with the union of access verbs, HTTP methods and operation ids (a transitive user is listed as `X (via Y)`); a group's decision is the worst of its sites (denied > partial > unknown > allowed). `by` = operation (default; one row per site ordered by operation id then source line, a transitive call shown as its own `(calls X)` row), target (TargetSummary rows) or capability (TargetSummary rows under allow_read / allow_write / ... headings); any other value is validation (exit 2). TargetSummary also carries origins, phases and needs_file (yes | no | `yes: <verbs>` for a mixed row | null for non-file rows); the by=target table columns are TARGET ACCESS CAPABILITY ORIGIN PHASE NEEDS FILE USED BY. Only when needs (or check_files) is set: build IoManifest.needs as one OperationNeeds per selected operation listing its file sites with requires_existing true as NeededFile{path, effect_id, origin, phase, secret, knowledge, via, source, status:null}; include callee needs reached through literal (request ...) calls with via = the callee id; drop files the same operation creates earlier; show param_dependent paths as their template with knowledge param_dependent. Static: no I/O. Bootstrap load files (descriptor/schema) are listed only with include_bootstrap, under a separate bundle-load group, because loading the bundle already proves they exist. The table form prints `<operation> needs, before it can run:` followed by `path (origin[, secret])` rows, or `<operation> needs no existing files.`; json returns the IoManifest with needs filled. rivet.io takes needs?: boolean and HTTP GET /v1/io?needs=true; check_files is CLI/library only and is never a network parameter. Only when check_files is set (implies needs; CLI --check-files or IoQuery.check_files): for every exact NeededFile ask FileProbe.stat(FileProbeInput{path, effect_id, context}); the file_access adapter first authorizes the probe through PolicyEvaluator as allow_read with access stat (a grant with no access list covers stat) against the effective policy (host ceiling ∩ policy.json) and only then performs a metadata probe plus readability check, never opening or reading content (key files stay unread). Set status = present | missing | unreadable (exists but the OS denies this process read access) | not_permitted (policy does not grant stat; the path is not touched) | not_checkable (param_dependent or dynamic path; not probed). Print each status beside its row and a stderr summary. Exit code: 3 when any file is not_permitted or unreadable (permission, checked first); else 4 (not_found) when any required file is missing; else the normal io exit code. Return IoReport{manifest, by, format, rendered, exit_code} whose manifest is IoManifest{bundle{file,sha256}, policy{file,sha256}|null, complete, sites, targets, bootstrap} with complete=false when any site is dynamic, opaque_remote or opaque_native. Render the requested format from the same data: table (fixed columns OPERATION KIND ACCESS TARGET KNOWLEDGE SOURCE [DECISION] [ATTEMPTS], TARGET ACCESS CAPABILITY ORIGIN PHASE NEEDS FILE USED BY for by=target, TARGET ACCESS USED BY under capability headings for by=capability, and the per-operation needs listing for needs/check_files), json (the IoManifest itself; HTTP GET /v1/io, MCP rivet.io and rt.io always return this form), markdown (the same tables as Markdown) or csv (one row per site). IoManifest also carries needs (empty unless needs/check_files). csv adds origin, phase, requires_existing and secret columns (origin as `statement:file read` / `option:tls key_file`). Exit code: 3 when check_policy found any reachable site denied or partial, or check_files found a file not_permitted or unreadable; else 4 when check_files found a required file missing; else 7 when strict and complete=false (inspection incomplete; never probe a remote endpoint to complete static analysis); else 0. Serve exposure: over the network rivet.io is callable only by a principal whose serve.principals.<name>.operations lists it explicitly; loopback principal local may call it."
         },
         {
           "layer": "port",
@@ -2901,6 +3056,11 @@
         {
           "layer": "port",
           "ref": "TraceStore",
+          "role": "Injected capability; no feature constructs adapters."
+        },
+        {
+          "layer": "port",
+          "ref": "FileProbe",
           "role": "Injected capability; no feature constructs adapters."
         }
       ]
@@ -3173,6 +3333,49 @@
           "layer": "feature.use_case",
           "ref": "auth.disconnect_account",
           "role": "Require ownership and disconnect authority for the account, cancel its active authorization transactions and prevent new credential leases from that generation. Delete the local stored credentials and advance the account generation through OAuthSessionDriver; report local_only true because remote provider revocation is not implied, and refuse success if durable deletion fails."
+        },
+        {
+          "layer": "port",
+          "ref": "OAuthSessionDriver",
+          "role": "Injected capability; no feature constructs adapters."
+        }
+      ]
+    },
+    {
+      "action": "auth.cancel_authorization",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet request rivet.auth.cancel --params <json> | rivet auth cancel <transaction_id>"
+        },
+        {
+          "surface": "http",
+          "invocation": "POST /v1/request"
+        },
+        {
+          "surface": "library",
+          "invocation": "Runtime::request(ctx, \"rivet.auth.cancel\", params, on_data)"
+        },
+        {
+          "surface": "mcp",
+          "invocation": "tools/call rivet.auth.cancel"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "AuthCancelInput"
+        }
+      ],
+      "through": [
+        "OAuthSessionDriver"
+      ],
+      "output": "AuthCancelReceipt",
+      "handling": [
+        {
+          "layer": "feature.use_case",
+          "ref": "auth.cancel_authorization",
+          "role": "rivet.auth.cancel {transaction_id}: resolve the transaction through OAuthSessionDriver and bind it to the authenticated principal that began it (principal-bound); a transaction owned by another principal, or an unknown id, is not_found (exit 4, HTTP 404) without disclosing that it exists. Requires allow_auth manage for the transaction's profile. Invalidate the pending transaction through OAuthSessionDriver.cancel: discard its state, PKCE verifier and device code so a later rivet.auth.complete for it fails, stop any in-flight device poll owned by the calling request, and never contact the provider. Return AuthCancelReceipt{transaction_id, state:\"cancelled\"}. Idempotent: cancelling an already-cancelled transaction returns the same receipt; a transaction that already reached a terminal state (connected, denied, expired) returns {transaction_id, state:<that terminal state>} unchanged and does not revoke stored credentials (use rivet.auth.disconnect for that). No token material, state or verifier appears in the receipt or the trace."
         },
         {
           "layer": "port",
@@ -3940,7 +4143,7 @@
         {
           "layer": "feature.use_case",
           "ref": "policy.generate_policy",
-          "role": "Take the IoManifest built by inspect_effects for the requested ids (or all public operations). Drop bootstrap sites (never granted to scripts). Sites with knowledge exact, bounded or param_dependent are grantable; dynamic, opaque_remote and opaque_native sites go to `review` and are NOT granted. Turn each grantable site into a (capability, target) pair: exact targets as written (./out/user.json, udp://127.0.0.1:7000, crm/tools/search, env name); param_dependent URLs collapse to their origin scheme://host:port; param_dependent paths become their derived glob (./out/notes/*.json); bounded targets use their bound set. File targets are written relative to the directory the draft will live in: the bundle root for stdout, or the --output file's own directory (policy targets always resolve against the policy file's directory). Group pairs so there is exactly one grant per (capability, target), and set `access` to exactly the union of verbs the sites use, sorted in table order (e.g. allow_read [read, stat], allow_write [create]). allow_network grants carry no access list because connect is its only verb; methods and protocols are not policy selectors in v1. Build PolicyFile{version 1, grants sorted by capability then target, network {deny_private_ranges: true}} with no deny, limits, serve, approved or secret material (serve auth and secrets are never generated). Validate the draft with the same schema rules as load_policy so it is guaranteed loadable. complete = review is empty. Without an output path return the draft (CLI prints it to stdout; HTTP POST /v1/policy/generate, MCP rivet.policy.generate and Runtime::generate_policy return {policy, review, complete} and never write files). With --output ask PolicyDraftWriter.write_new, which creates the file exclusively and refuses an existing path with conflict.exists (exit 4) so a reviewed policy is never overwritten. List each review site on stderr (operation, kind, target, knowledge, source). Exit 7 when review is non-empty (the draft is still produced/written), else 0. The draft is a starting point for human review, not approval."
+          "role": "Take the IoManifest built by inspect_effects for the requested ids (or all public operations). Drop bootstrap sites (never granted to scripts). Sites with knowledge exact, bounded or param_dependent are grantable; dynamic, opaque_remote and opaque_native sites go to `review` and are NOT granted. Turn each grantable site into a (capability, target) pair: exact targets as written (./out/user.json, udp://127.0.0.1:7000, crm/tools/search, env name); param_dependent URLs collapse to their origin scheme://host:port; param_dependent paths become their derived glob (./out/notes/*.json); bounded targets use their bound set. File targets are written relative to the directory the draft will live in: the bundle root for stdout, or the --output file's own directory (policy targets always resolve against the policy file's directory). Option-derived file sites (origin.option: tls ca_file, tls cert_file, tls key_file, body file, operation-level descriptor) are always granted as their exact path with access [read] — never widened to a directory glob such as ./certs/**; a param_dependent option path is not granted and becomes a review item. Bootstrap descriptor/schema files are never granted. Group pairs so there is exactly one grant per (capability, target), and set `access` to exactly the union of verbs the sites use, sorted in table order (e.g. allow_read [read, stat], allow_write [create]). allow_network grants carry no access list because connect is its only verb; methods and protocols are not policy selectors in v1. Build PolicyFile{version 1, grants sorted by capability then target, network {deny_private_ranges: true}} with no deny, limits, serve, approved or secret material (serve auth and secrets are never generated). Validate the draft with the same schema rules as load_policy so it is guaranteed loadable. complete = review is empty. Without an output path return the draft (CLI prints it to stdout; HTTP POST /v1/policy/generate, MCP rivet.policy.generate and Runtime::generate_policy return {policy, review, complete} and never write files). With --output ask PolicyDraftWriter.write_new, which creates the file exclusively and refuses an existing path with conflict.exists (exit 4) so a reviewed policy is never overwritten. List each review site on stderr (operation, kind, target, knowledge, source). Exit 7 when review is non-empty (the draft is still produced/written), else 0. The draft is a starting point for human review, not approval."
         },
         {
           "layer": "port",
@@ -4481,6 +4684,14 @@
         },
         {
           "name": "check_policy",
+          "type": "bool"
+        },
+        {
+          "name": "needs",
+          "type": "bool"
+        },
+        {
+          "name": "check_files",
           "type": "bool"
         },
         {
@@ -6428,6 +6639,22 @@
           "type": "SourceSpan"
         },
         {
+          "name": "origin",
+          "type": "SiteOrigin"
+        },
+        {
+          "name": "phase",
+          "type": "String"
+        },
+        {
+          "name": "requires_existing",
+          "type": "bool"
+        },
+        {
+          "name": "secret",
+          "type": "bool"
+        },
+        {
           "name": "decision",
           "type": "Option<String>"
         },
@@ -6474,6 +6701,18 @@
           "type": "List<String>"
         },
         {
+          "name": "origins",
+          "type": "List<SiteOrigin>"
+        },
+        {
+          "name": "phases",
+          "type": "List<String>"
+        },
+        {
+          "name": "needs_file",
+          "type": "Option<String>"
+        },
+        {
           "name": "operations",
           "type": "List<String>"
         },
@@ -6518,6 +6757,10 @@
         {
           "name": "targets",
           "type": "List<TargetSummary>"
+        },
+        {
+          "name": "needs",
+          "type": "List<OperationNeeds>"
         },
         {
           "name": "bootstrap",
@@ -6610,6 +6853,129 @@
         },
         {
           "name": "sha256",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "SiteOrigin",
+      "fields": [
+        {
+          "name": "statement",
+          "type": "Option<String>"
+        },
+        {
+          "name": "option",
+          "type": "Option<String>"
+        }
+      ]
+    },
+    {
+      "name": "NeededFile",
+      "fields": [
+        {
+          "name": "path",
+          "type": "String"
+        },
+        {
+          "name": "effect_id",
+          "type": "String"
+        },
+        {
+          "name": "origin",
+          "type": "SiteOrigin"
+        },
+        {
+          "name": "phase",
+          "type": "String"
+        },
+        {
+          "name": "secret",
+          "type": "bool"
+        },
+        {
+          "name": "knowledge",
+          "type": "String"
+        },
+        {
+          "name": "via",
+          "type": "Option<String>"
+        },
+        {
+          "name": "source",
+          "type": "SourceSpan"
+        },
+        {
+          "name": "status",
+          "type": "Option<String>"
+        }
+      ]
+    },
+    {
+      "name": "OperationNeeds",
+      "fields": [
+        {
+          "name": "operation_id",
+          "type": "String"
+        },
+        {
+          "name": "files",
+          "type": "List<NeededFile>"
+        }
+      ]
+    },
+    {
+      "name": "FileProbeInput",
+      "fields": [
+        {
+          "name": "path",
+          "type": "String"
+        },
+        {
+          "name": "effect_id",
+          "type": "String"
+        },
+        {
+          "name": "context",
+          "type": "Context"
+        }
+      ]
+    },
+    {
+      "name": "FileProbeResult",
+      "fields": [
+        {
+          "name": "path",
+          "type": "String"
+        },
+        {
+          "name": "status",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "AuthCancelInput",
+      "fields": [
+        {
+          "name": "transaction_id",
+          "type": "String"
+        },
+        {
+          "name": "context",
+          "type": "Context"
+        }
+      ]
+    },
+    {
+      "name": "AuthCancelReceipt",
+      "fields": [
+        {
+          "name": "transaction_id",
+          "type": "String"
+        },
+        {
+          "name": "state",
           "type": "String"
         }
       ]

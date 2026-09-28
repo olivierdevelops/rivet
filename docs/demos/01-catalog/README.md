@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -58,7 +58,7 @@ One [app.rivet](app.rivet) declares four pure operations, each with a declared, 
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17: declared outputs, policy.json, one serve) and S103–S108 and S120. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17: declared outputs, policy.json, one serve) and S103–S108 and S120. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -390,7 +390,7 @@ rivet --file app.rivet io --include-bootstrap --strict --format json
 **I/O manifest.** All four operations are pure, so the manifest has no application effect sites:
 
 ```text
-TARGET   ACCESS   CAPABILITY   USED BY
+TARGET   ACCESS   CAPABILITY   ORIGIN   PHASE   NEEDS FILE   USED BY
 (no application effect sites: demo.add, demo.countdown, demo.greet, demo.health are pure)
 ```
 
@@ -427,12 +427,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` header gains ORIGIN, PHASE, NEEDS FILE (still no sites); verified-against revision 8. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: `io --by target` shows no application sites; `io --check-policy` exits 0 with no policy.json. |
 | 2 | 2026-09-28 | Claude | UQ-17 rework: added `demo.countdown` and declared/described outputs; removed `--sandbox` (no policy.json = deny-by-default) and added `policies/team.json` for bearer auth; replaced `--transport`/`--mcp` with one `serve` showing REST, SSE, polling, WebSocket (`requests/ws-frames.jsonl`) and direct-tool MCP; added View outputs, strict-docs, bootstrap and exit-code expectations. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

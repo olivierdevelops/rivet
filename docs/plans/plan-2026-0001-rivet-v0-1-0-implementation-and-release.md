@@ -2,12 +2,12 @@
 document_id: PLAN-2026-0001
 title: "Rivet v0.1.0 implementation, validation and release"
 document_type: plan
-status: draft
+status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
-start_date: null            # set when P1 exits (all approval gates closed)
-target_date: null           # estimated after G-SPIKE and the sandbox spike (P1), per PROP-2026-0001 "Plan Strategy"
+document_revision: 3
+start_date: 2026-09-28
+target_date: null           # not estimated; scope is fixed (all Stage A+B required); maintainer may set a date
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-28
 
 # Rivet v0.1.0 implementation, validation and release
 
-> **Status:** Draft — cannot become `approved` until the P1 gates close (DOCUMENTATION §24)
+> **Status:** Approved — P1 complete; P2a (foundation) in progress
 > **Created:** 2026-09-28
 > **Last Updated:** 2026-09-28
 > **Affected Versions:** not-applicable → 0.1.0
@@ -42,7 +42,7 @@ next_review_date: 2026-10-28
 ## Summary
 
 This is the live execution ledger for turning the approved design in
-[PROP-2026-0001](../proposals/draft/prop-2026-0001-rivet-runtime.md) (revision 6) into the released Rust crate and
+[PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md) (revision 6) into the released Rust crate and
 `rivet` binary **v0.1.0**. It covers five gated phases:
 
 1. approval and discovery;
@@ -92,7 +92,7 @@ repository, which the release needs (TASK-007).
 
 It ships with the full current-state documentation set required by DOCUMENTATION.md.
 
-**Proposal baseline.** PROP-2026-0001 **revision 6** (2026-09-28), with the hand-authored `vhco-contract.json`
+**Proposal baseline.** PROP-2026-0001 **revision 8** (2026-09-28), with the hand-authored `vhco-contract.json`
 matching it. Revision 7 would add option-derived file sites and `io --needs`, and only if TASK-005 approves it.
 
 | Owned by this plan | IDs |
@@ -113,7 +113,7 @@ delivery matrix labels them Stage C, which is optional:
 - reconnect/resumable delivery.
 
 The design does not require a native gRPC *server* surface, gRPC-Web or legacy MCP HTTP+SSE, and they are not
-planned. Any Stage C example among S01–S153 stays documented as Stage C and is excluded from release verification.
+planned. Any Stage C example among S01–S159 stays documented as Stage C and is excluded from release verification.
 
 ```text
             v0.1.0 scope
@@ -132,17 +132,16 @@ planned. Any Stage C example among S01–S153 stays documented as Stage C and is
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 96 | Every task |
+| NOT STARTED | 81 | P2–P5 |
 | IN PROGRESS | 0 | |
 | BLOCKED | 0 | P2+ is gated on P1 by entry criteria, not recorded as BLOCKED |
-| DONE | 0 | |
+| DONE | 15 | P1 complete |
 | FAILED | 0 | |
 | DEFERRED | 0 | Stage C is out of scope, not deferred inside this plan |
 
-- **Current phase:** P1 (approval and discovery), not started.
-- **Next action:** maintainer design review for G-DESIGN (TASK-001) and the decision on option-derived file sites
-  (TASK-005).
-- **Blockers:** G-LIC (Capy relicensing by its owner). No Git repository (TASK-007).
+- **Current phase:** P2a (foundation). P1 exited 2026-09-28.
+- **Next action:** TASK-014 crate skeleton, TASK-015 domain, TASK-016 parser adapter.
+- **Blockers:** none. Known constraint: Linux sandbox T-08 needs a CI runner with kernel ≥ 6.12 (ADR-0003).
 - **Last updated:** 2026-09-28.
 - **Release target:** v0.1.0; date set at P1 exit.
 
@@ -154,7 +153,7 @@ criteria are the proposal's, made testable here.
 | Req / UC | Why it exists | Planned outcome (how it is satisfied) | Acceptance criteria | Owning phase | Status |
 |---|---|---|---|---|---|
 | R1 / UC-01, UC-10 | UQ-09/10: Rust library using Capy | `capy_parser.rs` is the only Capy importer. It converts `ParseResult` into Rivet's `SyntaxTree`, and the library builds without a Capy executable | T-01, T-23 green. `cargo tree` shows `capy-core` pinned to the recorded commit | P2a | NOT STARTED |
-| R2 / UC-01 | UQ-03: simple, protocol-visible syntax | `rivet.capy` grammar for every statement shape in REF-2026-0002; diagnostics carry file/line/column | All S01–S153 and demo `.rivet` files parse; invalid samples produce exact spans | P2a | NOT STARTED |
+| R2 / UC-01 | UQ-03: simple, protocol-visible syntax | `rivet.capy` grammar for every statement shape in REF-2026-0002; diagnostics carry file/line/column | All S01–S159 and demo `.rivet` files parse; invalid samples produce exact spans | P2a | NOT STARTED |
 | R3 / UC-03, UC-05, UC-10 | UQ-02: context closes resources | `scope_supervisor` owns every handle and joins cleanup on success, error, break and cancel | T-03, T-05, T-10: zero live handles/tasks/processes after the grace period | P2a, P2c | NOT STARTED |
 | R4 / UC-02, UC-03, UC-05, UC-07 | UQ-03: good errors | `domain/errors.rs` registry (code→kind→HTTP→exit→retryable); one terminal event | T-24: every registry code checked on every surface | P2a | NOT STARTED |
 | R5 / UC-04 | UQ-04: file CRUD | `apply_file_operation` + `file_access` with no-follow handles, version guards and hard-link refusal | T-04 | P2a | NOT STARTED |
@@ -221,7 +220,7 @@ destination before measuring (DOCUMENTATION §21.3).
 | 1 | G-DESIGN: the maintainer accepts PROP-2026-0001 rev 6 (or a revised revision) | No code before approval | TASK-001 |
 | 2 | G-CONTRACT: the maintainer reviews `vhco live vhco-contract.json` | AGENTS loop step 2 | TASK-002 |
 | 3 | G-LIC: Capy `LICENSE` relicensed to match `Cargo.toml` MIT (owner = project user) | Bundling a source-available crate is prohibited | TASK-003 |
-| 4 | G-SPIKE: pinned Capy parses every S01–S153 example and every demo `.rivet` file | Every other design decision depends on it | TASK-010 |
+| 4 | G-SPIKE: pinned Capy parses every S01–S159 example and every demo `.rivet` file | Every other design decision depends on it | TASK-010 |
 | 5 | Git repository initialized; remote chosen | §32 release commit and tag | TASK-007 |
 | 6 | Rust toolchain ≥ 1.85 (edition 2024 async closures per PROP E11), `vhco` CLI installed, `protoc` for gRPC fixtures | Build, validation, fixture generation | TASK-008 |
 | 7 | Contract ↔ proposal reconciliation (see Decisions table) | The contract is the code's source of truth | TASK-006 |
@@ -259,19 +258,19 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-001 | P1 | Design review of PROP-2026-0001 rev 6; record G-DESIGN in its Approval table and in ADR-0001 | all | `docs/proposals/draft/prop-2026-0001-rivet-runtime.md` (UPDATE), `docs/decisions/adr-0001-approve-rivet-runtime-design.md` (CREATE) | Manual: maintainer sign-off | — | M | NOT STARTED | |
-| TASK-002 | P1 | `vhco live vhco-contract.json --port 7787`; the maintainer audits; changes loop until approved; record G-CONTRACT | all / C-09 | `vhco-contract.json` (UPDATE if changes) | Manual: live review | TASK-006 | M | NOT STARTED | |
-| TASK-003 | P1 | Relicense Capy at the pinned commit (or a new pinned commit) so `LICENSE` matches MIT; record the commit hash and licence text | R1 / G-LIC | `docs/references/ref-2026-0001-request-and-evidence.md` (UPDATE licence evidence) | Manual: read the upstream LICENSE at the pinned commit | — | M | NOT STARTED | |
-| TASK-004 | P1 | Move the proposal to `docs/proposals/approved/` with status `approved`; fix inbound links; update indexes | R14 | proposal (MOVE), `docs/proposals/index.md`, `docs/proposals/draft/index.md`, `docs/proposals/approved/index.md` (CREATE) | T-31 link check | TASK-001 | I | NOT STARTED | |
-| TASK-005 | P1 | Decide on the 2026-09-28 suggestion of option-derived file sites (`tls ca_file`…), `phase`/`requires_existing`/`secret` fields, `io --needs`, `--check-files`. If approved: proposal rev 7, REF-2026-0002 examples, contract, T-25 cases. If declined: NOT APPLICABLE | R6, R26 / UC-21 / C-23 | proposal, REF-2026-0002, `vhco-contract.json`, docs/demos READMEs (UPDATE if approved) | Manual: maintainer decision | TASK-001 | M | NOT STARTED | |
-| TASK-006 | P1 | Reconcile contract ↔ proposal. (a) `rivet.auth.cancel` → add `cancel_authorization` to the contract auth feature. (b) Proposal F-35 names `build_io_manifest.rs` but the contract extends `inspect_effects` → align the proposal to the contract. (c) Add the `transports` feature to proposal F-13. (d) Update AGENTS.md "Project facts", which still describe a Go `email_provider` | R14 / C-09 | `vhco-contract.json`, proposal, `AGENTS.md` (UPDATE) | `python -m json.tool`; T-31 | — | I | NOT STARTED | |
-| TASK-007 | P1 | `git init`; `.gitignore` (target/, scratch); first commit of the design state; choose a remote (GitHub assumed for CI) | release / §32 | `.gitignore` (CREATE) | `git status` clean | — | M | NOT STARTED | |
-| TASK-008 | P1 | Record toolchain: Rust ≥ 1.85 edition 2024, `rustfmt`, `clippy`, `cargo-deny`, `vhco`, `protoc`; write `rust-toolchain.toml` | R1 | `rust-toolchain.toml` (CREATE) | `cargo --version`, `vhco --version` | TASK-007 | I | NOT STARTED | |
-| TASK-009 | P1 | Research: crate feasibility. Candidates include `tokio`, `hyper`/`axum`, `reqwest` or a `hyper` client, `tokio-tungstenite`, `quinn`, `h3`/`h3-quinn`, `tonic` + `prost-reflect`, `oauth2`, `rustls`, an MCP SDK (or hand-rolled JSON-RPC), `jsonschema`, `serde_json`, `cap-std` (confined file handles). Check licences and the MSRV | R12, R15–R19 / C-08, C-10–C-14 | `docs/research/res-2026-0002-rust-crate-feasibility.md` (CREATE) | Manual: prototype each crate against its fixture | TASK-008 | I | NOT STARTED | |
-| TASK-010 | P1 | **G-SPIKE**: write `src/infra/rivet.capy` v0 and a throwaway harness that parses every `rivet` code block in REF-2026-0002 and every `docs/demos/**/app.rivet`. Record parse failures and grammar changes | R1, R2 / UC-01 / C-01, C-21 | `docs/research/res-2026-0001-capy-grammar-spike.md` (CREATE); spike harness in scratch (not committed) | Harness output: 153 examples + 12 files, 0 failures | TASK-003, TASK-008 | I | NOT STARTED | |
-| TASK-011 | P1 | Research: OS sandbox backends for sandboxed `allow_exec`/stdio MCP (Linux landlock+seccomp; macOS sandbox-exec/Seatbelt; Windows AppContainer/Job objects). Choose exact `src/infra/sandbox_<platform>.rs` paths (proposal F-14, OQ-1) | R11, R12 / C-05, C-08 | `docs/research/res-2026-0003-process-sandbox-backends.md` (CREATE) | Manual: prototype confinement tests per OS | TASK-008 | I | NOT STARTED | |
-| TASK-012 | P1 | ADRs from the research: ADR-0002 crate selection; ADR-0003 sandbox backends per platform (a platform without a passing backend refuses sandboxed exec with `unsupported.sandbox_backend`) | R11, R12 | `docs/decisions/adr-0002-rust-crate-selection.md`, `docs/decisions/adr-0003-process-sandbox-backends.md`, `docs/decisions/index.md` (CREATE) | M review | TASK-009, TASK-011 | M | NOT STARTED | |
-| TASK-013 | P1 | Plan approval: set `start_date`/`target_date` from the spike results; status `approved`; add the plan map to proposal "Plan Strategy" | all | this plan, proposal (UPDATE) | M sign-off | TASK-001–012 | M | NOT STARTED | |
+| TASK-001 | P1 | Design review of PROP-2026-0001 rev 6; record G-DESIGN in its Approval table and in ADR-0001 | all | `docs/proposals/approved/prop-2026-0001-rivet-runtime.md` (UPDATE), `docs/decisions/adr-0001-approve-rivet-runtime-design.md` (CREATE) | Manual: maintainer sign-off | — | M | DONE | ADR-0001 (2026-09-28): maintainer approved PROP-2026-0001; proposal rev 7 Approval table |
+| TASK-002 | P1 | `vhco live vhco-contract.json --port 7787`; the maintainer audits; changes loop until approved; record G-CONTRACT | all / C-09 | `vhco-contract.json` (UPDATE if changes) | Manual: live review | TASK-006 | M | DONE | ADR-0001: contract approved by the maintainer ("everything else is approved") |
+| TASK-003 | P1 | Relicense Capy at the pinned commit (or a new pinned commit) so `LICENSE` matches MIT; record the commit hash and licence text | R1 / G-LIC | `docs/references/ref-2026-0001-request-and-evidence.md` (UPDATE licence evidence) | Manual: read the upstream LICENSE at the pinned commit | — | M | DONE | ADR-0001: maintainer owns Capy and authorized its use; G-LIC closed; REF-2026-0001 updated |
+| TASK-004 | P1 | Move the proposal to `docs/proposals/approved/` with status `approved`; fix inbound links; update indexes | R14 | proposal (MOVE), `docs/proposals/index.md`, `docs/proposals/draft/index.md`, `docs/proposals/approved/index.md` (CREATE) | T-31 link check | TASK-001 | I | DONE | Proposal at docs/proposals/approved/ (status approved); inbound links fixed; approved/ index REF-2026-0012 |
+| TASK-005 | P1 | Decide on the 2026-09-28 suggestion of option-derived file sites (`tls ca_file`…), `phase`/`requires_existing`/`secret` fields, `io --needs`, `--check-files`. If approved: proposal rev 7, REF-2026-0002 examples, contract, T-25 cases. If declined: NOT APPLICABLE | R6, R26 / UC-21 / C-23 | proposal, REF-2026-0002, `vhco-contract.json`, docs/demos READMEs (UPDATE if approved) | Manual: maintainer decision | TASK-001 | M | DONE | Approved in ADR-0001; proposal rev 8 (option-derived sites, --needs, --check-files); REF-2026-0002 S154–S159; demos; contract |
+| TASK-006 | P1 | Reconcile contract ↔ proposal. (a) `rivet.auth.cancel` → add `cancel_authorization` to the contract auth feature. (b) Proposal F-35 names `build_io_manifest.rs` but the contract extends `inspect_effects` → align the proposal to the contract. (c) Add the `transports` feature to proposal F-13. (d) Update AGENTS.md "Project facts", which still describe a Go `email_provider` | R14 / C-09 | `vhco-contract.json`, proposal, `AGENTS.md` (UPDATE) | `python -m json.tool`; T-31 | — | I | DONE | Contract gains auth.cancel_authorization; proposal F-13/F-19/F-35 aligned to contract; AGENTS.md project facts rewritten for Rivet |
+| TASK-007 | P1 | `git init`; `.gitignore` (target/, scratch); first commit of the design state; choose a remote (GitHub assumed for CI) | release / §32 | `.gitignore` (CREATE) | `git status` clean | — | M | DONE | git init -b main; .gitignore; initial commit aa37459 |
+| TASK-008 | P1 | Record toolchain: Rust ≥ 1.85 edition 2024, `rustfmt`, `clippy`, `cargo-deny`, `vhco`, `protoc`; write `rust-toolchain.toml` | R1 | `rust-toolchain.toml` (CREATE) | `cargo --version`, `vhco --version` | TASK-007 | I | DONE | rust-toolchain.toml pins 1.90.0 (+rustfmt, clippy); vhco 1.6.0; protoc 29.3; cargo-deny installed |
+| TASK-009 | P1 | Research: crate feasibility. Candidates include `tokio`, `hyper`/`axum`, `reqwest` or a `hyper` client, `tokio-tungstenite`, `quinn`, `h3`/`h3-quinn`, `tonic` + `prost-reflect`, `oauth2`, `rustls`, an MCP SDK (or hand-rolled JSON-RPC), `jsonschema`, `serde_json`, `cap-std` (confined file handles). Check licences and the MSRV | R12, R15–R19 / C-08, C-10–C-14 | `docs/research/res-2026-0002-rust-crate-feasibility.md` (CREATE) | Manual: prototype each crate against its fixture | TASK-008 | I | DONE | RES-2026-0002: 20/20 probes PASS; dependency block builds on macOS/Linux/Windows |
+| TASK-010 | P1 | **G-SPIKE**: write `src/infra/rivet.capy` v0 and a throwaway harness that parses every `rivet` code block in REF-2026-0002 and every `docs/demos/**/app.rivet`. Record parse failures and grammar changes | R1, R2 / UC-01 / C-01, C-21 | `docs/research/res-2026-0001-capy-grammar-spike.md` (CREATE); spike harness in scratch (not committed) | Harness output: 153 examples + 12 files, 0 failures | TASK-003, TASK-008 | I | DONE | RES-2026-0001: CLEAN 119/119, structure 0 problems; G-SPIKE PASS; eight implementation findings |
+| TASK-011 | P1 | Research: OS sandbox backends for sandboxed `allow_exec`/stdio MCP (Linux landlock+seccomp; macOS sandbox-exec/Seatbelt; Windows AppContainer/Job objects). Choose exact `src/infra/sandbox_<platform>.rs` paths (proposal F-14, OQ-1) | R11, R12 / C-05, C-08 | `docs/research/res-2026-0003-process-sandbox-backends.md` (CREATE) | Manual: prototype confinement tests per OS | TASK-008 | I | DONE | RES-2026-0003: macOS Seatbelt 27/27 PASS; Linux build-only (gated on T-08, kernel ≥ 6.12); Windows refuses |
+| TASK-012 | P1 | ADRs from the research: ADR-0002 crate selection; ADR-0003 sandbox backends per platform (a platform without a passing backend refuses sandboxed exec with `unsupported.sandbox_backend`) | R11, R12 | `docs/decisions/adr-0002-rust-crate-selection.md`, `docs/decisions/adr-0003-process-sandbox-backends.md`, `docs/decisions/index.md` (CREATE) | M review | TASK-009, TASK-011 | M | DONE | ADR-0002, ADR-0003 approved (blanket approval, ADR-0001); decisions index updated |
+| TASK-013 | P1 | Plan approval: set `start_date`/`target_date` from the spike results; status `approved`; add the plan map to proposal "Plan Strategy" | all | this plan, proposal (UPDATE) | M sign-off | TASK-001–012 | M | DONE | Plan status approved; start 2026-09-28; P1 exit criteria met |
 
 ### P2a — Foundation (Stage A core)
 
@@ -308,7 +307,7 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-033 | P2c | HTTP client (`exchange_http`, `http_adapter` h1/h2): redirects off by default, `accept status`, decode, component-aware URLs, bound address, safe retries | R12, R4 / UC-05 / C-08 | `src/features/transports/exchange_http.rs`, `ports.rs`; `src/infra/http_adapter.rs` | colocated test; T-05 | TASK-022 | I | NOT STARTED | |
 | TASK-034 | P2c | Sockets: TCP (framing), Unix, WebSocket client; SSE/JSONL stream decoding; `codec` | R12 / UC-05 / C-08 | `src/features/transports/exchange_socket.rs`; `src/infra/socket_adapter.rs`, `codec.rs` | T-03, T-05 | TASK-033 | I | NOT STARTED | |
-| TASK-035 | P2c | Processes: argv-only `run_process`, env allow-list, reaping; sandboxed exec per ADR-0003 or `unsupported.sandbox_backend` | R12, R13, R11 / UC-05 / C-08 | `src/features/transports/run_process.rs`; `src/infra/process_adapter.rs`; `src/infra/sandbox_<platform>.rs` (exact names from ADR-0003) | T-05, T-08 | TASK-012, TASK-022 | I | NOT STARTED | |
+| TASK-035 | P2c | Processes: argv-only `run_process`, env allow-list, reaping; sandboxed exec per ADR-0003 or `unsupported.sandbox_backend` | R12, R13, R11 / UC-05 / C-08 | `src/features/transports/run_process.rs`; `src/infra/process_adapter.rs`; `src/infra/sandbox_macos.rs`, `sandbox_linux.rs`, `sandbox_unsupported.rs` (ADR-0003) | T-05, T-08 | TASK-012, TASK-022 | I | NOT STARTED | |
 | TASK-036 | P2c | DAG: `run_dag` state machine, fail fast default/fail independent, `map`/`poll`/`iterate`, `DagCompletion`, call-depth/concurrency limits | R10, R4 / UC-07 / C-07, C-22 | `src/features/execution/run_dag.rs` | `run_dag_test.rs`; T-07, T-24 | TASK-022 | I | NOT STARTED | |
 | TASK-037 | P2c | Audit/trace: `read_trace`, `trace_store` (bounded, redacted, `effect_id` on attempts), `trace export` needing a write grant | R6, R13 / UC-09 / C-05 | `src/features/audit/read_trace.rs`, `ports.rs`; `src/infra/trace_store.rs` | colocated test; T-09 | TASK-022 | I | NOT STARTED | |
 | TASK-038 | P2c | I/O manifest: `inspect_effects` builds the IoManifest (sites, access verbs, capability, normalized targets, knowledge classes, bootstrap list). Adds views `--by`, filters, formats table/json/markdown/csv, `--check-policy`, `--strict`, `--trace` | R6, R26 / UC-09, UC-21 / C-05, C-23 | `src/features/audit/inspect_effects.rs` | `inspect_effects_test.rs`; T-25 | TASK-021, TASK-037 | I | NOT STARTED | |
@@ -381,8 +380,8 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-083 | P1 | Create `docs/plans/index.md` and link this plan from `docs/README.md`, `docs/index.md` and the proposal | R14 | — | `docs/plans/index.md` (CREATE), `docs/README.md`, `docs/index.md` (UPDATE) | — | I | NOT STARTED | |
-| TASK-084 | P1 | Create `docs/research/index.md` and `docs/decisions/index.md` | R14 | — | as named | TASK-009 | I | NOT STARTED | |
+| TASK-083 | P1 | Create `docs/plans/index.md` and link this plan from `docs/README.md`, `docs/index.md` and the proposal | R14 | — | `docs/plans/index.md` (CREATE), `docs/README.md`, `docs/index.md` (UPDATE) | — | I | DONE | docs/plans/index.md created; linked from docs/README.md and docs/index.md |
+| TASK-084 | P1 | Create `docs/research/index.md` and `docs/decisions/index.md` | R14 | — | as named | TASK-009 | I | DONE | research/index.md (REF-2026-0014) and decisions/index.md (REF-2026-0013) |
 | TASK-085 | P2a | Create `docs/incidents/index.md` (with `active/`, `resolved/`, `postmortems/`) and `docs/troubleshooting/index.md` before code starts, so defects have a home | R14 | — | as named | TASK-013 | I | NOT STARTED | |
 | TASK-086 | P2* | Every design change discovered during P2 updates the contract first, then the proposal/reference, then code (AGENTS loop); log it in Decisions | all | `vhco-contract.json`, proposal | `vhco sync .` | — | I | NOT STARTED | |
 | TASK-087 | P2* | Update this plan's statuses and evidence at every task transition; recompute the Live Status Summary | all | this plan | Review at each phase exit | — | I | NOT STARTED | |
@@ -429,7 +428,7 @@ cited so both documents trace together.
 | PF-22 | production | `src/infra/{registry,execution_driver,scope_supervisor,file_access,policy_broker,policy_file_reader,policy_draft_writer,trace_store,mcp_client}.rs` | CREATE | Core adapters | R3–R7, R11, R24, R26 | F-05, F-07–F-11, F-30, F-36 | NOT STARTED | T-03–T-09, T-21, T-25, T-26 |
 | PF-23 | production | `src/infra/{http_adapter,socket_adapter,process_adapter,codec}.rs` | CREATE | Transports (H3 added in TASK-044) | R12, R18 / 033–035, 044 | F-13, F-22 | NOT STARTED | T-05, T-14 |
 | PF-24 | production | `src/infra/{oauth_adapter,credential_store,udp_adapter,quic_adapter,grpc_adapter,session_driver,serve_listener,policy_authenticator}.rs` | CREATE | Stage B and serve adapters | R15–R19, R22, R25 | F-19–F-21, F-24, F-27, F-31 | NOT STARTED | T-11–T-17, T-19, T-22 |
-| PF-25 | production | `src/infra/sandbox_<platform>.rs` (names fixed by ADR-0003) | CREATE | Process confinement backends | R11 / 035 | F-14 | NOT STARTED | T-08 |
+| PF-25 | production | `src/infra/sandbox_macos.rs`, `sandbox_linux.rs` (gated on T-08, kernel ≥ 6.12), `sandbox_unsupported.rs` (ADR-0003) | CREATE | Process confinement backends | R11 / 035 | F-14 | NOT STARTED | T-08 |
 | PF-26 | production | `vhco-contract.json` | UPDATE | TASK-006 reconciliation; any P2 design change | R14 / 002, 006, 086 | F-15 | NOT STARTED | T-28 |
 | PF-27 | production | `AGENTS.md` | UPDATE | "Project facts" → Rust, Rivet features and surfaces | R14 / 006 | — | NOT STARTED | review |
 | PF-28 | production | `.gitignore`, `deny.toml` | CREATE | Repo hygiene; licence policy | release / 007, 049 | — | NOT STARTED | T-27 |
@@ -618,14 +617,15 @@ Every document follows the metadata of DOCUMENTATION §5/§20, the visible heade
 
 | Timestamp | Type | Task / requirement | Finding or decision | Impact | Owner / follow-up | Linked |
 |---|---|---|---|---|---|---|
-| 2026-09-28 | Blocker | TASK-003 / R1 | Capy `LICENSE` is source-available (forbids bundling and derivatives); `Cargo.toml` says MIT | No P2 code until relicensed | Maintainer (Capy owner) | G-LIC |
-| 2026-09-28 | Blocker | TASK-007 | Repository is not a Git repository | §32 release impossible until initialized | Maintainer | — |
+| 2026-09-28 | Resolved | TASK-003 / R1 | Capy `LICENSE` text is source-available while `Cargo.toml` says MIT; the maintainer owns Capy and authorized its use | G-LIC closed | Maintainer | ADR-0001 |
+| 2026-09-28 | Resolved | TASK-007 | Repository was not a Git repository | Initialized on `main` (commit aa37459) | Maintainer | — |
 | 2026-09-28 | Finding | TASK-006 | Contract lacks `cancel_authorization` although the proposal defines `rivet.auth.cancel` | Contract ↔ proposal drift | Implementer, P1 | PROP §Increment 9 |
 | 2026-09-28 | Finding | TASK-006 | Proposal F-35 names `build_io_manifest.rs`; the contract extends `inspect_effects` | Choose the contract (code source of truth) | Implementer, P1 | PROP F-35 |
 | 2026-09-28 | Finding | TASK-006 | AGENTS.md "Project facts" describe a Go `email_provider` | Misleads agents | Implementer, P1 | — |
-| 2026-09-28 | Decision (pending) | TASK-005 | Option-derived file sites / `io --needs` suggested in conversation, not yet approved | May extend R26/T-25 | Maintainer | — |
+| 2026-09-28 | Decision | TASK-005 | Option-derived file sites / `io --needs` / `--check-files` approved | R26/T-25 extended; proposal rev 8 | Maintainer | ADR-0001 |
 | 2026-09-28 | Deviation | D-10 | Proposal F-18 named one TEST file; this plan uses one TEST document per suite (33) | Finer evidence; same tests | Implementer | PROP F-18 |
 | 2026-09-28 | Deviation | PF-05 | Proposal F-03 named `mod.rs` + `contracts.rs`; the plan splits the domain by topic | Same types, smaller files | Implementer | PROP F-03 |
+| 2026-09-28 | Finding | TASK-010 | G-SPIKE PASS with eight implementation findings (AST JSON contract, span slicing, Rivet-owned expression parser, option tails, try/catch pairing, literal-shape constraints, indent guards, diagnostic rewording) | TASK-016/017 and T-23 gain requirements | Implementer | RES-2026-0001 |
 | 2026-09-28 | Scope | — | Stage C adapters excluded; they need a future PLAN-2026-0002 | Not in v0.1.0 | Maintainer | PROP delivery matrix |
 
 ## Rollout Strategy
@@ -713,9 +713,9 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 ## Related Documents
 
-- [PROP-2026-0001 — Rivet runtime proposal](../proposals/draft/prop-2026-0001-rivet-runtime.md) (baseline revision 6)
+- [PROP-2026-0001 — Rivet runtime proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md) (baseline revision 6)
 - [REF-2026-0001 — Request and evidence](../references/ref-2026-0001-request-and-evidence.md) (UQ-01–UQ-18)
-- [REF-2026-0002 — Language and usage reference](../references/ref-2026-0002-language-and-usage.md) (S01–S153)
+- [REF-2026-0002 — Language and usage reference](../references/ref-2026-0002-language-and-usage.md) (S01–S159)
 - [Sample folders](../demos/README.md) · [demos index](../demos/index.md)
 - [Hand-authored contract](../../vhco-contract.json)
 - [AGENTS.md](../../AGENTS.md) · [DOCUMENTATION.md](../../DOCUMENTATION.md) · [PROJECT.md](../../PROJECT.md)
@@ -724,4 +724,6 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-28 | Claude | P1 complete: TASK-009, 011, 012, 013, 084 DONE; plan approved; PF-25 sandbox files named. |
+| 2 | 2026-09-28 | Claude | P1 progress: TASK-001–008, 010, 083 DONE; blockers resolved; baseline is proposal rev 8 and S01–S159. |
 | 1 | 2026-09-28 | Claude | Initial draft: P1–P5 phases, 96 tasks, file/test/documentation/release checklists, full R1–R26 traceability; awaiting P1 gates. |

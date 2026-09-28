@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -53,7 +53,7 @@ UDP request and separately authorized reply. Delivery stage: **B**. Read [app.ri
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S81–S82. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S81–S82. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -143,10 +143,10 @@ rivet --file app.rivet --policy ./policies/receive.json io telemetry.receive --c
 **`io --by target`**. The reply address comes from the received datagram, so that target is `dynamic`:
 
 ```text
-TARGET                   ACCESS    CAPABILITY      USED BY
-udp://127.0.0.1:7000     connect   allow_network   telemetry.status
-udp://127.0.0.1:7001     bind      allow_listen    telemetry.receive
-udp://{message.peer}     connect   allow_network   telemetry.receive (dynamic: sender of the received datagram)
+TARGET                   ACCESS    CAPABILITY      ORIGIN            PHASE     NEEDS FILE   USED BY
+udp://127.0.0.1:7000     connect   allow_network   with udp          connect   —            telemetry.status
+udp://127.0.0.1:7001     bind      allow_listen    with udp bind     connect   —            telemetry.receive
+udp://{message.peer}     connect   allow_network   socket.send_to    body      —            telemetry.receive (dynamic: sender of the received datagram)
 ```
 
 **`io --check-policy`** with the default [policy.json](policy.json):
@@ -190,12 +190,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`with udp`, `with udp bind`, `socket.send_to`), PHASE and NEEDS FILE. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: connect/bind/dynamic reply sites by target and `io --check-policy` under both policy files. |
 | 2 | 2026-09-28 | Claude | UQ-17: declared outputs; quoted `timeout "1s"`/`"5s"`; `--sandbox` variants became policy.json and policies/receive.json with literal loopback grants (deny_private_ranges); View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

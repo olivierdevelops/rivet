@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,9 +32,9 @@ next_review_date: 2026-10-27
 
 Rivet is a proposed Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.
 
-**Current state: design only (design revision 6).** This repository contains the original brief, a proposal, a hand-authored contract, a reference of 153 numbered examples and twelve sample folders. It has no runtime implementation, Cargo build, installed Rivet command or release. No design approval has been recorded.
+**Current state: design approved, implementation not started (design revision 8).** This repository contains the original brief, the approved proposal, the approved hand-authored contract, a reference of 159 numbered examples, twelve sample folders and the v0.1.0 plan. It has no runtime implementation, Cargo build, installed Rivet command or release. The maintainer approved the design, contract and plan on 2026-09-28 ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)); [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) is in phase P1.
 
-- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)
 - [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))
 - [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)
 - [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)
@@ -111,13 +111,13 @@ Remote MCP effects and unconfined native/process code are identified as trust bo
 ## Approval gates and risks
 
 ```text
-  design review ──> [G-LIC] Capy relicensed to MIT ──> [spike] every example parses ──> implementation
-                     owner: the project user              gate: S01.. and docs/demos/*.rivet
+  design review ✔ ──> [G-LIC] ✔ owner authorized Capy ──> [G-SPIKE] every example parses ──> implementation
+  (ADR-0001)            (ADR-0001)                          gate: S01–S159 and docs/demos/*.rivet
 ```
 
 | Gate / risk | State |
 |---|---|
-| G-LIC — Capy licence | Capy's LICENSE is source-available (forbids bundling, commercial use and derivatives) while its Cargo.toml says MIT. The user owns Capy and will relicense to MIT before implementation approval. An approval gate, not a blocker to design review. |
+| G-LIC — Capy licence | **Closed 2026-09-28.** Capy's LICENSE text is source-available while its Cargo.toml says MIT; the maintainer owns Capy and authorized Rivet to depend on and ship it ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)). |
 | Parser spike | Implementation starts only after every numbered example and every `docs/demos` `.rivet` file parses cleanly with Capy's public `Library::parse`. |
 | Platform enforcement | Process sandboxing and conditional file updates depend on platform support; still unproven. |
 
@@ -135,6 +135,7 @@ Implementation requires the human contract review defined by [AGENTS.md](AGENTS.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |
 | 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |
 | 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

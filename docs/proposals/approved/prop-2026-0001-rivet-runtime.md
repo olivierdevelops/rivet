@@ -2,10 +2,10 @@
 document_id: PROP-2026-0001
 title: "Rivet scoped connection runtime and unified request interface"
 document_type: proposal
-status: proposed
+status: approved
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-27
 
 ## Summary
 
-> **Status banner.** This is a design proposal. Nothing below is implemented: every `rivet` command, HTTP
+> **Status banner.** This design is **approved** (2026-09-28) and not yet implemented: every `rivet` command, HTTP
 > route, WebSocket frame, Rust signature and language example is a *proposed* contract. This is the only
 > place the proposal says so; later sections do not repeat it.
 
@@ -65,6 +65,10 @@ declared outputs (R23), policy.json-only configuration (R24), one serve for ever
 review fixes (error registry, DAG semantics, sandbox claim scoping, SSRF defaults, Capy prefix syntax).
 Revision 6 adds the generated I/O manifest with per-site targets and access verbs, per-access policy narrowing
 and least-privilege policy drafts (R26, [Increment 18](#increment-18--generated-io-manifest-and-policy-drafts)).
+Revision 8 (TASK-005, approved in ADR-0001) makes every file-valued option line (`tls ca_file`, `tls cert_file`,
+`tls key_file`, `body file`, …) its own manifest site, gives every site `origin`, `phase`, `requires_existing` and
+`secret`, and adds `rivet io --needs` (files that must exist before an operation can run) and `--check-files`
+([option-derived file sites](#option-derived-file-sites-and-io---needs)).
 
 ## Decision Requested
 
@@ -76,7 +80,7 @@ least-privilege policy drafts for human review, and bounded DAG execution.
 
 Approval of this document does not establish sandbox-platform support, performance results or a shipped
 release. Implementation approval additionally requires the gates in [Approval](#approval), including
-**G-LIC** (Capy relicensed to MIT by its owner) and human review of the
+**G-LIC** (closed 2026-09-28: the maintainer owns Capy and authorized its use, ADR-0001) and human review of the
 [hand-authored contract](../../../vhco-contract.json) with `vhco live`, as required by
 [AGENTS.md](../../../AGENTS.md).
 
@@ -132,7 +136,7 @@ PROJECT.md protocol examples
 | G-02 | Resource scope determines lifetime and errors preserve causes | P1, P2 | Early-exit, cancellation and cleanup fault tests have no live owned children |
 | G-03 | Enumerate effects before execution and authorize every actual effect | P3, P7 | Static inventory explains sites with target and access verbs; deny tests observe zero prohibited effects |
 | G-04 | Compose streams, connectors and bounded DAGs predictably | P4 | Dependencies, backpressure and partial failures are testable |
-| G-05 | Keep the design practical and reviewable | P5 | Capy feasibility gate, source traceability and 153 worked samples |
+| G-05 | Keep the design practical and reviewable | P5 | Capy feasibility gate, source traceability and 159 worked samples |
 | G-06 | Make results, authority and access self-describing | P6, P7 | `rivet outputs` shows every declared output; one reviewed `policy.json` explains all grants; one `serve` answers on every surface; `rivet io --by target` shows every URL/path and its access |
 
 Non-goals: a general-purpose language, distributed workflow durability, exactly-once side effects, arbitrary native-plugin isolation inside the embedding process, automatic rollback of external effects, a GUI, transparent replay of remote mutations, unrestricted shell execution, cross-process FFI bindings and a package marketplace. Named pipes, file watching and advanced TCP TLS options are Stage C (see [Increment 8](#increment-8--protocol-coverage-and-availability)); every protocol named in UQ-14/UQ-15 is required.
@@ -189,7 +193,7 @@ Every source below is outside this proposal. `UQ` references resolve to [the req
 | R23 | Declared, described outputs viewable from every surface | API / Documentation | [UQ-17](../../references/ref-2026-0001-request-and-evidence.md#policy-outputs-and-unified-serve-request) line 1 | `output` scalar or `output object … end` with typed, described fields; `emits`/`receives` use the same field form; optional declared `error` codes; result validated before Completion (`output.invalid`); `rivet outputs`, `describe`, `GET /v1/operations/{id}/outputs`, MCP `rivet.outputs` and `outputSchema`, `Runtime::outputs` all show the same schema | G-01, G-06 |
 | R24 | Policy comes only from a policy.json file | Security / CLI | [UQ-17](../../references/ref-2026-0001-request-and-evidence.md#policy-outputs-and-unified-serve-request) line 2; UQ-13 behaviour | `policy.json` beside the entry file is auto-discovered; `--policy PATH` selects another file (path only); no grant strings or env-var policy; absent file = deny-by-default for new application I/O; schema v1 validated, errors exit 2 | G-03, G-06 |
 | R25 | `rivet serve` exposes HTTP, SSE, polling, WebSocket and MCP simultaneously on one listener | API / Operations | [UQ-17](../../references/ref-2026-0001-request-and-evidence.md#policy-outputs-and-unified-serve-request) line 3 | One `--listen` address mounts every surface; `--stdio` for MCP stdio; surfaces narrowed only in policy.json; one authenticator/principal model on all surfaces; non-loopback bind without auth refuses to start | G-01, G-06 |
-| R26 | Generated I/O manifest with targets and access per site; policy draft from it | Operations / Security | [UQ-18](../../references/ref-2026-0001-request-and-evidence.md#io-manifest-request) | `rivet io` emits an IoManifest: every site's normalized target (URL, path/glob, host:port, argv, env var, connector method), access verbs, HTTP method/protocol, capability, knowledge class and source; views `--by operation\|target\|capability`; formats table/json/markdown/csv; `--check-policy` adds a decision (exit 3 on denied/partial); `--strict` exit 7 on dynamic/opaque; policy.json grants/deny accept optional `access`; `rivet policy generate` writes a least-privilege draft (dynamic/opaque sites listed for review, exit 7); same data from `rivet.io`/`rivet.policy.generate` on every surface; no I/O performed | G-03, G-06 |
+| R26 | Generated I/O manifest with targets and access per site; policy draft from it | Operations / Security | [UQ-18](../../references/ref-2026-0001-request-and-evidence.md#io-manifest-request) | `rivet io` emits an IoManifest: every site's normalized target (URL, path/glob, host:port, argv, env var, connector method), access verbs, HTTP method/protocol, capability, knowledge class and source; views `--by operation\|target\|capability`; formats table/json/markdown/csv; `--check-policy` adds a decision (exit 3 on denied/partial); `--strict` exit 7 on dynamic/opaque; policy.json grants/deny accept optional `access`; `rivet policy generate` writes a least-privilege draft (dynamic/opaque sites listed for review, exit 7); same data from `rivet.io`/`rivet.policy.generate` on every surface; no I/O performed. Revision 8: every file-valued option line (`tls ca_file`/`cert_file`/`key_file` in tcp/http/websocket/quic/grpc/mcp blocks, `body file` upload sources, operation-level `descriptor`) is its own site (file, `read`, `allow_read`); every site carries `origin` (statement or option), `phase` (`load`\|`before_connect`\|`connect`\|`body`\|`cleanup`), `requires_existing` and `secret` (key files: contents secret, path shown); `--by target` shows ORIGIN, PHASE, NEEDS FILE; `io --needs` lists per operation the files that must already exist (excluding files it creates earlier), static, also `rivet.io {needs}` / `GET /v1/io?needs=true`; `io --check-files` stats them through the broker (needs `allow_read` + `stat`), reports present/missing/unreadable/not_permitted, exit 4 on a missing file, exit 3 when stat is not permitted; `policy generate` grants option-derived paths exactly with `access: ["read"]`, never a directory glob | G-03, G-06 |
 
 ## Use Cases
 
@@ -217,7 +221,7 @@ All user-facing operations use the unified request contract described below. The
 | UC-18 | Send/read live messages from any surface / application | Authorized streaming operation and bounded host session | open → send/read concurrently → finish_input → terminal result; cancel/expire joins cleanup | Sequence conflict, stale cursor, backpressure, cross-principal access, abandoned consumer | G-01, G-02, G-04 | R22, R3, R4, R8, R9 | T-19; S113–S116 |
 | UC-19 | Inspect declared outputs / client author or MCP client | Loaded catalog; public operation | `rivet outputs users.get` (table) or `--json` (JSON Schema) → same data from `describe`, `GET /v1/operations/users.get/outputs`, MCP `rivet.outputs`, `Runtime::outputs` | Unknown/private ID 404/exit 4; runtime result mismatches schema → `output.invalid` (500/exit 5); undeclared `fail` code → check warning (error with `--strict-docs`) | G-01, G-06 | R23, R8, R20 | T-20; S103–S106 |
 | UC-20 | Serve every surface at once / operator | `rivet --file app.rivet serve [--listen ADDR]`; optional `serve` block in policy.json | One listener → REST, SSE, polling, WebSocket and MCP mounted → one authenticator → principal → operation authorization → shared dispatcher | Non-loopback bind without auth (`serve.auth_required`, exit 2); disabled surface 404; bad token 401; unauthorized operation 403; >8 WS refs/sessions 429 | G-01, G-06 | R25, R8, R21, R22 | T-22; S114, S116 |
-| UC-21 | Generate the I/O manifest / operator or reviewer | Loaded bundle; optional policy.json; optional trace | `rivet io [ID …] --by operation\|target\|capability [--kind …] [--access …] [--format …]` → IoManifest (every site: target, access, capability, knowledge, source); `--check-policy` adds `decision`; `--trace REQ` adds `ATTEMPTS`; same data from `rivet.io`, `GET /v1/io`, MCP `rivet.io`, `rt.io` | Unknown ID (404/exit 4); denied/partial reachable site under `--check-policy` (exit 3); dynamic/opaque site under `--strict` (exit 7); invalid `--kind`/`--access` (exit 2); network principal without explicit `rivet.io` authorization (403) | G-03, G-06 | R26, R6, R8, R11 | T-25; S62–65 |
+| UC-21 | Generate the I/O manifest / operator or reviewer | Loaded bundle; optional policy.json; optional trace | `rivet io [ID …] --by operation\|target\|capability [--kind …] [--access …] [--format …]` → IoManifest (every site: target, access, capability, knowledge, source); `--check-policy` adds `decision`; `--trace REQ` adds `ATTEMPTS`; every site also carries `origin`, `phase`, `requires_existing`, `secret`; `--needs` lists per operation the files that must already exist (static); `--check-files` stats them through the broker; same data from `rivet.io` (`needs?`), `GET /v1/io` (`needs=true`), MCP `rivet.io`, `rt.io` | Unknown ID (404/exit 4); denied/partial reachable site under `--check-policy` (exit 3); dynamic/opaque site under `--strict` (exit 7); invalid `--kind`/`--access` (exit 2); network principal without explicit `rivet.io` authorization (403); `--check-files`: a needed file missing (exit 4), stat not granted by policy.json or file unreadable (exit 3) | G-03, G-06 | R26, R6, R8, R11 | T-25; S62–65, S154–S159 |
 | UC-22 | Generate a least-privilege policy draft / operator | Loaded bundle; IoManifest | `rivet policy generate [ID …\|--all] [--output policy.json]` → policy.json v1 with one grant per (capability, target), `access` narrowed to used verbs, `deny_private_ranges: true` → human review → rename into place | dynamic/opaque sites not granted, listed on stderr, exit 7 (draft still written); `--output` onto an existing file → `conflict.exists` exit 4; never emits `serve` auth or secrets | G-03, G-06 | R26, R24, R11 | T-26; S66–69 |
 
 ## Project Standards Baseline
@@ -238,7 +242,7 @@ All user-facing operations use the unified request contract described below. The
 | Requirements/change/file/test traceability | Applies | R/C/F/T tables and alignment | PASS | Convert planned test IDs into executable tests |
 | Canonical proposal template | Applies | All authoritative sections present | PASS | CUDA sibling absent; use DOCUMENTATION template |
 | Runtime validation and zero drift | Implementation gate | No `src/` or Cargo project yet | NOT APPLICABLE | Cannot claim runtime gates pass in design phase |
-| 50+ examples and current-state docs | Applies | Reference S01–S153; README | PASS | Examples are design contracts, not tested demos |
+| 50+ examples and current-state docs | Applies | Reference S01–S159; README | PASS | Examples are design contracts, not tested demos |
 | Design approval | Applies | Approval section | NEEDS HUMAN REVIEW | No approval inferred from drafting request |
 
 ## What the Reference Engines Do
@@ -334,7 +338,7 @@ Verdict: start with grammar, lifecycle and effect enforcement before adding tran
 | C-20 | Unified `serve`: one listener mounting REST, SSE, polling, WebSocket (`rivet.v1`) and MCP; `--stdio`; policy.json `serve.surfaces/auth/principals`; `--transport`/`--mcp` removed | R25, R8, R21, R22 |
 | C-21 | Capy prefix-call syntax, quoted durations, restricted interpolation and component-aware URL encoding; `infra/capy_parser.rs` → Rivet-owned `SyntaxTree`; syntax table | R1, R2 |
 | C-22 | Error registry (code → kind → HTTP → exit → retryable), host-wide limits, DAG node semantics and `DagCompletion` | R4, R8, R10 |
-| C-23 | Generated IoManifest: access vocabulary per site, target normalization, `rivet io` views/formats/`--check-policy`/`--strict`/`--trace`, `effect_id` on trace attempts, `rivet.io` / `GET /v1/io` / MCP `rivet.io` / `rt.io` projections, explicit-only network exposure; optional `access` narrowing in policy.json grants/deny | R26, R6, R8, R11, R24 |
+| C-23 | Generated IoManifest: access vocabulary per site, target normalization, `rivet io` views/formats/`--check-policy`/`--strict`/`--trace`, `effect_id` on trace attempts, `rivet.io` / `GET /v1/io` / MCP `rivet.io` / `rt.io` projections, explicit-only network exposure; optional `access` narrowing in policy.json grants/deny; revision 8: option-derived file sites, per-site `origin`/`phase`/`requires_existing`/`secret`, `--by target` ORIGIN/PHASE/NEEDS FILE columns, `io --needs` (static) and `io --check-files` (brokered stat; exit 4 missing, exit 3 not permitted), exact-path grants for option-derived files in `policy generate` | R26, R6, R8, R11, R24 |
 | C-24 | `rivet policy generate` least-privilege draft (one grant per capability+target, narrowed `access`, origin/glob widening rules, review list and exit 7, no-overwrite `--output`); `rivet.policy.generate` / `POST /v1/policy/generate` / MCP / `rt.generate_policy` | R26, R24, R11 |
 
 ## Design
@@ -362,8 +366,9 @@ schema snapshot hashes. Lowering must not silently accept raw text captures it c
 introduce a hidden second top-level parser.
 
 **Licence gate G-LIC.** Capy's `LICENSE` is source-available (forbids bundling, commercial use and
-derivatives) while its `Cargo.toml` declares MIT. The owner (the project user) relicenses to MIT before
-implementation approval. Design review is not blocked.
+derivatives) while its `Cargo.toml` declares MIT. **Closed 2026-09-28:** the owner (the project maintainer)
+authorized Rivet to depend on and ship Capy ([ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md));
+aligning the upstream `LICENSE` text is the owner's housekeeping.
 
 **Syntax decision: Capy prefix calls.** Revision 4 examples used `f(x, y)` calls, which Capy's value grammar
 does not provide. Revision 5 adopts Capy's native prefix form everywhere:
@@ -397,7 +402,9 @@ does not provide. Revision 5 adopts Capy's native prefix form everywhere:
   live handles.
 - **Leading-options rule.** Inside a resource block (`with …`, `http …`, `grpc …`) option lines (`timeout`,
   `alpn`, `max_datagram`, `max_streams`, `tls`, `decode`, `framing`, …) precede the first body statement; an
-  option after a statement is `syntax.option_after_body`. The same rule orders an operation header: `name`,
+  option after a statement is `syntax.option_after_body`. `tls server_name|ca_file|cert_file|key_file V` is valid
+  in `http`, `with http`, `with websocket`, `with quic`, `with tcp` (Stage C) and in `grpc`/`mcp` (http transport)
+  connectors; each file-valued option is its own I/O site (Increment 18). The same rule orders an operation header: `name`,
   `description`, `private`, `param*`, `output` (+ block), `emits`, `receives`, `error*`, then the body.
 
 Syntax table (every construct used in the proposal, reference and demos):
@@ -425,7 +432,7 @@ Syntax table (every construct used in the proposal, reference and demos):
 | Connector | `connector NAME mcp\|grpc … end` | Pinned snapshot / descriptor |
 | Auth profile | `auth NAME oauth2 … end`; `auth PROFILE account "A"` in a request | See Increment 9 |
 
-**Spike pass gate (feasibility: experiment needed).** Every S01–S153 example in
+**Spike pass gate (feasibility: experiment needed).** Every S01–S159 example in
 [REF-2026-0002](../../references/ref-2026-0002-language-and-usage.md) and every `.rivet` file under
 [docs/demos](../../demos/README.md) parses cleanly with the pinned Capy commit, and each invalid fixture yields
 a diagnostic with a correct line/column. Hard shapes first: `with … as …`, prefix calls with trailing objects
@@ -608,7 +615,7 @@ Built-in registry (reserved `rivet.*` operations, callable from every surface):
 | `rivet.sessions.open/send/finish_input/read/cancel` | see Increment 14 | Session values | Live input/output |
 | `rivet.auth.begin/complete/status/disconnect/cancel` | see Increment 9 | Auth values | OAuth management |
 | `rivet.capabilities` | `{}` | Feature/platform matrix | Availability |
-| `rivet.io` | `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean}` | IoManifest | Generated I/O manifest (R26, Increment 18); network principals only if explicitly listed |
+| `rivet.io` | `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean, needs?: boolean}` | IoManifest | Generated I/O manifest (R26, Increment 18); network principals only if explicitly listed |
 | `rivet.policy.generate` | `{ids?: [text], all?: boolean}` | `{policy: {…}, review: [site…], complete: bool}` — never writes files | Least-privilege policy draft (R26, Increment 18); network principals only if explicitly listed |
 
 Host authorization can narrow the catalog but cannot change the underlying operation contract. Tool results include structured Completion or a safe error result. Remote resource/prompt access is reachable through registry operations even when presented through native MCP resources/prompts as convenience views.
@@ -911,7 +918,7 @@ Use descriptor-driven dynamic messages or generated Rust bindings behind the sam
 
 Stream mode is derived from the descriptor. Supplying `message` to a client-streaming method or sending multiple messages to a unary input is rejected; no guessing from runtime traffic. Stream iteration yields message values only; EOF waits for trailing status. `rpc.finish_send` is idempotent input half-close, not resource disposal. A peer can finish early; further sends fail `grpc.input_closed` and the receive side still reports the actual final status. Request cancellation cancels this RPC and joins owned tasks; it must not kill unrelated calls using a safe shared channel. Default channels are scoped; any pooling is partitioned by identity, policy and endpoint.
 
-Metadata syntax `metadata "x-request-id" "example"` and `metadata "trace-bin" bytes value` preserves ASCII/binary distinctions and duplicate entries internally. Reserved `grpc-*` keys and conflicting authorization entries are rejected. TLS verifies certificate identity; optional mTLS credential files need declared read grants. `auth PROFILE account ACCOUNT` attaches an authorized bearer credential as request metadata, using the existing profile's exact HTTPS resource-origin and audience/scope checks. A midstream token expiry does not cause transparent stream restart or token replacement within an already sent RPC; any reconnect is explicit and replay-safe. Source effect inventory includes credential refresh/store and descriptor assembly reads.
+Metadata syntax `metadata "x-request-id" "example"` and `metadata "trace-bin" bytes value` preserves ASCII/binary distinctions and duplicate entries internally. Reserved `grpc-*` keys and conflicting authorization entries are rejected. TLS verifies certificate identity; optional connector `tls ca_file`/`cert_file`/`key_file` lines are option-derived file sites (phase `before_connect`, key file `secret`) that need `allow_read` grants and appear in `rivet io --needs` for every operation calling the connector. `auth PROFILE account ACCOUNT` attaches an authorized bearer credential as request metadata, using the existing profile's exact HTTPS resource-origin and audience/scope checks. A midstream token expiry does not cause transparent stream restart or token replacement within an already sent RPC; any reconnect is explicit and replay-safe. Source effect inventory includes credential refresh/store and descriptor assembly reads.
 
 Logical permission is an `allow_grpc` grant for `CONNECTOR/Fully.Qualified.Service/Method`, in addition to an `allow_network` grant for `https://HOST:PORT`. HTTPS permission is scoped by the adapter to native HTTP/2; plaintext `http://` is development opt-in and may not carry secret auth. Authority override, service-discovered alternate peers and custom resolvers cannot bypass destination grants or TLS identity; no automatic resolver discovery is enabled. Server-side load balancing remains a declared future adapter option. Auth profile names do not confer method authority.
 
@@ -1303,6 +1310,10 @@ A single source line can produce several sites, and each is listed:
                                              mcp call tool crm.tools.search       (allow_mcp)
  grpc users.GetUser                      ->  network connect https://users.example.com:443 (allow_network)
                                              grpc call unary users/example.Users/GetUser    (allow_grpc)
+ http post … with tls ca_file/cert_file/  ->  file read ./certs/ca.pem      origin tls ca_file   (allow_read)
+   key_file lines (revision 8)               file read ./certs/client.pem  origin tls cert_file (allow_read)
+                                             file read ./certs/client.key  origin tls key_file  (allow_read, secret)
+                                             network connect POST https://render.example.com:443 (allow_network)
 ```
 
 **Per-access narrowing in policy.json.** Grant and deny entries accept an optional `access` list:
@@ -1329,6 +1340,7 @@ A single source line can produce several sites, and each is listed:
 rivet --file app.rivet io [ID ...] [--all] [--transitive] [--include-bootstrap]
       [--by operation|target|capability] [--kind file|network|process|env|pipe|unix|mcp|grpc|auth|credential]
       [--access VERB[,VERB]] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ]
+      [--needs] [--check-files]
 ```
 
 | Flag | Default | Meaning |
@@ -1344,10 +1356,14 @@ rivet --file app.rivet io [ID ...] [--all] [--transitive] [--include-bootstrap]
 | `--check-policy` | off | Evaluate each site against the effective policy (host ceiling ∩ policy.json); add `decision` |
 | `--strict` | off | Exit 7 when any site is `dynamic`/`opaque_*` (`complete: false`) |
 | `--trace REQ` | off | Add an `ATTEMPTS` column (count, last decision) from that request's trace |
+| `--needs` | off | Revision 8. Print, per operation, the files that must already exist before it can run (static; [below](#option-derived-file-sites-and-io---needs)) |
+| `--check-files` | off | Revision 8. Implies `--needs`; stat each needed exact path through the policy broker and report `present`/`missing`/`unreadable`/`not_permitted`/`not_checkable`. **Performs I/O** |
 
 `decision` values: `allowed` | `denied` | `partial` (a `param_dependent` target only partly covered by grants) |
-`unknown`. Exit codes: `0`; `3` when `--check-policy` finds any reachable site `denied` or `partial`; `7` when
-`--strict` and any site is dynamic/opaque. **No I/O is performed** and source expressions are not evaluated.
+`unknown`. Exit codes: `0`; `3` when `--check-policy` finds any reachable site `denied` or `partial`, or
+`--check-files` finds a file `not_permitted` or `unreadable`; `4` when `--check-files` finds a needed file
+`missing`; `7` when `--strict` and any site is dynamic/opaque. **No I/O is performed** (except the metadata probes
+of `--check-files`) and source expressions are not evaluated.
 
 Table, `--by operation` (default), for the docs/demos-style `users.snapshot` bundle with `--check-policy`:
 
@@ -1362,13 +1378,17 @@ notes.delete     file     delete         ./out/notes/{name}.json                
 `--by target` (what every URL / path is used for):
 
 ```text
-TARGET                                   ACCESS                 CAPABILITY      USED BY
-https://api.example.com:443              connect GET, POST      allow_network   users.get, users.create
-./out/notes/*.json                       create, update, delete allow_write,    notes.create, notes.update,
-                                                                allow_delete    notes.delete
-./data/input.json                        read                   allow_read      report.load
-env API_KEY                              read                   allow_env       users.get (secret, bound to https://api.example.com:443)
+TARGET                       ACCESS                  CAPABILITY     ORIGIN                     PHASE    NEEDS FILE     USED BY
+https://api.example.com:443  connect GET, POST       allow_network  http get, http post        connect  —              users.get, users.create
+./out/notes/*.json           create, update, delete  allow_write,   file create, file update,  body     yes: update,   notes.create, notes.update,
+                                                     allow_delete   file delete                         delete         notes.delete
+./data/input.json            read                    allow_read     file read                  body     yes            report.load
+env API_KEY                  read                    allow_env      secret                     body     —              users.get (secret, bound to https://api.example.com:443)
 ```
+
+Revision 8 adds the ORIGIN, PHASE and NEEDS FILE columns to `--by target` (the `--by operation` and
+`--by capability` columns are unchanged; JSON and CSV carry the fields for every site). NEEDS FILE is `yes`,
+`no`, `yes: <verbs>` for a row that merges sites, or `—` for a non-file row.
 
 `--by capability` groups the same rows under `allow_read` / `allow_write` / … headings:
 
@@ -1423,16 +1443,24 @@ allow_env
       "call_chain": ["users.snapshot", "users.get"],
       "secrets": ["api_key"],
       "source": {"file":"app.rivet","line":6,"column":5},
+      "origin": {"statement": "http get"} | {"option": "tls key_file"},
+      "phase": "load|before_connect|connect|body|cleanup",
+      "requires_existing": false,
+      "secret": false,
       "decision": "allowed" | null
     }
   ],
   "targets": [ {"target":"https://api.example.com:443","capability":"allow_network",
-                "access":["connect"],"methods":["GET","POST"],"operations":["users.get","users.create"]} ],
+                "access":["connect"],"methods":["GET","POST"],"origins":[{"statement":"http get"},{"statement":"http post"}],
+                "phases":["connect"],"needs_file":null,"operations":["users.get","users.create"]} ],
+  "needs": [ … only with --needs / --check-files: {"operation_id", "files": [NeededFile…]} … ],
   "bootstrap": [ … only with --include-bootstrap … ]
 }
 ```
 
-(Schema sketch; `|` marks alternatives.) `decision` is `null` unless `--check-policy`. `complete` is `false` when
+(Schema sketch; `|` marks alternatives.) `decision` is `null` unless `--check-policy`. `origin`, `phase`,
+`requires_existing` and `secret` are present on every site (revision 8); CSV adds them as columns
+(`origin` written `statement:file read` / `option:tls key_file`). `complete` is `false` when
 any site is dynamic or opaque. `--format markdown` = the same tables as Markdown (for pasting into reviews);
 `--format csv` = one row per site.
 
@@ -1451,6 +1479,10 @@ rivet --file app.rivet policy generate [ID ...|--all] [--output policy.json]
 - Writes stdout unless `--output`; `--output` refuses to overwrite an existing file (`conflict.exists`, exit 4) —
   review, then rename.
 - Never includes `serve` auth or secrets. The draft is a starting point for human review, not approval.
+- Revision 8: option-derived file sites (`tls ca_file`, `tls cert_file`, `tls key_file`, `body file`,
+  operation-level `descriptor`) are granted as their **exact path** with `access: ["read"]`, never widened to a
+  directory glob such as `./certs/**`. A `param_dependent` option path is not granted; it is a review item
+  (exit 7). Bootstrap `descriptor`/`schema` files are never granted.
 
 ```text
  IoManifest site                                 knowledge         draft grant
@@ -1459,6 +1491,8 @@ rivet --file app.rivet policy generate [ID ...|--all] [--output policy.json]
  create ./out/user.json                          exact             allow_write ./out/user.json access [create]
  delete ./out/notes/{name}.json                  param_dependent   allow_delete ./out/notes/*.json access [delete]
  connect ${base_url}                             dynamic           (none) -> stderr review item, exit 7
+ read ./certs/client.key (tls key_file)          exact             allow_read ./certs/client.key access [read]
+ read ./certs/{tenant}.key (tls key_file)        param_dependent   (none) -> review item: no glob for option files
 ```
 
 Example output for the snapshot bundle (`users.get` + `users.snapshot`):
@@ -1480,10 +1514,10 @@ data under the usual catalog/authorization rules.
 | Surface | Manifest | Policy draft |
 |---|---|---|
 | CLI | `rivet io …` | `rivet policy generate …` |
-| Built-in operation | `rivet.io` `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean}` → IoManifest | `rivet.policy.generate` `{ids?: [text], all?: boolean}` → `{policy: {…}, review: [site…], complete: bool}` (never writes files) |
-| HTTP | `GET /v1/io?by=target&kind=file&check_policy=true` | `POST /v1/policy/generate` |
+| Built-in operation | `rivet.io` `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean, needs?: boolean}` → IoManifest | `rivet.policy.generate` `{ids?: [text], all?: boolean}` → `{policy: {…}, review: [site…], complete: bool}` (never writes files) |
+| HTTP | `GET /v1/io?by=target&kind=file&check_policy=true`, `GET /v1/io?needs=true` | `POST /v1/policy/generate` |
 | MCP | tool `rivet.io` | tool `rivet.policy.generate` |
-| Library | `rt.io(IoQuery) -> IoManifest` | `rt.generate_policy(&[ids]) -> PolicyDraft` |
+| Library | `rt.io(IoQuery) -> IoManifest` (`IoQuery.needs`, `IoQuery.check_files`) | `rt.generate_policy(&[ids]) -> PolicyDraft` |
 
 **Serve exposure rule.** Inventories reveal internal URLs and paths, so `rivet.io` and `rivet.policy.generate`
 are **not** callable over the network unless the principal's `serve.principals.<name>.operations` explicitly
@@ -1510,8 +1544,102 @@ lists them. A `*` or `demo.*` pattern does not match `rivet.*`. The loopback pri
  notes.delete#1    delete ./out/notes/.. ATTEMPTS 0  (not reached by REQ)
 ```
 
+#### Option-derived file sites and `io --needs`
+
+Revision 8 (PLAN-2026-0001 TASK-005, approved in
+[ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md)). Files named by **option lines**, not only
+by `file …` statements, are I/O the operation performs, and a missing certificate or key is the most common
+reason a connection fails before it starts. The manifest therefore lists them, and `rivet io --needs` answers
+"which files must exist before this operation can run?".
+
+**Every file-valued option line is its own site:** kind `file`, access `["read"]`, capability `allow_read`.
+
+| Option line | Blocks | `phase` | `secret` |
+|---|---|---|---|
+| `tls ca_file PATH` | `http`, `with http`, `with websocket`, `with quic`, `grpc`/`mcp` (http transport) connectors, `with tcp` (Stage C) | `before_connect` | false |
+| `tls cert_file PATH` (client certificate) | same | `before_connect` | false |
+| `tls key_file PATH` (client key) | same | `before_connect` | **true** |
+| `body file PATH`, or a `file NAME PATH` part of `body multipart` (upload source) | `http`, `with http` | `body` | false |
+| `descriptor PATH` inside an operation-level block | operation blocks (e.g. a Stage C codec) | `load` | false |
+
+`tls …` lines are valid in their block's own stage: HTTP is Stage A; WebSocket, QUIC and gRPC are Stage B; TCP TLS
+and mTLS stay Stage C (S24). A connector's option sites appear under every operation that calls the connector.
+Connector-level `descriptor` (gRPC) and `schema` (MCP) files remain **bootstrap** reads. They are listed only
+with `--include-bootstrap` and are never granted by policy.json, but they carry the same new fields
+(`origin: {"option": "descriptor"}`, `phase: "load"`, `requires_existing: true`). A missing one fails the bundle
+load itself (not_found, exit 4).
+
+**New fields on every site.**
+
+| Field | Values | Rule |
+|---|---|---|
+| `origin` | `{"statement": "file read"}` or `{"option": "tls key_file"}` | The statement (`file read`, `http get`, `with tcp`, `grpc`, `secret`, `command`, …) or option line (`tls ca_file`, `body file`, `endpoint`, `transport command`, …) that produced the site |
+| `phase` | `load` \| `before_connect` \| `connect` \| `body` \| `cleanup` | Bundle load; files read to build a connection; opening the connection or spawning the process; statements and body options; `finally` blocks and scope disposal |
+| `requires_existing` | bool | File sites only (false otherwise). `true` when the file must exist when the operation starts. A missing file fails with not_found (exit 4) at that site. For `load`/`before_connect` files this happens before the block dials, so the block causes no effect. `false` for files the site creates (create, write, append), for `missing ok`, and for files the **same operation creates earlier** |
+| `secret` | bool | `true` when the content read is secret material (`tls key_file`, env reads by `secret`). The **path is still shown**; the content is never read by `io` and is redacted in traces |
+
+```text
+ operation render.status                          sites (in phase order)
+ ─────────────────────────────────────────────    ───────────────────────────────────────────────────────────
+ response = http post "https://render…/status"    ┌ before_connect  file read ./certs/ca.pem      tls ca_file
+     tls ca_file   "./certs/ca.pem"          ───▶ │ before_connect  file read ./certs/client.pem  tls cert_file
+     tls cert_file "./certs/client.pem"           │ before_connect  file read ./certs/client.key  tls key_file  secret
+     tls key_file  "./certs/client.key"           │ connect         network connect POST https://render.example.com:443
+     body json {action: "status"}                 └ body            (request/response on the open connection)
+ end                                                 missing key ──▶ not_found, exit 4, no connection attempted
+```
+
+**`rivet io --needs`** (static; no I/O) lists, per operation, the sites with `requires_existing: true`, grouped
+with their origin. Files the same operation creates earlier are excluded; a callee's needs appear under the caller
+marked `(via callee)`; `param_dependent` paths are shown as their template.
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)
+  ./certs/client.pem    (tls cert_file)
+  ./certs/client.key    (tls key_file, secret)
+report.upload needs, before it can run:
+  ./data/template.json  (file read)
+demo.echo needs no existing files.
+```
+
+(`report.upload` also uploads `./out/report.json` with `body file`, but creates it first, so it is not a need.)
+JSON adds `IoManifest.needs: [{operation_id, files: [NeededFile{path, effect_id, origin, phase, secret, knowledge,
+via, source, status}]}]`. The same view is `rivet.io {needs: true}`, `GET /v1/io?needs=true`, MCP `rivet.io` and
+`rt.io(IoQuery { needs: true, .. })`.
+
+**`rivet io --check-files`** implies `--needs` and **performs real I/O**: a metadata probe (stat plus a
+readability check; contents are never opened, so key files stay unread) for each needed exact path, **through the
+policy broker**. Each probe needs `allow_read` with access `stat` (or a grant without an `access` list) in the
+effective policy (host ceiling ∩ policy.json). It is a CLI flag and a library option only, never a network
+parameter of `rivet.io`, because it touches the server host's files.
+
+```text
+ needed file ──▶ broker: allow_read + stat granted? ──no──▶ not_permitted (not touched)  ─┐
+                        │ yes                                                              │ exit 3
+                        ▼                                                                  │
+                 stat + readability ──▶ present │ missing │ unreadable ────────────────────┤
+                                                    │           └──────────────────────────┘
+                 param_dependent / dynamic ──▶ not_checkable (not probed, no exit effect)
+                                                    └──▶ exit 4 (not_found) unless exit 3 applies
+```
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)            present
+  ./certs/client.pem    (tls cert_file)          present
+  ./certs/client.key    (tls key_file, secret)   missing
+stderr: 2 present · 1 missing
+exit 4
+```
+
+Exit codes: `3` when any file is `not_permitted` or `unreadable` (checked first); else `4` when any needed file is
+`missing`; else the ordinary `io` exit code. `policy generate` grants the option-derived paths exactly with
+`access: ["read"]`; add `"stat"` by hand (or a separate grant) to allow the `--check-files` pre-flight. Examples:
+[REF-2026-0002 S154–S159](../../references/ref-2026-0002-language-and-usage.md#s154--trust-a-private-ca-for-one-https-call).
+
 Feasibility: **proven in design** (a projection of the effect graph already built for Increment 5 plus the
-policy evaluator of Increment 16; no new runtime I/O).
+policy evaluator of Increment 16; the only new runtime I/O is the brokered metadata probe of `--check-files`).
 
 ## Implementation Design
 
@@ -1521,8 +1649,8 @@ Status per risky item: **proven** (evidence in hand), **experiment needed** (spi
 
 | Environment / item | Capability | Evidence | Status | Unknown and resolution |
 |---|---|---|---|---|
-| Capy licence | Legal right to depend on and redistribute Capy | LICENSE source-available vs Cargo.toml MIT | **blocked** (implementation only) | Owner relicenses to MIT — gate G-LIC |
-| Capy pinned commit | Recovering parse, line/column spans, prefix calls | `Library::parse` public API inspected | **experiment needed** | Spike gate: S01–S153 and all docs/demos `.rivet` files parse cleanly |
+| Capy licence | Legal right to depend on and redistribute Capy | LICENSE source-available vs Cargo.toml MIT | **resolved** (G-LIC closed 2026-09-28, ADR-0001) | Owner authorized use in Rivet; upstream `LICENSE` cleanup is owner housekeeping |
+| Capy pinned commit | Recovering parse, line/column spans, prefix calls | `Library::parse` public API inspected | **experiment needed** | Spike gate: S01–S159 and all docs/demos `.rivet` files parse cleanly |
 | Rust embedding on Linux/macOS/Windows | Tokio async host; in-memory compile | Capy public Rust API inspected | experiment needed | Lock MSRV/dependency set after grammar spike |
 | policy.json loader, declared outputs, error registry | Pure data validation and projection | Design only; standard JSON Schema | proven (design) | None beyond implementation |
 | I/O manifest, `--check-policy`, policy drafts | Projection of the compiled effect graph plus the policy evaluator | Design only; no runtime I/O | proven (design) | None beyond implementation |
@@ -1561,7 +1689,7 @@ Status per risky item: **proven** (evidence in hand), **experiment needed** (spi
 | C-20 | UC-20, UC-17, UC-18 | Bind one listener → mount enabled surfaces → authenticate → principal → operation authorization → shared dispatcher/session driver | Same Completion on REST/SSE/poll/WS/MCP | `serve.auth_required`, 401/403/404/429 | Shared-listener spike required |
 | C-21 | UC-01, UC-15 | Capy parse → `capy_parser.rs` converts to `SyntaxTree` → lower prefix calls, quoted durations, component-aware URL templates | Clean parse of all samples | Diagnostic with line/column; `syntax.option_after_body` | Capy spike gate |
 | C-22 | UC-02, UC-07 | Map every error to registry row; enforce global limits; run DAG node state machine → DagCompletion | Consistent status/exit; bounded concurrency | `limit.call_depth`, `check.call_cycle`, blocked/skipped nodes | New scheduler required |
-| C-23 | UC-21, UC-09, UC-08 | Effect graph → per-site access verbs + capability → normalize targets → IoManifest → group/filter/format; optional evaluate against effective policy; join trace attempts on `effect_id` | Same IoManifest on CLI/HTTP/MCP/library; decision per site | Exit 3 (denied/partial), exit 7 (`--strict` unknowns), `policy.invalid` for a verb outside its capability, 403 for a network principal without explicit `rivet.io` | Proven in design |
+| C-23 | UC-21, UC-09, UC-08 | Effect graph → per-site access verbs + capability → normalize targets → IoManifest → group/filter/format; optional evaluate against effective policy; join trace attempts on `effect_id`; classify `origin`/`phase`/`requires_existing`/`secret` per site; `--needs` groups requires-existing file sites per operation; `--check-files` probes them through the broker (`FileProbe.stat`) | Same IoManifest on CLI/HTTP/MCP/library; decision per site; needed files per operation | Exit 3 (denied/partial, or `--check-files` not permitted/unreadable), exit 4 (`--check-files` missing file), exit 7 (`--strict` unknowns), `policy.invalid` for a verb outside its capability, 403 for a network principal without explicit `rivet.io` | Proven in design |
 | C-24 | UC-22 | IoManifest → group by (capability, target) → narrow `access` → widen `param_dependent` to origin/glob → policy.json v1 draft; unknown sites → review list | Least-privilege draft on stdout or a new file | Exit 7 with review list; `conflict.exists` exit 4 on existing `--output` | Proven in design |
 
 ### Added, Changed and Removed Contracts
@@ -1572,10 +1700,10 @@ Status per risky item: **proven** (evidence in hand), **experiment needed** (spi
 | CREATE | Types | SourceBundle, SyntaxTree, CompiledProgram, RegistryEntry, OutputSpec, IoManifest, IoSite, IoQuery, PolicyDraft, Request, Context, Completion, DataEvent, RivetError, EffectIntent, Permit, Policy, TraceEvent, DagCompletion | Immutable data in domain; schemas above | R1, R4, R6, R8–R11 |
 | CREATE | Runtime state | request pending/running/cleaning/terminal; DAG node statuses | Per request, supervisor-owned | R3, R4, R10 |
 | CREATE | CLI | request, list, describe, outputs, check, io, graph, policy explain, policy generate, trace show/export, connectors sync, serve | Maps to `rivet.*` operations or host bootstrap | R6–R9, R14, R26 |
-| CREATE | Flags/config | --file, --params, --params-file, --stream, --input-jsonl, --policy PATH, --timeout, --json, --all, --outputs, --transitive, --strict, --strict-docs, --include-bootstrap, --kind, --listen, --stdio, --endpoint; `io` flags --by, --access, --format, --check-policy, --trace; `policy generate --output`; `policy.json` (auto-discovered beside the entry file) | Full command examples in reference; no ambient RIVET_* vars; no grant strings on argv | R6, R8, R11, R23–R26 |
+| CREATE | Flags/config | --file, --params, --params-file, --stream, --input-jsonl, --policy PATH, --timeout, --json, --all, --outputs, --transitive, --strict, --strict-docs, --include-bootstrap, --kind, --listen, --stdio, --endpoint; `io` flags --by, --access, --format, --check-policy, --trace, --needs, --check-files; `policy generate --output`; `policy.json` (auto-discovered beside the entry file) | Full command examples in reference; no ambient RIVET_* vars; no grant strings on argv | R6, R8, R11, R23–R26 |
 | DELETE | Flags (draft only) | `--sandbox "…"` (replaced by policy.json), `serve --transport …` and `serve --mcp` (replaced by one serve mounting every surface) | Removed from revisions 1–4 drafts; never shipped | R24, R25 |
 | CREATE | Config file | `policy.json` v1: `version`, `grants` / `deny` (each `{capability, targets, access?}`), `network.deny_private_ranges`, `limits.{max_concurrent_requests,max_call_depth,max_buffered_bytes}`, `approved.{snapshots,overlaps}`, `serve.{surfaces,auth,principals}` | Unknown keys and verbs outside their capability rejected (`policy.invalid`, exit 2) | R11, R24, R25, R26 |
-| CREATE | HTTP | POST /v1/request (unary or SSE); GET /v1/operations; GET /v1/operations/{id}; GET /v1/operations/{id}/outputs; GET /v1/io; POST /v1/policy/generate; polling POST /v1/requests, GET /v1/requests/{id}/events, POST /v1/requests/{id}/input, /finish_input, /cancel | Authenticated principal; one listener (Increment 17); `/v1/io` and `/v1/policy/generate` only for principals listing them explicitly (Increment 18) | R8, R9, R22, R23, R25, R26 |
+| CREATE | HTTP | POST /v1/request (unary or SSE); GET /v1/operations; GET /v1/operations/{id}; GET /v1/operations/{id}/outputs; GET /v1/io (incl. `needs=true`); POST /v1/policy/generate; polling POST /v1/requests, GET /v1/requests/{id}/events, POST /v1/requests/{id}/input, /finish_input, /cancel | Authenticated principal; one listener (Increment 17); `/v1/io` and `/v1/policy/generate` only for principals listing them explicitly (Increment 18) | R8, R9, R22, R23, R25, R26 |
 | CREATE | WebSocket | GET /v1/ws, subprotocol `rivet.v1`; frames request/input/finish_input/cancel and data/result/error keyed by `ref` | Connection-owned refs, max 8, 16-frame queues | R22, R25 |
 | CREATE | MCP | /mcp POST/GET/DELETE and `serve --stdio`; direct named operation tools (canonical); built-in `rivet.list/describe/outputs/request/sessions.*/auth.*/io/policy.generate` | Standard MCP transport/session contract | R7, R8, R21, R23, R26 |
 | CREATE | Storage | Optional schema snapshot and explicit trace export; trace attempt records carry `effect_id` | Brokered paths; no hidden database/cache | R6, R7, R11, R13, R26 |
@@ -1590,7 +1718,7 @@ Status per risky item: **proven** (evidence in hand), **experiment needed** (spi
 | CREATE | MCP catalog | Required direct named tools and generic request/session tools; `_meta` delivery marker | Authorized principal and catalog snapshot; standard /mcp transport | R21 |
 | CREATE | gRPC syntax/policy | `connector ... grpc`, descriptor/service, `grpc connector.Method`, message/metadata/auth, scoped send/result/completion; `allow_grpc` | Pinned method descriptor, TLS origin and scope | R19 |
 | CREATE | Streaming APIs | `rivet.sessions.open/send/finish_input/read/cancel`, `scope.stream`, `scope.duplex` | Host-owned bounded request scope; projected as /v1/request, polling routes and WS frames | R20–R22 |
-| CREATE | Errors | Error registry (Increment 2): new codes `output.invalid`, `policy.invalid`, `serve.auth_required`, `limit.call_depth`, `check.call_cycle`, `file.hardlink_refused`, `syntax.option_after_body`, `stream.required`, `stream.input_required` (renamed from `stream_required`/`stream_input_required`); exit 7 for incomplete strict inspection and `policy generate` review items; `conflict.exists` (`policy generate --output` onto an existing file); `io --check-policy` exit 3 | All surfaces | R4, R8, R23–R26 |
+| CREATE | Errors | Error registry (Increment 2): new codes `output.invalid`, `policy.invalid`, `serve.auth_required`, `limit.call_depth`, `check.call_cycle`, `file.hardlink_refused`, `syntax.option_after_body`, `stream.required`, `stream.input_required` (renamed from `stream_required`/`stream_input_required`); exit 7 for incomplete strict inspection and `policy generate` review items; `conflict.exists` (`policy generate --output` onto an existing file); `io --check-policy` exit 3; `io --check-files` exit 4 (a needed file is missing) and exit 3 (stat not permitted or file unreadable) | All surfaces | R4, R8, R23–R26 |
 | CREATE | Domain data | ParameterSpec, GrpcPlan/Result, SessionOpenInput/Receipt/SendInput/Ref/Ack/ReadInput/Batch | JSON catalog/session values; secret/raw handles excluded | R19–R22 |
 
 ### Architecture, Data, State and Interaction Visuals
@@ -1630,8 +1758,12 @@ rivet --file app.rivet describe users.get --json
 rivet --file app.rivet outputs users.get
 rivet --file app.rivet io --all --transitive --format json
 rivet --file app.rivet io --by target
-# TARGET                        ACCESS        CAPABILITY     USED BY
-# https://api.example.com:443   connect GET   allow_network  users.get
+# TARGET                        ACCESS        CAPABILITY     ORIGIN    PHASE    NEEDS FILE  USED BY
+# https://api.example.com:443   connect GET   allow_network  http get  connect  —           users.get
+rivet --file app.rivet io --needs
+# users.get needs no existing files.   (a `tls ca_file` line would be listed here with its origin)
+rivet --file app.rivet io --check-files
+# stats each needed file through the broker; exit 4 if one is missing, 3 if stat is not granted
 rivet --file app.rivet io --check-policy
 # adds DECISION (allowed|denied|partial|unknown); exit 3 if any reachable site is denied or partial
 rivet --file app.rivet policy generate --output policy.draft.json
@@ -1841,13 +1973,13 @@ All source paths below are **planned**, not created by this proposal. Tests are 
 | F-10 | `src/features/audit/inspect_effects.rs`; `read_trace.rs`; `ports.rs` in same directory; `src/infra/trace_store.rs` | CREATE later | Inventory traversal; `TraceStore.read(TraceQuery) -> TraceResult`; sanitized sink | C-05 | R6, R11, R13 | T-09 |
 | F-11 | `src/features/connectors/invoke_mcp.rs`; `src/features/connectors/ports.rs`; `src/infra/mcp_client.rs` | CREATE later | `McpClient.invoke(McpRequest) -> McpResult`; explicit snapshots | C-06 | R7, R8, R11 | T-06 |
 | F-12 | `src/io/cli/mod.rs`; `src/io/http/mod.rs`; `src/io/library/mod.rs`; `src/io/mcp/mod.rs`; `src/orchestrator/setup_cli.rs`; `setup_http.rs`; `setup_library.rs`; `setup_mcp.rs` in same directory | CREATE later | Encode/decode the shared operations; register surfaces per setup file | C-02, C-06 | R7–R9 | T-02, T-06, T-10 |
-| F-13 | `src/infra/http_adapter.rs`; `socket_adapter.rs`; `process_adapter.rs`; `codec.rs` in same directory | CREATE later | Acquire/send/receive/decode through permits; annotate every edge | C-08 | R3, R12, R13 | T-05 |
+| F-13 | `transports` feature: `src/features/transports/{exchange_http,exchange_socket,run_process,ports}.rs`; adapters `src/infra/http_adapter.rs`; `socket_adapter.rs`; `process_adapter.rs`; `codec.rs` in same directory | CREATE later | `transports.exchange_http`/`exchange_socket`/`run_process` use cases over the `HttpClient`, `SocketStream`, `ProcessRunner` and `Codec` ports; acquire/send/receive/decode through permits; annotate every edge | C-08 | R3, R12, R13 | T-05 |
 | F-14 | Platform sandbox backend paths | DISCOVER before code | Inspect supported OS primitives; choose `src/infra/sandbox_<platform>.rs`; record exact chosen path and capability matrix in plan | C-05, C-08 | R11, R12 | T-08; platform evidence |
 | F-15 | `vhco-contract.json`; `.vhco.json` | CREATE now, UPDATE with approved changes | Hand-authored design + Rust config; detailed todos, no claims implemented | C-09 | R14 | Human live review |
-| F-16 | `README.md`; `docs/README.md`; `docs/index.md`; `docs/proposals/index.md`; `docs/proposals/draft/index.md`; `docs/references/index.md`; `docs/standards/index.md`; this proposal; both reference docs | CREATE now | Current design status, navigation, evidence and S01–S153 | C-09 | R14 | Documentation checks |
+| F-16 | `README.md`; `docs/README.md`; `docs/index.md`; `docs/proposals/index.md`; `docs/proposals/draft/index.md`; `docs/references/index.md`; `docs/standards/index.md`; this proposal; both reference docs | CREATE now | Current design status, navigation, evidence and S01–S159 | C-09 | R14 | Documentation checks |
 | F-17 | `vhco.json`; `vhco.html` | GENERATE after code | Model/explorer generated from annotations; never contract overwrite | C-09 | R14 | validate/sync/check/spec |
 | F-18 | Colocated `<use_case>_test.rs`; `docs/testing/test-2026-0001-runtime-conformance.md`; `docs/reports/rpt-2026-0001-runtime-validation.md` | CREATE later | Tests T-01–T-26 and results; exact module registration in owning feature | C-09 | R1–R26 | Future test/evidence |
-| F-19 | `src/features/auth/begin_authorization.rs`; `complete_authorization.rs`; `credential_status.rs`; `disconnect_account.rs`; `acquire_credential.rs`; `ports.rs` in same directory; `src/infra/oauth_adapter.rs`; `src/infra/credential_store.rs` | CREATE later | `OAuthSessionDriver.begin/complete/status/disconnect`; `CredentialProvider.acquire -> CredentialLease`; detailed JSON todos and increment 9 | C-10 | R16, R3, R4, R6, R8, R11, R13 | T-11, T-15; S84–S93 |
+| F-19 | `src/features/auth/begin_authorization.rs`; `complete_authorization.rs`; `credential_status.rs`; `disconnect_account.rs`; `cancel_authorization.rs`; `acquire_credential.rs`; `ports.rs` in same directory; `src/infra/oauth_adapter.rs`; `src/infra/credential_store.rs` | CREATE later | `OAuthSessionDriver.begin/complete/status/disconnect/cancel` (`rivet.auth.cancel` → `cancel_authorization`: principal-bound, idempotent); `CredentialProvider.acquire -> CredentialLease`; detailed JSON todos and increment 9 | C-10 | R16, R3, R4, R6, R8, R11, R13 | T-11, T-15; S84–S93 |
 | F-20 | `src/features/datagrams/exchange_datagrams.rs`; `src/features/datagrams/ports.rs`; `src/infra/udp_adapter.rs` | CREATE later | `DatagramDriver.exchange(DatagramPlan) -> DatagramResult`; whole-message/bind/multicast rules | C-11 | R15, R3, R4, R6, R8, R11 | T-12, T-15; S81–S83 |
 | F-21 | `src/features/quic/exchange_quic.rs`; `src/features/quic/ports.rs`; `src/infra/quic_adapter.rs` | CREATE later | `QuicDriver.exchange(QuicPlan) -> QuicResult`; TLS/ALPN, stream scopes, DATAGRAM and path authorization | C-12 | R17, R3, R4, R6, R8, R11 | T-13, T-15; S94–S98 |
 | F-22 | Planned `src/infra/http_adapter.rs`; `src/infra/codec.rs`; `src/infra/rivet.capy`; surface/setup files in F-12; domain data in F-03 | EXTEND planned CREATE | Add HTTP version/fallback and response.version; OAuth attachment, new syntax, endpoint CLI routing and auth operation registration | C-10–C-13 | R15–R18, R8 | T-11–T-15; S99–S102 |
@@ -1863,9 +1995,9 @@ All source paths below are **planned**, not created by this proposal. Tests are 
 | F-32 | Planned `src/infra/capy_parser.rs`, `src/infra/rivet.capy`, `src/domain/syntax_tree.rs` | EXTEND planned CREATE | Only file importing Capy; converts `ParseResult` to Rivet `SyntaxTree`; prefix calls, quoted durations, interpolation/escape rules, component-aware URL templates, `syntax.option_after_body` | C-21 | R1, R2 | T-01, T-23 |
 | F-33 | Planned `src/domain/errors.rs`; F-06/F-07 DAG and execution files; F-12 surface encoders | EXTEND planned CREATE | Error registry table (code→kind→HTTP→exit→retryable); global limits; DAG node state machine and `DagCompletion`; `check.call_cycle` | C-22 | R4, R8, R10 | T-07, T-24 |
 | F-34 | This proposal; `docs/references/ref-2026-0001-request-and-evidence.md` | UPDATE now | Revision 5: UQ-17, R23–R25, UC-19–UC-20, C-18–C-22, Increments 15–17, review fixes; reference, demos, contract and indexes are updated by their owners in the same revision | C-09, C-18–C-22 | R14, R23–R25 | Link/metadata/traceability checks only |
-| F-35 | `src/features/audit/build_io_manifest.rs`; `src/features/audit/ports.rs`; planned F-03 domain (`IoManifest`, `IoSite`, `IoQuery`, access-verb enum); F-10 `inspect_effects.rs` and `src/infra/trace_store.rs` (`effect_id` on attempts); F-12 surface files (`io` flags, `GET /v1/io`, MCP `rivet.io`, `rt.io`); F-31 serve authorization | CREATE later / EXTEND planned CREATE | `build_io_manifest(IoQuery, CompiledProgram, Option<Policy>) -> IoManifest`; access vocabulary, target normalization, views/formats, `--check-policy` decisions, `--trace` join; explicit-only network exposure of `rivet.io` | C-23 | R26, R6, R8, R11 | T-25; S62–S65 |
+| F-35 | Extend F-10 `src/features/audit/inspect_effects.rs` (the contract's `audit.inspect_effects`; no separate manifest file) and `src/features/audit/ports.rs` (`Registry`, `PolicyEvaluator`, `TraceStore`, `FileProbe`); planned F-03 domain (`IoManifest`, `EffectSite` with `origin`/`phase`/`requires_existing`/`secret`, `SiteOrigin`, `OperationNeeds`, `NeededFile`, `FileProbeInput`/`FileProbeResult`, `EffectQuery`, access-verb enum); `src/infra/file_access.rs` (satisfies `FileProbe`, brokered stat); `src/infra/trace_store.rs` (`effect_id` on attempts); F-12 surface files (`io` flags incl. `--needs`/`--check-files`, `GET /v1/io`, MCP `rivet.io`, `rt.io`); F-31 serve authorization | EXTEND planned CREATE | `inspect_effects(EffectQuery) -> IoReport`; access vocabulary, option-derived file sites, target normalization, views/formats, `--check-policy` decisions, `--trace` join, `--needs` view and `--check-files` probes; explicit-only network exposure of `rivet.io` | C-23 | R26, R6, R8, R11 | T-25; S62–S65, S154–S159 |
 | F-36 | `src/features/policy/generate_policy.rs`; F-30 `load_policy.rs` (optional `access` on grants/deny, verb/capability check); F-12 CLI (`policy generate --output`), HTTP `POST /v1/policy/generate`, MCP `rivet.policy.generate`, `rt.generate_policy` | CREATE later / EXTEND planned CREATE | `generate_policy(IoManifest) -> PolicyDraft {policy, review, complete}`; no-overwrite output (`conflict.exists`) | C-24, C-23 | R26, R24, R11 | T-26, T-21; S66–S69 |
-| F-37 | This proposal; `docs/references/ref-2026-0001-request-and-evidence.md` | UPDATE now | Revision 6: UQ-18, R26, UC-21–UC-22, C-23–C-24, Increment 18, access narrowing in Increments 5 and 16; reference, demos, contract and indexes are updated by their owners in the same revision | C-09, C-23–C-24 | R14, R26 | Link/metadata/traceability checks only |
+| F-37 | This proposal; `docs/references/ref-2026-0001-request-and-evidence.md` | UPDATE now | Revision 6: UQ-18, R26, UC-21–UC-22, C-23–C-24, Increment 18, access narrowing in Increments 5 and 16. Revision 8: option-derived file sites, `io --needs`/`--check-files` (TASK-005) and the TASK-006 contract reconciliation (F-13, F-19, F-35). Reference, demos, contract and indexes are updated by their owners in the same revision | C-09, C-23–C-24 | R14, R26 | Link/metadata/traceability checks only |
 
 Known code create groups F-02–F-13, F-18–F-27, F-29–F-33 and F-35–F-36 contain explicit paths; F-14 is bounded discovery, not invented implementation. F-15–F-16 and the revision updates in F-23/F-28/F-34/F-37 are the only design artifacts written now, plus supporting `.ignore/references/` snapshots. No existing runtime symbol or shipped route is deleted. Source skeleton signatures and schemas are specified in the relevant Design increment and the hand-authored contract; adapter pseudocode is `authorize(intent) → perform via held permit → record outcome → release in scope`. Every new adapter will declare its `file/net/env` edges; every feature todo will describe guards, failure and execution order.
 
@@ -1898,7 +2030,7 @@ Known code create groups F-02–F-13, F-18–F-27, F-29–F-33 and F-35–F-36 c
 | OAuth account/token mix-up | Cross-principal, redirect/issuer and rotation fault tests | Wrong account access or lost credentials | Profile hash/identity binding, PKCE, atomic store, uncertain-refresh refusal | Disable affected profile and require reauthorization | Auth adapter owner |
 | QUIC library bypasses migration policy or enables early data | Packet capture under denied path and 0-RTT fixtures | Forbidden traffic or replayed mutation | Reject adapter/platform if pre-send hook or 0-RTT disable cannot be enforced | Disable QUIC/H3 capability | Runtime owner |
 | UDP delivery assumed reliable | Drop/reorder/duplicate fixture tests | Ambiguous remote execution | Explicit datagram/loss semantics and no implicit retry | Use application acknowledgment protocol or reliable stream | Connector owner |
-| Capy licence conflict (gate G-LIC) | LICENSE is source-available (no bundling/commercial/derivatives); Cargo.toml says MIT | Rivet could not legally depend on Capy | Owner (project user) relicenses to MIT before implementation approval | Stay at design phase; no build that bundles Capy | Project user |
+| Capy licence conflict (gate G-LIC) | LICENSE is source-available (no bundling/commercial/derivatives); Cargo.toml says MIT | Rivet could not legally depend on Capy | Closed 2026-09-28: the owner authorized Rivet's use of Capy (ADR-0001) | None needed; the owner aligns the upstream `LICENSE` text | Project maintainer |
 | SSRF through caller params | `param_dependent` targets; metadata-IP/rebinding fixtures | Internal network reached | `deny_private_ranges` default true; component-aware URL encoding; post-DNS checks | Tighten grants to literal origins | Security owner |
 | Unauthenticated remote serve | Non-loopback bind with auth none | Anyone can invoke operations | Serve refuses to start (`serve.auth_required`) | Bind loopback only | Operator |
 
@@ -1922,7 +2054,7 @@ Convert brief examples to operation definitions with declared outputs, write cal
 
 ### Correctness first
 
-1. Approval gates pass (G-DESIGN, G-CONTRACT, G-LIC, G-SPIKE; see [Approval](#approval)). The grammar spike parses every S01–S153 example and every docs/demos `.rivet` file cleanly and reports correct line/column diagnostics for invalid fixtures.
+1. Approval gates pass (G-DESIGN, G-CONTRACT, G-LIC, G-SPIKE; see [Approval](#approval)). The grammar spike parses every S01–S159 example and every docs/demos `.rivet` file cleanly and reports correct line/column diagnostics for invalid fixtures.
 2. Each implemented use case has annotated tests; validate continuously; no missing effect authorization branch.
 3. Surface parity, resource cleanup, broker denial, secrets, framing and MCP/DAG fault tests pass.
 4. `vhco validate .`, `vhco sync .` (zero drift), `vhco check .`, build/tests pass; regenerate model and update current-state docs.
@@ -1934,7 +2066,7 @@ Each `T-NN` names a test module/filter to implement, with `// vhco:test feature.
 
 | ID | Type / use cases | Scenario and controlled environment | Procedure | Expected result |
 |---|---|---|---|---|
-| T-01 | Parser/type / UC-01 | Pinned Capy; all S01–S153 code blocks, every docs/demos `.rivet` file and invalid variants | `cargo test conformance_language` | Valid grammar parses; invalid sources execute zero effects; spans exact |
+| T-01 | Parser/type / UC-01 | Pinned Capy; all S01–S159 code blocks, every docs/demos `.rivet` file and invalid variants | `cargo test conformance_language` | Valid grammar parses; invalid sources execute zero effects; spans exact |
 | T-02 | Parity / UC-02 | Same fixture registry over CLI/HTTP/MCP/library | `cargo test conformance_surfaces` | Same params/result/error; auth filters IDs; stdout clean |
 | T-03 | Streaming/fault / UC-03 | Fake slow consumer; emit then failure; invalid frame; disconnect | `cargo test conformance_streams` | Bounded queues, no duplicate terminal, cancellation observed |
 | T-04 | Files/security / UC-04 | Temp root; adversarial symlinks, version races, missing/full disk | `cargo test conformance_files` | Correct CRUD guards; no outside-root mutation; unsupported claims refuse |
@@ -1958,7 +2090,7 @@ Each `T-NN` names a test module/filter to implement, with `// vhco:test feature.
 | T-22 | Unified serve / UC-20 | One `serve` process; same operation over REST, SSE, polling, WS and MCP; bearer/mTLS/none; non-loopback + none; disabled surface; 9th WS ref; socket close mid-stream | `cargo test conformance_serve` | Identical Completion/errors on all five; `serve.auth_required` exit 2; 401/403/404/429 as registry; WS close cancels and joins refs; polling session survives reconnect |
 | T-23 | Syntax / UC-01 | Prefix calls with trailing objects and `allow` blocks, quoted/unquoted durations, `${a.b}` vs `${a + b}`, escapes, URL path/query interpolation with `/ ? # @`, option after body, `yield` vs `return` in `map`/`poll` | `cargo test conformance_syntax` | Valid forms lower; bare `10s` and non-path interpolation rejected with line/column; URL cannot gain segments/host; `syntax.option_after_body`; `return` exits the operation |
 | T-24 | Errors/limits/DAG / UC-02, UC-07 | Every registry code on every surface; 65 concurrent nested calls; depth 17; literal call cycle; fail fast with running, ready and pending nodes; unguarded `.result` | `cargo test conformance_errors_limits_dag` | HTTP/exit/retryable match the registry; global cap holds; `limit.call_depth`; `check.call_cycle`; node statuses cancelled/skipped/blocked exactly as defined; DagCompletion lists every node; check warning |
-| T-25 | I/O manifest / UC-21, UC-09 | Bundle with exact, bounded, param_dependent, dynamic and opaque sites across every kind (file CRUD, HTTP methods, env secret, process, MCP stdio, gRPC, auth); private helper; policy.json with/without `access`; completed trace | `cargo test conformance_io_manifest` | Every site listed with correct access verbs, capability, method/protocol, normalized template/glob and source; one line → several sites where defined; `--by`/`--kind`/`--access`/`--format` views agree; `--check-policy` allowed/denied/partial/unknown and exit 3; `--strict` exit 7; zero I/O performed; `--trace` ATTEMPTS joined on `effect_id`; CLI/HTTP/MCP/library identical; network principal without explicit `rivet.io` → 403, `*` does not match; wrong verb for capability → `policy.invalid` exit 2 |
+| T-25 | I/O manifest / UC-21, UC-09 | Bundle with exact, bounded, param_dependent, dynamic and opaque sites across every kind (file CRUD, HTTP methods, env secret, process, MCP stdio, gRPC, auth); private helper; policy.json with/without `access`; completed trace | `cargo test conformance_io_manifest` | Every site listed with correct access verbs, capability, method/protocol, normalized template/glob and source; one line → several sites where defined; `--by`/`--kind`/`--access`/`--format` views agree; `--check-policy` allowed/denied/partial/unknown and exit 3; `--strict` exit 7; zero I/O performed; `--trace` ATTEMPTS joined on `effect_id`; CLI/HTTP/MCP/library identical; network principal without explicit `rivet.io` → 403, `*` does not match; wrong verb for capability → `policy.invalid` exit 2. Revision 8 cases: every `tls ca_file`/`cert_file`/`key_file` line in http, websocket, quic, grpc/mcp connector and tcp blocks, `body file` and an operation-level `descriptor` → one `allow_read` read site each, with correct `origin`, `phase` (`before_connect`/`body`/`load`) and `secret` (key file true, path shown, content never read); connector option sites appear under every calling operation; connector `descriptor`/`schema` only under `--include-bootstrap`; `requires_existing` false for a file the same operation creates earlier (`file create` then `body file`) and for `missing ok`; `--by target` ORIGIN/PHASE/NEEDS FILE; `--needs` per-operation grouping incl. `(via callee)` and exclusion of created files, identical via `rivet.io {needs}` and `GET /v1/io?needs=true`; `--check-files` against a temp dir: all present → 0, one missing → 4, stat not granted (`access: ["read"]` only) → `not_permitted` exit 3 with zero probes of that path, unreadable (mode 000) → 3, param_dependent → `not_checkable`; key file contents never opened; `policy generate` emits exact option paths with `access: ["read"]` and a review item (exit 7) for a param_dependent option path |
 | T-26 | Policy draft / UC-22 | Same bundle; `--output` to new and existing file; dynamic URL site | `cargo test conformance_policy_generate` | One grant per (capability, target) with exact `access`; param_dependent URL → origin, path → glob; `deny_private_ranges: true`; no `serve`/secrets; dynamic/opaque → stderr review list, exit 7, draft still written; existing file → `conflict.exists` exit 4; generated draft loads and `io --check-policy` reports every granted site allowed |
 
 ### Quality/performance and measurement
@@ -1989,7 +2121,7 @@ Validation limit: VHCO 1.6.0 requires a Rust `src/` tree, so `validate`, `sync` 
 | Artifact | Path / destination | Action and gate |
 |---|---|---|
 | Design proposal | This document | Review, then record explicit human decision |
-| Reference | `docs/references/ref-2026-0002-language-and-usage.md` | S01–S153 are proposed examples; convert to executable fixtures before release |
+| Reference | `docs/references/ref-2026-0002-language-and-usage.md` | S01–S159 are proposed examples; convert to executable fixtures before release |
 | Sample folders | [docs/demos/README.md](../../demos/README.md) | Proposed bundles with `policy.json` files, prefix-call sources, fixtures and walkthroughs; part of the G-SPIKE parse gate; no runtime verification |
 | Source record | `docs/references/ref-2026-0001-request-and-evidence.md` | Preserve original requirements and inspected commits |
 | Current-state docs | `README.md`, `docs/README.md`, directory indexes | State design-only status now; update on each implemented slice |
@@ -2025,7 +2157,7 @@ Validation limit: VHCO 1.6.0 requires a Rust `src/` tree, so `validate`, `sync` 
 | R23 | UQ-17 | G-01, G-06 | UC-19 | C-18 | F-29, F-34 | T-20 | S103–S106 |
 | R24 | UQ-17; UQ-13 behaviour | G-03, G-06 | UC-08, UC-22 | C-19, C-23, C-24 | F-30, F-34, F-36 | T-21, T-26 | S66–S69 |
 | R25 | UQ-17 | G-01, G-06 | UC-20 | C-20 | F-31, F-34 | T-22 | S114, S116 |
-| R26 | UQ-18 | G-03, G-06 | UC-21, UC-22, UC-09 | C-23, C-24 | F-35–F-37 | T-25, T-26 | S62–S69 |
+| R26 | UQ-18; TASK-005 (ADR-0001) | G-03, G-06 | UC-21, UC-22, UC-09 | C-23, C-24 | F-35–F-37 | T-25, T-26 | S62–S69, S141–S159 |
 
 Reverse check: C-01→R1/R2; C-02→R4/R8/R9; C-03→R3/R4; C-04→R5/R11; C-05→R6/R11/R13; C-06→R7/R8; C-07→R4/R10; C-08→R3/R12/R13; C-09→R14; C-10→R16; C-11→R15; C-12→R17; C-13→R18; C-14→R19; C-15→R20; C-16→R21; C-17→R22; C-18→R23; C-19→R24 (and R11/R13); C-20→R25 (and R8/R21/R22); C-21→R1/R2; C-22→R4/R8/R10; C-23→R26 (and R6/R8/R11/R24); C-24→R26 (and R24/R11). C-14–C-17 also enforce shared R2/R3/R4/R6/R7/R8/R9/R11/R13 through T16–T19. C-10–C-13 also enforce shared R3/R4/R6/R8/R11/R13 via T-15 (and F-19–F-22), extending those original alignment rows without replacing them. Every F row names these changes and requirements. The deferred platform file discovery has a resolution rule and does not authorize an unreviewed capability.
 
@@ -2035,7 +2167,7 @@ One master implementation plan, with sequential gated increments, is sufficient.
 
 ## Open Questions
 
-Resolved in revision 5 and removed from this list: call syntax (Capy prefix calls), Capy licence (owner relicenses; gate G-LIC), protocol phasing (all required), policy source (policy.json only), serve composition (one listener).
+Resolved in revision 5 and removed from this list: call syntax (Capy prefix calls), Capy licence (gate G-LIC, closed by the owner in ADR-0001), protocol phasing (all required), policy source (policy.json only), serve composition (one listener).
 
 Still open — implementation facts, none blocking design review:
 
@@ -2048,20 +2180,22 @@ Still open — implementation facts, none blocking design review:
 
 ## Approval
 
-Status: **proposed; no approval recorded**. Implementation approval requires every gate below; agent validation is not approval.
+Status: **approved 2026-09-28** by the project maintainer ([ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md)).
+G-SPIKE is an implementation-entry gate owned by the implementer and is tracked in
+[PLAN-2026-0001](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) (TASK-010).
 
 | Gate | Condition | Owner | State |
 |---|---|---|---|
-| G-DESIGN | Maintainer accepts or revises syntax, request contract, outputs, policy file, serve surfaces, I/O manifest and scope | Project maintainer | Open |
-| G-CONTRACT | Human reviews the hand-authored contract with `vhco live` (AGENTS.md) | Project maintainer | Open |
-| G-LIC | Capy owner (the project user) relicenses Capy to match Cargo.toml's MIT before implementation approval | Project user | Open — not a blocker to design review |
-| G-SPIKE | Pinned Capy parses every S01–S153 example and every docs/demos `.rivet` file cleanly | Implementer | Open |
+| G-DESIGN | Maintainer accepts syntax, request contract, outputs, policy file, serve surfaces, I/O manifest and scope | Project maintainer | **Closed 2026-09-28** — approved as written, including the option-derived file sites / `io --needs` extension (PLAN-2026-0001 TASK-005) |
+| G-CONTRACT | Human reviews the hand-authored contract (AGENTS.md) | Project maintainer | **Closed 2026-09-28** — approved |
+| G-LIC | Capy licence permits Rivet to depend on and ship Capy | Project maintainer (Capy owner) | **Closed 2026-09-28** — the maintainer owns Capy and confirmed its use in Rivet is authorized; the upstream `LICENSE` text is the owner's to update |
+| G-SPIKE | Pinned Capy parses every S01–S159 example and every docs/demos `.rivet` file cleanly | Implementer | Open — PLAN-2026-0001 TASK-010 |
 
 ```text
- design review ---> G-DESIGN ---> G-CONTRACT ---+
-                                                +--> implementation approval --> Stage A --> Stage B
- owner relicense -> G-LIC ----------------------+
- Capy spike ------> G-SPIKE --------------------+
+ design review ---> G-DESIGN (closed) ---> G-CONTRACT (closed) --+
+                                                                  +--> implementation --> Stage A --> Stage B
+ Capy owner ------> G-LIC (closed) ------------------------------+
+ Capy spike ------> G-SPIKE (open, PLAN-2026-0001 TASK-010) ------+
 ```
 
 ## Related Documents
@@ -2077,6 +2211,8 @@ Status: **proposed; no approval recorded**. Implementation approval requires eve
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-28 | Claude | TASK-005 (approved in ADR-0001): option-derived file sites (`tls ca_file`/`cert_file`/`key_file`, `body file`, operation-level `descriptor`), per-site `origin`/`phase`/`requires_existing`/`secret`, `--by target` ORIGIN/PHASE/NEEDS FILE, `rivet io --needs` (`rivet.io {needs}`, `GET /v1/io?needs=true`) and `--check-files` (exit 4/3), exact-path grants in `policy generate`; R26, UC-21, C-23, T-25, Increment 18 and samples S154–S159. TASK-006: F-13 names the `transports` feature, F-19 adds `cancel_authorization.rs`, F-35 extends `inspect_effects.rs` as the contract does. |
+| 7 | 2026-09-28 | Claude | Approved by the project maintainer (ADR-0001): G-DESIGN, G-CONTRACT and G-LIC closed; moved to `proposals/approved/`; G-SPIKE tracked by PLAN-2026-0001. |
 | 6 | 2026-09-28 | Claude | UQ-18: generated I/O manifest (R26, UC-21, UC-22, Increment 18) — access vocabulary per site, target normalization, `rivet io` views/formats/`--check-policy`/`--strict`/`--trace`, JSON IoManifest, `rivet policy generate` least-privilege drafts, `rivet.io`/`rivet.policy.generate` on every surface with explicit-only network exposure, `effect_id` trace link; optional `access` narrowing in policy.json (Increments 5, 16); R6/UC-09 refined; P7; error registry (`conflict.exists`, wrong-verb `policy.invalid`, exit 3/7 for `io`/`policy generate`); C-23–C-24, F-35–F-37, T-25–T-26; samples. |
 | 5 | 2026-09-28 | Claude | UQ-17: declared outputs (R23, UC-19, Increment 15), policy.json-only configuration replacing `--sandbox` (R24, Increment 16), one serve for REST/SSE/polling/WebSocket/MCP replacing `--transport`/`--mcp` (R25, UC-20, Increment 17); Capy prefix-call syntax and syntax table; review fixes (licence gate G-LIC, direct MCP tools canonical, scoped sandbox claims and bootstrap list, SSRF defaults, device-flow pending and `auth cancel`, DAG node semantics and DagCompletion, error registry, `reviewed` definition, leading-options and yield rules, one Rust API sketch, global limits, `users.grpc_get`, stage labels); added Summary, feasibility status, state machines, approval gates; C-18–C-22, F-29–F-34, T-20–T-24. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

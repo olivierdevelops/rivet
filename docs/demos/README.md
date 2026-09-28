@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -117,6 +117,7 @@ Every README includes these inspection commands:
 - `check --strict-docs`. Beyond param descriptions, it requires an output description on every public operation, descriptions on every output/emits/receives field, and an `error` line for every code a body can `fail` with.
 - `io --by target`: the **I/O manifest** for that folder's app.rivet, one row per concrete target.
 - `io --check-policy`: the same sites evaluated against the folder's policy.json, with a `DECISION` column.
+- `io --needs` (where it adds something): the files each operation needs to exist before it can run; `io --check-files` also stats them through the policy broker ([11-sandbox](11-sandbox/README.md#files-each-operation-needs)).
 - `outputs ID` and `outputs --all --json` to view declared outputs.
 
 The manifest is generated from the compiled source without performing I/O or evaluating expressions:
@@ -128,7 +129,7 @@ The manifest is generated from the compiled source without performing I/O or eva
                                  └──effect_id──▶ runtime trace ───────┴─▶ io --trace REQ (planned vs actual)
 ```
 
-Each site records a **kind**, one or more **access verbs**, the **capability** that permits them, a normalized **target** and a **knowledge** class:
+Each site records a **kind**, one or more **access verbs**, the **capability** that permits them, a normalized **target** and a **knowledge** class. Since proposal revision 8 it also records its **origin** (the statement or option that produced it, such as `file read` or `tls key_file`), its **phase**, whether it **requires an existing** file, and whether the content read is **secret**. `io --by target` shows these as ORIGIN, PHASE and NEEDS FILE:
 
 ```text
   kind        access verbs                                   capability
@@ -149,6 +150,13 @@ Each site records a **kind**, one or more **access verbs**, the **capability** t
 
   knowledge:  exact | bounded | param_dependent | dynamic | opaque_remote | opaque_native
   decision:   allowed | denied | partial | unknown           (only with --check-policy)
+
+  phase:      load ──▶ before_connect ──▶ connect ──▶ body ──▶ cleanup
+              (bundle   (TLS files)        (network,    (file statements,  (finally,
+               assembly)                    process)     secret env, calls) disposal)
+  origin:     {"statement": "file read"} | {"option": "tls key_file"} | …
+  needs:      io --needs ──▶ files with requires_existing: true, per operation
+              io --check-files ──▶ + brokered stat ──▶ present | missing | unreadable | not_permitted
 ```
 
 | Folder | Sites | `io --check-policy` with the shipped policy.json |
@@ -166,14 +174,14 @@ Each site records a **kind**, one or more **access verbs**, the **capability** t
 
 [11-sandbox](11-sandbox/README.md) walks through every view (`--by capability`, `--kind file --access delete`, `--format json`), compares `policy generate` output with its hand-written policy.json, and narrows a grant with `"access": ["create"]` in `policies/create-only.json`. policy.json grants and deny entries may carry an optional `access` list; without it, a grant covers every verb of its capability. A verb from another capability is `policy.invalid` (exit 2).
 
-`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. Sandbox guarantees apply to script-initiated effects through brokered adapters. `--strict` exits 7 when any site is dynamic or opaque. `--check-policy` exits 3 when any reachable site is denied or partial. Use `policy explain ID --params JSON --json` to see missing grants for one call. Runtime permits are still checked at each actual effect. Runtime traces must be fetched from the same live host or an explicitly configured persistent store.
+`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. Connector-level `descriptor` (10-grpc) and `schema` (06-mcp-bridge) files stay bootstrap reads with phase `load`: never granted, and `io --needs --include-bootstrap` lists them under `bundle load needs`. Sandbox guarantees apply to script-initiated effects through brokered adapters. `--strict` exits 7 when any site is dynamic or opaque. `--check-policy` exits 3 when any reachable site is denied or partial. Use `policy explain ID --params JSON --json` to see missing grants for one call. Runtime permits are still checked at each actual effect. Runtime traces must be fetched from the same live host or an explicitly configured persistent store.
 
 | Exit | Meaning |
 |---|---|
 | 0 | ok |
 | 2 | syntax / validation / usage / config, including `policy.invalid` |
-| 3 | permission (including `file.hardlink_refused`; `io --check-policy` with a denied or partial site) |
-| 4 | not_found / conflict (including `policy generate --output` onto an existing file) |
+| 3 | permission (including `file.hardlink_refused`; `io --check-policy` with a denied or partial site; `io --check-files` when stat is not permitted or a needed file is unreadable) |
+| 4 | not_found / conflict (including `policy generate --output` onto an existing file; `io --check-files` when a needed file is missing) |
 | 5 | dependency / runtime / unsupported / `output.invalid` / application `fail` |
 | 6 | timeout |
 | 7 | inspection incomplete (`io --strict` with dynamic/opaque sites; `policy generate` with review items) |
@@ -195,13 +203,14 @@ These are sample assets under docs, not new Rust architecture buckets or runtime
 
 - [Current project state](../../README.md)
 - [153-example language reference](../references/ref-2026-0002-language-and-usage.md)
-- [Runtime proposal](../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Runtime proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
 - [Request and evidence](../references/ref-2026-0001-request-and-evidence.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): site origin/phase/requires_existing/secret with phase diagram; `io --needs`/`io --check-files` in inspection list; bootstrap descriptor/schema note; exit-code table rows 3 and 4 cover `io --check-files`. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: "Inspect before invoking" now describes the generated I/O manifest (`io --by target`, `io --check-policy`), the access-verb table, a per-folder result summary and the 11-sandbox `policy generate`/`access` walkthrough; added policies/create-only.json (67 files); exit-code table notes for io and policy generate. |
 | 2 | 2026-09-28 | Claude | UQ-17: recounted files/operations by script (replacing the stale 49/37 claim); walkthrough table lists policy files; policy.json discovery convention replaces `--sandbox`/intersection text; shortest usage uses `outputs` and one `serve`; strict-docs, bootstrap list and exit-code table updated; users.get collision resolved. |
 | 1 | 2026-09-28 | Codex | Added twelve independent sample bundles with per-folder usage READMEs and explicit verification limits. |

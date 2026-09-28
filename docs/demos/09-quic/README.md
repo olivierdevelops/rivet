@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -54,7 +54,7 @@ QUIC streams and HTTP3. Delivery stage: **B**. Read [app.rivet](app.rivet) along
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S94 and S99–S101. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S94 and S99–S101. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -143,9 +143,9 @@ rivet --file app.rivet --policy ./policies/http3.json io items.http3 --check-pol
 **`io --by target`**. The protocol is recorded per site, so HTTP3 over QUIC is not confused with raw QUIC:
 
 ```text
-TARGET                           ACCESS                 CAPABILITY      USED BY
-quic://engine.example.com:4433   connect (quic)         allow_network   engine.status
-https://api.example.com:443      connect GET (http3)    allow_network   items.http3
+TARGET                           ACCESS                 CAPABILITY      ORIGIN     PHASE     NEEDS FILE   USED BY
+quic://engine.example.com:4433   connect (quic)         allow_network   with quic  connect   —            engine.status
+https://api.example.com:443      connect GET (http3)    allow_network   http get   connect   —            items.http3
 ```
 
 **`io --check-policy`** with the default [policy.json](policy.json), which grants only the QUIC endpoint:
@@ -188,12 +188,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`with quic`, `http get`), PHASE and NEEDS FILE. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: protocol-tagged sites by target and `io --check-policy` against policy.json and policies/http3.json. |
 | 2 | 2026-09-28 | Claude | UQ-17: declared outputs; quoted `timeout "5s"`; `--sandbox` variants became policy.json and policies/http3.json; leading-options note; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -57,7 +57,7 @@ HTTP requests and typed recovery. Delivery stage: **A**. Read [app.rivet](app.ri
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S01, S07–S08 and S78. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S01, S07–S08 and S78. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -148,8 +148,8 @@ rivet --file app.rivet io --check-policy
 **`io --by target`** groups all three operations under one origin:
 
 ```text
-TARGET                        ACCESS              CAPABILITY      USED BY
-https://api.example.com:443   connect GET, POST   allow_network   users.create, users.get, users.search
+TARGET                        ACCESS              CAPABILITY      ORIGIN                PHASE     NEEDS FILE   USED BY
+https://api.example.com:443   connect GET, POST   allow_network   http get, http post   connect   —            users.create, users.get, users.search
 ```
 
 **`io --check-policy`** shows each path template. `{id}` and `{query}` are caller parameters, so those sites are `param_dependent`. The origin grant in [policy.json](policy.json) covers every path, so all three are `allowed` and it exits 0:
@@ -193,12 +193,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`http get, http post`), PHASE (`connect`) and NEEDS FILE (`—`). |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: origin-grouped `io --by target` and per-path `io --check-policy` (param_dependent, all allowed). |
 | 2 | 2026-09-28 | Claude | UQ-17: declared outputs and error; 404 is mapped with `accept status` + `fail "users.not_found"` (upstream statuses are `http.status`); quoted durations; added policy.json in place of `--sandbox`; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

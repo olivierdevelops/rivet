@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 5
+document_revision: 6
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -30,27 +30,43 @@ next_review_date: 2026-10-27
 
 # Rivet proposals
 
-Decision requests awaiting review. Documents are named prop-YYYY-NNNN-topic.md and live under their lifecycle directory. No approved or implemented proposal exists.
+Design proposals for Rivet, one directory per lifecycle state. Documents are named
+`prop-YYYY-NNNN-topic.md` and keep their name when they move between directories. Only the directory and the
+`status` field change. An approved proposal has a decision record in [decisions](../decisions/index.md).
 
 ```text
-  draft/ ──(human approval + G-LIC + parser spike)──> implemented/   (none yet)
-         └─(rejection)──────────────────────────────> rejected/      (none)
+  draft/ ──(ADR approval)──▶ approved/ ──(plan released)──▶ implemented/   (none yet)
+     │                          │
+     └─(rejection)─▶ rejected/  └─(replaced)─▶ superseded/                  (none)
+
+  today:  draft/     (empty)
+          approved/  PROP-2026-0001  rev 8  ── ADR-0001 ──▶ PLAN-2026-0001 (P1 in execution)
 ```
 
 ## Reading order and active documents
 
-- [Draft proposals](draft/index.md)
-- [Runtime proposal](draft/prop-2026-0001-rivet-runtime.md) — design revision 5, requirements R1–R25
-- [Reference samples](../references/ref-2026-0002-language-and-usage.md)
+| Directory | Contents | Index |
+|---|---|---|
+| `approved/` | [PROP-2026-0001 — Rivet runtime](approved/prop-2026-0001-rivet-runtime.md), design revision 8, R1–R26 | [approved/index.md](approved/index.md) |
+| `draft/` | Empty — no proposal is under review | [draft/index.md](draft/index.md) |
+
+1. [Approved proposals](approved/index.md), then [PROP-2026-0001](approved/prop-2026-0001-rivet-runtime.md).
+2. [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md): the approval record.
+3. [Reference samples](../references/ref-2026-0002-language-and-usage.md) (S01–S159).
 
 ## Status and maintenance
 
-Recently updated, 2026-09-28: PROP-2026-0001 revised for UQ-17 (R23 declared outputs, R24 policy.json only, R25 one `serve` for every surface) plus the review fixes. Nothing deprecated, superseded or archived. Unresolved: human design review; approval gates G-LIC (Capy owner relicenses to MIT) and the Capy parser spike. Update this index when a document changes lifecycle or a new related document is added.
+Recently updated, 2026-09-28: the maintainer approved PROP-2026-0001 (ADR-0001), closing G-DESIGN, G-CONTRACT
+and G-LIC. The proposal moved from `draft/` to `approved/` (revision 7). Revision 8 added the approved TASK-005
+extension (option-derived file sites, `io --needs`, `--check-files`) and the TASK-006 contract reconciliation.
+Nothing is deprecated, superseded or archived. Still open: G-SPIKE, the Capy parse spike (PLAN-2026-0001
+TASK-010). Update this index when a document changes lifecycle or a new related document is added.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-28 | Claude | PROP-2026-0001 approved (ADR-0001) and moved to `approved/`; revision 8; draft/ now empty; linked approved/index.md and decisions. |
 | 5 | 2026-09-28 | Claude | Status for design revision 5 (R23–R25) and the two approval gates; added lifecycle diagram. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |
 | 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |

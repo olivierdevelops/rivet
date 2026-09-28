@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -60,7 +60,7 @@ Four policy files show the same bundle under different authority. Only the file 
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17) and S62–S69 and S74–S77. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17) and S62–S69 and S74–S77. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -172,6 +172,10 @@ rivet --file app.rivet io --check-policy
 rivet --file app.rivet io --by target
 rivet --file app.rivet io --by capability
 rivet --file app.rivet io --kind file --access delete
+rivet --file app.rivet io --needs
+rivet --file app.rivet io --check-files
+rivet --file app.rivet io data.read data.snapshot --check-files
+rivet --file app.rivet --policy ./policies/create-only.json io --check-files
 rivet --file app.rivet io data.snapshot --check-policy --format json
 rivet --file app.rivet policy generate
 rivet --file app.rivet policy generate demo.echo data.read data.snapshot --output ./policy.draft.json
@@ -212,11 +216,13 @@ It exits **3**. `data.private` is denied, because the `deny` entry for `./data/p
 ### By target
 
 ```text
-TARGET                       ACCESS   CAPABILITY    USED BY
-./data/private/secret.json   read     allow_read    data.private
-./data/public.json           read     allow_read    data.read, data.snapshot (via data.read)
-./out/snapshot.json          create   allow_write   data.snapshot
+TARGET                       ACCESS   CAPABILITY    ORIGIN        PHASE   NEEDS FILE   USED BY
+./data/private/secret.json   read     allow_read    file read     body    yes          data.private
+./data/public.json           read     allow_read    file read     body    yes          data.read, data.snapshot (via data.read)
+./out/snapshot.json          create   allow_write   file create   body    no           data.snapshot
 ```
+
+The three columns after CAPABILITY come from each site's new fields: ORIGIN is the statement or option that produced the site, PHASE is when it runs (`body` for every file statement here), and NEEDS FILE says whether the file must already exist when the operation starts (`—` for non-file rows).
 
 ### By capability
 
@@ -240,6 +246,84 @@ OPERATION   KIND   ACCESS   TARGET   KNOWLEDGE   SOURCE
 
 It exits 0. No operation deletes anything, so the policy correctly has no `allow_delete` grant. An access verb from another kind (for example `--kind file --access connect`) is a usage error (exit 2).
 
+### Files each operation needs
+
+`io --needs` lists, per operation, the files that must already exist before it can run (sites with `requires_existing: true`). It is static: no I/O, exit 0. A callee's needs appear under the caller with `(via callee)`:
+
+```text
+$ rivet --file app.rivet io --needs
+data.private needs, before it can run:
+  ./data/private/secret.json   (file read)
+data.read needs, before it can run:
+  ./data/public.json           (file read)
+data.snapshot needs, before it can run:
+  ./data/public.json           (file read, via data.read)
+demo.echo needs no existing files.
+```
+
+`./out/snapshot.json` is not a need: `data.snapshot` creates it (`file create`, `requires_existing: false`). `--check-files` goes one step further and asks the policy broker to `stat` each needed exact path. It never opens or reads the contents:
+
+```text
+ io --needs ──▶ needed exact paths ──▶ policy broker: allow_read grant with "stat"
+                                       (or no access list), and no deny match?
+                                                      │
+                             no ◀─────────────────────┴─────────────────────▶ yes
+                             │                                                │
+                             ▼                                                ▼
+                       not_permitted                               stat + readability probe
+                       (never probed)                          ┌──────────────┼──────────────┐
+                                                               ▼              ▼              ▼
+                                                            present        missing       unreadable
+
+ exit 3   any not_permitted or unreadable   (checked first)
+ exit 4   else, any missing                 (not_found)
+ exit 0   else                              (all present; not_checkable paths do not count)
+```
+
+Under the default [policy.json](policy.json), the `./data/**` grant has no `access` list, so `stat` is allowed on `./data/public.json`. The `deny ./data/private/**` entry overrides it for the secret file, which is therefore not probed:
+
+```text
+$ rivet --file app.rivet io --check-files
+data.private needs, before it can run:
+  ./data/private/secret.json   (file read)                  not_permitted
+data.read needs, before it can run:
+  ./data/public.json           (file read)                  present
+data.snapshot needs, before it can run:
+  ./data/public.json           (file read, via data.read)   present
+demo.echo needs no existing files.
+stderr: 2 present · 1 not_permitted
+exit 3
+```
+
+Checking only the operations the policy is meant to allow succeeds:
+
+```text
+$ rivet --file app.rivet io data.read data.snapshot --check-files
+data.read needs, before it can run:
+  ./data/public.json           (file read)                  present
+data.snapshot needs, before it can run:
+  ./data/public.json           (file read, via data.read)   present
+stderr: 2 present
+exit 0
+```
+
+Under [policies/create-only.json](policies/create-only.json), the read grant is `"access": ["read"]` with no `stat`, so the broker refuses the probe. `--check-files` needs `stat` in the grant's access list (or a grant with no `access` list). `request data.read` would still succeed under this file, because the read itself is granted:
+
+```text
+$ rivet --file app.rivet --policy ./policies/create-only.json io --check-files
+data.private needs, before it can run:
+  ./data/private/secret.json   (file read)                  not_permitted
+data.read needs, before it can run:
+  ./data/public.json           (file read)                  not_permitted
+data.snapshot needs, before it can run:
+  ./data/public.json           (file read, via data.read)   not_permitted
+demo.echo needs no existing files.
+stderr: 3 not_permitted
+exit 3
+```
+
+The secret file is `not_permitted` for a second reason: nothing grants it at all. To enable the pre-flight check there, change the read grant to `"access": ["read", "stat"]`. Deleting `data/public.json` would make the default-policy check report `missing` and exit 4.
+
 ### JSON excerpt
 
 `io data.snapshot --check-policy --format json` returns the IoManifest. Both sites belong to the `data.snapshot` entry; the read is reached through `data.read`:
@@ -262,6 +346,10 @@ It exits 0. No operation deletes anything, so the policy correctly has no `allow
                  "path": "./data/public.json", "glob": null, "params": []},
       "knowledge": "exact",
       "condition": null,
+      "origin": {"statement": "file read"},
+      "phase": "body",
+      "requires_existing": true,
+      "secret": false,
       "call_chain": ["data.snapshot", "data.read"],
       "secrets": [],
       "source": {"file": "app.rivet", "line": 15, "column": 13},
@@ -279,6 +367,10 @@ It exits 0. No operation deletes anything, so the policy correctly has no `allow
                  "path": "./out/snapshot.json", "glob": null, "params": []},
       "knowledge": "exact",
       "condition": null,
+      "origin": {"statement": "file create"},
+      "phase": "body",
+      "requires_existing": false,
+      "secret": false,
       "call_chain": ["data.snapshot"],
       "secrets": [],
       "source": {"file": "app.rivet", "line": 38, "column": 5},
@@ -287,15 +379,18 @@ It exits 0. No operation deletes anything, so the policy correctly has no `allow
   ],
   "targets": [
     {"target": "./data/public.json", "capability": "allow_read", "access": ["read"], "methods": [],
+     "origins": ["file read"], "phases": ["body"], "needs_file": "yes",
      "operations": ["data.snapshot"], "decision": "allowed"},
     {"target": "./out/snapshot.json", "capability": "allow_write", "access": ["create"], "methods": [],
+     "origins": ["file create"], "phases": ["body"], "needs_file": "no",
      "operations": ["data.snapshot"], "decision": "allowed"}
   ],
+  "needs": [],
   "bootstrap": []
 }
 ```
 
-`--format markdown` prints the same tables as Markdown for pasting into a review, and `--format csv` prints one row per site. Over HTTP the same manifest is `GET /v1/io?by=target&check_policy=true`; over MCP it is the built-in tool `rivet.io`.
+Every site carries `origin` (the statement or option that produced it), `phase`, `requires_existing` and `secret`. `needs` is `[]` here because the command does not pass `--needs`; with `--needs` it holds one `{"operation_id", "files": [...]}` entry per operation, each file with `status: null` unless `--check-files` is given. `--format markdown` prints the same tables as Markdown for pasting into a review, and `--format csv` prints one row per site. Over HTTP the same manifest is `GET /v1/io?by=target&check_policy=true`; over MCP it is the built-in tool `rivet.io`. `--needs` is also `GET /v1/io?needs=true` and `rivet.io {needs: true}`. `--check-files` is CLI and library only (`IoQuery.check_files`), because it performs stat I/O on the host.
 
 ### Generate a least-privilege draft and compare
 
@@ -361,7 +456,7 @@ data.snapshot   file   create   ./out/snapshot.json          exact       app.riv
 
 `data.private` is denied because nothing grants it, and the command exits 3. `io data.snapshot --check-policy` under this file exits 0. A `file update "./out/snapshot.json"` line would be denied twice over: its `stat` needs `allow_read` on `./out`, and `update` is not in the grant's `access` list. A repeated `request data.snapshot` still fails with `conflict.already_exists` (exit 4), because exclusive create never overwrites. A verb that does not belong to the capability, such as `{"capability": "allow_write", "targets": ["../out/**"], "access": ["delete"]}`, fails policy loading with `policy.invalid` (exit 2).
 
-`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: the bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. It is listed for transparency, never granted to scripts. Sandbox guarantees apply to **script-initiated effects through brokered adapters**. `io` performs no I/O and evaluates no source expression. Exit codes: 3 when `--check-policy` finds a reachable site denied or partial; 7 with `--strict` when any site is dynamic or opaque (`complete: false`); otherwise 0.
+`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: the bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. It is listed for transparency, never granted to scripts. Sandbox guarantees apply to **script-initiated effects through brokered adapters**. `io` performs no I/O and evaluates no source expression. Exit codes: 3 when `--check-policy` finds a reachable site denied or partial, or when `--check-files` finds a needed file `not_permitted` or `unreadable`; 4 when `--check-files` finds a needed file missing; 7 with `--strict` when any site is dynamic or opaque (`complete: false`); otherwise 0. `--check-files` is the only `io` form that touches the filesystem, and only through the broker.
 
 ## Release Updates
 
@@ -370,6 +465,7 @@ data.snapshot   file   create   ./out/snapshot.json          exact       app.riv
 | U-01 | UQ-17 / R24 | `--sandbox ""` and `--sandbox 'allow_read=…'` became `policies/empty.json` and `policies/read-only.json` | Commands above | Same allow/deny results | Not run — runtime does not exist |
 | U-02 | UQ-17 / R23 | Declared outputs and errors | `rivet outputs data.private` | Table above | Not run |
 | U-03 | UQ-18 / R26 | `io` became the generated I/O manifest (targets, access verbs, capability, `--by`, `--check-policy`) | Inspect before invoking | Tables above | Not run — runtime does not exist |
+| U-04 | TASK-005 / R26 (ADR-0001) | Sites gain `origin`, `phase`, `requires_existing`, `secret`; `--by target` adds ORIGIN, PHASE, NEEDS FILE; new `io --needs` and brokered `io --check-files` | [Files each operation needs](#files-each-operation-needs) | Needs listed; `--check-files` exits 3 under policy.json and create-only.json, 0 for `data.read data.snapshot` | Not run — runtime does not exist |
 
 ## Cleanup
 
@@ -391,12 +487,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `--by target` ORIGIN/PHASE/NEEDS FILE; new "Files each operation needs" section (`io --needs`, brokered `io --check-files` under policy.json and create-only.json, flow diagram); JSON excerpt gains origin/phase/requires_existing/secret and `needs`; U-04; exit codes 3/4 for `--check-files`. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest walkthrough — source→manifest diagram, `io --check-policy`, `--by target`, `--by capability`, `--kind file --access delete`, `--format json` excerpt, `policy generate` compared with policy.json, new policies/create-only.json (`access: ["create"]` narrowing) and `io --trace` planned-vs-actual. |
 | 2 | 2026-09-28 | Claude | UQ-17: removed `--sandbox` and intersection text; added policies/empty.json and policies/read-only.json; prefix `(request …)` call; declared outputs/errors; serve block in policy.json; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |

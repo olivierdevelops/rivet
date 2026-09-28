@@ -1,11 +1,11 @@
 ---
 document_id: REF-2026-0002
-title: "Rivet language and usage reference — 153 proposed examples"
+title: "Rivet language and usage reference — 159 proposed examples"
 document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -28,15 +28,15 @@ review_cycle: on-design-change
 next_review_date: 2026-10-27
 ---
 
-# Rivet language and usage reference — 153 proposed examples
+# Rivet language and usage reference — 159 proposed examples
 
-**Design reference, not an installed or tested runtime.** This document specifies proposed syntax for [PROP-2026-0001](../proposals/draft/prop-2026-0001-rivet-runtime.md). Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S153 block parses cleanly.
+**Design reference, not an installed or tested runtime.** This document specifies proposed syntax for [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md). Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S159 block parses cleanly.
 
-For complete files grouped by use case, see the [sample folders](../demos/README.md). The twelve bundles materialize selected examples below, with request bodies, local fixtures and per-folder READMEs; the numbered S01–S153 examples remain stable.
+For complete files grouped by use case, see the [sample folders](../demos/README.md). The twelve bundles materialize selected examples below, with request bodies, local fixtures and per-folder READMEs; the numbered S01–S159 examples remain stable.
 
 ## Read this first
 
-Start with S01–S06 for one operation across surfaces; S19–S32 for contextual lifetimes; S33–S43 for files; S44–S51 for workflows; S52–S61 for MCP; S62–S80 for inspection, policy, streaming and errors; S81–S102 for required UDP, OAuth 2.0, QUIC and HTTP/3 support; S103–S120 for multi-operation files, incoming MCP, gRPC and duplex sessions; S121–S128 for declared outputs and the commands that show them; S129–S132 for policy.json and serve authentication; S133–S137 for one `rivet serve` exposing every surface; S138–S140 for DAG completion, hard-link refusal and destination-bound secrets; S141–S153 (with the rewritten S62–S65) for the generated I/O manifest, access-narrowed policy and least-privilege policy drafts.
+Start with S01–S06 for one operation across surfaces; S19–S32 for contextual lifetimes; S33–S43 for files; S44–S51 for workflows; S52–S61 for MCP; S62–S80 for inspection, policy, streaming and errors; S81–S102 for required UDP, OAuth 2.0, QUIC and HTTP/3 support; S103–S120 for multi-operation files, incoming MCP, gRPC and duplex sessions; S121–S128 for declared outputs and the commands that show them; S129–S132 for policy.json and serve authentication; S133–S137 for one `rivet serve` exposing every surface; S138–S140 for DAG completion, hard-link refusal and destination-bound secrets; S141–S153 (with the rewritten S62–S65) for the generated I/O manifest, access-narrowed policy and least-privilege policy drafts; S154–S159 (with the revised S24) for option-derived file sites such as `tls ca_file`, `rivet io --needs` and `--check-files`.
 
 Save full operation/connector declarations in `app.rivet`. Body fragments are placed inside this explicit wrapper, choosing a suitable output/emits type:
 
@@ -56,7 +56,7 @@ Where an example shows a `policy.json`, that file sits beside the entry `.rivet`
 
 ## Syntax summary
 
-The proposal's [syntax table](../proposals/draft/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/draft/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are authoritative; this section restates them with an example per form.
+The proposal's [syntax table](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are authoritative; this section restates them with an example per form.
 
 ```text
 operation users.get                         <- header: stable callable ID
@@ -132,26 +132,37 @@ Option lines must precede the first body statement of their block; an option aft
 
 | Resource / block | Valid option lines |
 |---|---|
-| `http METHOD URL` | `query K V`, `header K V`, `body json\|text\|xml\|form\|multipart … end\|bytes\|file`, `decode json\|text\|bytes\|xml\|form`, `accept status [...]`, `timeout "D"`, `redirect follow limit N`, `retry N on status [...] backoff … base "D" max "D" jitter B`, `version 3` / `version prefer [3, 2]`, `auth PROFILE account "A"`, `unix "PATH"` |
+| `http METHOD URL` | `query K V`, `header K V`, `body json\|text\|xml\|form\|multipart … end\|bytes\|file`, `decode json\|text\|bytes\|xml\|form`, `accept status [...]`, `timeout "D"`, `redirect follow limit N`, `retry N on status [...] backoff … base "D" max "D" jitter B`, `version 3` / `version prefer [3, 2]`, `auth PROFILE account "A"`, `unix "PATH"`, `tls server_name\|ca_file\|cert_file\|key_file V` |
 | `with http … as NAME` | all `http` options plus `stream sse\|jsonl\|lines\|bytes` |
-| `with websocket URL as NAME` | `timeout "D"`, `reconnect N backoff … max "D"`, `resume none` |
+| `with websocket URL as NAME` | `timeout "D"`, `reconnect N backoff … max "D"`, `resume none`, `tls server_name\|ca_file\|cert_file\|key_file V` |
 | `with tcp HOST:PORT as NAME` | `framing newline\|length32 endian E\|delimiter "S"\|raw [max_frame N]`, `tls true`, `tls server_name\|ca_file\|cert_file\|key_file V`, `timeout "D"` |
 | `with unix PATH as NAME` / `with pipe PATH mode M as NAME` | `framing …`, `timeout "D"` |
 | `with udp HOST:PORT` / `udp bind` / `udp multicast` | `max_datagram N`, `timeout "D"`; multicast adds `bind "HOST:PORT"`, `interface "IF"` |
-| `with quic URL as NAME` | `alpn "ID"`, `max_streams N`, `migration true\|false`, `datagrams true`, `timeout "D"` |
+| `with quic URL as NAME` | `alpn "ID"`, `max_streams N`, `migration true\|false`, `datagrams true`, `timeout "D"`, `tls server_name\|ca_file\|cert_file\|key_file V` |
 | `with connection.open\|accept uni\|bidi as NAME` | `framing …`, `timeout "D"` |
 | `grpc CONNECTOR.Method` / `with grpc … as NAME` | `message {…}`, `metadata K V`, `auth PROFILE account A`, `timeout "D"` |
 | `command BIN` / `with command BIN as NAME` | `args [...]`, `stdin json\|text\|bytes V`, `env {…}`, `timeout "D"`, `decode stdout\|stderr T`, `stream stdout T`, `interactive true` |
 | `with file open PATH mode M as NAME` | `chunk_size N` |
 | `with file watch PATH as NAME` | `debounce "D"` |
 | `file update` / `file delete` / `file copy\|move` | `if_version V` / `missing ok` / `overwrite false` |
-| `connector NAME mcp` | `transport http URL` or `transport command BIN` (+ `args`/`env` … `end`), `auth PROFILE account "A"`, `schema PATH`, `expose tools\|resources\|prompts [...]` |
-| `connector NAME grpc` | `endpoint URL`, `descriptor PATH`, `service NAME` |
+| `connector NAME mcp` | `transport http URL` or `transport command BIN` (+ `args`/`env` … `end`), `auth PROFILE account "A"`, `schema PATH`, `expose tools\|resources\|prompts [...]`, `tls server_name\|ca_file\|cert_file\|key_file V` (http transport) |
+| `connector NAME grpc` | `endpoint URL`, `descriptor PATH`, `service NAME`, `tls server_name\|ca_file\|cert_file\|key_file V` |
 | `auth NAME oauth2` | `flow`, `pkce s256`, `issuer`, `authorization_url`, `device_url`, `token_url`, `client_id`, `client_secret env "VAR"`, `client_auth basic\|post\|none`, `redirect_uri`, `scopes [...]`, `resource_origins [...]`, `store memory\|keychain "NS"` |
+
+**File-valued options are I/O.** Every option line that names a file is its own [I/O manifest](#option-derived-file-sites) site (kind `file`, access `read`, capability `allow_read`): `tls ca_file`, `tls cert_file` and `tls key_file` (read before the connection is opened; the key file's content is secret), `body file PATH` and `body multipart` `file NAME PATH` parts (upload sources), and a `descriptor PATH` inside an operation. `tls …` lines follow their block's stage: HTTP is Stage A; WebSocket, QUIC and gRPC are Stage B; TCP TLS and mTLS are Stage C (S24). Connector-level `descriptor`/`schema` files are bootstrap reads, not operation sites.
+
+```text
+ http post "https://render.example.com/v1/status"
+     tls ca_file   "./certs/ca.pem"       ──▶ file read  allow_read  origin tls ca_file   phase before_connect
+     tls cert_file "./certs/client.pem"   ──▶ file read  allow_read  origin tls cert_file phase before_connect
+     tls key_file  "./certs/client.key"   ──▶ file read  allow_read  origin tls key_file  phase before_connect  secret
+     body json {action: "status"}         ──▶ (no file)
+ end                                      ──▶ network connect POST https://render.example.com:443  phase connect
+```
 
 ### Error registry
 
-One registry governs every surface ([proposal](../proposals/draft/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors)). Codes not listed follow their kind's row.
+One registry governs every surface ([proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors)). Codes not listed follow their kind's row.
 
 | Kind / code | Meaning | HTTP | CLI exit | Retryable |
 |---|---|---|---|---|
@@ -169,6 +180,7 @@ One registry governs every surface ([proposal](../proposals/draft/prop-2026-0001
 | `internal`, `cleanup`, `consumer_failed`, `parse`, `process` | Runtime fault / cleanup / sink failure | 500 (`process`, upstream `parse`: 502) | 5 | no |
 | `io --check-policy` result | a reachable site is `denied` or `partial` (not an error envelope; the manifest is still printed) | — | 3 | no |
 | inspection incomplete | `io --strict` found dynamic/opaque sites; `policy generate` left review items (draft still written) | — | 7 | no |
+| `io --check-files` result | a needed file is `not_permitted` (no `stat` grant) or `unreadable` → 3; else a needed file is `missing` → 4 (the listing is still printed) | — | 3 / 4 | no |
 | `cancelled` | Caller or parent cancelled | 409 before headers; terminal event after | 130 | no |
 
 ```text
@@ -304,7 +316,7 @@ Every effect site performs one or more **access verbs**; each verb belongs to ex
 |---|---|
 | HTTP detail | HTTP sites also record `method` (GET, POST, …) and `protocol` (`http1`, `http2`, `http3`, `ws`, `sse`, `grpc`, `quic`, `udp`, `tcp`). `access` narrows verbs only; methods are reported, not granted separately. |
 | Several sites per line | One source line can produce several sites, each listed: `file update` = `stat` (allow_read) + `update` (allow_write); an MCP stdio call = `exec` (allow_exec) + `call` (allow_mcp). |
-| DSL → verb | `file read` → read · `file list` → list · `file stat` → stat · `with file watch` → watch · `file create` → create · `file update` → stat + update · `file write` → create or update (both listed) · `file append` → append · `file delete` → delete · `file copy/move` → read at source + create at destination (+ delete at source for move). |
+| DSL → verb | `file read` → read · `file list` → list · `file stat` → stat · `with file watch` → watch · `file create` → create · `file update` → stat + update · `file write` → create or update (both listed) · `file append` → append · `file delete` → delete · `file copy/move` → read at source + create at destination (+ delete at source for move). File-valued options (`tls ca_file`/`cert_file`/`key_file`, `body file`, multipart `file` parts, operation-level `descriptor`) → read. |
 
 ```text
  policy.json entry                      verbs allowed                     S-example
@@ -331,6 +343,7 @@ app.rivet ──parse/lower──▶ effect sites ──normalize──▶ IoMan
 rivet --file app.rivet io [ID ...] [--all] [--transitive] [--include-bootstrap]
       [--by operation|target|capability] [--kind file|network|process|env|pipe|unix|mcp|grpc|auth|credential]
       [--access VERB[,VERB]] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQUEST]
+      [--needs] [--check-files]
 rivet --file app.rivet policy generate [ID ...|--all] [--output PATH]
 ```
 
@@ -343,16 +356,44 @@ rivet --file app.rivet policy generate [ID ...|--all] [--output PATH]
 | `--check-policy` | Evaluates each site against host ceiling ∩ policy.json and adds `DECISION`: `allowed` · `denied` · `partial` (a param_dependent target only partly covered) · `unknown` (dynamic/opaque). Exit 3 when any reachable site is denied or partial. |
 | `--strict` | Exit 7 when any site is dynamic/opaque (`complete:false`). |
 | `--trace REQUEST` | Adds an `ATTEMPTS` column (count, last decision) joined on `effect_id` from that request's trace. |
+| `--needs` | Lists, per operation, the files that must already exist before it can run (`requires_existing: true`), with their origin; files the operation creates earlier are excluded. Static (S155). |
+| `--check-files` | Implies `--needs` and **performs I/O**: a brokered metadata probe per needed exact path (needs `allow_read` with `stat`). Reports `present` · `missing` · `unreadable` · `not_permitted` · `not_checkable`. Exit 3 when any is not_permitted/unreadable, else 4 when any is missing (S156–S157). CLI and library only. |
 | targets | URLs as `scheme://host:port` + path template, interpolations as `{param}`; paths relative to the bundle root with `{param}` segments and the derived glob for param_dependent paths (`./out/notes/*.json`). |
 | knowledge | `exact` · `bounded` · `param_dependent` · `dynamic` · `opaque_remote` · `opaque_native`. |
+| `--by target` columns | `TARGET ACCESS CAPABILITY ORIGIN PHASE NEEDS FILE USED BY`. NEEDS FILE is `yes`, `no`, `yes: <verbs>` (a row merging sites) or `—` (not a file). |
 
-`policy generate` builds a policy.json v1 draft: one grant per (capability, target) with `access` narrowed to the verbs used (omitted when the verbs used are the capability's whole verb set, e.g. `connect` for allow_network); exact targets as-is, param_dependent URLs → origin, param_dependent paths → derived glob, `network.deny_private_ranges: true`. Dynamic/opaque sites are not granted: they go to stderr as review items and the exit code is 7 (the draft is still written). Output goes to stdout unless `--output PATH`, which refuses to overwrite (`conflict.exists`, exit 4). The draft never contains `serve` auth or secrets and is a starting point for human review, not approval.
+`policy generate` builds a policy.json v1 draft: one grant per (capability, target) with `access` narrowed to the verbs used (omitted when the verbs used are the capability's whole verb set, e.g. `connect` for allow_network); exact targets as-is, param_dependent URLs → origin, param_dependent paths → derived glob, `network.deny_private_ranges: true`. Dynamic/opaque sites are not granted: they go to stderr as review items and the exit code is 7 (the draft is still written). Output goes to stdout unless `--output PATH`, which refuses to overwrite (`conflict.exists`, exit 4). The draft never contains `serve` auth or secrets and is a starting point for human review, not approval. Option-derived file sites (`tls …_file`, `body file`, multipart `file` parts) are granted as their exact path with `access: ["read"]`, never a directory glob; a param_dependent option path is a review item instead (S158).
 
-Every surface has the same inventory: built-in operations `rivet.io` and `rivet.policy.generate` ([built-in tools](#complete-cli-and-registry-mapping)), HTTP `GET /v1/io?by=target&kind=file&check_policy=true` and `POST /v1/policy/generate`, MCP tools of the same names, and library `rt.io(IoQuery) -> IoManifest` / `rt.generate_policy(&[ids]) -> PolicyDraft`. Inventories reveal internal URLs and paths, so a remote principal may call `rivet.io` / `rivet.policy.generate` only when its `serve.principals.<name>.operations` lists them explicitly; a `*` or `demo.*` pattern never matches these two IDs. The loopback principal `local` may call them.
+Every surface has the same inventory: built-in operations `rivet.io` (including `needs: true`) and `rivet.policy.generate` ([built-in tools](#complete-cli-and-registry-mapping)), HTTP `GET /v1/io?by=target&kind=file&check_policy=true`, `GET /v1/io?needs=true` and `POST /v1/policy/generate`, MCP tools of the same names, and library `rt.io(IoQuery) -> IoManifest` / `rt.generate_policy(&[ids]) -> PolicyDraft`. Inventories reveal internal URLs and paths, so a remote principal may call `rivet.io` / `rivet.policy.generate` only when its `serve.principals.<name>.operations` lists them explicitly; a `*` or `demo.*` pattern never matches these two IDs. The loopback principal `local` may call them.
+
+### Option-derived file sites
+
+Every site carries four fields beyond those shown in S62 (design revision 8):
+
+| Field | Values | Meaning |
+|---|---|---|
+| `origin` | `{"statement": "file read"}` · `{"option": "tls key_file"}` | The statement or option line that produced the site |
+| `phase` | `load` · `before_connect` · `connect` · `body` · `cleanup` | Bundle load · files read to build a connection · opening the connection or spawning the process · statements and body options · `finally` and scope disposal |
+| `requires_existing` | `true` / `false` | The file must exist when the operation starts; a missing one fails with not_found (exit 4). For `before_connect` files this happens before dialing. `false` for files the site or an earlier statement of the same operation creates, and for `missing ok` |
+| `secret` | `true` / `false` | The content is secret material (`tls key_file`, env read by `secret`). The path is still shown; the content is never read by `io` |
+
+```text
+  phase timeline of one operation
+  load ──▶ before_connect ──▶ connect ──▶ body ──▶ cleanup
+  │        │                   │           │        └ finally blocks, scope disposal
+  │        │                   │           └ file statements, body file, secret env reads, calls
+  │        │                   └ network / unix connect, process exec
+  │        └ tls ca_file / cert_file / key_file
+  └ bundle assembly: connector descriptor / schema (bootstrap), operation-level descriptor
+```
+
+`rivet io --needs` groups the `requires_existing` file sites per operation (S155); `--check-files` probes them
+(S156–S157). The JSON manifest adds `needs: [{operation_id, files: [{path, effect_id, origin, phase, secret,
+knowledge, via, source, status}]}]`; CSV adds `origin`, `phase`, `requires_existing` and `secret` columns.
 
 ### I/O manifest fixture bundle
 
-S62–S65 and S141–S153 use this `app.rivet`. `SOURCE` columns (`app.rivet:6`) count lines from the first line of this block.
+S62–S65 and S141–S153 use this `app.rivet`; S154–S159 use the [TLS fixture bundle](#tls-fixture-bundle). `SOURCE` columns (`app.rivet:6`) count lines from the first line of this block.
 
 ```rivet
 operation users.get
@@ -463,6 +504,64 @@ end
    83  file delete ./out/archive/old.json      (private, --all)  exact
 ```
 
+### TLS fixture bundle
+
+S154–S159 use this `tls.rivet` (Stage A: TLS options inside `http` blocks). `SOURCE` columns (`tls.rivet:5`) count
+lines from the first line of this block. `./certs/` holds a private CA certificate, a client certificate and its
+key; `./data/template.json` is ordinary input.
+
+```rivet
+operation status.get
+    description "Read service status through a private certificate authority."
+    output json description "Service status."
+    response = http get "https://status.example.com/v1/status"
+        tls ca_file "./certs/ca.pem"
+        decode json
+    end
+    return response.body
+end
+
+operation render.status
+    description "Ask the render service for its status over mutual TLS."
+    output json description "Render status."
+    response = http post "https://render.example.com/v1/status"
+        tls ca_file "./certs/ca.pem"
+        tls cert_file "./certs/client.pem"
+        tls key_file "./certs/client.key"
+        body json {action: "status"}
+        decode json
+    end
+    return response.body
+end
+
+operation report.upload
+    description "Fill the report template, save it, then upload the saved file."
+    output json description "Upload receipt."
+    template = file read "./data/template.json" as json
+    file create "./out/report.json" json template
+    response = http put "https://api.example.com/reports/latest"
+        body file "./out/report.json"
+        decode json
+    end
+    return response.body
+end
+```
+
+```text
+ line  site                                                 origin          phase           requires_existing
+ ----  ---------------------------------------------------  --------------  --------------  -----------------
+    4  network connect GET  https://status.example.com:443  http get        connect         —
+    5  file read ./certs/ca.pem                             tls ca_file     before_connect  yes
+   14  network connect POST https://render.example.com:443  http post       connect         —
+   15  file read ./certs/ca.pem                             tls ca_file     before_connect  yes
+   16  file read ./certs/client.pem                         tls cert_file   before_connect  yes
+   17  file read ./certs/client.key          (secret)       tls key_file    before_connect  yes
+   27  file read ./data/template.json                       file read       body            yes
+   28  file create ./out/report.json                        file create     body            no
+   29  network connect PUT  https://api.example.com:443     http put        connect         —
+   30  file read ./out/report.json                          body file       body            no  (created at 28)
+```
+
 ## One serve, every surface
 
 ```text
@@ -506,7 +605,7 @@ Global `--file` selects a trusted bundle input. Policy comes only from a policy.
 | `outputs --all [--json]` | `rivet.outputs {all:true}` | Same, for every public operation |
 | `list --outputs` | `rivet.list {cursor?,limit?}` | Adds a one-line output summary column |
 | `check [--strict-docs]` | `rivet.check {strict_docs?}` | Diagnostics from loaded bundle; no execution |
-| `io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation\|target\|capability] [--kind KIND] [--access VERB,…] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ]` | `rivet.io {ids?,all?,by?,kind?,access?,check_policy?}` | IoManifest: every site's target, access verbs and capability; exit 3 on denied/partial with `--check-policy`, 7 on unknowns with `--strict` ([I/O manifest](#io-manifest-rivet-io)) |
+| `io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation\|target\|capability] [--kind KIND] [--access VERB,…] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files]` | `rivet.io {ids?,all?,by?,kind?,access?,check_policy?,needs?}` | IoManifest: every site's target, access verbs and capability; exit 3 on denied/partial with `--check-policy`, 7 on unknowns with `--strict`; `--needs` lists files each operation needs; `--check-files` probes them (exit 4 missing, 3 not permitted) ([I/O manifest](#io-manifest-rivet-io)) |
 | `policy generate [ID ...\|--all] [--output PATH]` | `rivet.policy.generate {ids?,all?}` | Least-privilege policy.json draft on stdout (or a new file); review items on stderr, exit 7 if any; never overwrites (exit 4) |
 | `graph ID --json` | `rivet.graph {id}` | DAG/call/effect graph |
 | `policy explain ID --params JSON --json` | `rivet.policy.explain {id,params}` | Missing grants without issuing a permit |
@@ -519,6 +618,7 @@ Global `--file` selects a trusted bundle input. Policy comes only from a policy.
 | `auth complete --params JSON` or `--params-file PATH` | `rivet.auth.complete {transaction_id,callback?,wait?}` | Validated exchange/poll, then sanitized CredentialStatus |
 | `auth status PROFILE --account ACCOUNT` | `rivet.auth.status {profile,account}` | Status without refresh |
 | `auth disconnect PROFILE --account ACCOUNT` | `rivet.auth.disconnect {profile,account}` | Local deletion/generation receipt, not provider revocation |
+| `auth cancel TRANSACTION_ID` | `rivet.auth.cancel {transaction_id}` | Invalidates one pending transaction owned by the caller; idempotent `{transaction_id, state}` receipt |
 | `serve [--listen HOST:PORT]` (default `127.0.0.1:8080`) | Host lifecycle bootstrap, not an application operation | One listener with REST, SSE, polling, WebSocket and MCP mounted; never callable by an unprivileged request |
 | `serve --stdio` | Host lifecycle bootstrap | MCP over stdio only (cannot share a socket) |
 
@@ -532,15 +632,15 @@ Built-in generic operations are also MCP tools. Direct named tools (one per publ
 | `rivet.list` | `{cursor?, limit?}` → visible operation descriptors |
 | `rivet.describe` | `{id}` → descriptor with Output section |
 | `rivet.outputs` | `{id?, all?}` → output JSON Schema(s) with emits, receives and errors |
-| `rivet.io` | `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean}` → IoManifest. Remote principals need it listed explicitly in `serve.principals.<name>.operations` |
+| `rivet.io` | `{ids?: [text], all?: boolean, by?: text, kind?: text, access?: [text], check_policy?: boolean, needs?: boolean}` → IoManifest (`needs` fills `IoManifest.needs`; `--check-files` has no network parameter). Remote principals need it listed explicitly in `serve.principals.<name>.operations` |
 | `rivet.policy.generate` | `{ids?: [text], all?: boolean}` → `{policy: {…}, review: [site…], complete: bool}`; never writes files. Same explicit-listing rule as `rivet.io` |
 | `rivet.sessions.open` / `send` / `finish_input` / `read` / `cancel` | see [gRPC, catalog and session additions](#grpc-catalog-and-session-additions) |
 
-Every HTTP route, the WebSocket endpoint and `/mcp` are mounted by one `rivet serve`; see [One serve, every surface](#one-serve-every-surface). Exact curl requests, response shapes, statuses and the MCP initialization sequence are in the proposal's [surface contract](../proposals/draft/prop-2026-0001-rivet-runtime.md#sample-api-calls-and-cli-commands).
+Every HTTP route, the WebSocket endpoint and `/mcp` are mounted by one `rivet serve`; see [One serve, every surface](#one-serve-every-surface). Exact curl requests, response shapes, statuses and the MCP initialization sequence are in the proposal's [surface contract](../proposals/approved/prop-2026-0001-rivet-runtime.md#sample-api-calls-and-cli-commands).
 
 ## OAuth, UDP, QUIC and HTTP/3 additions
 
-These are required Stage B scope. The detailed behavioral and security contracts are [proposal increments 9–11](../proposals/draft/prop-2026-0001-rivet-runtime.md#increment-9--oauth-20-as-a-reusable-authorization-layer).
+These are required Stage B scope. The detailed behavioral and security contracts are [proposal increments 9–11](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-9--oauth-20-as-a-reusable-authorization-layer).
 
 | Syntax / configuration | Contract |
 |---|---|
@@ -755,6 +855,12 @@ Missing or bad server credentials on a serve surface use 401; limits 429 (size 4
 - [S151 — Call rivet.io through MCP with an explicitly authorized principal](#s151--call-rivetio-through-mcp-with-an-explicitly-authorized-principal)
 - [S152 — Build the manifest and a policy draft from a Rust host](#s152--build-the-manifest-and-a-policy-draft-from-a-rust-host)
 - [S153 — Compare planned and actual I/O for one request](#s153--compare-planned-and-actual-io-for-one-request)
+- [S154 — Trust a private CA for one HTTPS call](#s154--trust-a-private-ca-for-one-https-call)
+- [S155 — List the files each operation needs before it runs](#s155--list-the-files-each-operation-needs-before-it-runs)
+- [S156 — Check needed files on disk before running](#s156--check-needed-files-on-disk-before-running)
+- [S157 — Catch a missing key file and an ungranted stat](#s157--catch-a-missing-key-file-and-an-ungranted-stat)
+- [S158 — Generate a policy that names option-derived files exactly](#s158--generate-a-policy-that-names-option-derived-files-exactly)
+- [S159 — Read an operation's needed files over HTTP and MCP](#s159--read-an-operations-needed-files-over-http-and-mcp)
 
 ## Worked samples
 
@@ -1182,7 +1288,7 @@ Expected behavior: Unsigned 32-bit big-endian byte length; partial reads assembl
 
 ### S24 — Mutual TLS over TCP
 
-Stage: **C**. Required authority: allow_network=tcp://render.example.com:7443, allow_read=./certs/**.
+Stage: **C** (TCP TLS and mTLS are later, optional adapters; the manifest rows below are still defined now). Required authority: allow_network=tcp://render.example.com:7443, allow_read=./certs/ca.pem, allow_read=./certs/client.pem, allow_read=./certs/client.key (exact paths, as `policy generate` emits them).
 
 ```rivet
 with tcp "render.example.com:7443" as conn
@@ -1197,7 +1303,24 @@ with tcp "render.example.com:7443" as conn
 end
 ```
 
-Expected behavior: Certificate files are explicit read effects; key contents are secret. Validation stays enabled.
+Manifest rows, as `rivet io --by target` prints them when this block is the body of an operation `render.tcp_status`:
+
+```text
+TARGET                         ACCESS   CAPABILITY     ORIGIN         PHASE           NEEDS FILE  USED BY
+tcp://render.example.com:7443  connect  allow_network  with tcp       connect         —           render.tcp_status
+./certs/ca.pem                 read     allow_read     tls ca_file    before_connect  yes         render.tcp_status
+./certs/client.key             read     allow_read     tls key_file   before_connect  yes         render.tcp_status (secret)
+./certs/client.pem             read     allow_read     tls cert_file  before_connect  yes         render.tcp_status
+```
+
+```text
+render.tcp_status needs, before it can run:        (rivet io render.tcp_status --needs)
+  ./certs/ca.pem        (tls ca_file)
+  ./certs/client.pem    (tls cert_file)
+  ./certs/client.key    (tls key_file, secret)
+```
+
+Expected behavior: Each certificate file is its own explicit read site (`origin` option, `phase` before_connect, `requires_existing` true); the key file's contents are secret, while its path is shown. All three are read before the TCP connection is dialed, so a missing or ungranted file fails before any network effect. Validation stays enabled. Stage C: a v0.1.0 build reports `unsupported` (exit 5) for TCP TLS, but `rivet io` still lists these rows. The Stage A HTTPS form of the same files is S154–S155.
 
 <a id="s25--unix-socket-and-json-framing"></a>
 
@@ -3944,22 +4067,22 @@ rivet --file app.rivet io --by target
 ```
 
 ```text
-TARGET                       ACCESS             CAPABILITY     USED BY
-https://api.example.com:443  connect GET, POST  allow_network  users.get, users.create
-  ├ /users/{id}              connect GET                       users.get (also via users.snapshot)
-  └ /users                   connect POST                      users.create
-<dynamic: config.url>        connect POST       allow_network  sync.push   (not grantable: review)
-./data/endpoint.json         read               allow_read     sync.push
-./data/input.json            read               allow_read     report.load
-./out/notes/*.json           stat               allow_read     notes.update
-                             create, update     allow_write    notes.create, notes.update
-                             delete             allow_delete   notes.delete
-./out/user.json              create             allow_write    users.snapshot
-env API_KEY                  read               allow_env      users.get, users.create
-                                                               (secret api_key, bound to https://api.example.com:443)
+TARGET                       ACCESS             CAPABILITY     ORIGIN                    PHASE    NEEDS FILE   USED BY
+https://api.example.com:443  connect GET, POST  allow_network  http get, http post       connect  —            users.get, users.create
+  ├ /users/{id}              connect GET                       http get                                        users.get (also via users.snapshot)
+  └ /users                   connect POST                      http post                                       users.create
+<dynamic: config.url>        connect POST       allow_network  http post                 connect  —            sync.push   (not grantable: review)
+./data/endpoint.json         read               allow_read     file read                 body     yes          sync.push
+./data/input.json            read               allow_read     file read                 body     yes          report.load
+./out/notes/*.json           stat               allow_read     file update               body     yes          notes.update
+                             create, update     allow_write    file create, file update  body     yes: update  notes.create, notes.update
+                             delete             allow_delete   file delete               body     yes          notes.delete
+./out/user.json              create             allow_write    file create               body     no           users.snapshot
+env API_KEY                  read               allow_env      secret                    body     —            users.get, users.create
+                                                                                                               (secret api_key, bound to https://api.example.com:443)
 ```
 
-Expected: exit 0. One row per (target, capability): URLs group under their origin `scheme://host:port` with each path template beneath; param_dependent paths show their derived glob (`./out/notes/{name}.json` → `./out/notes/*.json`); env vars appear as `env NAME` with any secret binding. Access verbs are the [vocabulary](#access-verbs) (`file update` contributes `stat` + `update`). The private `archive.purge` is absent because `--all` was not given. The same rows are the `targets` array of `--format json`.
+Expected: exit 0. One row per (target, capability): URLs group under their origin `scheme://host:port` with each path template beneath; param_dependent paths show their derived glob (`./out/notes/{name}.json` → `./out/notes/*.json`); env vars appear as `env NAME` with any secret binding. Access verbs are the [vocabulary](#access-verbs) (`file update` contributes `stat` + `update`). ORIGIN, PHASE and NEEDS FILE come from each site's [option-derived fields](#option-derived-file-sites): `file create` needs no existing file, `file update` and `file delete` do (`yes: update` marks the merged create/update row). The private `archive.purge` is absent because `--all` was not given. The same rows are the `targets` array of `--format json`.
 
 <a id="s142--group-the-manifest-by-capability"></a>
 
@@ -4012,14 +4135,14 @@ archive.purge  file  delete  ./out/archive/old.json   exact            app.rivet
 ```
 
 ```text
-TARGET                  ACCESS          CAPABILITY    USED BY
-./out/archive/old.json  delete          allow_delete  archive.purge (private)
-./out/notes/*.json      create, update  allow_write   notes.create, notes.update
-                        delete          allow_delete  notes.delete
-./out/user.json         create          allow_write   users.snapshot
+TARGET                  ACCESS          CAPABILITY    ORIGIN                    PHASE  NEEDS FILE   USED BY
+./out/archive/old.json  delete          allow_delete  file delete               body   no           archive.purge (private)
+./out/notes/*.json      create, update  allow_write   file create, file update  body   yes: update  notes.create, notes.update
+                        delete          allow_delete  file delete               body   yes          notes.delete
+./out/user.json         create          allow_write   file create               body   no           users.snapshot
 ```
 
-Expected: exit 0 for both. The first command answers "what can delete anything?": two sites, including the private, unreachable `archive.purge` that only `--all` reveals. The second lists every mutating file verb by target. `--access` filters verbs, not operations: the `stat` half of `notes.update` is filtered out. An unknown verb (`--access remove`) is a usage error, exit 2.
+Expected: exit 0 for both. The first command answers "what can delete anything?": two sites, including the private, unreachable `archive.purge` that only `--all` reveals. The second lists every mutating file verb by target. `--access` filters verbs, not operations: the `stat` half of `notes.update` is filtered out. `archive.purge` shows NEEDS FILE `no` because `missing ok` tolerates an absent file. An unknown verb (`--access remove`) is a usage error, exit 2.
 
 <a id="s144--check-the-manifest-against-policyjson"></a>
 
@@ -4091,32 +4214,32 @@ rivet --file app.rivet io --check-policy --format csv > io.csv
 `io-review.md` (paste into a review; the same table S141 prints):
 
 ```markdown
-| TARGET | ACCESS | CAPABILITY | USED BY |
-|---|---|---|---|
-| https://api.example.com:443 | connect GET, POST | allow_network | users.get, users.create |
-| <dynamic: config.url> | connect POST | allow_network | sync.push |
-| ./data/endpoint.json | read | allow_read | sync.push |
-| ./data/input.json | read | allow_read | report.load |
-| ./out/notes/*.json | stat | allow_read | notes.update |
-| ./out/notes/*.json | create, update | allow_write | notes.create, notes.update |
-| ./out/notes/*.json | delete | allow_delete | notes.delete |
-| ./out/user.json | create | allow_write | users.snapshot |
-| env API_KEY | read | allow_env | users.get, users.create |
+| TARGET | ACCESS | CAPABILITY | ORIGIN | PHASE | NEEDS FILE | USED BY |
+|---|---|---|---|---|---|---|
+| https://api.example.com:443 | connect GET, POST | allow_network | http get, http post | connect | — | users.get, users.create |
+| <dynamic: config.url> | connect POST | allow_network | http post | connect | — | sync.push |
+| ./data/endpoint.json | read | allow_read | file read | body | yes | sync.push |
+| ./data/input.json | read | allow_read | file read | body | yes | report.load |
+| ./out/notes/*.json | stat | allow_read | file update | body | yes | notes.update |
+| ./out/notes/*.json | create, update | allow_write | file create, file update | body | yes: update | notes.create, notes.update |
+| ./out/notes/*.json | delete | allow_delete | file delete | body | yes | notes.delete |
+| ./out/user.json | create | allow_write | file create | body | no | users.snapshot |
+| env API_KEY | read | allow_env | secret | body | — | users.get, users.create |
 ```
 
 `io.csv` (header plus six of the twelve site rows):
 
 ```text
-effect_id,operation_id,kind,access,method,protocol,capability,target,glob,knowledge,call_chain,secrets,source,decision
-users.get#1,users.get,env,read,,,allow_env,env:API_KEY,,exact,users.snapshot>users.get,api_key,app.rivet:5:5,allowed
-users.get#2,users.get,network,connect,GET,http1|http2,allow_network,https://api.example.com/users/{id},,param_dependent,users.snapshot>users.get,api_key,app.rivet:6:5,allowed
-notes.update#1,notes.update,file,stat,,,allow_read,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.update,,app.rivet:56:5,allowed
-notes.update#2,notes.update,file,update,,,allow_write,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.update,,app.rivet:56:5,partial
-notes.delete#1,notes.delete,file,delete,,,allow_delete,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.delete,,app.rivet:64:5,denied
-sync.push#2,sync.push,network,connect,POST,http1|http2,allow_network,<dynamic: config.url>,,dynamic,sync.push,,app.rivet:72:5,unknown
+effect_id,operation_id,kind,access,method,protocol,capability,target,glob,knowledge,call_chain,secrets,source,origin,phase,requires_existing,secret,decision
+users.get#1,users.get,env,read,,,allow_env,env:API_KEY,,exact,users.snapshot>users.get,api_key,app.rivet:5:5,statement:secret,body,false,true,allowed
+users.get#2,users.get,network,connect,GET,http1|http2,allow_network,https://api.example.com/users/{id},,param_dependent,users.snapshot>users.get,api_key,app.rivet:6:5,statement:http get,connect,false,false,allowed
+notes.update#1,notes.update,file,stat,,,allow_read,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.update,,app.rivet:56:5,statement:file update,body,true,false,allowed
+notes.update#2,notes.update,file,update,,,allow_write,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.update,,app.rivet:56:5,statement:file update,body,true,false,partial
+notes.delete#1,notes.delete,file,delete,,,allow_delete,./out/notes/{name}.json,./out/notes/*.json,param_dependent,notes.delete,,app.rivet:64:5,statement:file delete,body,true,false,denied
+sync.push#2,sync.push,network,connect,POST,http1|http2,allow_network,<dynamic: config.url>,,dynamic,sync.push,,app.rivet:72:5,statement:http post,connect,false,false,unknown
 ```
 
-Expected: the first command exits 0. The second exits 3 exactly like S144, because `--check-policy` decides the exit code whatever the format; the file is still complete. CSV has one row per site (never per target), multi-valued fields joined with `;`, `call_chain` joined with `>`, `source` as `file:line:column`, and RFC 4180 quoting when a value contains a comma or quote. `--by` shapes table and Markdown only; CSV and JSON always carry sites.
+Expected: the first command exits 0. The second exits 3 exactly like S144, because `--check-policy` decides the exit code whatever the format; the file is still complete. CSV has one row per site (never per target), multi-valued fields joined with `;`, `call_chain` joined with `>`, `source` as `file:line:column`, `origin` as `statement:NAME` or `option:NAME`, and RFC 4180 quoting when a value contains a comma or quote. `--by` shapes table and Markdown only; CSV and JSON always carry sites.
 
 <a id="s146--allow-creating-notes-but-never-overwriting-them"></a>
 
@@ -4459,9 +4582,286 @@ users.snapshot  file     create       ./out/user.json                     exact 
 
 Expected: the join is on `effect_id`, so each planned row shows how many attempts happened and the last policy decision; `0 —` marks planned I/O that did not run (the request failed first with `http.status`, exit 5). A dynamic site would show the concrete target observed at run time in the trace, never in the static manifest. As in S74, `--trace` reads the host's trace store (separate CLI processes need a persisted store); an unknown request ID is not_found, exit 4.
 
+<a id="s154--trust-a-private-ca-for-one-https-call"></a>
+
+### S154 — Trust a private CA for one HTTPS call
+
+Stage: **A**. Required authority: allow_read=./certs/ca.pem, allow_network=https://status.example.com:443. [TLS fixture bundle](#tls-fixture-bundle).
+
+`policy.json` (beside `tls.rivet`):
+
+```json
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read",    "targets": ["./certs/ca.pem"], "access": ["read"]},
+    {"capability": "allow_network", "targets": ["https://status.example.com:443"]}
+  ]
+}
+```
+
+```sh
+rivet --file tls.rivet io status.get --by target
+rivet --file tls.rivet request status.get --params '{}'
+```
+
+```text
+TARGET                          ACCESS       CAPABILITY     ORIGIN       PHASE           NEEDS FILE  USED BY
+https://status.example.com:443  connect GET  allow_network  http get     connect         —           status.get
+./certs/ca.pem                  read         allow_read     tls ca_file  before_connect  yes         status.get
+```
+
+```text
+ status.get
+   before_connect  read ./certs/ca.pem ──broker: allow_read [read] ✔──▶ trust roots for this call = that CA only
+   connect         GET https://status.example.com:443 ──broker: allow_network ✔──▶ TLS handshake
+                   server certificate chains to ca.pem? ── no ──▶ tls error, exit 5
+                                                        └─ yes ─▶ hostname check (status.example.com) ──▶ request
+   body            decode json ──▶ Completion
+```
+
+Expected: the manifest lists the `tls ca_file` line as its own `allow_read` site with origin `tls ca_file`, phase `before_connect` and NEEDS FILE `yes`, next to the network site of the same block. The request returns the fixture's `{"state":"ok"}` (exit 0). For this block, `tls ca_file` replaces the default trust roots: only the named CA is trusted, and hostname verification stays on. A missing `./certs/ca.pem` fails with not_found (exit 4), and an ungranted one fails with permission.denied (exit 3). Both fail before DNS or a connection attempt. The same option line is valid in `with http`, `with websocket`, `with quic` and in `grpc`/`mcp` connectors (Stage B). The TCP form is S24 (Stage C).
+
+<a id="s155--list-the-files-each-operation-needs-before-it-runs"></a>
+
+### S155 — List the files each operation needs before it runs
+
+Stage: **A**. Required authority: none; `--needs` is static and performs no I/O. TLS fixture bundle as S154.
+
+```sh
+rivet --file tls.rivet io --needs
+rivet --file tls.rivet io render.status --needs --format json
+```
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)
+  ./certs/client.pem    (tls cert_file)
+  ./certs/client.key    (tls key_file, secret)
+report.upload needs, before it can run:
+  ./data/template.json  (file read)
+status.get needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)
+```
+
+JSON (abridged to the new keys):
+
+```json
+{"bundle": {"file": "tls.rivet", "sha256": "…"}, "policy": null, "complete": true,
+ "needs": [
+   {"operation_id": "render.status", "files": [
+     {"path": "./certs/ca.pem",     "effect_id": "render.status#2", "origin": {"option": "tls ca_file"},
+      "phase": "before_connect", "secret": false, "knowledge": "exact", "via": null,
+      "source": {"file": "tls.rivet", "line": 15, "column": 9}, "status": null},
+     {"path": "./certs/client.pem", "effect_id": "render.status#3", "origin": {"option": "tls cert_file"},
+      "phase": "before_connect", "secret": false, "knowledge": "exact", "via": null,
+      "source": {"file": "tls.rivet", "line": 16, "column": 9}, "status": null},
+     {"path": "./certs/client.key", "effect_id": "render.status#4", "origin": {"option": "tls key_file"},
+      "phase": "before_connect", "secret": true,  "knowledge": "exact", "via": null,
+      "source": {"file": "tls.rivet", "line": 17, "column": 9}, "status": null}]}],
+ "sites": ["… render.status#1 network connect POST (phase connect) and #2–#4 file read (requires_existing true) …"]}
+```
+
+```text
+ report.upload
+   27  file read   ./data/template.json   requires_existing: true   ──▶ listed
+   28  file create ./out/report.json      creates it                ──▶ not a need
+   30  body file   ./out/report.json      created at line 28        ──▶ requires_existing: false, not listed
+```
+
+Expected: exit 0. One group per operation, ordered by operation ID, with each file's origin. The key file is marked `secret`: its path is shown and its content is never read. `report.upload` uploads `./out/report.json`, but it creates that file itself two lines earlier, so the file is not a need. Only `./data/template.json` must exist beforehand. A callee's needs appear under the caller as `(file read, via callee.id)`. A `param_dependent` path is shown as its template, for example `./certs/{tenant}.key (tls key_file, secret, param_dependent)`. An operation without needs prints `<id> needs no existing files.`. `--include-bootstrap` adds a `bundle load needs` group for connector `descriptor`/`schema` files.
+
+<a id="s156--check-needed-files-on-disk-before-running"></a>
+
+### S156 — Check needed files on disk before running
+
+Stage: **A**. Required authority: the policy below. `--check-files` performs brokered metadata probes, so each needed path needs `allow_read` with `stat`. TLS fixture bundle as S154, with all four input files present.
+
+`policy.json` (beside `tls.rivet`):
+
+```json
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read",    "targets": ["./certs/ca.pem", "./certs/client.pem", "./certs/client.key",
+                                                "./data/template.json"], "access": ["read", "stat"]},
+    {"capability": "allow_read",    "targets": ["./out/report.json"], "access": ["read"]},
+    {"capability": "allow_write",   "targets": ["./out/report.json"], "access": ["create"]},
+    {"capability": "allow_network", "targets": ["https://api.example.com:443", "https://render.example.com:443",
+                                                "https://status.example.com:443"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}
+```
+
+```sh
+rivet --file tls.rivet io --check-files
+echo $?
+```
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)            present
+  ./certs/client.pem    (tls cert_file)          present
+  ./certs/client.key    (tls key_file, secret)   present
+report.upload needs, before it can run:
+  ./data/template.json  (file read)              present
+status.get needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)            present
+
+stderr: 4 files · 4 present
+0
+```
+
+```text
+ needed file ──▶ broker: allow_read + stat? ──no──▶ not_permitted (path not touched) ─┐
+                        │ yes                                                          ├─▶ exit 3
+                        ▼                                                              │
+                 stat + readability check ──▶ present │ missing │ unreadable ─────────┘
+                                                          └──▶ exit 4 (unless exit 3 applies)
+                 param_dependent / dynamic path ──▶ not_checkable (not probed)
+```
+
+Expected: exit 0. Each distinct path is probed once, even when several operations need it (`./certs/ca.pem`), and the result is shown under every operation. The probe reads metadata and checks readability for this process. It never opens the file, so the key's contents stay unread. `--check-files` is the only `io` mode that performs I/O. The probes go through the policy broker like any other effect and appear in the trace. `./out/report.json` is not probed, because it is not a need.
+
+<a id="s157--catch-a-missing-key-file-and-an-ungranted-stat"></a>
+
+### S157 — Catch a missing key file and an ungranted stat
+
+Stage: **A**. Required authority: S156's policy.json; `policies/read-only.json` = the S158 draft (`access: ["read"]`, no `stat`). TLS fixture bundle as S154.
+
+```sh
+mv certs/client.key certs/client.key.bak
+rivet --file tls.rivet io render.status --check-files ; echo $?
+rivet --file tls.rivet request render.status --params '{}' ; echo $?
+mv certs/client.key.bak certs/client.key
+rivet --file tls.rivet --policy ./policies/read-only.json io render.status --check-files ; echo $?
+```
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)            present
+  ./certs/client.pem    (tls cert_file)          present
+  ./certs/client.key    (tls key_file, secret)   missing
+stderr: 3 files · 2 present · 1 missing
+4
+```
+
+`request render.status` (stderr ErrorEnvelope, then the exit code):
+
+```json
+{"kind": "not_found", "code": "not_found",
+ "message": "tls key_file ./certs/client.key does not exist",
+ "details": {"effect_id": "render.status#4", "origin": {"option": "tls key_file"}, "phase": "before_connect",
+             "path": "./certs/client.key", "network_attempts": 0}}
+```
+
+```text
+4
+```
+
+Under `policies/read-only.json`:
+
+```text
+render.status needs, before it can run:
+  ./certs/ca.pem        (tls ca_file)            not_permitted
+  ./certs/client.pem    (tls cert_file)          not_permitted
+  ./certs/client.key    (tls key_file, secret)   not_permitted
+stderr: 3 files · 3 not_permitted — --check-files needs allow_read with "stat" on these paths
+3
+```
+
+Expected: the missing key is reported before anything runs (exit 4). The real request fails the same way at the `before_connect` phase (not_found, exit 4, HTTP 404 over serve), with zero DNS or connection attempts. This is the case `requires_existing: true` promises. With the read-only draft, the request itself would succeed, because `read` is granted. The pre-flight check cannot probe the paths without `stat`, so it touches nothing and exits 3 (permission). `not_permitted` and `unreadable` take precedence over `missing`. A file that exists but whose mode denies this process read access is `unreadable` (exit 3).
+
+<a id="s158--generate-a-policy-that-names-option-derived-files-exactly"></a>
+
+### S158 — Generate a policy that names option-derived files exactly
+
+Stage: **A**. Required authority: none; nothing runs. TLS fixture bundle as S154.
+
+```sh
+rivet --file tls.rivet policy generate > policies/read-only.json
+echo $?
+```
+
+```json
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read",    "targets": ["./certs/ca.pem"],       "access": ["read"]},
+    {"capability": "allow_read",    "targets": ["./certs/client.key"],   "access": ["read"]},
+    {"capability": "allow_read",    "targets": ["./certs/client.pem"],   "access": ["read"]},
+    {"capability": "allow_read",    "targets": ["./data/template.json"], "access": ["read"]},
+    {"capability": "allow_read",    "targets": ["./out/report.json"],    "access": ["read"]},
+    {"capability": "allow_write",   "targets": ["./out/report.json"],    "access": ["create"]},
+    {"capability": "allow_network", "targets": ["https://api.example.com:443"]},
+    {"capability": "allow_network", "targets": ["https://render.example.com:443"]},
+    {"capability": "allow_network", "targets": ["https://status.example.com:443"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}
+```
+
+```text
+0
+```
+
+```text
+ manifest site                                    draft grant
+ -----------------------------------------------  -----------------------------------------------------
+ read ./certs/ca.pem      (tls ca_file ×2 ops)    allow_read ./certs/ca.pem      ["read"]   (one grant)
+ read ./certs/client.pem  (tls cert_file)         allow_read ./certs/client.pem  ["read"]
+ read ./certs/client.key  (tls key_file, secret)  allow_read ./certs/client.key  ["read"]   (path only; no key material)
+ read ./out/report.json   (body file)             allow_read ./out/report.json   ["read"]
+                                        never:    allow_read ./certs/**   (no directory glob for option files)
+ variant: tls key_file "./certs/${tenant}.key"    (none) ──▶ stderr review item, exit 7 (not widened to ./certs/*.key)
+```
+
+Expected: exit 0. Option-derived file sites are granted as their exact paths with `access: ["read"]`, one grant per (capability, target). `./certs/ca.pem` is used by two operations but gets one grant. The draft never widens option files to a directory glob such as `./certs/**`. If a key path depended on a caller parameter, that site would become a stderr review item (exit 7) instead of a `./certs/*.key` grant, so a caller cannot steer which key is read. The draft grants `read`, not `stat`. It runs every operation, but `--check-files` needs `stat` added by hand (S156 and S157). As in S148, the draft contains no secrets and needs human review.
+
+<a id="s159--read-an-operations-needed-files-over-http-and-mcp"></a>
+
+### S159 — Read an operation's needed files over HTTP and MCP
+
+Stage: **B**. Required authority: listener bootstrap; loopback principal `local` (a network principal needs `rivet.io` listed explicitly, as in S150). TLS fixture bundle and S156 policy.json.
+
+```sh
+rivet --file tls.rivet serve --listen 127.0.0.1:8080
+curl -sS 'http://127.0.0.1:8080/v1/io?ids=render.status&needs=true'
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8080/v1/io?ids=render.status&check_files=true'
+```
+
+```json
+{"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"rivet.io","arguments":{"ids":["render.status"],"needs":true}}}
+```
+
+First curl, HTTP 200 (abridged):
+
+```json
+{"complete": true,
+ "needs": [{"operation_id": "render.status", "files": [
+   {"path": "./certs/ca.pem",     "origin": {"option": "tls ca_file"},   "phase": "before_connect", "secret": false, "status": null},
+   {"path": "./certs/client.pem", "origin": {"option": "tls cert_file"}, "phase": "before_connect", "secret": false, "status": null},
+   {"path": "./certs/client.key", "origin": {"option": "tls key_file"},  "phase": "before_connect", "secret": true,  "status": null}]}],
+ "sites": ["… 4 sites with origin, phase, requires_existing and secret …"]}
+```
+
+```text
+ surface   request                                        result
+ --------  ---------------------------------------------  ----------------------------------------------
+ HTTP      GET /v1/io?ids=render.status&needs=true        200 IoManifest with needs (static)
+ HTTP      GET /v1/io?...&check_files=true                422 validation (unknown parameter check_files)
+ MCP       tools/call rivet.io {ids, needs:true}          structuredContent = same IoManifest
+ library   rt.io(IoQuery{needs:true, ..})                 same IoManifest
+ library   rt.io(IoQuery{check_files:true, ..})           probes on the host, statuses filled
+ CLI       rivet io render.status --check-files           probes on the host (S156–S157)
+```
+
+Expected: the HTTP and MCP answers carry the same `needs` groups as S155, with `status: null`. `needs` is static and safe to serve under the usual `rivet.io` authorization rule. `check_files` is not a network parameter, because it would probe files on the server host. The HTTP call returns 422 `validation`, and the MCP tool returns `isError: true` with the same ErrorEnvelope. Probing is available only to the host itself, through the CLI flag or `IoQuery.check_files` in the library.
+
 ## Additional protocol cases covered by the same grammar
 
-These unnumbered variants complement S01–S153 so the original brief's transport families are explicitly addressed. They follow the same prefix-call, quoted-duration and leading-options rules.
+These unnumbered variants complement S01–S159 so the original brief's transport families are explicitly addressed. They follow the same prefix-call, quoted-duration and leading-options rules.
 
 ### JSON-RPC over HTTP and scoped transports
 
@@ -4571,14 +4971,15 @@ Read and network grants required. HEAD has no body; no content auto-decoder may 
 | UQ-17 review fixes (DAG, errors, secrets, files) | S44–S48, S65, S78, S89, S96, S110, S138–S140 |
 | UQ-18 generated I/O manifest (targets, access verbs, policy check, exports, every surface, planned vs actual) | S62–S65, S141–S145, S150–S153; proposal R26, UC-21 |
 | UQ-18 access-narrowed policy and least-privilege drafts | S146–S149, S151–S152; proposal R26, UC-22 |
+| TASK-005 option-derived file sites, `io --needs`, `--check-files` (ADR-0001) | S24, S141, S143, S145, S154–S159; proposal R26, UC-21, C-23 |
 
 ## Verification status
 
-Documentation-only review: 153 unique numbered samples, linked source requirements, and proposed effects/expected behavior per sample. **Runtime validation: not executed; Rivet is not implemented.** Revision 3 of this reference added S103–S120; revision 5 added S121–S140 and converted every block to Capy prefix calls, quoted durations and policy.json; revision 6 rewrites S62–S65 with concrete manifest output and adds S141–S153 (UQ-18), preserving all earlier sample identities. A script check for revision 6 confirmed gapless S01–S153 numbering, index/heading/anchor agreement and balanced code fences. The implementation gate is the Capy spike (every block parses cleanly), then extracting each block into positive/negative fixtures, supplying the declared dependencies and running the proposal's test matrix. Neither copied snippets nor this statement constitute passing tests.
+Documentation-only review: 159 unique numbered samples, linked source requirements, and proposed effects/expected behavior per sample. **Runtime validation: not executed; Rivet is not implemented.** Revision 3 of this reference added S103–S120; revision 5 added S121–S140 and converted every block to Capy prefix calls, quoted durations and policy.json; revision 6 rewrites S62–S65 with concrete manifest output and adds S141–S153 (UQ-18), preserving all earlier sample identities; revision 7 adds option-derived file sites to S24, S141, S143 and S145 and adds S154–S159 (TASK-005). A script check for revision 7 confirmed gapless S01–S159 numbering, index/heading/anchor agreement and balanced code fences. The implementation gate is the Capy spike (every block parses cleanly), then extracting each block into positive/negative fixtures, supplying the declared dependencies and running the proposal's test matrix. Neither copied snippets nor this statement constitute passing tests.
 
 ## Related Documents
 
-- [Proposal](../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../proposals/approved/prop-2026-0001-rivet-runtime.md)
 - [Original request and source evidence](ref-2026-0001-request-and-evidence.md)
 - [Current state](../../README.md)
 
@@ -4586,6 +4987,7 @@ Documentation-only review: 153 unique numbered samples, linked source requiremen
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | TASK-005 (approved in ADR-0001): `tls server_name/ca_file/cert_file/key_file` options for http, websocket, quic and grpc/mcp connectors; file-valued options as I/O sites; `origin`/`phase`/`requires_existing`/`secret` fields; `--needs`/`--check-files` flags, error-registry row and `rivet.io {needs}`; TLS fixture bundle; S24 manifest rows (Stage C noted); ORIGIN/PHASE/NEEDS FILE columns in S141, S143, S145; new S154–S159; `auth cancel` in the CLI mapping (TASK-006). |
 | 6 | 2026-09-28 | Claude | UQ-18: added the access-verb vocabulary, optional `access` narrowing in the policy.json schema and an I/O manifest section with a line-numbered fixture bundle; rewrote S62–S65 to show concrete manifest output; added S141–S153 (`io --by target/capability`, deletion search, `--check-policy`, Markdown/CSV export, access narrowing, `policy.invalid`, `policy generate` and its overwrite refusal, HTTP/MCP with explicit principal listing, `rt.io`/`rt.generate_policy`, `io --trace`); added `rivet.io`/`rivet.policy.generate` to the CLI and built-in tool tables; `io` examples use `--format json`. |
 | 5 | 2026-09-28 | Claude | UQ-17: converted all DSL to Capy prefix calls and quoted durations; replaced `--sandbox` with policy.json and `serve --transport/--mcp` with one `rivet serve`/`serve --stdio`; added syntax summary, per-resource options, error registry, policy and serve sections; added S121–S140 (declared outputs, policy.json, serve auth and surfaces, DAG completion, hard links, bound secrets); applied review fixes E2–E16 (canonical Rust API, `users.grpc_get`, yield, exit 7, A/B stages). |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

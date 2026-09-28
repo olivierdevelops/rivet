@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -53,7 +53,7 @@ Every release originates from a plan with `status: approved` (§24).
 
 | Plan | Status | Baseline | Target | Summary |
 |---|---|---|---|---|
-| [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | draft | PROP-2026-0001 rev 6 | v0.1.0 | P1 approval/discovery → P2 implementation (Stage A + B) → P3 tests/validation → P4 docs/demos → P5 release. 96 tasks, all NOT STARTED |
+| [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | approved | PROP-2026-0001 rev 8 | v0.1.0 | P1 approval/discovery → P2 implementation (Stage A + B) → P3 tests/validation → P4 docs/demos → P5 release. 96 tasks; P1 in progress |
 
 ```text
  PROP-2026-0001 ──approve──► PLAN-2026-0001 ──► v0.1.0 (Stage A + B)
@@ -71,13 +71,13 @@ None.
 
 ## Relationships and open work
 
-- PLAN-2026-0001 cannot become `approved` until G-DESIGN, G-CONTRACT, G-LIC and G-SPIKE close, the Git
-  repository exists, and ADR-0001–0003 are accepted (its P1 exit gate).
-- The suggestion of option-derived file sites / `io --needs` awaits a maintainer decision (PLAN-2026-0001 TASK-005).
+- G-DESIGN, G-CONTRACT, G-LIC and G-SPIKE are closed and the Git repository exists. PLAN-2026-0001 becomes
+  `approved` once ADR-0002/0003 are accepted (TASK-012/013).
+- Option-derived file sites / `io --needs` were approved (ADR-0001) and added in proposal revision 8.
 
 ## Recommended reading order
 
-1. [PROP-2026-0001](../proposals/draft/prop-2026-0001-rivet-runtime.md): what is being built and why.
+1. [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md): what is being built and why.
 2. [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md): how it is built, validated, documented and released.
 
 ## Related directories
@@ -89,4 +89,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | P1 progress: gates closed, TASK-005 approved. |
 | 1 | 2026-09-28 | Claude | Created plans index with PLAN-2026-0001. |

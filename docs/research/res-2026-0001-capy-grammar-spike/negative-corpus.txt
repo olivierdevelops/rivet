@@ -1,0 +1,34 @@
+=====SRC typo_keyword
+operaton demo.x
+    return 1
+end
+=====SRC unknown_stmt
+operation demo.x
+    frobnicate the thing
+end
+=====SRC missing_end
+operation demo.x
+    return 1
+=====SRC return_no_value
+operation demo.x
+    return
+end
+=====SRC unclosed_brace
+operation demo.x
+    return {a: 1
+end
+=====SRC fcall_style
+operation demo.x
+    x = request("a", {b: 1})
+end
+=====SRC two_space_indent
+operation demo.x
+  return 1
+end
+=====SRC trycatch
+try
+    paid = (request "payments.charge" {order_id: created.id})
+    return paid
+catch error kind http
+    fail "payment_failed" {order_id: created.id}
+end

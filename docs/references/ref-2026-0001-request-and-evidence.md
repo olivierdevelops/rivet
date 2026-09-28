@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -165,18 +165,21 @@ approval. No implementation approval is inferred.
 ## Evidence and provenance
 
 - [PROJECT.md](../../PROJECT.md), all 84 sections: original protocol and pipeline design. It is an input brief, not a shipped language manual.
-- [AGENTS.md](../../AGENTS.md): contract-first workflow, architecture and proposal requirements. Its `email_provider`/Go project-facts block is inherited template text and conflicts with the explicit Rust request; it is not evidence of an existing email application.
+- [AGENTS.md](../../AGENTS.md): contract-first workflow, architecture and proposal requirements. Its project-facts block was inherited template text describing a Go `email_provider` module; it was never evidence of an existing email application. PLAN-2026-0001 TASK-006 replaced it on 2026-09-28 with Rivet's facts (Rust module `rivet`, 14 features, six surfaces).
 - [DOCUMENTATION.md](../../DOCUMENTATION.md), revision 4, §§4.2, 12.1, 21: authoritative proposal structure and traceability.
 - [Local Go reference snapshot](../../.ignore/references/ai_manager/function.go), copied from the exact user-supplied path on the source date. `Function.Execute` validates input, iterates output and observes callback stop. Input filtering precedes unknown-field validation; output validation is a stub; an empty filtered frame can be skipped. Rivet should preserve streaming/cancellation ergonomics while defining strict validation and visible completion.
 - [Capy source snapshot](../../.ignore/references/capy/rust/src/capy.rs), commit `84f984c64e0811ef2bfff7835167d6630422ecaa`; [embedding guide](../../.ignore/references/capy/docs/embedding.md); [lexical reference](../../.ignore/references/capy/docs/language-reference.md). The public `Library::parse` returns a recovering tree, diagnostics and spans. Rivet must check `is_clean()` before lowering. Four-space indentation, object values and library-defined shapes fit the proposed DSL; complete grammar feasibility still needs a spike.
 - [Upstream Capy repository](https://github.com/olivierdevelops/capy/tree/84f984c64e0811ef2bfff7835167d6630422ecaa). Local snapshots are discovery evidence only, excluded from the Rivet code model by their dot-directory location.
-- **Capy licence (approval gate G-LIC).** The [root LICENSE](../../.ignore/references/capy/LICENSE) and [crate LICENSE](../../.ignore/references/capy/rust/LICENSE) are a *Capy Source-Available License (v1)* whose terms forbid bundling, commercial use and derivative works, while the [crate manifest](../../.ignore/references/capy/rust/Cargo.toml) declares `license = "MIT"`. This is a real licence conflict, not a metadata nit: under the LICENSE text Rivet could not depend on or redistribute Capy. The project user owns Capy and has stated they will relicense it to match the manifest's MIT. The proposal records this as approval gate **G-LIC** ("Capy owner relicenses to MIT before implementation approval"); it does not block design review.
+- **Capy licence (approval gate G-LIC) — closed 2026-09-28 by owner statement.** The [root LICENSE](../../.ignore/references/capy/LICENSE) and [crate LICENSE](../../.ignore/references/capy/rust/LICENSE) are a *Capy Source-Available License (v1)* whose terms forbid bundling, commercial use and derivative works, while the [crate manifest](../../.ignore/references/capy/rust/Cargo.toml) declares `license = "MIT"`. Under the LICENSE text alone, Rivet could not depend on or redistribute Capy, so the proposal gated implementation on **G-LIC**. The project maintainer owns Capy and closed the gate on 2026-09-28 with the statement *"use git, i own capy so dont worry — everything else is approved"*, recorded in [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md). The licence holder has authorized Rivet to depend on and ship Capy. Aligning the upstream `LICENSE` text with the manifest is the owner's own housekeeping and no longer blocks Rivet.
 
 ```text
  LICENSE (source-available) --conflicts--> Cargo.toml (MIT)
             |                                     |
-            +---- owner relicenses to MIT --------+--> G-LIC satisfied --> implementation approval possible
+            +---- owner authorizes use in Rivet --+--> G-LIC closed 2026-09-28 (ADR-0001)
+                  ("i own capy so dont worry")          |
+                                                        +--> upstream LICENSE cleanup: owner housekeeping, not a gate
 ```
+
 - MCP reference baseline: [transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), [tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), [resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources), [prompts](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts). Pin and negotiate this version initially; do not call it the latest version.
 - [Tokio JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html): task ownership is useful for scope joins; resource protocol shutdown remains Rivet's responsibility.
 
@@ -188,6 +191,7 @@ At discovery there was no Cargo manifest, runtime source, README, docs tree, con
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | Licence evidence: G-LIC closed by the Capy owner's statement (ADR-0001); AGENTS.md project-facts note updated after TASK-006. |
 | 6 | 2026-09-28 | Claude | Recorded UQ-18 verbatim with interpretation (generated I/O manifest with targets and access verbs, policy check and least-privilege policy draft; R26, UC-21, UC-22) and its relationship to UQ-05. |
 | 5 | 2026-09-28 | Claude | Recorded UQ-17 verbatim with interpretation; marked UQ-13 flag syntax superseded (deny-by-default kept); corrected the Capy licence note to a real source-available/MIT conflict gated by G-LIC. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

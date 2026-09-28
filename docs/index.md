@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -36,10 +36,13 @@ Navigate the design corpus. Current-state claims belong in README.md; design dec
 docs/
 ├── README.md            current state, risks, gates
 ├── index.md             this navigation page
-├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (draft)
-├── proposals/           decision requests
-│   └── draft/           PROP-2026-0001 Rivet runtime (proposed)
-├── references/          REF-2026-0001 request + evidence, REF-2026-0002 numbered examples
+├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox (all approved)
+├── research/            RES-2026-0001 Capy spike · 0002 crates · 0003 sandbox (completed)
+├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
+├── proposals/           design proposals by lifecycle
+│   ├── approved/        PROP-2026-0001 Rivet runtime (approved, revision 8)
+│   └── draft/           (empty)
+├── references/          REF-2026-0001 request + evidence, REF-2026-0002 numbered examples S01–S159
 ├── demos/               twelve draft sample folders (index.md = status, README.md = walkthroughs)
 └── standards/           supplied rules baseline
 ```
@@ -47,7 +50,9 @@ docs/
 ## Reading order and active documents
 
 - [Current state](README.md)
-- [Proposals](proposals/index.md)
+- [Decisions](decisions/index.md)
+- [Research](research/index.md)
+- [Proposals](proposals/index.md), then [approved proposals](proposals/approved/index.md)
 - [Plans](plans/index.md)
 - [References](references/index.md)
 - [Sample folders: status and reading order](demos/index.md), then the [walkthroughs](demos/README.md)
@@ -55,12 +60,20 @@ docs/
 
 ## Status and maintenance
 
-Recently updated, 2026-09-28: design revision 5 (UQ-17) — declared outputs and `rivet outputs`, `policy.json` as the only policy source, one `rivet serve` for HTTP/SSE/polling/WebSocket/MCP, Capy prefix-call syntax and the review fixes. Added [demos/index.md](demos/index.md) so every documentation directory has an index. No runtime capability or release was added. Nothing deprecated, superseded or archived. Pending work: human design review, the G-LIC Capy licence gate, the Capy parser spike and platform enforcement evidence. Update this index when a document changes lifecycle or a new related document is added. The references explain the proposal; the standards describe how it must be reviewed.
+Recently updated, 2026-09-28: the maintainer approved the design, contract and plan
+([ADR-0001](decisions/adr-0001-approve-rivet-runtime-design.md)). Added [decisions/](decisions/index.md) and
+[proposals/approved/](proposals/approved/index.md) to navigation. PROP-2026-0001 is at design revision 8
+(option-derived file sites, `io --needs`, `--check-files`). No runtime capability or release was added. Nothing
+is deprecated, superseded or archived. Pending work: the Capy parse spike (G-SPIKE), research spikes and
+ADR-0002/0003, then P2 implementation. Update this index when a document changes lifecycle or a new related
+document is added. The references explain the proposal; the standards describe how it must be reviewed.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-28 | Claude | Added research/ to navigation; ADR-0002/0003 approved; P1 complete. |
+| 7 | 2026-09-28 | Claude | Added decisions/ and proposals/approved/ to navigation; status after ADR-0001 approval and design revision 8. |
 | 6 | 2026-09-28 | Claude | Added plans/ with PLAN-2026-0001 to navigation. |
 | 5 | 2026-09-28 | Claude | Added the demos index to navigation and a directory map; status updated for design revision 5. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |

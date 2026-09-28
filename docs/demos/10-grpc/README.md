@@ -5,7 +5,7 @@ document_type: demo
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -57,7 +57,7 @@ All four gRPC call modes. Delivery stage: **B**. Read [app.rivet](app.rivet) alo
 
 ## Verified Against Version
 
-None. Based on proposal revision 5 semantics (UQ-17, E12) and S110–S118. No parser, runtime or network fixture execution is claimed.
+None. Based on proposal revision 8 semantics (UQ-17, E12) and S110–S118. No parser, runtime or network fixture execution is claimed.
 
 ## Prerequisites
 
@@ -202,6 +202,7 @@ An input item without `text` is rejected against the `receives` schema before it
 rivet --file app.rivet check --strict-docs
 rivet --file app.rivet io --by target
 rivet --file app.rivet io --check-policy
+rivet --file app.rivet io --needs --include-bootstrap
 ```
 
 `check --strict-docs` passes: every public operation describes its params, output and each output, emits and receives field. The IDs are unique in this bundle, and a duplicate would be `registry.duplicate_id` (exit 2).
@@ -209,12 +210,12 @@ rivet --file app.rivet io --check-policy
 **`io --by target`**. Each call produces a network site for the connector endpoint and a gRPC call site that records the call mode:
 
 ```text
-TARGET                          ACCESS                     CAPABILITY      USED BY
-https://users.example.com:443   connect POST (grpc)        allow_network   chat.exchange, users.grpc_get, users.upload, users.watch
-users/example.Users/Chat        call bidi                  allow_grpc      chat.exchange
-users/example.Users/GetUser     call unary                 allow_grpc      users.grpc_get
-users/example.Users/Upload      call client_stream         allow_grpc      users.upload
-users/example.Users/Watch       call server_stream         allow_grpc      users.watch
+TARGET                          ACCESS                     CAPABILITY      ORIGIN      PHASE     NEEDS FILE   USED BY
+https://users.example.com:443   connect POST (grpc)        allow_network   endpoint    connect   —            chat.exchange, users.grpc_get, users.upload, users.watch
+users/example.Users/Chat        call bidi                  allow_grpc      with grpc   body      —            chat.exchange
+users/example.Users/GetUser     call unary                 allow_grpc      grpc        body      —            users.grpc_get
+users/example.Users/Upload      call client_stream         allow_grpc      with grpc   body      —            users.upload
+users/example.Users/Watch       call server_stream         allow_grpc      with grpc   body      —            users.watch
 ```
 
 **`io --check-policy`** with the auto-discovered [policy.json](policy.json). All eight sites are allowed, so it exits 0:
@@ -232,6 +233,27 @@ users.watch      grpc      call server_stream   users/example.Users/Watch       
 ```
 
 Network rows point at the connector's `endpoint` line (2), where the connection is declared; call rows point at the `grpc` statement. Removing one method from the `allow_grpc` targets denies only that operation's call row, and `io --check-policy` exits 3. The generated `schemas/users.pb` appears only under `--include-bootstrap`, as a descriptor file.
+
+**The connector `descriptor` file is a bootstrap read, not an operation site.** `descriptor "./schemas/users.pb"` (app.rivet:3) is a file-valued option at connector level, so it is read when the bundle is assembled. It carries the same site fields as every other site, but it is never granted by policy.json or by `policy generate`:
+
+```text
+KEY         SITE                              ORIGIN                     PHASE   REQUIRES_EXISTING   SECRET
+bootstrap   file read ./schemas/users.pb      option descriptor          load    yes                 no
+            (app.rivet:3)                     — never granted; a missing file fails the bundle load (not_found, exit 4)
+```
+
+`rivet --file app.rivet io --needs --include-bootstrap` lists it under its own heading:
+
+```text
+bundle load needs:
+  ./schemas/users.pb    (descriptor)
+chat.exchange needs no existing files.
+users.grpc_get needs no existing files.
+users.upload needs no existing files.
+users.watch needs no existing files.
+```
+
+`io --needs` without `--include-bootstrap` prints only the four `needs no existing files.` lines: the operations need no existing files of their own. If `users.pb` were missing (for example, `protoc` was not run), the bundle would not load at all, so it can never be a per-operation need.
 
 `--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: the bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. It is listed for transparency, never granted to scripts. Sandbox guarantees apply to **script-initiated effects through brokered adapters**. `io` performs no I/O and evaluates no source expression. Exit codes: 3 when `--check-policy` finds a reachable site denied or partial; 7 with `--strict` when any site is dynamic or opaque (`complete: false`); otherwise 0.
 
@@ -264,12 +286,13 @@ Expected values assume the declared fixture behavior. Request, trace and session
 
 - [All sample folders](../README.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
-- [Proposal](../../proposals/draft/prop-2026-0001-rivet-runtime.md)
+- [Proposal](../../proposals/approved/prop-2026-0001-rivet-runtime.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`endpoint`, `grpc`, `with grpc`), PHASE and NEEDS FILE; connector `descriptor` shown as a bootstrap `load` read with new fields; `io --needs --include-bootstrap` excerpt. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: endpoint + four call-mode sites by target and `io --check-policy` (all eight allowed). |
 | 2 | 2026-09-28 | Claude | UQ-17: renamed `users.get` → `users.grpc_get` (E12); declared outputs/emits/receives; quoted durations with options first; `--policy policy.json` dropped (auto-discovered, with `serve` block); one `serve` replaces `--transport … --mcp`; polling routes replace generic session request files (removed `requests/read.http.json`); added `requests/ws-chat.jsonl`; View outputs, strict-docs, bootstrap and exit codes. |
 | 1 | 2026-09-28 | Codex | Added draft source files, prerequisites, invocation examples and expected behavior. |
