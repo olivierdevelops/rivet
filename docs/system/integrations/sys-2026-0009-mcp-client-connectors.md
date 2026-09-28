@@ -587,16 +587,19 @@ connector with `auth PROFILE` needs the `oauth` feature, and a lean build refuse
                      else send _meta{rivet/hops: h+1, rivet/chain: K + [entry]} downstream
 ```
 
-Both behaviours were verified by sending `tools/call contacts.find` to `rivet serve --listen
-127.0.0.1:18444` with `_meta`:
+Both behaviours were verified on the 0.2.0-rc by sending `tools/call contacts.find` with `_meta` to
+`rivet serve --listen 127.0.0.1:18924` (the scratch journey bundle, fixture on `127.0.0.1:18918`):
 
 ```text
 _meta {"rivet/hops":1,"rivet/chain":["rivet:upstream/x.tools.y"]}
-   → success; downstream server saw
-     _meta {"rivet/hops": 2, "rivet/chain": ["rivet:upstream/x.tools.y", "rivet:232af55e413a4e42/crm.tools.search"]}
+   → isError:false, structuredContent = {…,"operation":"contacts.find","type":"result","status":"ok",…}
+     downstream fixture saw: initialize · notifications/initialized · tools/list · tools/call · DELETE
+     (the forwarded _meta is {"rivet/hops": 2, "rivet/chain": ["rivet:upstream/x.tools.y",
+      "rivet:<bundle-hash16>/crm.tools.search"]}; 0.1.0 capture of the fixture that logged it)
 
 _meta {"rivet/hops":8,"rivet/chain":["rivet:upstream/x.tools.y"]}
-   → isError:true with {"kind":"limit","code":"limit.mcp_hops","message":"MCP bridge hop limit (8) reached calling `crm.tools.search`","retryable":true,"effects":"none",…,"details":{"hops":8,"chain":["rivet:upstream/x.tools.y"]}}
+   → isError:true, structuredContent =
+     {"request_id":"req_02a6b49a3a","trace_id":"tr_02a6b49a3a","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"limit","code":"limit.mcp_hops","message":"MCP bridge hop limit (8) reached calling `crm.tools.search`","retryable":true,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"hops":8,"chain":["rivet:upstream/x.tools.y"]}},"effects":"none","data_count":0}
      (no downstream traffic)
 ```
 
