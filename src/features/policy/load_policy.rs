@@ -44,12 +44,28 @@ pub fn load_policy(input: &PolicyLoadInput, reader: &dyn PolicyFileReader) -> Ri
         &bytes.bytes,
         &bytes.path,
         if base_dir.is_empty() { "." } else { &base_dir },
-    )?;
+    )
+    .map_err(|e| name_policy_file(e, &bytes.path))?;
     // vhco:todo resolve_targets -- relative file targets resolve against the policy file's own directory (base_dir), URL targets normalise to scheme://host:port by the evaluator; approved snapshot/overlap hashes are kept for load-time review checks
     // vhco:todo intersect_ceiling -- a library host ceiling can only narrow the file (Runtime::builder().ceiling); the file's sha256 becomes policy_hash for audit and trace records
     policy.sha256 = Some(bytes.sha256);
     // vhco:error policy_invalid -- malformed or out-of-schema policy.json => validation policy.invalid (exit 2) returns
     Ok(policy)
+}
+
+/// `policy.invalid` messages name the file actually loaded (`--policy PATH`),
+/// not always `policy.json`.
+fn name_policy_file(mut e: RivetError, path: &str) -> RivetError {
+    if e.code == "policy.invalid"
+        && let Some(rest) = e.message.strip_prefix("policy.json ")
+    {
+        let name = Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.to_string());
+        e.message = format!("{name} {rest}");
+    }
+    e
 }
 
 fn invalid(pointer: &str, msg: impl Into<String>) -> RivetError {

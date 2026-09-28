@@ -457,10 +457,10 @@ here receives and emits `text`):
  >> {"type":"input","ref":"c1","seq":1,"data":"hi"}
  << {"type":"data","ref":"c1","request_id":"req_01c6d564cd","trace_id":"tr_01c6d564cd","seq":1,"data":"hi"}
  >> {"type":"input","ref":"c1","seq":3,"data":"skip"}
- << {"type":"error","ref":"c1","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
+ << {"type":"error","ref":"c1","request_id":"req_…","trace_id":"tr_…","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
  >> {"type":"request","ref":"c2","id":"chat.echo","params":{}}
  >> {"type":"input","ref":"c2","seq":1,"data":5}
- << {"type":"error","ref":"c2","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
+ << {"type":"error","ref":"c2","request_id":"req_…","trace_id":"tr_…","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
 ```
 
 (At `f40d4aa` the same refusal produced only `cancelled.session`, and a `cancel` sent right

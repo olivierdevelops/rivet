@@ -1227,7 +1227,11 @@ impl Lowerer {
         let as_pos = args.iter().rposition(|a| a.word() == Some("as"));
         let (head_args, bind) = match as_pos {
             Some(p) if p + 1 < args.len() => {
-                (args[..p].to_vec(), args[p + 1].word().map(str::to_string))
+                // Words after `as NAME` (e.g. a trailing `chunk_size N`) stay
+                // resource arguments instead of being dropped.
+                let mut head = args[..p].to_vec();
+                head.extend_from_slice(&args[p + 2..]);
+                (head, args[p + 1].word().map(str::to_string))
             }
             _ => (args.clone(), None),
         };

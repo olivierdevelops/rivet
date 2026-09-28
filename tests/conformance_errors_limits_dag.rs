@@ -579,17 +579,17 @@ fn check_warnings_for_unguarded_result_and_undeclared_codes() {
     let warnings: Vec<&str> = r
         .stderr
         .lines()
-        .filter(|l| l.starts_with("warning:"))
+        .filter(|l| l.starts_with("warning["))
         .collect();
     assert_eq!(warnings.len(), 2, "{}", r.stderr);
     assert!(
-        r.stderr.contains("warning: error[docs.undeclared_error]"),
+        r.stderr.contains("warning[docs.undeclared_error]"),
         "{}",
         r.stderr
     );
     assert!(r.stderr.contains("--> app.rivet:10:5"), "{}", r.stderr);
     assert!(
-        r.stderr.contains("warning: error[check.unguarded_result]"),
+        r.stderr.contains("warning[check.unguarded_result]"),
         "{}",
         r.stderr
     );
@@ -611,7 +611,7 @@ fn check_warnings_for_unguarded_result_and_undeclared_codes() {
         r.stderr
     );
     assert!(
-        !r.stderr.contains("warning: error[docs.undeclared_error]"),
+        !r.stderr.contains("warning[docs.undeclared_error]"),
         "{}",
         r.stderr
     );

@@ -504,73 +504,12 @@ impl SessionDriver for SessionHost {
     async fn send(&self, input: SessionSendInput) -> RivetResult<SessionAck> {
         let s = self.get(&input.session_id, &input.principal)?;
         self.touch(&s);
-        let Some(spec) = &s.receives else {
-            return Err(RivetError::validation(
-                "validation.no_input",
-                "this operation does not declare `receives`",
-            ));
-        };
-        let mut violations = Vec::new();
-        spec.check(&input.data, "", &mut violations);
-        if let Some(v) = violations.first() {
-            return Err(RivetError::validation(
-                "validation.input",
-                format!(
-                    "input item {} at {} must be {}, got {}",
-                    input.send_seq,
-                    if v.path.is_empty() { "$" } else { &v.path },
-                    v.expected,
-                    v.found
-                ),
-            )
-            .with_details(Value::object([
-                ("seq", Value::Int(input.send_seq as i64)),
-                ("path", Value::text(&v.path)),
-                ("expected", Value::text(&v.expected)),
-                ("found", Value::text(&v.found)),
-            ])));
-        }
-        let hash: String = Sha256::digest(input.data.to_json().to_string().as_bytes())
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
-        // Serialize sends: the sequencer check and the enqueue happen under the input lock.
-        let guard = s.input.lock().await;
-        let decision = s.st().seq.check(input.send_seq, &hash)?;
-        let ack = SessionAck {
-            session_id: s.id.clone(),
-            accepted_seq: Some(input.send_seq),
-            input_closed: false,
-        };
-        if decision == SendDecision::Duplicate {
-            return Ok(ack);
-        }
-        let tx = guard.as_ref().ok_or_else(|| {
-            RivetError::new(
-                ErrorKind::Conflict,
-                "conflict.input_closed",
-                "input is finished",
-            )
-        })?;
-        match tokio::time::timeout(ACTION_DEADLINE, tx.send(input.data)).await {
-            Err(_) => {
-                return Err(RivetError::new(
-                    ErrorKind::Limit,
-                    "limit.input_queue",
-                    "the input queue stayed full for 5 s",
-                ));
-            }
-            Ok(Err(_)) => {
-                return Err(RivetError::new(
-                    ErrorKind::Conflict,
-                    "conflict.session_terminal",
-                    "the session's run already finished",
-                ));
-            }
-            Ok(Ok(())) => {}
-        }
-        s.st().seq.accept(input.send_seq, &hash);
-        Ok(ack)
+        // A refused input names the session's request (WS/poll error frames).
+        send_to(&s, input).await.map_err(|mut e| {
+            e.request_id = Some(s.request_id.clone());
+            e.trace_id = Some(s.trace_id.clone());
+            e
+        })
     }
 
     async fn finish_input(&self, input: SessionRef) -> RivetResult<SessionAck> {
@@ -721,6 +660,77 @@ pub fn rfc3339(t: SystemTime) -> String {
         (rem % 3600) / 60,
         rem % 60
     )
+}
+
+/// The checks and enqueue of one `send` on an already-authorized session.
+async fn send_to(s: &Arc<Session>, input: SessionSendInput) -> RivetResult<SessionAck> {
+    let Some(spec) = &s.receives else {
+        return Err(RivetError::validation(
+            "validation.no_input",
+            "this operation does not declare `receives`",
+        ));
+    };
+    let mut violations = Vec::new();
+    spec.check(&input.data, "", &mut violations);
+    if let Some(v) = violations.first() {
+        return Err(RivetError::validation(
+            "validation.input",
+            format!(
+                "input item {} at {} must be {}, got {}",
+                input.send_seq,
+                if v.path.is_empty() { "$" } else { &v.path },
+                v.expected,
+                v.found
+            ),
+        )
+        .with_details(Value::object([
+            ("seq", Value::Int(input.send_seq as i64)),
+            ("path", Value::text(&v.path)),
+            ("expected", Value::text(&v.expected)),
+            ("found", Value::text(&v.found)),
+        ])));
+    }
+    let hash: String = Sha256::digest(input.data.to_json().to_string().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    // Serialize sends: the sequencer check and the enqueue happen under the input lock.
+    let guard = s.input.lock().await;
+    let decision = s.st().seq.check(input.send_seq, &hash)?;
+    let ack = SessionAck {
+        session_id: s.id.clone(),
+        accepted_seq: Some(input.send_seq),
+        input_closed: false,
+    };
+    if decision == SendDecision::Duplicate {
+        return Ok(ack);
+    }
+    let tx = guard.as_ref().ok_or_else(|| {
+        RivetError::new(
+            ErrorKind::Conflict,
+            "conflict.input_closed",
+            "input is finished",
+        )
+    })?;
+    match tokio::time::timeout(ACTION_DEADLINE, tx.send(input.data)).await {
+        Err(_) => {
+            return Err(RivetError::new(
+                ErrorKind::Limit,
+                "limit.input_queue",
+                "the input queue stayed full for 5 s",
+            ));
+        }
+        Ok(Err(_)) => {
+            return Err(RivetError::new(
+                ErrorKind::Conflict,
+                "conflict.session_terminal",
+                "the session's run already finished",
+            ));
+        }
+        Ok(Ok(())) => {}
+    }
+    s.st().seq.accept(input.send_seq, &hash);
+    Ok(ack)
 }
 
 #[cfg(test)]

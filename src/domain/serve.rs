@@ -240,8 +240,11 @@ impl WsFrame {
         self
     }
 
+    /// An error frame; it carries the error's request/trace ids when known.
     pub fn error(r#ref: &str, error: RivetError) -> WsFrame {
         WsFrame {
+            request_id: error.request_id.clone(),
+            trace_id: error.trace_id.clone(),
             error: Some(error),
             ..WsFrame::empty(WsFrameType::Error, r#ref)
         }

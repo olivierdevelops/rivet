@@ -3665,7 +3665,7 @@ Expected: `required` is the default per field; objects are closed unless the blo
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443. Save at the top of `users.rivet`; the `users.get` here is this file's HTTP operation (S01's copy lives in `app.rivet`).
 
-**0.1.0 status (commit 2a751ab): verified with differences.** The warning is printed as `warning: error[docs.undeclared_error]: … declares no error "users.locked" line` with a caret excerpt; exit codes as shown.
+**0.1.0 status (commit 2a751ab): verified with differences.** The warning is printed as `warning[docs.undeclared_error]: … declares no error "users.locked" line` with a caret excerpt; exit codes as shown.
 
 ```rivet
 operation users.get

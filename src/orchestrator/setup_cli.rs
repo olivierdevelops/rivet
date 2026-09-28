@@ -319,7 +319,12 @@ async fn run(cli: Cli) -> i32 {
                 .iter()
                 .filter(|w| !(*strict_docs && w.code == "docs.undeclared_error"))
             {
-                eprintln!("warning: {}", w.render(source.as_deref()));
+                // Same diagnostic shape as an error, labelled `warning[code]`.
+                eprintln!(
+                    "{}",
+                    w.render(source.as_deref())
+                        .replacen("error[", "warning[", 1)
+                );
             }
             if let Some(first) = findings.first() {
                 let mut e = first.clone();

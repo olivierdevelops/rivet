@@ -72,10 +72,21 @@ fn head(args: &EvaluatedForm) -> RivetResult<(String, String)> {
 }
 
 fn chunk_size(args: &EvaluatedForm) -> RivetResult<Option<i64>> {
-    let Some((_, vals)) = args.options.iter().find(|(k, _)| k == "chunk_size") else {
-        return Ok(None);
+    // `chunk_size N` as its own option line or trailing on the `with` line.
+    let trailing = args
+        .head
+        .iter()
+        .position(|a| a.word() == Some("chunk_size"))
+        .map(|i| args.head.get(i + 1));
+    let value = match (
+        args.options.iter().find(|(k, _)| k == "chunk_size"),
+        trailing,
+    ) {
+        (Some((_, vals)), _) => vals.first(),
+        (None, Some(v)) => v,
+        (None, None) => return Ok(None),
     };
-    match vals.first() {
+    match value {
         Some(EvalArg::Value(Value::Int(n))) => Ok(Some(*n)),
         _ => Err(RivetError::validation(
             "validation.chunk_size",

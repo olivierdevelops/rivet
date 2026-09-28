@@ -959,3 +959,17 @@ async fn codec_named_variables_keep_keywords() {
         serde_json::json!({"n": 1})
     );
 }
+
+// vhco:test files.open_file_stream -- `chunk_size N` written at the end of the `with file open … as NAME` line applies like its own option line
+#[tokio::test]
+async fn trailing_chunk_size_on_the_with_line_applies() {
+    let b = bundle();
+    std::fs::write(b.path().join("data/x.txt"), "abcdefghijkl").unwrap();
+    let v = run(
+        b.path(),
+        "n = 0\nwith file open \"./data/x.txt\" mode read as src chunk_size 4\n    for c in src\n        n = n + 1\n    end\nend\nreturn n",
+    )
+    .await
+    .unwrap();
+    assert_eq!(v, Value::Int(3));
+}

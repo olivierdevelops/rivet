@@ -1011,3 +1011,36 @@ fn policy_explain_params_evaluates_concrete_targets() {
     // Without --params the generic view is printed and the exit stays 0.
     assert_eq!(explain(None).code, 0);
 }
+
+// vhco:test policy.load_policy -- a policy.invalid message names the file actually loaded (`--policy PATH`), not always policy.json
+#[test]
+fn invalid_policy_message_names_the_loaded_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    write(
+        d,
+        "app.rivet",
+        "operation t.one\n    output integer\n    return 1\nend\n",
+    );
+    write(
+        d,
+        "big.json",
+        r#"{"version":1,"limits":{"max_concurrent_requests":0}}"#,
+    );
+    let o = rivet(
+        d,
+        &[
+            "--file",
+            "app.rivet",
+            "--policy",
+            "big.json",
+            "--json",
+            "request",
+            "t.one",
+        ],
+    );
+    assert_eq!(o.code, 2, "{}", o.stderr);
+    assert_eq!(o.error()["code"], "policy.invalid");
+    let msg = o.error()["message"].as_str().unwrap().to_string();
+    assert!(msg.starts_with("big.json /limits/"), "{msg}");
+}

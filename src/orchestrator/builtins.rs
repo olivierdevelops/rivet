@@ -302,7 +302,11 @@ async fn dispatch_builtin_inner(
                 // `output`) is bundle-root relative and created exclusively.
                 let path = text(p, "path").or_else(|_| text(p, "output"))?;
                 let receipt = rt.export_trace(&text(p, "request_id")?, &path).await?;
-                Ok(done(receipt.to_json()))
+                // It created a file: the request committed an effect.
+                Ok(Completion {
+                    effects: EffectsStatus::Committed,
+                    ..done(receipt.to_json())
+                })
             }
             "rivet.connectors.sync" => {
                 // Same authorized discovery as `rivet connectors sync`; `output`
@@ -310,7 +314,10 @@ async fn dispatch_builtin_inner(
                 let receipt = rt
                     .sync_connector(&text(p, "name")?, &text(p, "output")?)
                     .await?;
-                Ok(done(receipt.to_json()))
+                Ok(Completion {
+                    effects: EffectsStatus::Committed,
+                    ..done(receipt.to_json())
+                })
             }
             "rivet.policy.generate" => {
                 let ids: Vec<String> = match p.get("ids") {

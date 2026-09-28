@@ -817,6 +817,23 @@ impl Runtime {
         req: Request,
         sink: Option<Arc<dyn DataSink>>,
     ) -> RivetResult<Completion> {
+        // A top-level request's error always names that request, even when it
+        // was raised by a nested call (DAG node, `request`, generic dispatch).
+        let top = (req.depth == 0).then(|| (req.request_id.clone(), req.trace_id.clone()));
+        self.dispatch_scoped(req, sink).await.map_err(|mut e| {
+            if let Some((r, t)) = top {
+                e.request_id = Some(r);
+                e.trace_id = Some(t);
+            }
+            e
+        })
+    }
+
+    async fn dispatch_scoped(
+        &self,
+        req: Request,
+        sink: Option<Arc<dyn DataSink>>,
+    ) -> RivetResult<Completion> {
         let Some(r) = &req.restrict else {
             return self.dispatch_unrestricted(req, sink).await;
         };

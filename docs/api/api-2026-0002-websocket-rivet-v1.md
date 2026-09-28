@@ -194,10 +194,10 @@ Captured session 1b (commit `829ca43`) — refused input frames end their ref wi
 -> {"type":"input","ref":"c1","seq":1,"data":"hi"}
 <- {"type":"data","ref":"c1","request_id":"req_01c6d564cd","trace_id":"tr_01c6d564cd","seq":1,"data":"hi"}
 -> {"type":"input","ref":"c1","seq":3,"data":"skip"}
-<- {"type":"error","ref":"c1","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
+<- {"type":"error","ref":"c1","request_id":"req_…","trace_id":"tr_…","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
 -> {"type":"request","ref":"c2","id":"chat.echo","params":{}}
 -> {"type":"input","ref":"c2","seq":1,"data":5}
-<- {"type":"error","ref":"c2","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
+<- {"type":"error","ref":"c2","request_id":"req_…","trace_id":"tr_…","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
 -> {"type":"request","ref":"c3","id":"chat.echo","params":{}}
 -> {"type":"finish_input","ref":"c3"}
 <- {"type":"result","ref":"c3","completion":{"request_id":"req_03c4611c47","trace_id":"tr_03c4611c47","result":{"echoed":0},"data_count":0,"effects":"none"}}

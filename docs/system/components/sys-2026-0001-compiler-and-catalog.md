@@ -784,7 +784,7 @@ To change the grammar, edit `src/infra/rivet.capy` and rebuild.
   end_column}`.
 - `rivet check` prints counts (`ok: N operations, C connectors, A auth profiles`) and, before them, every
   entry of `program.warnings` as a `warning: …` line on stderr (the rendered error form after the prefix,
-  e.g. `warning: error[check.unguarded_result]: …`).
+  e.g. `warning[check.unguarded_result]: …`).
 - `source_hash` (`sha256:…`) pins requests, sessions and manifests to the exact program. See SYS-2026-0002
   and SYS-2026-0003.
 - Compilation emits no trace events. Tracing starts when a request starts.

@@ -1044,7 +1044,11 @@ impl<'a> Machine<'a> {
                     Ok(Flow::Normal)
                 }
                 Stmt::Return { value, span } => {
-                    Ok(Flow::Return(self.eval_rhs(frame, value, &[], span).await?))
+                    let v = self.eval_rhs(frame, value, &[], span).await?;
+                    // Checked here too so the refusal points at the `return`.
+                    secret_output_guard(frame, &v, "returned")
+                        .map_err(|e| e.with_span(Some(span.clone())))?;
+                    Ok(Flow::Return(v))
                 }
                 Stmt::Yield { value, span } => {
                     Ok(Flow::Yield(self.eval_rhs(frame, value, &[], span).await?))

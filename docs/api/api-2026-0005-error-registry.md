@@ -104,12 +104,12 @@ Missing descriptions are **not** warnings: they are reported only by `check --st
 
 ```text
 $ rivet --file app.rivet check                                  # captured on commit 829ca43
-warning: error[docs.undeclared_error]: `demo.oops` can fail with `demo.undeclared` but declares no `error "demo.undeclared"` line
+warning[docs.undeclared_error]: `demo.oops` can fail with `demo.undeclared` but declares no `error "demo.undeclared"` line
   --> app.rivet:31:5
    |
  31|     fail "demo.undeclared" {why: "demo"}
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-warning: error[check.unguarded_result]: `a.result` is null unless `a` succeeded; guard it with `if a.status == "succeeded"`
+warning[check.unguarded_result]: `a.result` is null unless `a` succeeded; guard it with `if a.status == "succeeded"`
   --> app.rivet:41:5
    |
  41|     return a.result
