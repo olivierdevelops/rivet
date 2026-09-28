@@ -4,8 +4,8 @@ title: "Rivet runbooks"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -26,7 +26,7 @@ tags: [rivet, index]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** serve, auth, policy, audit
@@ -62,6 +62,7 @@ Naming: `run-<year>-<nnnn>-<slug>.md`, document type `runbook`; front matter car
 
 ## Recently added or updated
 
+- 2026-09-29: RUN-2026-0001 and RUN-2026-0002 were re-executed end to end on the 0.2.0 release candidate (revision 3, PLAN-2026-0002 D-38). The procedures are unchanged; the outputs are now envelopes (`--data`, `rivet.*` operations in every answer) and include notes on legacy clients and `Deprecation`. Supported hosts are macOS and Linux.
 - 2026-09-28: RUN-2026-0001 and RUN-2026-0002 created and executed end to end against 0.1.0-dev (commit f40d4aa) —
   PLAN-2026-0001 D-31, D-32.
 - 2026-09-28: both revised (revision 2) for the fix batch at commit `829ca43`: SIGTERM drains, access log and
@@ -96,3 +97,4 @@ Re-validate both runbooks on the 0.1.0 release build and on Linux; revise them i
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created. |
 | 2 | 2026-09-28 | Claude | Both runbooks revised for the fix batch (829ca43): SIGTERM drain, access log and `/v1/health` monitoring. |
+| 3 | 2026-09-29 | Claude | Recorded revision 3 of RUN-2026-0001/0002 (0.2.0 re-validation, envelopes; D-38). |

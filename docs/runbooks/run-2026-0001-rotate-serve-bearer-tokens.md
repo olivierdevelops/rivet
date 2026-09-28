@@ -4,8 +4,8 @@ title: "Rotate rivet serve bearer tokens"
 document_type: runbook
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -20,7 +20,7 @@ audience: [operators]
 confidentiality: internal
 scope: Replace a bearer token accepted by one `rivet serve` process with zero or near-zero client downtime.
 reason: PLAN-2026-0001 D-31 — token rotation is a routine credential procedure for the serve surface.
-related_documents: [OPS-2026-0001, RUN-2026-0002, PLAN-2026-0001]
+related_documents: [PLAN-2026-0002, API-2026-0006, OPS-2026-0001, RUN-2026-0002, PLAN-2026-0001]
 supersedes: null
 superseded_by: null
 tags: [rivet, runbook, serve, bearer, credentials, rotation]
@@ -30,7 +30,7 @@ tags: [rivet, runbook, serve, bearer, credentials, rotation]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** serve, auth, policy, cli
@@ -57,10 +57,12 @@ both hashes are accepted, clients switch, then the old hash is removed.
 
 ## Preconditions
 
-- `rivet` 0.1.0 binary on the host; `openssl` and `shasum` (macOS) or `sha256sum` (Linux).
+- A `rivet` binary on the host (0.2.0: built or installed with `--features cli`, see
+  [OPS-2026-0001](../operations/ops-2026-0001-operating-rivet-serve.md#installing-the-binary-020)); `openssl` and `shasum`
+  (macOS) or `sha256sum` (Linux). Supported hosts: macOS and Linux (Windows is not supported in 0.2.0, INC-2026-0011).
 - `serve.auth.type` is `bearer` in the `policy.json` used by the running server.
 - You know the server's start command (entry file, `--listen`, optional `--policy`) and how to reach its PID.
-- **Rivet 0.1.0 reads `policy.json` only at startup.** There is no reload signal; every phase change needs a restart
+- **Rivet (0.1.0 and 0.2.0) reads `policy.json` only at startup.** There is no reload signal; every phase change needs a restart
   (SIGINT, then start again). Plan for a brief outage per restart (about one second in validation).
 
 ## Required Access
@@ -81,8 +83,9 @@ both hashes are accepted, clients switch, then the old hash is removed.
 
 ## Procedure
 
-Validated example: entry `app.rivet` (the 01-catalog demo), listener `127.0.0.1:18471`, principal `ci` with
-`"operations": ["demo.*"]`. Run from the bundle directory.
+Validated example (0.2.0-rc): entry `app.rivet` (the 01-catalog demo), listener `127.0.0.1:18930`, principal `ci`
+with `"operations": ["demo.*"]`. Run from the bundle directory. Hashes, `policy_hash` values and IDs below are from
+that run and differ for every token.
 
 ```text
  ┌────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────┐   ┌────────────┐   ┌──────────────┐   ┌──────────┐
@@ -104,7 +107,7 @@ ls -l new.token          # -rw-------  … new.token
 ```sh
 printf %s "$(cat new.token)" | shasum -a 256 | cut -d' ' -f1 > new.sha     # Linux: sha256sum
 cat new.sha
-# b6cbdd0e7e68a120c8f634e2315da4c32e715cf484a9b3e51af39759986e5920   (differs per token)
+# 1a36216a2ba82572b2fd2002f7d9cad0b65a7bc8fc07382923c623a9b67f1ba6   (differs per token)
 cp policy.json policy.json.bak
 ```
 
@@ -118,8 +121,8 @@ Edit `policy.json` so the principal has **two** entries:
     "auth": {
       "type": "bearer",
       "tokens": [
-        {"principal": "ci", "sha256": "22e960cde9ae845fef0832d78c7e039391bf42d86e53739a951d47debf4d16c5"},
-        {"principal": "ci", "sha256": "b6cbdd0e7e68a120c8f634e2315da4c32e715cf484a9b3e51af39759986e5920"}
+        {"principal": "ci", "sha256": "fdc011bc798e29994a18df7f14f394961f30d1d27dd256b50bb2312f1b6170c6"},
+        {"principal": "ci", "sha256": "1a36216a2ba82572b2fd2002f7d9cad0b65a7bc8fc07382923c623a9b67f1ba6"}
       ]
     },
     "principals": {"ci": {"operations": ["demo.*"]}}
@@ -132,12 +135,12 @@ Edit `policy.json` so the principal has **two** entries:
 ```sh
 rivet --file app.rivet check                       # ok: 4 operations, 0 connectors, 0 auth profiles   (exit 0)
 kill -INT "$(cat serve.pid)"                        # old process exits 0
-rivet --file app.rivet serve --listen 127.0.0.1:18471 2> serve.log & echo $! > serve.pid
+rivet --file app.rivet serve --listen 127.0.0.1:18930 2> serve.log & echo $! > serve.pid
 cat serve.log
 ```
 
 ```text
-{"listen_addr":"127.0.0.1:18471","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"bearer","catalog_version":"sha256:67104f0e…","policy_hash":"sha256:94d17d6b…"}
+{"listen_addr":"127.0.0.1:18930","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"bearer","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","policy_hash":"sha256:a1a8c93b90f3028e6775bb4cc11d40bcc36ec29a1c6eb998b920f8c031a65fd0"}
 ```
 
 The `policy_hash` must differ from the value before the edit.
@@ -146,7 +149,7 @@ The `policy_hash` must differ from the value before the edit.
 
 ```sh
 for t in old new; do
-  curl -s -o /dev/null -w "$t token: HTTP %{http_code}\n" http://127.0.0.1:18471/v1/operations \
+  curl -s -o /dev/null -w "$t token: HTTP %{http_code}\n" http://127.0.0.1:18930/v1/operations \
        -H "Authorization: Bearer $(cat $t.token)"
 done
 ```
@@ -161,8 +164,18 @@ new token: HTTP 200
 Deliver `new.token` over the secure channel. Each client replaces its token file and confirms:
 
 ```sh
-rivet --endpoint http://127.0.0.1:18471 --token-file new.token list     # table of demo.* operations, exit 0
+rivet --endpoint http://127.0.0.1:18930 --token-file new.token list     # table of demo.* operations, exit 0
+rivet --endpoint http://127.0.0.1:18930 --token-file new.token request demo.add --data '{"a":2,"b":3}'
 ```
+
+```text
+{"request_id":"req_04a9ceae9c","trace_id":"tr_04a9ceae9c","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+```
+
+Clients that call the HTTP API directly send `{"operation": …, "data": …}` (0.2.0). A client that still sends the
+0.1.0 `{"id", "params"}` body works through 0.2.x, but its responses carry `deprecation: true` and its access-log
+lines carry `"deprecated":1`. Use the token switch as a chance to move it
+([MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md)).
 
 Wait until every client using the old token has switched.
 
@@ -173,22 +186,22 @@ cp policy.json policy.json.overlap
 # delete the {"principal":"ci","sha256":"<old hash>"} entry from serve.auth.tokens
 rivet --file app.rivet check
 kill -INT "$(cat serve.pid)"
-rivet --file app.rivet serve --listen 127.0.0.1:18471 2> serve.log & echo $! > serve.pid
-cat serve.log            # policy_hash changes again (sha256:cb5e98dd… in validation)
+rivet --file app.rivet serve --listen 127.0.0.1:18930 2> serve.log & echo $! > serve.pid
+cat serve.log            # policy_hash changes again (sha256:56307f14… in validation)
 ```
 
 ### 7. Verify the old token is refused
 
 ```sh
-curl -s -w ' HTTP %{http_code}\n' http://127.0.0.1:18471/v1/operations -H "Authorization: Bearer $(cat old.token)"
-rivet --endpoint http://127.0.0.1:18471 --token-file old.token list; echo "exit=$?"
-rivet --endpoint http://127.0.0.1:18471 --token-file new.token list; echo "exit=$?"
+curl -s -w ' HTTP %{http_code}\n' http://127.0.0.1:18930/v1/operations -H "Authorization: Bearer $(cat old.token)"
+rivet --endpoint http://127.0.0.1:18930 --token-file old.token list; echo "exit=$?"
+rivet --endpoint http://127.0.0.1:18930 --token-file new.token list; echo "exit=$?"
 ```
 
 ## Expected Results
 
 ```text
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false,"effects":"none"}} HTTP 401
+{"request_id":"","trace_id":"","operation":"rivet.list","type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false},"effects":"none","data_count":0} HTTP 401
 error[auth.invalid]: invalid bearer token
 exit=3
 ID              NAME                DESCRIPTION
@@ -206,7 +219,7 @@ exit=0
 | Startup receipt | `auth_type` is `bearer`; `policy_hash` equals `sha256` of the deployed `policy.json` (`shasum -a 256 policy.json`) |
 | Old token | HTTP 401 `auth.invalid`; CLI exit 3 |
 | New token | HTTP 200 on `GET /v1/operations`; CLI `list` exit 0 |
-| Authorization unchanged | a call outside the principal's listing (e.g. `request rivet.io`) still gives 403 `permission.denied`, exit 3 |
+| Authorization unchanged | a call outside the principal's listing (e.g. `request rivet.io`) still gives 403 `permission.denied`, exit 3 (a `rivet.io` envelope with `status: "error"`) |
 | No token material in files | `grep -c "$(cat new.token)" policy.json serve.log` prints 0 for both |
 
 ## Rollback
@@ -232,7 +245,7 @@ Validated: restoring `policy.json.overlap` and restarting made both tokens retur
 | Server exits 2: `policy.invalid … /serve/auth/tokens/N/sha256: must be 64 hex characters` | truncated or pasted-wrong hash | fix the hash, `check`, start again |
 | Server exits 2: `policy.invalid … unknown key` | typo in a key | fix the key named in the JSON pointer |
 | Server exits 5: `connection.bind … Address already in use` | old process still running | `kill -INT` it and wait; confirm with `lsof -i :PORT` |
-| New token: `POST /v1/request` 403 `permission.denied` ("principal `cii` may not call …"), `GET /v1/operations` returns `{"operations":[]}` | new hash assigned to a principal name with no `serve.principals` entry (typo) | use the same `principal` value as in `serve.principals` |
+| New token: `POST /v1/request` 403 `permission.denied` ("principal `cii` may not call …"), `GET /v1/operations` returns an envelope whose `data` is `{"operations":[],"next_cursor":null}` | new hash assigned to a principal name with no `serve.principals` entry (typo) | use the same `principal` value as in `serve.principals` |
 | Client CLI exit 2: `--token-file X must hold exactly one token line` or `--token-file X: entity not found` | token file has several lines, or is missing | write exactly one token line to an existing file |
 
 ## Escalation
@@ -244,14 +257,20 @@ token is suspected leaked and the server cannot be restarted, or if an unknown h
 
 Rivet writes the startup receipt and one JSON access-log line per request to stderr. Monitor: the receipt's
 `policy_hash` after each restart; the liveness probe `GET /v1/health` with the probe's own token on a non-loopback
-bind (expect 200 `{"status":"ok",…}`); the access log's `status` 401 lines (and their `principal: null`) during the
+bind (expect 200 and a `rivet.health` envelope with `"data":{"status":"ok",…}`); the access log's `status` 401 lines (and their `principal: null`) during the
 overlap window — a rise after step 6 means a client still sends the old token. See [OPS-2026-0001 Health Checks](../operations/ops-2026-0001-operating-rivet-serve.md#health-checks).
 
 ## Last Validation Date
 
-2026-09-28 — executed end to end (steps 1–7 and rollback) against `target/debug/rivet` 0.1.0-dev (commit
+2026-09-29: executed end to end (steps 1–7, the verification table, rollback, and the `cii` typo and token-file
+failure scenarios) against the 0.2.0 release candidate. The binary was `target/release/rivet`, built with
+`cargo build --release --features cli` at main `8031baa`, on macOS arm64, with listener `127.0.0.1:18930` and a
+temporary copy of the 01-catalog bundle. The server was stopped afterwards. The procedure is unchanged from 0.1.0;
+only the outputs are now envelopes.
+
+History: 2026-09-28 — executed end to end (steps 1–7 and rollback) against `target/debug/rivet` 0.1.0-dev (commit
 `f40d4aa`) on macOS arm64, listener `127.0.0.1:18471`, using a temporary copy of the 01-catalog bundle. Hashes and
-request IDs shown are from that run. The fix-batch changes that touch this runbook (SIGTERM drains with exit 0,
+request IDs of that run are no longer shown. The fix-batch changes that touch this runbook (SIGTERM drains with exit 0,
 `/v1/health`, the access log) were verified separately at commit `829ca43` (see OPS-2026-0001); the procedure's
 commands are unchanged.
 
@@ -260,6 +279,7 @@ commands are unchanged.
 - [OPS-2026-0001 Operating rivet serve](../operations/ops-2026-0001-operating-rivet-serve.md)
 - [RUN-2026-0002 Roll out a policy change](run-2026-0002-roll-out-policy-change.md)
 - [Demo 01 catalog](../demos/01-catalog/README.md)
+- [MIG-2026-0001 Migrating to 0.2.0](../migrations/mig-2026-0001-response-and-input-envelopes.md) · [API-2026-0006 Envelopes](../api/api-2026-0006-envelopes.md)
 - [Runbooks index](index.md)
 
 ## Change History
@@ -268,3 +288,4 @@ commands are unchanged.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial runbook, validated against 0.1.0-dev (f40d4aa). |
 | 2 | 2026-09-28 | Claude | Fix batch (829ca43): SIGTERM now drains like SIGINT; monitoring uses `/v1/health` and the per-request access log. Procedure unchanged. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-38 (TASK-079): re-executed on the 0.2.0-rc; outputs as envelopes, `request --data` check in step 5, note on legacy clients and `Deprecation`, `cli` feature prerequisite, macOS/Linux only. |
