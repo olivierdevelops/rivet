@@ -141,6 +141,30 @@ async fn local_and_remote_cli_agree() {
             None,
         ),
         (vec!["request", "demo.add", "--params", r#"{"b":3}"#], None),
+        // G19: the 600000 ms host cap applies to local and --endpoint alike.
+        (
+            vec![
+                "request",
+                "demo.add",
+                "--params",
+                r#"{"a":1,"b":1}"#,
+                "--timeout",
+                "10m",
+            ],
+            None,
+        ),
+        (
+            vec![
+                "--json",
+                "request",
+                "demo.add",
+                "--params",
+                r#"{"a":1,"b":1}"#,
+                "--timeout",
+                "601s",
+            ],
+            None,
+        ),
         (vec!["request", "nope.op"], None),
         (
             vec![
@@ -243,6 +267,12 @@ async fn local_and_remote_cli_agree() {
                 assert_eq!(r.code, 4, "{r:?}")
             }
             ["outputs"] => assert_eq!(r.code, 2),
+            [.., "--timeout", "10m"] => assert_eq!(l.code, 0, "{l:?}"),
+            [.., "--timeout", "601s"] => {
+                assert_eq!(l.code, 2, "{l:?}");
+                assert!(l.stderr.contains("validation.usage"), "{l:?}");
+                assert!(l.stderr.contains("600000"), "{l:?}");
+            }
             _ => {}
         }
     }

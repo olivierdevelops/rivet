@@ -38,7 +38,6 @@
 
 use crate::domain::contracts::error_envelope;
 use crate::domain::io_manifest::IoQuery;
-use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
 use crate::features::language::lowering::lower::strict_doc_findings;
 use crate::io::cli::{
@@ -196,20 +195,10 @@ async fn run(cli: Cli) -> i32 {
                 params,
                 crate::domain::contracts::Principal::local(),
             );
-            if let Some(t) = &args.timeout {
-                match parse_duration_ms(t) {
-                    Some(ms) => req.deadline_ms = ms,
-                    None => {
-                        return fail(
-                            &RivetError::validation(
-                                "validation.usage",
-                                format!("--timeout {t}: use digits plus ms, s, m or h"),
-                            ),
-                            None,
-                            true,
-                        );
-                    }
-                }
+            match super::remote_cli::timeout_ms(&args.timeout) {
+                Ok(Some(ms)) => req.deadline_ms = ms,
+                Ok(None) => {}
+                Err(e) => return fail(&e, None, true),
             }
             match super::remote_cli::check_input_flags(args) {
                 Ok(true) => {
@@ -452,20 +441,10 @@ async fn run(cli: Cli) -> i32 {
             };
             let mut req =
                 runtime.new_request(id, params, crate::domain::contracts::Principal::local());
-            if let Some(t) = &timeout {
-                match parse_duration_ms(t) {
-                    Some(ms) => req.deadline_ms = ms,
-                    None => {
-                        return fail(
-                            &RivetError::validation(
-                                "validation.usage",
-                                format!("--timeout {t}: use digits plus ms, s, m or h"),
-                            ),
-                            None,
-                            true,
-                        );
-                    }
-                }
+            match super::remote_cli::timeout_ms(&timeout) {
+                Ok(Some(ms)) => req.deadline_ms = ms,
+                Ok(None) => {}
+                Err(e) => return fail(&e, None, true),
             }
             match runtime.dispatch_request(req, None).await {
                 Ok(c) => {
