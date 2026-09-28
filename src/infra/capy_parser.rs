@@ -609,7 +609,8 @@ mod tests {
     // vhco:test language.compile_program -- an assignment whose value fails to parse (`x = {n: }`) is syntax.expression, not "unknown statement `x`"
     #[test]
     fn unparsable_assignment_value_is_not_an_unknown_statement() {
-        let tree = parse("operation x\n    output json\n    n = 1\n    x = {n: }\n    return x\nend\n");
+        let tree =
+            parse("operation x\n    output json\n    n = 1\n    x = {n: }\n    return x\nend\n");
         let d = &tree.diagnostics[0];
         assert_eq!(d.code, "syntax.expression", "{d:?}");
         assert_eq!((d.span.start_line, d.span.start_col), (4, 5));
@@ -629,7 +630,9 @@ mod tests {
             "{a: [n % 2 == 0, not true], b: {c: n / 2 and true}}",
             "{n: n - 1,\n      m: n + 1}",
         ] {
-            let src = format!("operation x\n    output json\n    n = 1\n    x = {value}\n    return x\nend\n");
+            let src = format!(
+                "operation x\n    output json\n    n = 1\n    x = {value}\n    return x\nend\n"
+            );
             let tree = parse(&src);
             assert!(tree.is_clean(), "{value}: {:?}", tree.diagnostics);
             let assign = &tree.nodes[0].body.as_ref().unwrap()[2];

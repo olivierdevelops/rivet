@@ -1879,9 +1879,14 @@ impl<'a> Machine<'a> {
                     )),
                 }
             }
+            // `check` already rejects names outside BUILTIN_FUNCTIONS
+            // (check.unknown_function); `request.stream` only opens in `with`.
             other => Err(runtime_err(
                 "call.unknown",
-                format!("unknown function `{other}`"),
+                format!(
+                    "unknown function `{other}` here; built-in functions: {}",
+                    crate::domain::ir::BUILTIN_FUNCTIONS.join(", ")
+                ),
                 span,
             )),
         }
