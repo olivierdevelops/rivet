@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -48,7 +48,7 @@ modules they describe.
 **Naming:** `sys-<YYYY>-<NNNN>-<short-description>.md`.
 
 ```text
-   app.rivet (+ imports) ──▶ SYS-0001 compile ──▶ registry ──▶ SYS-0004 surfaces (CLI · library · serve)
+   app.rivet + imported modules ──▶ SYS-0001 resolve + compile ──▶ registry ──▶ SYS-0004 surfaces (CLI · library · serve)
           │                        │                                   └──▶ SYS-0010 ffi surface (librivet)
           │                        └── effect sites ──▶ SYS-0003 IoManifest / policy generate
           │                                              SYS-0003 broker ◀── every effect attempt at run time
@@ -67,6 +67,7 @@ modules they describe.
 
 ## Recently added or updated
 
+- 2026-09-29: envelope sweep (PLAN-2026-0002 D-47). SYS-2026-0001, 0003 and 0004 were re-verified on the 0.2.0-rc; every wire example is now an envelope. The diagram names the imported modules (the `(+ imports)` placeholder is gone, INC-2026-0008).
 - 2026-09-29: 0.2.0 — SYS-2026-0010 and SYS-2026-0011 added; SYS-2026-0001, 0003 and 0004 updated for globals, modules, envelopes and features (revision 3).
 
 - 2026-09-28: created for PLAN-2026-0001 phase P4, verified against `0.1.0-dev` commit `f40d4aa`.
@@ -90,3 +91,4 @@ relates to the rest of the system.
 | 1 | 2026-09-28 | Claude | Created the index for PLAN-2026-0001 phase P4. |
 | 2 | 2026-09-28 | Claude | Recorded the fix-batch revision (commit 829ca43) of this folder's documents. |
 | 3 | 2026-09-29 | Claude | 0.2.0: SYS-2026-0010 and SYS-2026-0011 rows; diagram adds the ffi surface and highlighting |
+| 4 | 2026-09-29 | Claude | Envelope sweep (D-47): diagram shows per-file module reads instead of the `(+ imports)` placeholder; SYS-0001/0003/0004 re-verification recorded. |

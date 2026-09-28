@@ -4,35 +4,35 @@ title: "Rivet system documentation"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [language, registry, execution, files, connectors, audit, policy, auth, datagrams, quic, grpc, sessions, serve, transports, cli, http, library, mcp, ws, poll]
+components: [language, registry, execution, files, connectors, audit, policy, auth, datagrams, quic, grpc, sessions, serve, transports, cli, http, library, mcp, ws, poll, ffi]
 affected_versions:
   from: "0.1.0"
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, implementers, operators, reviewers]
-scope: Navigation and status for the current-state system documentation of Rivet 0.1.0.
-reason: AGENTS.md requires an index.md in every documentation directory; system/ was created for PLAN-2026-0001 deliverables D-15 to D-23.
+scope: Navigation and status for the current-state system documentation of Rivet 0.1.0 and 0.2.0.
+reason: AGENTS.md requires an index.md in every documentation directory; system/ was created for PLAN-2026-0001 deliverables D-15 to D-23 and extended by PLAN-2026-0002 (D-15, D-16, D-31 to D-36, D-47).
 dependencies: [DOCUMENTATION.md, AGENTS.md]
-related_documents: [PLAN-2026-0001, PROP-2026-0001, SYS-2026-0001, SYS-2026-0002, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0007, SYS-2026-0008, SYS-2026-0009, REF-2026-0024, REF-2026-0030, REF-2026-0031, REF-2026-0032]
+related_documents: [PLAN-2026-0001, PROP-2026-0001, PLAN-2026-0002, PROP-2026-0002, SYS-2026-0010, SYS-2026-0011, API-2026-0006, SYS-2026-0001, SYS-2026-0002, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0007, SYS-2026-0008, SYS-2026-0009, REF-2026-0024, REF-2026-0030, REF-2026-0031, REF-2026-0032]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, index]
 confidentiality: internal
 review_cycle: on-release
-next_review_date: 2026-10-28
+next_review_date: 2026-10-29
 ---
 
 # Rivet system documentation
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** every Rivet feature and surface
@@ -41,8 +41,9 @@ next_review_date: 2026-10-28
 
 `system/` describes the **currently implemented** Rivet runtime (DOCUMENTATION §4.7, template §12.6): what each
 part of the code does, where it lives, how it is configured, how it behaves at run time, and where its limits are.
-Every document cites the source modules it describes and was checked against the `rivet` binary built from commit
-`f40d4aa` (`0.1.0-dev`).
+Every document cites the source modules it describes. SYS-0001 to SYS-0009 were re-verified on 2026-09-29 against
+the 0.2.0 release candidate (`cargo build --release --features cli`, main at `8031baa`, macOS), and every wire
+example is now a [0.2.0 envelope](../api/api-2026-0006-envelopes.md). SYS-0010 and SYS-0011 are new in 0.2.0.
 
 **Belongs here:** current-state component, runtime, integration and configuration documents (`SYS-…`).
 **Does not belong here:** the intended design (`../proposals/`), decisions and their rationale (`../decisions/`),
@@ -57,13 +58,20 @@ subject. When the code changes, the document is revised in place (Change History
                         ┌──────────────────────── surfaces (SYS-2026-0004) ─────────────────────────┐
    rivet CLI ─┐         │  CLI · --endpoint remote client · Rust library · rivet serve:             │
    library  ──┼────────▶│  REST /v1/* · SSE · polling · WebSocket /v1/ws · MCP /mcp · MCP --stdio   │
-   clients  ──┘         └───────────────┬────────────────────────────────────────┬──────────────────┘
+   clients  ──┤         │  wire edge: serve.parse_input ─▶ … ─▶ ResponseEnvelope (0.2.0)             │
+   C hosts  ──┘         │  C ABI librivet: ffi surface, handles (SYS-2026-0010, 0.2.0)              │
+                        └───────────────┬────────────────────────────────────────┬──────────────────┘
                                         │ principal + operation listing          │ sessions
                                         ▼                                        ▼
    app.rivet ──▶ ┌──── compiler + catalog (SYS-0001) ────┐        ┌──── sessions (SYS-0007) ────┐
-                 │ rivet.capy grammar → AST JSON →        │        │ open · send · finish ·      │
-                 │ SyntaxTree → IR → registry / outputs  │        │ read events · cancel         │
-                 └──────────────────┬────────────────────┘        └──────────────┬───────────────┘
+   + imports     │ resolve_imports → rivet.capy → AST →   │        │ open · send · finish ·      │
+                 │ IR → modules · globals → registry     │        │ read events · cancel         │
+                 │ catalog snapshots (Runtime::load)      │        │ (+ C ABI call handles)       │
+                 └───────┬──────────────────┬─────────────┘        └──────────────┬───────────────┘
+                         │ same parser      │                                     │
+                         ▼                  │
+   highlighting + grammar generation (SYS-0011): rivet highlight · editors/ TextMate grammar
+                                            ▼
                                     ▼                                            │
                  ┌──── execution, scopes, DAG (SYS-0002) ─────────────────────────┘
                  │ dispatcher · limits · interpreter · with-handles · dag · structured cancel ·
@@ -96,6 +104,8 @@ subject. When the code changes, the document is revised in place (Change History
 | SYS-2026-0007 | [runtime/](runtime/index.md) | [Duplex sessions](runtime/sys-2026-0007-sessions.md) | sessions |
 | SYS-2026-0008 | [configuration/](configuration/index.md) | [policy.json schema v1 reference](configuration/sys-2026-0008-policy-json-reference.md) | policy, serve, connectors, auth |
 | SYS-2026-0009 | [integrations/](integrations/index.md) | [MCP client connectors](integrations/sys-2026-0009-mcp-client-connectors.md) | connectors, mcp |
+| SYS-2026-0010 | [components/](components/index.md) | [FFI surface, workspace packaging, facade and Cargo features](components/sys-2026-0010-ffi-surface-and-packaging.md) (0.2.0) | ffi, library, features, sessions, registry |
+| SYS-2026-0011 | [components/](components/index.md) | [Syntax highlighting and TextMate grammar generation](components/sys-2026-0011-highlighting-and-grammar-generation.md) (0.2.0) | language |
 
 Sub-folder indexes: [components/](components/index.md) (REF-2026-0024), [runtime/](runtime/index.md)
 (REF-2026-0030), [integrations/](integrations/index.md) (REF-2026-0031), [configuration/](configuration/index.md)
@@ -109,12 +119,28 @@ Sub-folder indexes: [components/](components/index.md) (REF-2026-0024), [runtime
         └──────────────▶ 5 SYS-0004 surfaces ─▶ 6 SYS-0007 sessions               │
                                                                                   ▼
                        7 SYS-0005 protocol adapters ─▶ 8 SYS-0006 OAuth ─▶ 9 SYS-0009 MCP connectors
+                                                                                  │
+                       10 SYS-0010 FFI, packaging, features ─▶ 11 SYS-0011 highlighting (0.2.0)
 ```
+
+A reader new to 0.2.0 starts with [API-2026-0006](../api/api-2026-0006-envelopes.md) (the wire shape), then
+SYS-0004 "The wire edge", SYS-0001 (globals and modules) and SYS-0010.
 
 A reader who only operates a server needs SYS-0004 and SYS-0008; a reader extending a protocol starts at
 SYS-0003 (every effect passes the broker) and then SYS-0005.
 
 ## Recently added or updated
+
+- 2026-09-29: PLAN-2026-0002 P4. SYS-0010 and SYS-0011 were added (D-15, D-16). All nine earlier documents were
+  revised (revision 3) and re-verified on the 0.2.0-rc. The envelope sweep (D-47) re-ran every capture. Other
+  updates by document:
+  - SYS-0001 (D-31): globals, `resolve_imports`, module namespacing, `load_module` and catalog snapshots, and the
+    highlighter link.
+  - SYS-0002 (D-32): global-scope lookup order.
+  - SYS-0003 (D-33): global substitution, one policy across modules, per-file bootstrap reads.
+  - SYS-0004 (D-34): the wire edge (`parse_input`, envelope writer, pretty, `Deprecation`, remote client).
+  - SYS-0005, SYS-0006 and SYS-0009 (D-35): Cargo feature gates per adapter.
+  - SYS-0007 and SYS-0008 (D-36): receipts and records as envelopes, one policy per bundle.
 
 - 2026-09-28: all nine documents and the five indexes created for PLAN-2026-0001 phase P4 (D-15 to D-23),
   verified against `0.1.0-dev` commit `f40d4aa`.
@@ -141,18 +167,26 @@ None.
 
 ## Unresolved work and open questions
 
-0.1.0 known limitations (the complete list is the
+Current known limitations (the complete list is the
 [manual's Known Limitations](../manuals/man-2026-0001-rivet-manual.md#known-limitations)), recorded in the relevant
-documents: no `import` form (single-file bundles), mTLS for `serve`, the gated Linux sandbox and unsupported
-Windows/other OSes, `finally`, unused `approved.overlaps`, `*` matching `rivet.auth.*`, `--timeout` over the
+documents. The supported platforms are **macOS and Linux**, and CI is green on both. **Windows is not supported**
+in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)). The limitations are:
+mTLS for `serve`, the gated Linux sandbox, no URL imports and no module unloading, `finally`, unused `approved.overlaps`, `*` matching `rivet.auth.*`, `--timeout` over the
 WebSocket duplex path, MCP 401 without retry, Alt-Svc HTTP/3 discovery, connection pooling, a persistent trace
 store, MCP resource templates and the legacy MCP HTTP+SSE transport, Stage C forms.
+
+Issues found by the 0.2.0 envelope sweep and recorded in the documents:
+
+- SYS-0004 and SYS-0007: a WebSocket `conflict.ref` refusal is a `type: "result"` record on the in-flight ref.
+- SYS-0005: a lean build's `unsupported.feature` span for gRPC calls points at the connector's `endpoint` line.
+- SYS-0005: nested `suppressed` error objects still carry `effects`.
+- SYS-0003: `policy explain` keeps a `--params` flag that is not the deprecated alias.
 
 Drift found by TASK-092 at `829ca43` (the `rivet.trace.export` built-in had no dispatcher handler and MCP
 `tools/list` omitted `rivet.capabilities` and `rivet.trace.export`) was fixed in commit `2a751ab` (INC-2026-0007).
 
-`docs/system/deployment/` does not exist
-yet: Rivet ships as a single binary and library with no deployment topology of its own.
+`docs/system/deployment/` does not exist yet. Rivet ships as a binary (`--features cli`), a library
+(`rivet-runtime`) and `librivet` (`rivet-ffi`), with no deployment topology of its own. Packaging is in SYS-0010.
 
 ## Related directories
 
@@ -166,3 +200,4 @@ yet: Rivet ships as a single binary and library with no deployment topology of i
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the system/ index for PLAN-2026-0001 D-15 to D-23. |
 | 2 | 2026-09-28 | Claude | Recorded the fix-batch revision of all nine documents (TASK-092, commits 829ca43 and 2a751ab), the current limitations and the drift found and fixed. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 P4: rows and map entries for SYS-2026-0010 (FFI, packaging, features) and SYS-2026-0011 (highlighting); revision 3 of SYS-0001…0009 recorded (D-31…D-36, D-47); reading order, limitations (macOS/Linux only; Windows unsupported), sweep findings. |
