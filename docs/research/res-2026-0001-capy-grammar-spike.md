@@ -5,7 +5,7 @@ document_type: research
 status: completed
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -137,6 +137,12 @@ with 53 · name 53 · assign_block 46 · assign 44 · … 111 functions defined
    into "unknown statement `X`", with a did-you-mean from the function list. It keeps Capy's span and code as
    the cause.
 
+9. **Priority matters for keyword reuse (found during implementation).** Option keywords such as `message`
+   and `stream` are also legal variable names. With equal priority, `message = socket.receive_from json` matched
+   the `message` option with a tail of `= …`. Assignments, `+=` and method calls now carry `priority 10`, above
+   every option line. This is safe because option lines never have `=`, `+=` or `.` as their second token.
+   Structural checks alone did not catch it; lowering did.
+
 ## Conclusion
 
 **G-SPIKE: PASS.** The design needs no grammar change. The eight findings above become implementation
@@ -155,4 +161,5 @@ for `src/infra/rivet.capy`.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Finding 9 (keyword reuse needs priority) recorded from implementation. |
 | 1 | 2026-09-28 | Claude | Spike executed: 119/119 clean (re-run after S154–S159), structure 0 problems, negatives reviewed; eight implementation findings. |
