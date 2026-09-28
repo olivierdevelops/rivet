@@ -8,11 +8,14 @@ Checks that the one canonical version in Cargo.toml is what every surface report
       ├── rivet --version                    "rivet X.Y.Z"  (binary built with --features cli)
       ├── MCP initialize serverInfo.version  (serve --stdio)
       ├── rivet.capabilities result.version
+      ├── librivet rivet_version() and rivet_abi_version() == rivet.capabilities abi_version
+      │     (--ffi PATH, else target/release/librivet.{dylib,so} / rivet.dll when present)
       └── with --tag: HEAD is exactly tag vX.Y.Z and the tree is clean
 
-Usage: python3 scripts/check_version.py [--bin target/release/rivet] [--tag]
+Usage: python3 scripts/check_version.py [--bin target/release/rivet] [--ffi LIB] [--tag]
 Exit 0 when everything agrees, 1 otherwise.
 """
+import ctypes
 import json
 import os
 import re
@@ -44,6 +47,20 @@ def inherited(manifest):
         return None
     package = section(open(path).read(), 'package') or ''
     return re.search(r'^version\.workspace\s*=\s*true', package, re.M) is not None
+
+
+def default_ffi():
+    names = {'darwin': 'librivet.dylib', 'win32': 'rivet.dll'}
+    path = os.path.join(ROOT, 'target', 'release', names.get(sys.platform, 'librivet.so'))
+    return path if os.path.exists(path) else None
+
+
+def ffi_versions(path):
+    """(rivet_version(), rivet_abi_version()) of a built librivet."""
+    lib = ctypes.CDLL(path)
+    lib.rivet_version.restype = ctypes.c_char_p
+    lib.rivet_abi_version.restype = ctypes.c_uint32
+    return lib.rivet_version().decode(), lib.rivet_abi_version()
 
 
 def run(cmd, **kw):
@@ -99,6 +116,22 @@ def main():
             check('rivet.capabilities version', (j.get('data') or j.get('result'))['version'])
         except (ValueError, KeyError):
             check('rivet.capabilities version', f'<no answer: {out[:80]!r}>')
+            j = {}
+
+    ffi = os.path.join(ROOT, args[args.index('--ffi') + 1]) if '--ffi' in args else default_ffi()
+    if ffi:
+        try:
+            got, abi = ffi_versions(ffi)
+        except OSError as e:
+            got, abi = f'<cannot load {ffi}: {e}>', None
+        check('librivet rivet_version()', got)
+        want_abi = ((j.get('data') or {}) if isinstance(j, dict) else {}).get('abi_version')
+        ok = abi is not None and abi == want_abi
+        print(f'{"ok " if ok else "BAD"} {"rivet_abi_version() == capabilities":<34} {abi} / {want_abi}')
+        if not ok:
+            problems.append('rivet_abi_version')
+    else:
+        print(f'    {"librivet":<34} not built (cargo build --release -p rivet-ffi); skipped')
 
     if '--tag' in args:
         tag = run(['git', 'describe', '--tags', '--exact-match', 'HEAD']).stdout.strip()

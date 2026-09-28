@@ -10,6 +10,7 @@ pub mod dag;
 pub mod effect_checks;
 pub mod envelope;
 pub mod errors;
+pub mod ffi;
 pub mod files;
 pub mod grpc;
 pub mod highlight;

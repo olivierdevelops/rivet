@@ -5,6 +5,7 @@ pub mod remote_cli;
 pub mod runtime;
 #[cfg(feature = "cli")]
 pub mod setup_cli;
+pub mod setup_ffi;
 #[cfg(feature = "serve")]
 pub mod setup_http;
 pub mod setup_library;

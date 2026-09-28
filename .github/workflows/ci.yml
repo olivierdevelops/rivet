@@ -1,6 +1,8 @@
 # PLAN-2026-0001 TASK-051: T-27 (build/static), T-29 (samples) and T-31 (docs) on three OSes.
 # PLAN-2026-0002 TASK-034: a Cargo workspace (rivet-runtime + ffi/); the `rivet` binary needs the
 # `cli` feature, so the test job builds with --all-features; the `features` job is the T-10 matrix.
+# PLAN-2026-0002 TASK-041/043: the release build includes librivet (rivet-ffi); conformance_ffi links
+# the C examples shared and static and runs the Python ctypes examples (Unix); the header is verified.
 # T-08's Linux sandbox gate needs a runner with kernel >= 6.12 (ADR-0003); until one is
 # configured, sandboxed exec on Linux refuses with unsupported.sandbox_backend by design.
 name: ci
@@ -41,6 +43,14 @@ jobs:
       - name: tests (T-01…T-29 suites)
         if: always()
         run: python scripts/ci_step.py tests -- cargo test --workspace --all-targets --all-features --no-fail-fast
+      # T-11: the checked-in C header must be exactly what cbindgen generates from ffi/src/lib.rs.
+      - uses: taiki-e/install-action@v2
+        if: always() && runner.os != 'Windows'
+        with:
+          tool: cbindgen
+      - name: C header (T-11)
+        if: always() && runner.os != 'Windows'
+        run: python scripts/ci_step.py header -- cbindgen --config ffi/cbindgen.toml --crate rivet-ffi --verify --output ffi/include/rivet.h
       - name: docs (T-31)
         if: always()
         run: python scripts/ci_step.py docs -- python scripts/check_docs.py

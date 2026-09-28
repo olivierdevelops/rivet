@@ -4,6 +4,8 @@ about "Build, install and maintain Rivet"
 
 requires
     bin "cargo" optional
+    bin "cbindgen" optional
+    bin "make" optional
     bin "bman" optional
     bin "python3" optional
     bin "vhco" optional
@@ -74,6 +76,26 @@ command features
         cargo build --locked -p rivet-runtime --no-default-features --features quic
         cargo build --locked -p rivet-runtime --no-default-features --features oauth
         cargo build --locked -p rivet-runtime --no-default-features --features cli
+    end
+end
+
+command ffi
+    description "Build librivet (release), verify rivet.h against cbindgen, and run the C and Python examples"
+    dir "${script_dir}"
+    do
+        cargo build --locked --release -p rivet-ffi
+        cbindgen --config ffi/cbindgen.toml --crate rivet-ffi --verify --output ffi/include/rivet.h
+        make -C examples/c test
+        python3 examples/python/demo.py
+        python3 examples/python/modules.py
+    end
+end
+
+command ffi_header
+    description "Regenerate ffi/include/rivet.h with cbindgen (commit the result)"
+    dir "${script_dir}"
+    do
+        cbindgen --config ffi/cbindgen.toml --crate rivet-ffi --output ffi/include/rivet.h
     end
 end
 
@@ -174,6 +196,7 @@ command main
         print "  install               Build and install rivet globally with bman"
         print "  check / tests / clippy Type-check, test or lint all targets"
         print "  features              Build each Cargo feature alone (feature matrix)"
+        print "  ffi / ffi_header      Build librivet and run the C/Python examples / regenerate rivet.h"
         print "  fmt / fmt_check       Format sources / check formatting"
         print "  docs_check            Validate documentation"
         print "  architecture          Validate VHCO architecture, sync and guarantees"

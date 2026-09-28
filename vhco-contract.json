@@ -4147,7 +4147,8 @@
           "sessions/finish_input",
           "sessions/read_events",
           "sessions/cancel_session",
-          "language/highlight_source"
+          "language/highlight_source",
+          "registry/load_module"
         ]
       }
     ],
@@ -4916,6 +4917,10 @@
         {
           "surface": "cli",
           "invocation": "Ctrl-C during rivet request"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_cancel(call) | rivet_call_free(call) while running"
         }
       ],
       "input": [
@@ -4961,6 +4966,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: ID} | tools/call {name: \"rivet.request\", arguments: {operation, data}}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_request(rt, INPUT_JSON) | rivet_module_call(module, ID, DATA_JSON)"
         }
       ],
       "input": [
@@ -5247,6 +5256,10 @@
         {
           "surface": "library",
           "invocation": "Runtime::builder().file(PATH).build()"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_runtime_new(OPTIONS_JSON, &rt, &error_json)"
         }
       ],
       "input": [
@@ -5393,6 +5406,10 @@
         {
           "surface": "library",
           "invocation": "Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_runtime_new(OPTIONS_JSON, &rt, &error_json) (policy_file | policy_json, ceiling_json)"
         }
       ],
       "input": [
@@ -5868,6 +5885,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: \"rivet.sessions.cancel\"}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_cancel(call) | rivet_call_free(call) while running"
         }
       ],
       "input": [
@@ -5903,6 +5924,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: \"rivet.sessions.finish_input\"}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_finish_input(call)"
         }
       ],
       "input": [
@@ -5938,6 +5963,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: STREAMING_ID} | tools/call {name: \"rivet.sessions.open\"}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_start(rt, INPUT_JSON) | rivet_module_call_start(module, ID, DATA_JSON)"
         }
       ],
       "input": [
@@ -5983,6 +6012,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: \"rivet.sessions.read\"}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_next(call, TIMEOUT_MS)"
         }
       ],
       "input": [
@@ -6024,6 +6057,10 @@
         {
           "surface": "mcp",
           "invocation": "tools/call {name: \"rivet.sessions.send\"}"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_call_send(call, DATA_JSON)"
         }
       ],
       "input": [
@@ -6220,6 +6257,10 @@
         {
           "surface": "library",
           "invocation": "Runtime::call_json(INPUT_JSON)"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_request(rt, INPUT_JSON) | rivet_call_start(rt, INPUT_JSON)"
         }
       ],
       "input": [
@@ -6316,6 +6357,10 @@
         {
           "surface": "library",
           "invocation": "rivet::highlight::tokens(SOURCE) | rivet::highlight::highlight(SOURCE, FORMAT)"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_highlight(SOURCE, FORMAT)"
         }
       ],
       "input": [
@@ -6418,6 +6463,10 @@
         {
           "surface": "library",
           "invocation": "Runtime::load(PATH) | Runtime::load_as(PATH, ALIAS)"
+        },
+        {
+          "surface": "ffi",
+          "invocation": "rivet_load(rt, PATH, ALIAS_OR_NULL, &module, &error_json)"
         }
       ],
       "input": [

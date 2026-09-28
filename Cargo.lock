@@ -2034,6 +2034,8 @@ name = "rivet-ffi"
 version = "0.1.0"
 dependencies = [
  "rivet-runtime",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

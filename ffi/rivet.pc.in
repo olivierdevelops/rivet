@@ -1,0 +1,19 @@
+# pkg-config template for librivet (PROP-2026-0002 R13; ADR-0005 decision 6).
+# Render it with:  python3 ffi/render_pc.py --prefix /usr/local > rivet.pc
+#   @VERSION@       the workspace version (Cargo.toml [workspace.package])
+#   @LIBS_PRIVATE@  `cargo rustc -p rivet-ffi --release --crate-type staticlib -- --print native-static-libs`
+#                   macOS: -framework Security -framework CoreFoundation -liconv -lc -lm
+#                   Linux: -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+# Static link: cc app.c $(pkg-config --cflags rivet) $(pkg-config --libs --static rivet)
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: rivet
+Description: C ABI of the Rivet runtime (librivet), ABI version 1
+URL: https://github.com/olivierdevelops/rivet
+Version: @VERSION@
+Libs: -L${libdir} -lrivet
+Libs.private: @LIBS_PRIVATE@
+Cflags: -I${includedir}

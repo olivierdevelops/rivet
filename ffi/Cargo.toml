@@ -19,5 +19,17 @@ name = "rivet"
 path = "src/lib.rs"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
+# The runtime's Cargo features pass through (librivet ships the runtime defaults).
+[features]
+default = ["serve", "grpc", "quic", "oauth"]
+serve = ["rivet_runtime/serve"]
+grpc = ["rivet_runtime/grpc"]
+quic = ["rivet_runtime/quic"]
+oauth = ["rivet_runtime/oauth"]
+
 [dependencies]
-rivet_runtime = { package = "rivet-runtime", path = "..", version = "0.1.0" }
+rivet_runtime = { package = "rivet-runtime", path = "..", version = "0.1.0", default-features = false }
+
+[dev-dependencies]
+serde_json = "1.0.151"
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros"] }

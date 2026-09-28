@@ -6,3 +6,8 @@
 /.claude/
 /dist/
 __pycache__/
+# C example binaries (examples/c/Makefile)
+/examples/c/demo
+/examples/c/demo_static
+/examples/c/modules
+/examples/c/modules_static
