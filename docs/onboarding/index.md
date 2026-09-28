@@ -5,8 +5,8 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
-authors: [Claude]
+document_revision: 3
+authors: [Claude, Codex]
 owner: Project maintainer
 systems: [Rivet]
 components: [language, execution, policy, transports]
@@ -60,6 +60,9 @@ Naming: `onb-<year>-<nnnn>-<slug>.md`, document type `onboarding`.
 
 ## Recently added or updated
 
+- 2026-09-28: `perch install` now builds and installs globally with `bman add`.
+
+- 2026-09-28: ONB-2026-0001 now documents the complete Perch development command set.
 - 2026-09-28: ONB-2026-0001 created and verified at commit f40d4aa — PLAN-2026-0001 D-33.
 
 ## Deprecated, superseded or archived
@@ -89,4 +92,6 @@ Add a Linux/Windows setup section once CI results on those platforms are recorde
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
+| 2 | 2026-09-28 | Codex | ONB-2026-0001 now documents the complete Perch development command set. |
 | 1 | 2026-09-28 | Claude | Created. |

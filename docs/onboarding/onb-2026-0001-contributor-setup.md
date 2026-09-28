@@ -5,8 +5,8 @@ document_type: onboarding
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
-authors: [Claude]
+document_revision: 3
+authors: [Claude, Codex]
 owner: Project maintainer
 systems: [Rivet]
 components: [language, registry, execution, policy, audit, transports, serve, cli, library]
@@ -56,6 +56,8 @@ arm64 on 2026-09-28 at commit `f40d4aa`.
 | protoc | `libprotoc 29.3` | only to regenerate the pinned gRPC descriptor sets in `tests/fixtures/grpc/*.pb` and demo 10 (`protoc --include_imports --descriptor_set_out=…`); the build does not run it; CI installs it | `brew install protobuf` / distro package |
 | cargo-deny | `0.20.2` | licence/ban/source policy in `deny.toml` (ring-only TLS: aws-lc-rs and openssl are banned) | `cargo install cargo-deny` |
 | vhco | `1.6.0` | architecture validation, contract drift, docs checks | project-provided binary on `PATH` |
+| bman | installed CLI | global installation with `perch install` | project-provided binary on `PATH` |
+| Perch | installed CLI | optional development command wrappers | project-provided binary on `PATH` |
 | python3 | 3.9+ | `scripts/check_docs.py` | system |
 | Disk | ≥ 20 GiB free | `target/` reached ≈ 14 GiB (debug + tests); release adds ≈ 0.5 GiB | see [TRBL-2026-0003](../troubleshooting/trbl-2026-0003-linker-fails-with-no-space-left-on-device.md) |
 
@@ -69,6 +71,53 @@ vhco --version           # vhco 1.6.0
 cargo build              # target/debug/rivet (≈ 53 MiB)
 target/debug/rivet --version    # rivet 0.1.0-dev
 ```
+
+## Perch development commands
+
+The root [`commands.perch`](../../commands.perch) provides these wrappers. Run `perch --help` for descriptions,
+`perch main` for a short task list, or `perch --check` to validate the file. Bare `perch` displays Perch usage.
+
+| Command | Runs / effect |
+|---|---|
+| `perch build` | `cargo build --locked --release --bin rivet` |
+| `perch build_debug` | `cargo build --locked --bin rivet` |
+| `perch install` | Build release with `--target-dir "<checkout>/target"`, then `bman add "<checkout>/target/release/rivet"` (`.exe` on Windows) |
+| `perch check` | `cargo check --locked --all-targets` |
+| `perch tests` | `cargo test --locked --all-targets` |
+| `perch clippy` | `cargo clippy --locked --all-targets -- -D warnings` |
+| `perch fmt` | `cargo fmt --all`; edits source formatting |
+| `perch fmt_check` | `cargo fmt --all -- --check`; reads source formatting |
+| `perch docs_check` | `python3 scripts/check_docs.py` |
+| `perch architecture` | `vhco validate .`, then `vhco sync .`, then `vhco check .` |
+| `perch gates` | `fmt_check`, `check`, `clippy`, `tests`, `docs_check`, `architecture`, in that order |
+| `perch help_cli` | `cargo run --locked --bin rivet -- --help` |
+| `perch live` | `vhco live .`; contract explorer on port 7777, stop with Ctrl+C |
+| `perch spec` | `vhco spec .`; regenerates `vhco.json` |
+| `perch docs` | `vhco doc . --format html`; regenerates `vhco.html` |
+| `perch clean` | `cargo clean`; removes Cargo build artifacts |
+| `perch main` | Prints the task list |
+
+```text
+perch gates -> fmt_check -> check -> clippy -> tests -> docs_check -> architecture
+                   any failure -> nonzero exit; later tasks do not run
+```
+
+`tests` is plural because `test` is a reserved Perch built-in. Each task uses `dir "${script_dir}"`, so
+`perch -f /path/to/rivet/commands.perch gates` works from another directory. Build output respects Cargo
+configuration, including `CARGO_TARGET_DIR`; install explicitly uses the checkout's `target/` to pass the
+correct artifact to bman. `bman help` shows the managed global bin directory; keep it on `PATH`.
+
+Cargo, bman, Python 3 and VHCO are declared as optional Perch binary requirements so help and individual tasks
+remain available when an unrelated tool is absent. The selected task still needs its executable on `PATH`;
+missing tools or failing subprocesses produce a nonzero exit. Perch forwards the declared optional
+`CARGO_TARGET_DIR`, `CARGO_HOME` and `RUSTUP_HOME` environment variables, plus its
+default operational environment. Other tool overrides should be set in Cargo configuration or used with
+direct Cargo commands. The Rust pin installs rustfmt and Clippy.
+
+`gates` covers the listed development checks. CI additionally builds release artifacts, checks version
+agreement and runs cargo-deny. Run `perch build`, `python3 scripts/check_version.py` and
+`cargo deny check licenses bans sources` for those checks (the version script assumes the default target
+path unless given `--bin`). `spec`, `docs`, `fmt` and `clean` are explicit tasks outside `gates`.
 
 ## Repository Layout and the Five Buckets
 
@@ -87,6 +136,7 @@ rivet/
 ├── tests/               conformance_*.rs suites (T-xx) + support/, transport_support/, oauth_support/, fixtures/
 ├── examples/dump_ast.rs print the SyntaxTree of a .rivet file
 ├── docs/                all documentation (DOCUMENTATION.md standard); demos/ are the runnable samples
+├── commands.perch       build, install, test, lint, documentation and VHCO tasks
 ├── scripts/check_docs.py  documentation checker (T-31)
 ├── vhco-contract.json   HAND-AUTHORED design contract (never generate it)
 ├── vhco.json · vhco.html  GENERATED model and explorer
@@ -162,8 +212,7 @@ cargo deny check licenses bans sources       # bans ok, licenses ok, sources ok
 | `conformance_samples` | T-29 | all 12 demo bundles compile; every reference block parses and lowers |
 
 Result on 2026-09-28: all suites `ok`, 248 passed, 0 failed; `clippy` exit 0; `cargo deny` all ok.
-**`cargo fmt --check` currently reports one diff in `src/features/execution/run_dag.rs`** — run `cargo fmt`
-before your first commit touching that file (CI runs `fmt --check` on Linux, macOS and Windows).
+Formatting is checked by `perch fmt_check` and by CI on Linux, macOS and Windows; use `perch fmt` to apply rustfmt changes.
 
 On Linux the process sandbox refuses (`unsupported.sandbox_backend`) until verified on a kernel ≥ 6.12
 ([ADR-0003](../decisions/adr-0003-process-sandbox-backends.md)); sandbox tests expect that refusal there.
@@ -308,4 +357,6 @@ cannot carry arguments ([TRBL-2026-0002](../troubleshooting/trbl-2026-0002-capy-
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
+| 2 | 2026-09-28 | Codex | Documented all Perch tasks, working-directory behavior, prerequisites and fail-fast development gates. |
 | 1 | 2026-09-28 | Claude | Initial contributor guide, verified against 0.1.0-dev (f40d4aa). |

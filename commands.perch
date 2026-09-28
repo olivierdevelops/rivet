@@ -1,0 +1,172 @@
+#!/usr/bin/env perch
+name "rivet"
+about "Build, install and maintain Rivet"
+
+requires
+    bin "cargo" optional
+    bin "bman" optional
+    bin "python3" optional
+    bin "vhco" optional
+    env "CARGO_TARGET_DIR" optional
+    env "CARGO_HOME" optional
+    env "RUSTUP_HOME" optional
+end
+
+# Developer wrappers approved in vhco-contract.json (overview).
+# Commands resolve paths from this file, including when invoked with perch -f.
+
+command build
+    description "Build the release rivet binary"
+    dir "${script_dir}"
+    do
+        cargo build --locked --release --bin rivet
+    end
+end
+
+command build_debug
+    description "Build the debug rivet binary"
+    dir "${script_dir}"
+    do
+        cargo build --locked --bin rivet
+    end
+end
+
+command install
+    description "Build the release binary and install globally with bman add"
+    dir "${script_dir}"
+    do
+        cargo build --locked --release --bin rivet --target-dir "${script_dir}/target"
+        bman add "${script_dir}/target/release/rivet${exe_ext}"
+    end
+end
+
+command check
+    description "Type-check all targets"
+    dir "${script_dir}"
+    do
+        cargo check --locked --all-targets
+    end
+end
+
+command tests
+    description "Run all Rust test targets"
+    dir "${script_dir}"
+    do
+        cargo test --locked --all-targets
+    end
+end
+
+command clippy
+    description "Lint all targets and fail on warnings"
+    dir "${script_dir}"
+    do
+        cargo clippy --locked --all-targets -- -D warnings
+    end
+end
+
+command fmt
+    description "Format Rust sources"
+    dir "${script_dir}"
+    do
+        cargo fmt --all
+    end
+end
+
+command fmt_check
+    description "Check Rust formatting without modifying files"
+    dir "${script_dir}"
+    do
+        cargo fmt --all -- --check
+    end
+end
+
+command docs_check
+    description "Check documentation metadata, links and indexes"
+    dir "${script_dir}"
+    do
+        python3 scripts/check_docs.py
+    end
+end
+
+command architecture
+    description "Validate VHCO architecture, contract sync and guarantees"
+    dir "${script_dir}"
+    do
+        vhco validate .
+        vhco sync .
+        vhco check .
+    end
+end
+
+command gates
+    description "Run formatting, type, lint, test, documentation and architecture checks"
+    dir "${script_dir}"
+    do
+        fmt_check
+        check
+        clippy
+        tests
+        docs_check
+        architecture
+    end
+end
+
+command help_cli
+    description "Build and show rivet --help"
+    dir "${script_dir}"
+    do
+        cargo run --locked --bin rivet -- --help
+    end
+end
+
+command live
+    description "Serve the design contract at http://127.0.0.1:7777"
+    dir "${script_dir}"
+    do
+        vhco live .
+    end
+end
+
+command spec
+    description "Regenerate vhco.json from code annotations"
+    dir "${script_dir}"
+    do
+        vhco spec .
+    end
+end
+
+command docs
+    description "Regenerate the HTML explorer (vhco.html)"
+    dir "${script_dir}"
+    do
+        vhco doc . --format html
+    end
+end
+
+command clean
+    description "Remove Cargo build artifacts"
+    dir "${script_dir}"
+    do
+        cargo clean
+    end
+end
+
+command main
+    description "List the available development commands"
+    dir "${script_dir}"
+    do
+        print "Rivet development commands (perch <command>):"
+        print "  build / build_debug   Build release / debug binary"
+        print "  install               Build and install rivet globally with bman"
+        print "  check / tests / clippy Type-check, test or lint all targets"
+        print "  fmt / fmt_check       Format sources / check formatting"
+        print "  docs_check            Validate documentation"
+        print "  architecture          Validate VHCO architecture, sync and guarantees"
+        print "  gates                 Run all development checks in order"
+        print "  help_cli              Show rivet --help"
+        print "  live                  Serve the contract explorer"
+        print "  spec / docs           Generate vhco.json / vhco.html"
+        print "  clean                 Remove Cargo build artifacts"
+        print "Use perch --help for command descriptions."
+    end
+end

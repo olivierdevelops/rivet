@@ -3,7 +3,29 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling."
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling.",
+    "why": "Provide a root commands.perch that wraps existing Cargo, Python and VHCO workflows. Each command runs from ${script_dir}, declares cargo/bman/python3/vhco as optional binaries and CARGO_TARGET_DIR/CARGO_HOME/RUSTUP_HOME as optional environment variables, propagates failures, and uses the checked-in Cargo.lock for Cargo build/check/test/clippy/install. build produces the release binary; build_debug produces the debug binary; install first builds with cargo build --locked --release --bin rivet --target-dir ${script_dir}/target, then runs bman add with the quoted absolute ${script_dir}/target/release/rivet path (rivet.exe on Windows). The explicit target directory prevents CARGO_TARGET_DIR from selecting a different artifact; installation stops if the build fails and propagates bman failures. bman manages the global command destination. The main command prints available tasks (perch main, or the script-file invocation perch commands.perch); perch --help lists descriptions. Bare perch displays the installed CLI usage. The test wrapper is named tests because test is a reserved Perch built-in. gates runs fmt_check, check, clippy, tests, docs_check and architecture sequentially and stops on the first failure. Architecture runs vhco validate, sync and check; model/explorer generation remains explicit. clean removes Cargo build artifacts only when explicitly requested. No runtime feature, use case, port, surface, flow or domain delta is needed: these are developer wrappers outside the runtime model. Verification covers perch --check and --help, command dispatch from paths with spaces, Cargo environment forwarding, fail-fast gate behavior, release build/install, Rust formatting/type/lint/tests, documentation links and VHCO architecture/sync/guarantees. README.md and installation/contributor documentation describe the implemented tasks.",
+    "status": "Runtime and Perch developer commands implemented. Perch command set approved by the maintainer on 2026-09-28; installation changed to bman add at the maintainer's explicit request; verified with the installed CLI, real release build/install, Rust checks, documentation checks and VHCO gates.",
+    "quickstart": [
+      "# Perch interface approved by the maintainer on 2026-09-28.",
+      "perch main                         # print the command list",
+      "perch build                        # cargo build --locked --release --bin rivet",
+      "perch build_debug                  # cargo build --locked --bin rivet",
+      "perch install                      # build release into ./target, then bman add the absolute binary path",
+      "perch check                        # cargo check --locked --all-targets",
+      "perch tests                        # cargo test --locked --all-targets",
+      "perch clippy                       # cargo clippy --locked --all-targets -- -D warnings",
+      "perch fmt                          # cargo fmt --all",
+      "perch fmt_check                    # cargo fmt --all -- --check",
+      "perch docs_check                   # python3 scripts/check_docs.py",
+      "perch architecture                 # vhco validate . -\u003e vhco sync . -\u003e vhco check .",
+      "perch gates                        # fmt_check -\u003e check -\u003e clippy -\u003e tests -\u003e docs_check -\u003e architecture",
+      "perch help_cli                     # cargo run --locked --bin rivet -- --help",
+      "perch live                         # vhco live .",
+      "perch spec                         # vhco spec . (generated vhco.json)",
+      "perch docs                         # vhco doc . --format html (generated vhco.html)",
+      "perch clean                        # cargo clean"
+    ]
   },
   "documentation": {
     "readme": "README.md",
@@ -12,7 +34,7 @@
         "title": "Rivet",
         "path": "README.md",
         "kind": "readme",
-        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: draft\ncreated_date: 2026-09-27\nlast_updated: 2026-09-28\ndocument_revision: 7\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, execution, cli, http, mcp, library, policy]\naffected_versions:\n  from: not-applicable\n  to: proposed-v0.1\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Proposed Rivet behavior and design review; no implementation or release claim.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a proposed Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current state: design approved, implementation not started (design revision 8).** This repository contains the original brief, the approved proposal, the approved hand-authored contract, a reference of 159 numbered examples, twelve sample folders and the v0.1.0 plan. It has no runtime implementation, Cargo build, installed Rivet command or release. The maintainer approved the design, contract and plan on 2026-09-28 ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)); [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) is in phase P1.\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n\n## What the design proposes\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+\n      |            |           |               |           |           |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::request\n      |            |           |               |           |           |\n      +------------+-----------+-------+-------+-----------+-----------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Current design (revision 6) |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nCanonical commands (proposed, not runnable yet):\n\n```sh\nrivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'          # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --params '{\"id\":42}'\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Approval gates and risks\n\n```text\n  design review ✔ ──\u003e [G-LIC] ✔ owner authorized Capy ──\u003e [G-SPIKE] every example parses ──\u003e implementation\n  (ADR-0001)            (ADR-0001)                          gate: S01–S159 and docs/demos/*.rivet\n```\n\n| Gate / risk | State |\n|---|---|\n| G-LIC — Capy licence | **Closed 2026-09-28.** Capy's LICENSE text is source-available while its Cargo.toml says MIT; the maintainer owns Capy and authorized Rivet to depend on and ship it ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)). |\n| Parser spike | Implementation starts only after every numbered example and every `docs/demos` `.rivet` file parses cleanly with Capy's public `Library::parse`. |\n| Platform enforcement | Process sandboxing and conditional file updates depend on platform support; still unproven. |\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nImplementation requires the human contract review defined by [AGENTS.md](AGENTS.md). `vhco validate`, `sync` and `check` cannot pass a Rust implementation gate before `src/` exists; they currently report that missing directory. Do not add dummy code or weaken validation to conceal this design-phase state. The examples describe proposed usage and require implementation plus fixture tests before they can be called runnable.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
+        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: active\ncreated_date: 2026-09-27\nlast_updated: 2026-09-28\ndocument_revision: 10\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, execution, cli, http, mcp, library, policy]\naffected_versions:\n  from: \"0.1.0-dev\"\n  to: null\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Current Rivet runtime, source build, installation and developer workflows; no published release claim.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current state: implemented, unreleased (`0.1.0-dev`).** The repository contains the Rust library,\n`rivet` binary, conformance tests and runnable source-build workflows. The approved design and implementation\nplan are recorded in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md) and\n[PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).\nStart with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and\n[installation guide](docs/manuals/man-2026-0002-installation-and-quickstart.md).\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n\n## Build, install and develop\n\nWith Perch on `PATH`, run these from the checkout root. Rust 1.90.0, rustfmt and Clippy are pinned in\n`rust-toolchain.toml`; Python 3 and VHCO are needed for documentation and architecture checks.\n\n```sh\nperch --help           # list all commands and descriptions\nperch build            # optimized binary: target/release/rivet\nperch build_debug      # debug binary: target/debug/rivet\nperch install          # build release, then bman add \"\u003cabsolute binary path\u003e\"\nperch tests            # cargo test --locked --all-targets\nperch gates            # formatting, type-check, lint, tests, docs and VHCO\n```\n\nInstallation requires `bman` on `PATH` and runs `bman add` with the quoted absolute release-binary path.\nBman manages the global bin directory; `bman help` shows its location. The install task explicitly builds\ninto this checkout's `target/` so it always installs that artifact. Other builds respect Cargo configuration,\nincluding `CARGO_TARGET_DIR`. The first build may fetch dependencies from the network.\n\nOther commands: `check`, `clippy`, `fmt`, `fmt_check`, `docs_check`, `architecture`, `help_cli`, `live`,\n`spec`, `docs`, `clean`, and `main`. `perch main` prints a short task list; bare `perch` shows Perch usage.\n`gates` stops at the first failure. `fmt` edits Rust files, `clean` removes Cargo build artifacts, and\n`spec` / `docs` regenerate `vhco.json` / `vhco.html`. `live` runs until interrupted.\n\nFrom another directory, select the file explicitly:\n\n```sh\nperch -f /path/to/rivet/commands.perch build\n```\n\nEvery task runs from the command file's directory. See the\n[complete command table](docs/onboarding/onb-2026-0001-contributor-setup.md#perch-development-commands).\nDirect Cargo and VHCO invocations remain available.\n\n## Quickstart (verified)\n\nThe following was verified on macOS with the current build; request and trace IDs vary. Save this as `app.rivet`:\n\n```rivet\noperation demo.add\n    description \"Add two integers.\"\n    param a integer required description \"First addend.\"\n    param b integer required description \"Second addend.\"\n    output integer description \"The sum.\"\n    return a + b\nend\n\noperation notes.save\n    description \"Save a note to ./out/note.json.\"\n    param text text required description \"The note.\"\n    output json\n    file create \"./out/note.json\" json {text: text}\n    return {saved: true}\nend\n```\n\n```text\n $ mkdir out\n $ rivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'\n {\"request_id\":\"req_…\",\"trace_id\":\"tr_…\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}          exit 0\n\n $ rivet --file app.rivet request notes.save --params '{\"text\":\"hi\"}'     # no policy.json yet\n {… \"error\":{\"kind\":\"permission\",\"code\":\"permission.denied\",\n   \"message\":\"allow_write create on ./out/note.json denied: no policy.json: …\"}}           exit 3\n\n $ rivet --file app.rivet io                                              # every I/O site, nothing runs\n OPERATION   KIND  ACCESS  TARGET           KNOWLEDGE  SOURCE\n notes.save  file  create  ./out/note.json  exact      app.rivet:13\n\n $ rivet --file app.rivet policy generate \u003e policy.draft.json            # review, then adopt\n $ mv policy.draft.json policy.json\n $ rivet --file app.rivet io --check-policy\n notes.save  file  create  ./out/note.json  exact  app.rivet:13  allowed\n\n $ rivet --file app.rivet request notes.save --params '{\"text\":\"hi\"}'\n {\"request_id\":\"req_…\",\"trace_id\":\"tr_…\",\"result\":{\"saved\":true},\"data_count\":0,\"effects\":\"committed\"}\n```\n\n```text\n  no policy.json ──► deny-by-default (exit 3, effects none)\n        │\n  rivet io ──► rivet policy generate ──► human review ──► policy.json ──► request succeeds\n```\n\nWrite the draft to a separate file. Redirecting straight into `policy.json` truncates it before Rivet reads it.\n\n## Runtime overview\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+\n      |            |           |               |           |           |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::request\n      |            |           |               |           |           |\n      +------------+-----------+-------+-------+-----------+-----------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Runtime interface |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nRuntime command examples (provide your own `app.rivet` and policy):\n\n```sh\nrivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'          # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --params '{\"id\":42}'\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Status and platform limits\n\nThe maintainer authorized the Capy dependency in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md).\nValidation results are in [RPT-2026-0001](docs/reports/rpt-2026-0001-validation-of-plan-2026-0001.md): every\nrequirement passes on macOS, and Linux and Windows runs wait on CI.\n\n| Not in this version | What happens |\n|---|---|\n| mTLS serve authentication | `serve` refuses to start: `unsupported.serve_mtls` (exit 5); use bearer tokens |\n| Process sandbox on Linux / Windows | Linux backend gated until verified on kernel ≥ 6.12; others unsupported: `unsupported.sandbox_backend` |\n| Multi-file bundles (`import`) | One entry `.rivet` file per bundle |\n| `finally` | `try … catch … end` only; `with` blocks always close their handles |\n| Stage C forms (FIFO, file watch, TCP TLS, interactive processes, reconnect) | Typed `unsupported.*` (exit 5), no effects |\n| Persistent trace store | Traces live for the process; `rivet trace export REQ --output PATH` saves one |\n\nDetails: [protocol manual](docs/manuals/man-2026-0008-protocols-and-connectors.md).\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nChanges follow the human contract review defined by [AGENTS.md](AGENTS.md). Run `perch architecture` for\n`vhco validate`, `sync` and `check`; run `perch gates` for the development checks. The Perch command set was\napproved by the maintainer on 2026-09-28.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 10 | 2026-09-28 | Claude | TASK-069: verified quickstart (deny-by-default → io → policy generate → allowed) and the current limitations table. |\n| 9 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |\n| 8 | 2026-09-28 | Codex | Added approved Perch build/install/development commands and corrected the obsolete pre-implementation status. |\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
       }
     ]
   },
@@ -753,6 +775,14 @@
           "type": "ValueSpec"
         },
         {
+          "name": "emits_description?",
+          "type": "string"
+        },
+        {
+          "name": "receives_description?",
+          "type": "string"
+        },
+        {
           "name": "errors",
           "type": "DeclaredError[]"
         },
@@ -856,6 +886,14 @@
         {
           "name": "receives?",
           "type": "ValueSpec"
+        },
+        {
+          "name": "emits_description?",
+          "type": "string"
+        },
+        {
+          "name": "receives_description?",
+          "type": "string"
         },
         {
           "name": "errors",
@@ -2345,6 +2383,14 @@
         {
           "name": "receives?",
           "type": "ValueSpec"
+        },
+        {
+          "name": "emits_description?",
+          "type": "string"
+        },
+        {
+          "name": "receives_description?",
+          "type": "string"
         },
         {
           "name": "errors",
@@ -5069,42 +5115,42 @@
       "kind": "domain",
       "name": "RegistryEntry",
       "file": "src/domain/contracts.rs",
-      "line": 260,
+      "line": 269,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CatalogQuery",
       "file": "src/domain/contracts.rs",
-      "line": 428,
+      "line": 449,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "Catalog",
       "file": "src/domain/contracts.rs",
-      "line": 435,
+      "line": 456,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "ExecutionPlan",
       "file": "src/domain/contracts.rs",
-      "line": 441,
+      "line": 462,
       "code": "/// Validated request handed to the execution driver."
     },
     {
       "kind": "domain",
       "name": "RunOutcome",
       "file": "src/domain/contracts.rs",
-      "line": 449,
+      "line": 470,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OutputReport",
       "file": "src/domain/contracts.rs",
-      "line": 457,
+      "line": 478,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -5594,14 +5640,14 @@
       "kind": "domain",
       "name": "Declaration",
       "file": "src/domain/ir.rs",
-      "line": 505,
+      "line": 508,
       "code": "/// `connector NAME mcp|grpc … end` and `auth NAME oauth2 … end`."
     },
     {
       "kind": "domain",
       "name": "CompiledProgram",
       "file": "src/domain/ir.rs",
-      "line": 521,
+      "line": 524,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
@@ -5685,42 +5731,42 @@
       "kind": "domain",
       "name": "BridgeHops",
       "file": "src/domain/mcp.rs",
-      "line": 527,
+      "line": 529,
       "code": "/// Bridge recursion state carried in `_meta` across MCP hops."
     },
     {
       "kind": "domain",
       "name": "McpContext",
       "file": "src/domain/mcp.rs",
-      "line": 560,
+      "line": 562,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "McpRequest",
       "file": "src/domain/mcp.rs",
-      "line": 578,
+      "line": 580,
       "code": "/// `method` is the import suffix (`tools.search`, `resources.read`,"
     },
     {
       "kind": "domain",
       "name": "McpResult",
       "file": "src/domain/mcp.rs",
-      "line": 590,
+      "line": 592,
       "code": "/// Tools: content blocks + structuredContent. Resources: `contents` in"
     },
     {
       "kind": "domain",
       "name": "McpPeerInfo",
       "file": "src/domain/mcp.rs",
-      "line": 631,
+      "line": 633,
       "code": "/// What the server negotiated in `initialize`."
     },
     {
       "kind": "domain",
       "name": "McpReply",
       "file": "src/domain/mcp.rs",
-      "line": 648,
+      "line": 650,
       "code": "/// One correlated JSON-RPC response (notifications and server requests are"
     },
     {
@@ -5728,7 +5774,7 @@
       "name": "connectors.invoke_mcp",
       "note": "the snapshot file format parses strictly and re-serializes to an equal snapshot",
       "file": "src/domain/mcp.rs",
-      "line": 831,
+      "line": 833,
       "code": "#[test]"
     },
     {
@@ -5736,7 +5782,7 @@
       "name": "connectors.invoke_mcp",
       "note": "params are checked against a tool inputSchema with path-named violations",
       "file": "src/domain/mcp.rs",
-      "line": 848,
+      "line": 850,
       "code": "#[test]"
     },
     {
@@ -5744,7 +5790,7 @@
       "name": "connectors.invoke_mcp",
       "note": "tool aliases are deterministic and bridge hop metadata parses from _meta",
       "file": "src/domain/mcp.rs",
-      "line": 863,
+      "line": 865,
       "code": "#[test]"
     },
     {
@@ -7346,7 +7392,7 @@
       "name": "execution.request_operation",
       "note": "params are checked for unknown fields and types before defaults are injected",
       "file": "src/features/execution/request_operation.rs",
-      "line": 358,
+      "line": 360,
       "code": "#[test]"
     },
     {
@@ -7354,7 +7400,7 @@
       "name": "execution.request_operation",
       "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
       "file": "src/features/execution/request_operation.rs",
-      "line": 432,
+      "line": 434,
       "code": "#[tokio::test]"
     },
     {
@@ -7362,7 +7408,7 @@
       "name": "execution.request_operation",
       "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
       "file": "src/features/execution/request_operation.rs",
-      "line": 460,
+      "line": 462,
       "code": "#[test]"
     },
     {
@@ -8852,7 +8898,7 @@
       "name": "h3_unavailable",
       "note": "strict `version 3` and the peer has no HTTP/3 (no QUIC answer, ALPN h3 refused, h3 setup failed)",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 223,
+      "line": 225,
       "code": "match client.send(h3).await {"
     },
     {
@@ -8860,7 +8906,7 @@
       "name": "ambiguous_send",
       "note": "the H3 request may already have reached the server (bytes written, response lost)",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 231,
+      "line": 233,
       "code": "_ =\u003e Err(e),"
     },
     {
@@ -8868,7 +8914,7 @@
       "name": "transports.exchange_http",
       "note": "retries only listed statuses, then maps an unaccepted 404 to http.status with details.status",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 456,
+      "line": 458,
       "code": "#[tokio::test]"
     },
     {
@@ -8876,7 +8922,7 @@
       "name": "transports.exchange_http",
       "note": "accepted 404 decodes; retry on POST is refused before sending",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 486,
+      "line": 488,
       "code": "#[tokio::test]"
     },
     {
@@ -8884,7 +8930,7 @@
       "name": "transports.exchange_http",
       "note": "a hostname resolving to a private address is refused (DNS rebinding), and redirects need their own grant with credentials stripped",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 513,
+      "line": 515,
       "code": "#[tokio::test]"
     },
     {
@@ -8892,7 +8938,7 @@
       "name": "transports.exchange_http",
       "note": "strict version 3 never downgrades; prefer [3, 2] falls back only when the H3 failure wrote no request byte, and a POST whose H3 bytes may have left is sent exactly once",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 623,
+      "line": 625,
       "code": "#[tokio::test]"
     },
     {
@@ -9107,7 +9153,7 @@
       "kind": "infra",
       "name": "execution_driver",
       "file": "src/infra/execution_driver.rs",
-      "line": 267,
+      "line": 302,
       "code": "pub struct Interpreter {"
     },
     {
@@ -9442,7 +9488,7 @@
       "name": "sessions.cancel_session",
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "file": "src/infra/session_driver.rs",
-      "line": 767,
+      "line": 769,
       "code": "#[tokio::test]"
     },
     {
@@ -9956,21 +10002,21 @@
       "note": "the snapshot file format parses strictly and re-serializes to an equal snapshot",
       "code": "#[test]",
       "file": "src/domain/mcp.rs",
-      "line": 831
+      "line": 833
     },
     {
       "subject": "connectors.invoke_mcp",
       "note": "params are checked against a tool inputSchema with path-named violations",
       "code": "#[test]",
       "file": "src/domain/mcp.rs",
-      "line": 848
+      "line": 850
     },
     {
       "subject": "connectors.invoke_mcp",
       "note": "tool aliases are deterministic and bridge hop metadata parses from _meta",
       "code": "#[test]",
       "file": "src/domain/mcp.rs",
-      "line": 863
+      "line": 865
     },
     {
       "subject": "sessions.send_input",
@@ -10103,21 +10149,21 @@
       "note": "params are checked for unknown fields and types before defaults are injected",
       "code": "#[test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 358
+      "line": 360
     },
     {
       "subject": "execution.request_operation",
       "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
       "code": "#[tokio::test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 432
+      "line": 434
     },
     {
       "subject": "execution.request_operation",
       "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
       "code": "#[test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 460
+      "line": 462
     },
     {
       "subject": "execution.run_dag",
@@ -10299,28 +10345,28 @@
       "note": "retries only listed statuses, then maps an unaccepted 404 to http.status with details.status",
       "code": "#[tokio::test]",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 456
+      "line": 458
     },
     {
       "subject": "transports.exchange_http",
       "note": "accepted 404 decodes; retry on POST is refused before sending",
       "code": "#[tokio::test]",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 486
+      "line": 488
     },
     {
       "subject": "transports.exchange_http",
       "note": "a hostname resolving to a private address is refused (DNS rebinding), and redirects need their own grant with credentials stripped",
       "code": "#[tokio::test]",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 513
+      "line": 515
     },
     {
       "subject": "transports.exchange_http",
       "note": "strict version 3 never downgrades; prefer [3, 2] falls back only when the H3 failure wrote no request byte, and a POST whose H3 bytes may have left is sent exactly once",
       "code": "#[tokio::test]",
       "file": "src/features/transports/exchange_http.rs",
-      "line": 623
+      "line": 625
     },
     {
       "subject": "transports.exchange_socket",
@@ -10432,7 +10478,7 @@
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "code": "#[tokio::test]",
       "file": "src/infra/session_driver.rs",
-      "line": 767
+      "line": 769
     },
     {
       "subject": "audit.read_trace",
@@ -14254,7 +14300,7 @@
                 "code": "http.version_unavailable (kind protocol, exit 5)",
                 "propagates": "returns",
                 "file": "src/features/transports/exchange_http.rs",
-                "line": 223,
+                "line": 225,
                 "snippet": "match client.send(h3).await {"
               },
               {
@@ -14263,7 +14309,7 @@
                 "code": "its connection error and nothing is re-sent over TCP, whatever the method",
                 "propagates": "returns",
                 "file": "src/features/transports/exchange_http.rs",
-                "line": 231,
+                "line": 233,
                 "snippet": "_ =\u003e Err(e),"
               }
             ]
