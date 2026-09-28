@@ -2,10 +2,10 @@
 document_id: PROP-2026-0002
 title: "Standard envelopes, pretty JSON, global constants, embeddable library, C ABI and syntax highlighting"
 document_type: proposal
-status: draft
+status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -34,7 +34,7 @@ next_review_date: 2026-10-28
 
 # Standard envelopes, pretty JSON, global constants, embeddable library, C ABI and syntax highlighting
 
-> **Status:** Draft
+> **Status:** Approved
 > **Created:** 2026-09-28
 > **Last Updated:** 2026-09-28
 > **Affected Versions:** 0.2.0
@@ -906,9 +906,11 @@ everything built later (FFI, examples, docs) uses the final shapes.
 
 | Gate | Decision | By | Date |
 |---|---|---|---|
-| G-DESIGN (this proposal) | pending | Project maintainer | — |
-| G-CONTRACT (`vhco-contract.json` delta) | pending | Project maintainer | — |
-| G-PUB (Capy on crates.io as `capy-lang`) | pending, optional | Project maintainer | — |
+| G-DESIGN (this proposal) | approved ([ADR-0004](../../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)) | Project maintainer | 2026-09-28 |
+| G-CONTRACT (`vhco-contract.json` delta) | approved as the Contract Delta above; applied in PLAN-2026-0002 P1 | Project maintainer | 2026-09-28 |
+| G-PUB (Capy on crates.io as `capy-lang`) | open, optional (owner's decision; not in v0.2.0 scope) | Project maintainer | — |
+
+Open questions Q-01…Q-06 are resolved with the recommendations in the table above (ADR-0004).
 
 ## Related Documents
 
@@ -922,4 +924,5 @@ everything built later (FFI, examples, docs) uses the final shapes.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Approved (ADR-0004); moved to approved/; Q-01…Q-06 resolved with the recommendations; PLAN-2026-0002 created. |
 | 1 | 2026-09-28 | Claude | Initial draft from UQ-01…UQ-08, with the maintainer's clarifications: library = Cargo dependency, globals = immutable constants, no `error` in input. |

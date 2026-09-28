@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 7
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -37,7 +37,7 @@ approves one, it moves to [approved/](../approved/index.md) and keeps its file n
 
 | Proposal | Status | Target | Summary |
 |---|---|---|---|
-| [PROP-2026-0002](prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | draft | v0.2.0 | Standard input/output envelopes, pretty JSON, `global` constants, Rivet as a Cargo dependency, C ABI shared/static library, syntax highlighting |
+| [PROP-2026-0002](../approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | approved (moved) | v0.2.0 | Standard input/output envelopes, pretty JSON, `global` constants, Rivet as a Cargo dependency, C ABI shared/static library, syntax highlighting |
 
 - PROP-2026-0001 (Rivet runtime) was implemented in v0.1.0 and lives at
   [implemented/prop-2026-0001-rivet-runtime.md](../implemented/prop-2026-0001-rivet-runtime.md).
@@ -46,16 +46,18 @@ approves one, it moves to [approved/](../approved/index.md) and keeps its file n
 ## Status and maintenance
 
 ```text
-  draft/        PROP-2026-0002  status: draft   (awaiting G-DESIGN, then G-CONTRACT)
+  draft/        (empty)
+  approved/     PROP-2026-0002  ADR-0004 → PLAN-2026-0002 (v0.2.0)
   implemented/  PROP-2026-0001  v0.1.0
 ```
 
-Recently updated, 2026-09-28: PROP-2026-0002 drafted. Update this index when a document changes lifecycle.
+Recently updated, 2026-09-28: PROP-2026-0002 drafted, then approved (ADR-0004) and moved to approved/. Update this index when a document changes lifecycle.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-28 | Claude | PROP-2026-0002 approved and moved to approved/. |
 | 7 | 2026-09-28 | Claude | Added PROP-2026-0002 (draft). |
 | 6 | 2026-09-28 | Claude | PROP-2026-0001 approved and moved to `approved/`; this directory is now empty. |
 | 5 | 2026-09-28 | Claude | Status for design revision 5 with the approval-gate checklist. |

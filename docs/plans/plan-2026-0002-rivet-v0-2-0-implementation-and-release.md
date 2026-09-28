@@ -1,0 +1,651 @@
+---
+document_id: PLAN-2026-0002
+title: "Rivet v0.2.0 implementation, validation and release"
+document_type: plan
+status: approved
+created_date: 2026-09-28
+last_updated: 2026-09-28
+document_revision: 1
+start_date: 2026-09-28
+target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
+authors: [Claude]
+owner: Project maintainer
+reviewers: [Project maintainer]
+systems: [Rivet]
+components: [language, registry, execution, audit, serve, cli, http, ws, poll, mcp, library]
+affected_versions:
+  from: "0.1.0"
+  to: "0.2.0"
+applicable_environments: [development, embedded, server]
+audience: [maintainers, implementers, reviewers]
+scope: >-
+  Everything required to implement PROP-2026-0002 (R1–R18, UC-01–UC-09, C-01–C-13), test and validate it, create
+  and update every user, operator, system, API, migration and release document it affects, and release v0.2.0.
+reason: The maintainer approved PROP-2026-0002 and asked for a plan, then implementation, tests and release, with
+  every documentation deliverable included ("ensure plan contains all docs documentation to add", 2026-09-28).
+dependencies: [PROP-2026-0002, ADR-0004, PLAN-2026-0001, REL-0.1.0, vhco-contract.json, AGENTS.md, DOCUMENTATION.md]
+related_documents: [PROP-2026-0002, ADR-0004, REL-0.1.0, RPT-2026-0001, DEMO-2026-0015]
+supersedes: null
+superseded_by: null
+tags: [rivet, plan, v0.2.0, envelope, globals, library, ffi, highlighting, documentation]
+confidentiality: internal
+review_cycle: on-change
+next_review_date: 2026-10-28
+---
+
+# Rivet v0.2.0 implementation, validation and release
+
+> **Status:** Approved
+> **Created:** 2026-09-28
+> **Last Updated:** 2026-09-28
+> **Affected Versions:** 0.1.0 → 0.2.0
+> **Owner:** Project maintainer
+> **Affected Components:** language, registry, execution, audit, serve, cli, http, ws, poll, mcp, library
+
+## Summary
+
+This is the live execution ledger for turning the approved
+[PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
+([ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)) into Rivet **v0.2.0**.
+It has five gated phases, like PLAN-2026-0001:
+
+1. contract and experiments;
+2. implementation, in five increments;
+3. tests and validation;
+4. documentation and demos;
+5. release.
+
+Every requirement traces to tasks, files, tests, documents and a release-verification row. The
+[Documentation and Demo Checklist](#documentation-and-demo-checklist) lists **every** document to create or update
+(D-01…D-70), including each of the 62 current-state files whose examples change with the new envelope.
+
+```text
+ PROP-2026-0002 ──► ADR-0004 ──► PLAN-2026-0002 (this) ──► P1 contract delta + RES-2026-0004 experiments
+                                                               │
+        ┌──────────────────────────────┬───────────────────────┼───────────────────────┬──────────────────────┐
+        ▼                              ▼                       ▼                       ▼                      ▼
+  P2a envelopes + input          P2b globals            P2c facade + features   P2d C ABI (librivet)   P2e highlighting
+  + pretty (R1–R6, breaking)     (R7–R9)                + rivet-runtime (R10–12) (R13–R15)              (R16–R17)
+        └──────────────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
+                                                               │
+                             P3 tests: TEST-2026-0034…0048 + regression re-run ─► RPT-2026-0015
+                                                               │
+     P4 docs: MIG-2026-0001 · API-0006/0007 · MAN-0009/0010 · SYS-0010/0011 · 62 files re-shaped · demos 14–16 · DEMO-2026-0019
+                                                               │
+                         P5 Cargo.toml 0.2.0 ─► release: v0.2.0 ─► tag v0.2.0 ─► REL-0.2.0 ─► §34 gate
+```
+
+## Objective, Scope and Proposal Baseline
+
+**Objective.** Ship Rivet v0.2.0 with:
+- one output envelope and one input envelope on every surface;
+- opt-in pretty JSON;
+- immutable `global` constants;
+- Rivet usable as a Cargo dependency (package `rivet-runtime`, lib `rivet`, Cargo features, the `cli` feature);
+- a C ABI shared and static library (`librivet`, `rivet.h`);
+- syntax highlighting (a TextMate grammar, a VS Code extension and `rivet highlight`).
+
+Everything ships with the current-state documentation set required by DOCUMENTATION.md.
+
+**Proposal baseline.** PROP-2026-0002 revision 2 (approved 2026-09-28), with Q-01…Q-06 resolved per its
+recommendations (ADR-0004).
+
+| Owned by this plan | IDs |
+|---|---|
+| Goals | G-01 – G-07 |
+| Requirements | R1 – R18 |
+| Use cases | UC-01 – UC-09 |
+| Proposed changes | C-01 – C-13 |
+| Proposal file rows | F-01 – F-18 (mapped to PF-IDs below) |
+| Proposal tests | T-01 – T-15 (same IDs); plan-level checks T-27 – T-34 |
+
+**Not owned by this plan** (per ADR-0004):
+- crates.io publication (G-PUB, the owner's decision);
+- tree-sitter (Q-02), JSON colourization (Q-03) and a `rivet globals` command (Q-06);
+- client-supplied `request_id` (Q-01);
+- Marketplace publishing;
+- the v0.1.0 remote-dependent tasks, which stay with PLAN-2026-0001 (TASK-051/078/080/081).
+
+```text
+            v0.2.0 scope
+ ┌───────────────────────────────────────────────────────────────────────────────┐
+ │ wire      ResponseEnvelope · InputEnvelope · pretty · deprecation aliases      │
+ │ language  global NAME = EXPR (immutable, load-time) · exact manifest targets   │
+ │ packaging rivet-runtime (lib rivet, bin rivet[cli]) · features · facade        │
+ │ C ABI     rivet-ffi → librivet .so/.dylib/.dll + .a/.lib · rivet.h · rivet.pc  │
+ │ editors   keywords.json → rivet.tmLanguage.json → VS Code .vsix · highlight    │
+ └───────────────────────────────────────────────────────────────────────────────┘
+   outside: crates.io (G-PUB) · tree-sitter · JSON colour · push/CI (no remote)
+```
+
+## Live Status Summary
+
+| State | Count | Notes |
+|---|---:|---|
+| NOT STARTED | 59 | P1 remainder – P5 |
+| IN PROGRESS | 0 | |
+| BLOCKED | 2 | TASK-095 push and TASK-096 CI (no git remote) |
+| DONE | 3 | TASK-001, TASK-002, TASK-003 (approval, plan, indexes) |
+| FAILED | 0 | |
+| DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
+
+- **Current phase:** P1 (contract and experiments).
+- **Next action:** TASK-004, the contract delta in `vhco-contract.json`.
+- **Blockers:** no git remote (push, CI, and git-dependency consumers of the `v0.2.0` tag); disk space (4.3 GiB
+  free at plan start, with `target/` at 28 GiB) forces sequential builds and `cargo clean` (TASK-008).
+- **Last updated:** 2026-09-28.
+- **Release target:** v0.2.0.
+
+## Requirements and Use Cases
+
+| Req / UC | Why it exists | Planned outcome (how it is satisfied) | Acceptance criteria | Owning phase | Status |
+|---|---|---|---|---|---|
+| R1 / UC-01, UC-02 | UQ-03/05: one output shape | `ResponseEnvelope` serializer used by every surface | T-01 schema over CLI, HTTP, SSE, NDJSON, polling, WS, MCP, library, FFI | P2a | NOT STARTED |
+| R2 / UC-01 | UQ-05: status and error semantics | `status` ok/error/cancelled/accepted; `type` result/data; `effects` at the top level | T-01 over every API-2026-0005 code | P2a | NOT STARTED |
+| R3 / UC-01 | UQ-03: every JSON output | Built-ins, GET routes and CLI `--json` outputs enveloped | T-03 | P2a | NOT STARTED |
+| R4 / UC-01 | UQ-06: one input shape | `InputEnvelope::parse` shared by every surface; `--data`, `--input` | T-02 | P2a | NOT STARTED |
+| R5 / UC-09 | Compatibility for 0.1.0 clients | `id`/`params` aliases in 0.2.x with deprecation signals; mixed keys refused | T-15 | P2a | NOT STARTED |
+| R6 / UC-03 | UQ-04: readable JSON | `--pretty`, `?pretty=true`, `to_json_pretty`, FFI `pretty`; refused on NDJSON/SSE | T-05 | P2a | NOT STARTED |
+| R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | NOT STARTED |
+| R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | NOT STARTED |
+| R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | NOT STARTED |
+| R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | NOT STARTED |
+| R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | NOT STARTED |
+| R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | NOT STARTED |
+| R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | NOT STARTED |
+| R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | NOT STARTED |
+| R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | NOT STARTED |
+| R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | NOT STARTED |
+| R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | NOT STARTED |
+| R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
+
+## Applicable Project Standards
+
+| Rule | Source | Plan impact | Validation |
+|---|---|---|---|
+| Contract before code | AGENTS golden rule 1; ADR-0004 G-CONTRACT | TASK-004 applies the proposal's Contract Delta before any P2 code | `vhco sync .` lists only expected gaps until they are implemented |
+| Five buckets, pure use cases | AGENTS | `compile_globals`, `highlight_source`, `parse_input` are use cases; envelope shaping is a pure domain function; `setup_ffi.rs` is the `ffi` surface | `vhco validate .` (T-28) |
+| Annotate everything | AGENTS rules 6–7 | `vhco:` annotations on every new file; contract todos claimed | `vhco sync .` = 0 at P3 |
+| Test each use case | AGENTS rule 8 | New conformance suites + colocated tests | T-01…T-15 |
+| README and docs current | AGENTS rule 9; DOCUMENTATION §§30–31 | P4 checklist, including the 62-file envelope sweep | T-31 |
+| Live ledger | DOCUMENTATION §4.5 | Seven status values; evidence on every DONE/FAILED/BLOCKED/DEFERRED | Phase exits |
+| Incidents and troubleshooting | DOCUMENTATION §§25–26 | Every unexpected defect → INC-2026-0009+; reusable problems → TRBL-2026-0004+ | T-31 |
+| Tests and validation recorded | DOCUMENTATION §§27–28 | TEST-2026-0034…0048 (new) + regression re-records; RPT-2026-0015 | T-32 |
+| Release verification guide | DOCUMENTATION §29 | DEMO-2026-0019 + demos 01–16 executed | T-30 |
+| Migrations documented | DOCUMENTATION §4.21 | MIG-2026-0001 with a rollback plan | T-31 |
+| One version source, tag = commit | DOCUMENTATION §32 | Both packages share one version (workspace `version`); `check_version.py` also checks `rivet_version()` | T-33 |
+| Release completion gate | DOCUMENTATION §34 | Walked in REL-0.2.0 | TASK-094 |
+| Lots of ASCII visuals | CLAUDE.md | Every new manual, system, API and migration document has journey/sequence/state visuals | T-31 review |
+
+## Measurable Claims
+
+PROP-2026-0002 makes **no performance claim**. It states a size cost (the new envelope keys add about 60–80 bytes
+per response), which is not a claim to measure. The feature split is expected to shrink `--no-default-features`
+builds; this is recorded as an observation in RES-2026-0004, not an acceptance threshold.
+
+| Measurement | Baseline method | Test | Controlled environment | Acceptance threshold | Report destination |
+|---|---|---|---|---|---|
+| None (no optimization claim) | — | — | — | — | — |
+
+## Prerequisites
+
+| # | Prerequisite | Why | Task |
+|---|---|---|---|
+| 1 | G-DESIGN approved | No work before approval | TASK-001 (DONE, ADR-0004) |
+| 2 | G-CONTRACT: contract delta applied | AGENTS contract-first | TASK-004 |
+| 3 | Disk space ≥ 15 GiB free | Release + debug + FFI builds; 4.3 GiB free at start | TASK-008 (`cargo clean`, sequential builds) |
+| 4 | Toolchain: Rust 1.90, `cbindgen` (cargo install), Node.js + `npx` (dev only: `vsce`, `vscode-tmgrammar-test`), a C compiler, Python 3 | FFI, editors, tests | TASK-008 |
+| 5 | v0.1.0 tag exists | Regression baseline and migration "before" | Done (f69b5b9) |
+
+## Phases, Entry Gates and Exit Gates
+
+```text
+ P1 contract + experiments ─► P2a envelopes ─► P2c facade/features ─► P2d C ABI ─┐
+                              P2b globals  ───────────────────────────────────────┼─► P3 test+validate ─► P4 docs+demos ─► P5 release
+                              P2e highlighting ───────────────────────────────────┘
+ Sequential execution by agents in the main checkout (disk); each increment ends green and committed.
+```
+
+| Phase | Purpose | Entry criteria | Exit criteria | Depends on | Status |
+|---|---|---|---|---|---|
+| P1 | Contract delta; experiments E1–E3; disk and tooling | This plan approved | Contract updated; RES-2026-0004 written; ADR-0005 recorded; ≥ 15 GiB free | — | IN PROGRESS |
+| P2a | Envelopes, input, pretty (breaking) | P1 exit | T-01–T-05, T-15 green; all 0.1.0 suites updated and green | P1 | NOT STARTED |
+| P2b | Globals | P1 exit | T-06–T-08 green | P1 | NOT STARTED |
+| P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | NOT STARTED |
+| P2d | C ABI | P2c exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
+| P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | NOT STARTED |
+| P3 | Full test and validation | P2a–P2e exit | T-01–T-15 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
+| P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
+| P5 | Version, release commit, tag, REL | P4 exit | §34 gate walked; T-33 | P4 | NOT STARTED |
+
+## Live Work Checklist
+
+Owners: **M** = project maintainer; **I** = implementer (agent). Each P2 task follows the AGENTS loop: claim the
+contract todo, write the code, add a colocated or conformance test, then run `vhco validate .` and `vhco sync .`.
+
+### P1 — Contract and experiments
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-001 | P1 | Record approval: ADR-0004; move PROP-2026-0002 to `approved/` | all | `docs/decisions/adr-0004-…md`, proposal | review | — | M/I | DONE | ADR-0004 (2026-09-28) |
+| TASK-002 | P1 | Create this plan; link it from `docs/plans/index.md`, `docs/README.md`, `docs/index.md` | R18 | this file, indexes | T-31 | TASK-001 | I | DONE | PLAN-2026-0002 rev 1 |
+| TASK-003 | P1 | Update proposal/decision indexes for the approval | R18 | `docs/proposals/**/index.md`, `docs/decisions/index.md` | T-31 | TASK-001 | I | DONE | indexes updated |
+| TASK-004 | P1 | Apply the proposal's Contract Delta to `vhco-contract.json` by hand. Domain: `ResponseEnvelope`, `InputEnvelope`, `OutputFormat`, `EnvelopeStatus`, `RecordType`, `GlobalDecl`, `GlobalScope`, `HighlightToken`, `HighlightFormat`, `FfiOptions`; `CapabilityReport.features`, `abi_version`. Use cases: `language.compile_globals`, `language.highlight_source`, `serve.parse_input`. Surface `ffi`. CLI triggers `highlight`, `--data/--input/--pretty`. Keep reviewed wording | all / C-01–C-13 | `vhco-contract.json` | `vhco sync .` shows only unimplemented pieces | TASK-001 | I | NOT STARTED | |
+| TASK-005 | P1 | E1: a Cargo workspace (root package `rivet-runtime` + `ffi/`) is accepted by `vhco validate/sync/check`; if not, record the fallback (shims behind an `ffi` feature in the main crate) | R13 / C-10 | `Cargo.toml` (scratch branch) | `vhco validate .` | TASK-004 | I | NOT STARTED | |
+| TASK-006 | P1 | E2: `#[no_mangle] extern "C"` shims in `rivet-ffi` export from both `cdylib` and `staticlib`; `nm -gU` lists only `rivet_*`; a C program links statically on macOS; capture `--print native-static-libs` | R13 / C-10 | scratch | `nm`, `cc` | TASK-005 | I | NOT STARTED | |
+| TASK-007 | P1 | E3: cfg-gating adapter registration in `runtime.rs` compiles with `--no-default-features`, and each single feature builds | R11 / C-08 | scratch | `cargo build --no-default-features` | TASK-004 | I | NOT STARTED | |
+| TASK-008 | P1 | Environment: `cargo clean`; confirm ≥ 15 GiB free; install `cbindgen`; confirm Node/npx and a C compiler; document the dev prerequisites | — | — | `df -h`, tool versions | — | I | NOT STARTED | |
+| TASK-009 | P1 | Write RES-2026-0004 (E1–E3 results) and ADR-0005 (workspace layout, package name `rivet-runtime`, feature set, fallback if needed); update the research and decision indexes | R10–R13 | docs | T-31 | TASK-005–007 | I | NOT STARTED | |
+
+### P2a — Envelopes, input and pretty (breaking)
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-010 | P2a | `src/domain/envelope.rs`: `ResponseEnvelope`, `InputEnvelope`, `OutputFormat`, `EnvelopeStatus`, `RecordType`. `from(Completion / RivetError / DataEvent / SessionReceipt)`, `parse(json, legacy_ok)`, `to_json`, `to_json_pretty`. Key order R1. Hand-written JSON Schemas `docs/api/schemas/{response,input,stream-record}.schema.json`, validated in tests | R1, R2, R4–R6 / C-01, C-02, C-04 | PF-01 | `conformance_envelope` | TASK-004 | I | NOT STARTED | |
+| TASK-011 | P2a | CLI: `request` prints envelopes; `--data`; `--input FILE\|-`; `--params` alias with `warning[deprecated.params]`; global `--pretty`; `--pretty --stream` → validation.usage; every `--json` output (list, describe, outputs, io, graph, policy explain/generate, trace, auth, connectors, check) enveloped with `operation` = the built-in ID; error output on stdout/stderr unchanged in location | R1, R3–R6 | PF-03 | T-01–T-05 | TASK-010 | I | NOT STARTED | |
+| TASK-012 | P2a | HTTP: `/v1/request` input parser; `Deprecation: true`; `?pretty=true` on JSON routes; SSE records; GET `/v1/operations[/{id}[/outputs]]`, `/v1/io`, `/v1/policy/generate` and `/v1/health` return envelopes; `validation.pretty_stream` on SSE with pretty; access log `deprecated=1` | R1, R3–R6 | PF-03 | T-01–T-05, T-15 | TASK-010 | I | NOT STARTED | |
+| TASK-013 | P2a | Polling (`accepted` receipt envelope, event records) and WebSocket (request frames `{type:"request",ref,operation,data}`, record frames with `ref`) | R1, R4 | PF-03 | T-01, T-02, T-04 | TASK-010 | I | NOT STARTED | |
+| TASK-014 | P2a | MCP: `structuredContent` = envelope, text content = envelope JSON, `isError` = status error; `rivet.request` tool schema `{operation,data}` (alias `id/params`); sessions tools input `data` | R1, R4 | PF-03 | T-01, T-02 | TASK-010 | I | NOT STARTED | |
+| TASK-015 | P2a | Library: `Runtime::call(InputEnvelope) -> ResponseEnvelope`; `request(...)` kept; stream `Envelope` renders as records; `ResponseEnvelope::from(Completion)` | R1, R4 | PF-03 | T-01, T-02 | TASK-010 | I | NOT STARTED | |
+| TASK-016 | P2a | `--endpoint` remote client and `infra/remote_client.rs` decode 0.2 envelopes; a 0.1 server gives `protocol.endpoint` with a version hint from `/v1/health` | R1 | PF-04 | T-02 | TASK-012 | I | NOT STARTED | |
+| TASK-017 | P2a | Error registry: `validation.input_envelope` (2/422), `validation.pretty_stream` (2/400) | R4–R6 | PF-02 | T-05, T-15 | TASK-010 | I | NOT STARTED | |
+| TASK-018 | P2a | Update every existing conformance suite (27 suites + samples) to the envelope and input shapes; no behaviour change allowed | R1 | tests | full `cargo test` | TASK-011–017 | I | NOT STARTED | |
+| TASK-019 | P2a | Update demo request fixtures (`docs/demos/**/requests/*.json\|jsonl`) and fixture scripts to the input envelope so the demos stay executable | R4 | fixtures | T-30 | TASK-018 | I | NOT STARTED | |
+
+### P2b — Globals
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-020 | P2b | Grammar: top-level `global NAME = EXPR` in `rivet.capy`; lowering to `GlobalDecl` (`domain/ir.rs`) | R7 / C-05 | PF-05 | T-06 | TASK-004 | I | NOT STARTED | |
+| TASK-021 | P2b | Use case `features/language/compile_globals.rs`: constant evaluation in declaration order (literals, lists, objects, arithmetic, comparison, interpolation, pure built-ins over earlier globals); codes `syntax.global`, `check.global_not_constant`, `check.global_forward_ref`, `check.global_duplicate` | R7, R8 | PF-06 | T-06, T-07 | TASK-020 | I | NOT STARTED | |
+| TASK-022 | P2b | Frame lookup: locals → params → globals; `check.global_shadow` (param, local, loop variable, binding, `as NAME`) and `check.global_assign` at compile time | R7, R8 | PF-07 | T-06, T-07 | TASK-021 | I | NOT STARTED | |
+| TASK-023 | P2b | Effect analysis and call graph substitute globals; targets built only from literals and globals are `exact`; `policy generate` emits exact grants | R9 / C-06 | PF-08 | T-08 | TASK-021 | I | NOT STARTED | |
+| TASK-024 | P2b | `tests/conformance_globals.rs` (T-06–T-08), including concurrent requests reading the same values | R7–R9 | tests | T-06–T-08 | TASK-022, 023 | I | NOT STARTED | |
+
+### P2c — Package, facade and features
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-030 | P2c | Workspace root; package `rivet-runtime`, `[lib] name = "rivet"`, `[[bin]] rivet` with `required-features = ["cli"]`; `workspace.package.version` shared with `rivet-ffi` | R10, R12 / C-07, C-09 | PF-10 | T-09 | TASK-009, P2a | I | NOT STARTED | |
+| TASK-031 | P2c | Facade in `src/lib.rs`: `Runtime`, `RuntimeBuilder`, `Policy`, `Value`, `InputEnvelope`, `ResponseEnvelope`, `Envelope`, `Error`, `DataSink`, `highlight`; internals `pub(crate)` or `#[doc(hidden)] pub mod internal`; tests use the facade or `internal` | R10 / C-07 | PF-09 | T-09 | TASK-030 | I | NOT STARTED | |
+| TASK-032 | P2c | Cargo features `serve`, `grpc`, `quic` (+ HTTP/3), `oauth`, `cli`; default = `serve,grpc,quic,oauth`; cfg-gated dependencies and adapter registration; `unsupported.feature` (5/501, `details.feature`); `rivet.capabilities.features` | R11 / C-08 | PF-10 | T-10 | TASK-030 | I | NOT STARTED | |
+| TASK-033 | P2c | `examples/embed.rs` (facade only); convert `docs/demos/12-library/embedding.rs.txt` into a compiled example (closes PLAN-2026-0001 D-13 note) | R10 | examples | T-09 | TASK-031 | I | NOT STARTED | |
+| TASK-034 | P2c | `commands.perch` build/install/tests pass `--features cli` (or `--all-features` where right); CI feature matrix; `scripts/check_version.py` reads the workspace version | R11 | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | `perch --check`; T-10 | TASK-032 | I | NOT STARTED | |
+| TASK-035 | P2c | crates.io readiness: package metadata (`keywords`, `categories`, `documentation`, `include`), `cargo package --list` clean. `cargo publish --dry-run` is expected to fail on the git dependency; record it | R12 | `Cargo.toml` | T-10 | TASK-030 | I | NOT STARTED | |
+| TASK-038 | P2c | Publish Capy as `capy-lang` and `rivet-runtime` to crates.io | R12 | — | — | G-PUB | M | DEFERRED | ADR-0004: owner's decision, outside v0.2.0 |
+
+### P2d — C ABI
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-040 | P2d | `src/orchestrator/setup_ffi.rs` (surface `ffi`): runtime handle (owns a tokio runtime), `request` (blocking), call handles (start/next/send/finish_input/cancel/free) over the session driver, `pretty`, `highlight` passthrough, `catch_unwind`, null/UTF-8/JSON guards, handle generation checks | R13–R15 / C-10 | PF-11 | T-11, T-12 | P2c | I | NOT STARTED | |
+| TASK-041 | P2d | `ffi/` crate: `crate-type = ["cdylib","staticlib"]`, lib name `rivet` (→ `librivet`), `#[no_mangle] extern "C"` shims only; `cbindgen.toml`; checked-in `include/rivet.h` (CI diff check); `rivet.pc.in` with `Libs.private` per OS | R13 | PF-12 | T-11 | TASK-040 | I | NOT STARTED | |
+| TASK-042 | P2d | Examples: `examples/c/demo.c` + `Makefile` (shared and static), `examples/python/demo.py` (ctypes); stream, input and cancel shown | R13, R15 | examples | T-11 | TASK-041 | I | NOT STARTED | |
+| TASK-043 | P2d | Tests: `ffi/tests/` (Rust calling the extern functions: null, bad UTF-8, bad JSON, panic probe, double free, free-while-running) and `tests/conformance_ffi.rs` driving the C example; ASan build on Linux when CI exists | R14 | tests | T-11, T-12 | TASK-041 | I | NOT STARTED | |
+| TASK-044 | P2d | `rivet.capabilities.abi_version`; `rivet_version()` equals the crate version (T-33) | R13 | PF-11 | T-11, T-33 | TASK-040 | I | NOT STARTED | |
+
+### P2e — Highlighting
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-050 | P2e | `editors/gen_grammar.py`: extract `rivet.capy` literals + class table into `editors/keywords.json`, then generate `editors/rivet.tmLanguage.json` (classes: declaration, control, option, type, effect, string, interpolation, number, boolean/null, comment `#`, operation id, global, operator) | R16 / C-11 | PF-14 | T-13 | TASK-020 (so `global` is included) | I | NOT STARTED | |
+| TASK-051 | P2e | `editors/vscode/`: `package.json` (version = workspace version), `language-configuration.json` (`#` comments, brackets, `end` indentation), grammar link, README; `npx @vscode/vsce package` → `rivet-<ver>.vsix` | R16 | PF-14 | T-13 | TASK-050 | I | NOT STARTED | |
+| TASK-052 | P2e | Use case `features/language/highlight_source.rs` (pure, over the parser port) + ANSI/HTML/JSON renderers; CLI `rivet highlight FILE [--format …]` (ansi on a TTY, json otherwise); library `rivet::highlight::tokens` | R17 / C-12 | PF-13 | T-14 | TASK-004 | I | NOT STARTED | |
+| TASK-053 | P2e | Tests: keyword drift (`editors/check_keywords.py` in `cargo test` via a small Rust test or CI step); `vscode-tmgrammar-test` snapshots over REF-2026-0002 blocks and demo sources (Node optional job); `tests/conformance_highlight.rs` goldens | R16, R17 | tests | T-13, T-14 | TASK-050–052 | I | NOT STARTED | |
+
+### P3 — Tests and validation
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-060 | P3 | Full gates: `cargo fmt --check`, `clippy --workspace --all-targets --all-features -D warnings`, `cargo test --workspace --all-features`, feature matrix, `cargo deny check`, release build of both crates, `vhco assure` | all | — | T-27, T-28, T-34 | P2* | I | NOT STARTED | |
+| TASK-061 | P3 | TEST documents for new tests TEST-2026-0034…0048 (T-01…T-15) and re-record the regression suites TEST-2026-0001…0033 at the RC commit (revision bump; results for v0.2.0) | all | docs | T-32 | TASK-060 | I | NOT STARTED | |
+| TASK-062 | P3 | Validation report RPT-2026-0015 (R1–R18 PASS/PARTIAL/FAIL; deviations; unintended behaviour; limitations) | all | docs | T-32 | TASK-061 | I | NOT STARTED | |
+| TASK-063 | P3 | Record every unexpected defect as INC-2026-0009+ and reusable problems as TRBL-2026-0004+ | — | docs | T-31 | ongoing | I | NOT STARTED | |
+| TASK-064 | P3 | Security checks: secret-canary scan of all test output (`--nocapture`), FFI misuse suite, confirmation that a global cannot hold a secret | R14, R8 | — | T-12 | TASK-060 | I | NOT STARTED | |
+
+### P4 — Documentation and demos
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-070 | P4 | Envelope sweep: update every example in the 62 current-state files listed in D-40…D-66 to the 0.2.0 envelopes, input keys and flags; paste real output from the RC build | R18 / C-13 | docs | T-30, T-31 | P3 | I | NOT STARTED | |
+| TASK-071 | P4 | New API docs: API-2026-0006 (envelope reference + schemas), API-2026-0007 (C ABI reference) | R1–R6, R13–R15 | docs | T-31 | P3 | I | NOT STARTED | |
+| TASK-072 | P4 | New manuals: MAN-2026-0009 (C ABI and FFI), MAN-2026-0010 (editor support and highlighting); chapter updates listed in D-20…D-29 | R7–R17 | docs | T-30 | P3 | I | NOT STARTED | |
+| TASK-073 | P4 | New system docs: SYS-2026-0010 (FFI surface and packaging), SYS-2026-0011 (highlighting and grammar generation); updates D-30…D-39 | R10–R17 | docs | review | P3 | I | NOT STARTED | |
+| TASK-074 | P4 | Migration guide MIG-2026-0001 + new `docs/migrations/index.md` | R5 | docs | T-31 | P3 | I | NOT STARTED | |
+| TASK-075 | P4 | New demos 14-globals (DEMO-2026-0016), 15-ffi (DEMO-2026-0017), 16-editor (DEMO-2026-0018), executed literally; demos index/README/manifest | R7–R17 | docs/demos | T-30 | P3 | I | NOT STARTED | |
+| TASK-076 | P4 | Re-execute demos 01–13 against the RC and update their READMEs (verification records, `verified_against: "0.2.0"`) | R18 | docs/demos | T-30 | TASK-070 | I | NOT STARTED | |
+| TASK-077 | P4 | Release verification guide DEMO-2026-0019 (U-01…U-18, one per requirement; per-surface success and failure; FFI and editor rows; verification record) | R18 | docs/demos | T-30 | TASK-075, 076 | I | NOT STARTED | |
+| TASK-078 | P4 | REF-2026-0002: `global` syntax row and examples; CLI mapping `--data`/`--input`/`--pretty`/`highlight`; envelope examples; status lines re-verified | R7, R4 | docs | T-29 | P3 | I | NOT STARTED | |
+| TASK-079 | P4 | Architecture, security, operations, runbooks, onboarding updates (D-30…D-39) | R10–R14 | docs | T-31 | P3 | I | NOT STARTED | |
+| TASK-080 | P4 | README.md, `docs/README.md`, `docs/index.md`, and `AGENTS.md` project facts (workspace, `ffi` surface, features) | R18 | docs | T-31 | all P4 | I | NOT STARTED | |
+| TASK-081 | P4 | Record the six documentation-impact decisions (findings table + REL-0.2.0) | R18 | docs | T-32 | all P4 | I | NOT STARTED | |
+| TASK-082 | P4 | Documents with `review_cycle: on-release`: set `next_review_date`; `vhco doc` drift check | R18 | docs | T-31 | all P4 | I | NOT STARTED | |
+
+### P5 — Version, release and rollout
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-090 | P5 | Release candidate approval (maintainer standing approval via ADR-0004 unless revoked) | all | — | — | P4 | M | NOT STARTED | |
+| TASK-091 | P5 | Workspace version `0.1.0` → `0.2.0`; `.vsix` version; `rivet_version()`; T-33 (`scripts/check_version.py --tag` extended to FFI and vsix) | release | `Cargo.toml`, `editors/vscode/package.json` | T-33 | TASK-090 | I | NOT STARTED | |
+| TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | NOT STARTED | |
+| TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | NOT STARTED | |
+| TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | NOT STARTED | |
+| TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | BLOCKED | no git remote |
+| TASK-096 | P5 | CI on Linux and Windows; post-release verification of DEMO-2026-0019 on the published artifacts | release | — | CI | TASK-095 | M/I | BLOCKED | no git remote |
+
+## File and Artifact Checklist
+
+CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
+
+### Production
+
+| ID | Category | Exact path | CRUD | Planned edit (why / what) | Req / tasks | Proposal F | Status | Verification |
+|---|---|---|---|---|---|---|---|---|
+| PF-01 | production | `src/domain/envelope.rs` (+ `domain/mod.rs`) | CREATE | Envelope types, parser, serializer, formats | R1–R6 / 010 | F-01 | NOT STARTED | T-01–T-05 |
+| PF-02 | production | `src/domain/contracts.rs`, `src/domain/errors.rs` | UPDATE | Serialize through PF-01; new error codes | R1, R4–R6 / 010, 017 | F-02 | NOT STARTED | T-01 |
+| PF-03 | production | `src/orchestrator/setup_{cli,http,ws,poll,mcp,library,serve}.rs`, `src/io/{cli,http,ws,mcp,library}/**`, `src/orchestrator/builtins.rs` | UPDATE | Input parsing, output writing, flags, pretty, Deprecation | R1, R3–R6 / 011–015 | F-03, F-04 | NOT STARTED | T-01–T-05 |
+| PF-04 | production | `src/orchestrator/remote_cli.rs`, `src/infra/remote_client.rs` | UPDATE | Decode 0.2 envelopes; version hint | R1 / 016 | F-04 | NOT STARTED | T-02 |
+| PF-05 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `global` form and `GlobalDecl` | R7 / 020 | F-05, F-06 | NOT STARTED | T-06 |
+| PF-06 | production | `src/features/language/compile_globals.rs` | CREATE | Constant evaluation and check codes | R7, R8 / 021 | F-06 | NOT STARTED | T-06, T-07 |
+| PF-07 | production | `src/infra/execution_driver.rs` | UPDATE | Read-only global scope | R7 / 022 | F-07 | NOT STARTED | T-06 |
+| PF-08 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/generate_policy.rs` | UPDATE | Global substitution | R9 / 023 | F-08 | NOT STARTED | T-08 |
+| PF-09 | production | `src/lib.rs`, module visibility across `src/**` | UPDATE | Facade; internals hidden | R10 / 031 | F-09 | NOT STARTED | T-09 |
+| PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | NOT STARTED | T-10 |
+| PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic | R13–R15 / 040, 044 | F-11 | NOT STARTED | T-11, T-12 |
+| PF-12 | production | `ffi/Cargo.toml`, `ffi/src/lib.rs`, `ffi/cbindgen.toml`, `ffi/include/rivet.h`, `ffi/rivet.pc.in` | CREATE | Shims, header, pkg-config | R13 / 041 | F-12 | NOT STARTED | T-11 |
+| PF-13 | production | `src/features/language/highlight_source.rs`, `src/io/cli/**` (`highlight`) | CREATE / UPDATE | Tokenizer, renderers, command | R17 / 052 | F-13 | NOT STARTED | T-14 |
+| PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | NOT STARTED | T-13 |
+| PF-15 | production | `vhco-contract.json` | UPDATE | Contract Delta | all / 004 | F-16 | NOT STARTED | T-28 |
+| PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | NOT STARTED | T-10, T-33 |
+| PF-17 | examples | `examples/embed.rs`, `examples/c/{demo.c,Makefile}`, `examples/python/demo.py`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples | R10, R13 / 033, 042 | — | NOT STARTED | T-09, T-11 |
+| PF-18 | agent guide | `AGENTS.md` (project facts) | UPDATE | Workspace, `ffi` surface, features | R18 / 080 | — | NOT STARTED | review |
+
+### Tests and fixtures
+
+| ID | Category | Exact path | CRUD | Planned edit | Req / tasks | Status | Verification |
+|---|---|---|---|---|---|---|---|
+| PF-T01 | test | `tests/conformance_envelope.rs` | CREATE | T-01–T-05, T-15 | R1–R6 / 010–018 | NOT STARTED | `cargo test` |
+| PF-T02 | test | `tests/conformance_globals.rs` | CREATE | T-06–T-08 | R7–R9 / 024 | NOT STARTED | `cargo test` |
+| PF-T03 | test | `tests/conformance_features.rs` + CI feature matrix | CREATE | T-10 | R11 / 032 | NOT STARTED | CI / local |
+| PF-T04 | test | `tests/conformance_ffi.rs`, `ffi/tests/*.rs` | CREATE | T-11, T-12 | R13–R15 / 043 | NOT STARTED | `cargo test --workspace` |
+| PF-T05 | test | `tests/conformance_highlight.rs`, `editors/tests/` (tmgrammar snapshots) | CREATE | T-13, T-14 | R16, R17 / 053 | NOT STARTED | `cargo test`, `npx vscode-tmgrammar-test` |
+| PF-T06 | test | every existing `tests/conformance_*.rs` + `tests/support/**` | UPDATE | Envelope/input assertions | R1 / 018 | NOT STARTED | T-34 |
+| PF-T07 | fixture | `docs/demos/**/requests/*`, `docs/demos/**/fixtures/*` | UPDATE | Input envelopes | R4 / 019 | NOT STARTED | T-30 |
+| PF-T08 | schema | `docs/api/schemas/response.schema.json`, `input.schema.json`, `stream-record.schema.json` | CREATE | JSON Schemas used by T-01 | R1, R4 / 010 | NOT STARTED | T-01 |
+
+### Generated and release artifacts
+
+| ID | Category | Exact path | CRUD | Planned edit | Req / tasks | Status | Verification |
+|---|---|---|---|---|---|---|---|
+| PF-G01 | generated | `vhco.json`, `vhco.html` | GENERATE | `vhco spec` / `vhco doc` | R18 / 060 | NOT STARTED | T-28 |
+| PF-G02 | generated | `editors/keywords.json`, `editors/rivet.tmLanguage.json` | GENERATE | from `rivet.capy` | R16 / 050 | NOT STARTED | T-13 |
+| PF-V01 | version | workspace `Cargo.toml` `version` (single source) | UPDATE | `0.1.0` → `0.2.0` | release / 091 | NOT STARTED | T-33 |
+| PF-V02 | release | commit `release: v0.2.0`, tag `v0.2.0` | CREATE | §32 | release / 092, 093 | NOT STARTED | T-33 |
+| PF-V03 | release | `target/release/rivet`, `librivet.{dylib,so,dll}`, `librivet.a`/`rivet.lib`, `rivet.h`, `rivet.pc`, `rivet-0.2.0.vsix`, `SHA256SUMS` | GENERATE | Local release artifacts | release / 093 | NOT STARTED | T-33 |
+| PF-V04 | release | `docs/releases/rel-0.2.0-release-notes.md` | CREATE | §33 | release / 092, 094 | NOT STARTED | T-31 |
+
+## Test and Validation Checklist
+
+T-01–T-15 are the proposal's tests. T-27–T-34 are plan-level gates. New TEST documents are numbered
+TEST-2026-0034 (T-01) … TEST-2026-0048 (T-15). The regression suites keep TEST-2026-0001…0033, re-recorded for 0.2.0.
+
+| Test ID | Type | UC / Req | Scenario (positive / negative / regression) | Exact test file or manual steps | Command / environment | Expected result | Status | Evidence |
+|---|---|---|---|---|---|---|---|---|
+| T-01 | integration | UC-01 / R1, R2 | Envelope schema on every surface for ok, error, cancelled, accepted | `tests/conformance_envelope.rs` | `cargo test --test conformance_envelope` | Every output validates; key order fixed | NOT STARTED | TEST-2026-0034 |
+| T-02 | integration | UC-01 / R4 | One input file on CLI `--input`, HTTP, WS, polling, MCP, library, FFI | same | same | Identical `data` | NOT STARTED | TEST-2026-0035 |
+| T-03 | integration | UC-01 / R3 | Built-ins, GET routes and `--json` outputs enveloped | same | same | Schema valid | NOT STARTED | TEST-2026-0036 |
+| T-04 | integration | UC-02 / R1 | Stream records then exactly one result; consumer stop → cancelled | same | same | Sequence and statuses | NOT STARTED | TEST-2026-0037 |
+| T-05 | integration | UC-03 / R6 | Pretty goldens; pretty + stream refused | same | same | Indent 2; validation.usage / 400 | NOT STARTED | TEST-2026-0038 |
+| T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | NOT STARTED | TEST-2026-0039 |
+| T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | NOT STARTED | TEST-2026-0040 |
+| T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | NOT STARTED | TEST-2026-0041 |
+| T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | NOT STARTED | TEST-2026-0042 |
+| T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | NOT STARTED | TEST-2026-0043 |
+| T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | NOT STARTED | TEST-2026-0044 |
+| T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | NOT STARTED | TEST-2026-0045 |
+| T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | NOT STARTED | TEST-2026-0046 |
+| T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | NOT STARTED | TEST-2026-0047 |
+| T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | NOT STARTED | TEST-2026-0048 |
+| T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | NOT STARTED | TEST-2026-0027 (re-recorded) |
+| T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | NOT STARTED | TEST-2026-0028 (re-recorded) |
+| T-29 | corpus | R7, R16 | REF-2026-0002 and demo sources parse (with `global`) | `tests/conformance_samples.rs` | `cargo test --test conformance_samples` | All parse | NOT STARTED | TEST-2026-0029 (re-recorded) |
+| T-30 | manual / e2e | all | Demos 01–16 and DEMO-2026-0019 executed step by step against the RC | READMEs | manual | Every step matches | NOT STARTED | TEST-2026-0030 (re-recorded) |
+| T-31 | documentation | R18 | `check_docs`, `vhco docs check` | `scripts/check_docs.py` | `python3 scripts/check_docs.py && vhco docs check .` | 0 problems / 0 errors | NOT STARTED | TEST-2026-0031 (re-recorded) |
+| T-32 | traceability | R1–R18 | R → task → PF → T → D → U; no orphans | script over this plan, RPT, REL | — | No orphans | NOT STARTED | TEST-2026-0032 (re-recorded) |
+| T-33 | release | release | Version sync across Cargo, `--version`, MCP serverInfo, capabilities, `rivet_version()`, vsix; tag = commit; clean tree | `scripts/check_version.py --tag` | — | All `0.2.0`; SHAs equal | NOT STARTED | TEST-2026-0033 (re-recorded) |
+| T-34 | regression | R1 | Every 0.1.0 suite (T-01…T-26 of PLAN-2026-0001) green on the new envelopes with no behaviour change | `tests/conformance_*.rs` | `cargo test --workspace --all-features` | 400+ tests pass | NOT STARTED | TEST-2026-0001…0026 (re-recorded) |
+
+## Documentation and Demo Checklist
+
+Every document follows DOCUMENTATION §5/§20 metadata, the §7 visible header and its §12 type template. Every new
+manual, system, API and migration document includes ASCII journey, sequence and state visuals (CLAUDE.md).
+Real output only: each example is pasted from the RC build, and varying IDs are marked as such.
+
+```text
+ docs/
+ ├── plans/          PLAN-2026-0002 (this) ······························ P1   D-01
+ ├── decisions/      ADR-0004 approval · ADR-0005 workspace/features ······· P1   D-02, D-03
+ ├── research/       RES-2026-0004 P1 experiments ························· P1   D-04
+ ├── incidents/      INC-2026-0009+ as found ······························ P2–P3 D-05
+ ├── troubleshooting/TRBL-2026-0004+ as found ····························· P2–P3 D-06
+ ├── testing/        TEST-2026-0034…0048 new · 0001…0033 re-recorded ······· P3   D-07
+ ├── reports/        RPT-2026-0015 validation ····························· P3   D-08
+ ├── migrations/     NEW DIR · MIG-2026-0001 envelopes + index ············ P4   D-09
+ ├── api/            API-2026-0006 envelopes · API-2026-0007 C ABI · schemas/ ·· P4 D-10…D-12 (+ updates D-40…D-44)
+ ├── manuals/        MAN-2026-0009 C ABI/FFI · MAN-2026-0010 editors ······· P4   D-13, D-14 (+ D-20…D-29)
+ ├── system/         SYS-2026-0010 FFI/packaging · SYS-2026-0011 highlighting ·· P4 D-15, D-16 (+ D-30…D-39)
+ ├── architecture/ security/ operations/ runbooks/ onboarding/  updates ···· P4   D-30…D-39
+ ├── references/     REF-2026-0002 (global, CLI mapping, envelopes) ········ P4   D-45
+ ├── demos/          14-globals · 15-ffi · 16-editor · 01–13 re-verified · DEMO-2026-0019 ·· P4 D-17…D-19, D-50…D-63
+ ├── proposals/      PROP-2026-0002 → implemented/ ························ P5   D-67
+ └── releases/       REL-0.2.0 ··········································· P5   D-68
+ editors/vscode/README.md (extension readme) ································ P2e  D-69
+```
+
+### New documents
+
+| ID | Artifact | Exact path | Why | Required content | Related interfaces | Status | Verification |
+|---|---|---|---|---|---|---|---|
+| D-01 | plan | `docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md` + `docs/plans/index.md` | §4.5 | This ledger | — | DONE | T-31 |
+| D-02 | decision | `docs/decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md` + index | Approval | Gates, Q resolutions | — | DONE | T-31 |
+| D-03 | decision | `docs/decisions/adr-0005-workspace-package-and-features.md` + index | Packaging decision after E1–E3 | Workspace layout, `rivet-runtime`, feature set, fallback | Cargo | NOT STARTED | T-31 |
+| D-04 | research | `docs/research/res-2026-0004-workspace-ffi-and-feature-experiments.md` + index | P1 evidence | E1–E3 results, symbol lists, native static libs per OS, build-size observation | FFI, features | NOT STARTED | T-31 |
+| D-05 | incidents | `docs/incidents/resolved/inc-2026-0009…` + indexes | §25 | One per unexpected defect | — | NOT STARTED | T-31 |
+| D-06 | troubleshooting | `docs/troubleshooting/trbl-2026-0004…` + index | §26 | Linking, symbol export, feature-gate pitfalls as found | — | NOT STARTED | T-31 |
+| D-07 | tests | `docs/testing/test-2026-0034-envelope-schema.md` … `test-2026-0048-legacy-input.md` + re-records of 0001…0033 + `docs/testing/index.md` | §27 | Definition, requirement, environment, result, evidence | all | NOT STARTED | T-32 |
+| D-08 | validation | `docs/reports/rpt-2026-0015-validation-of-plan-2026-0002.md` + index | §28 | R1–R18 results | all | NOT STARTED | T-32 |
+| D-09 | migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` + **new** `docs/migrations/index.md` (REF-2026-0037) | §4.21 | Before/after per surface (CLI, HTTP, SSE, polling, WS, MCP, library); `jq` mapping; deprecation timeline 0.2 → 0.3; client checklist; rollback (pin v0.1.0) | all surfaces | NOT STARTED | T-31 |
+| D-10 | API | `docs/api/api-2026-0006-envelopes.md` | Canonical envelope reference | Response, input, stream record; status/type tables; key order; pretty; error object; per-surface wrapping (WS `ref`, MCP `structuredContent`); JSON Schemas | all | NOT STARTED | T-01, T-31 |
+| D-11 | API schema | `docs/api/schemas/{response,input,stream-record}.schema.json` | Machine-readable contract | JSON Schema 2020-12 | all | NOT STARTED | T-01 |
+| D-12 | API | `docs/api/api-2026-0007-c-abi.md` | C ABI reference | Every `rivet_*` function, ownership, threading, status, error envelopes, ABI versioning, linking flags per OS | FFI | NOT STARTED | T-11, T-31 |
+| D-13 | manual | `docs/manuals/man-2026-0009-c-abi-and-ffi.md` | Integrator guide | Install `librivet`, compile/link (shared/static), C walkthrough, Python ctypes, Go cgo sketch, streaming/input/cancel, errors and recovery, troubleshooting | FFI | NOT STARTED | T-30 |
+| D-14 | manual | `docs/manuals/man-2026-0010-editor-support-and-highlighting.md` | Author guide | Install `.vsix`, other TextMate editors, `rivet highlight` (ansi/html/json), docs pipeline use, regenerating the grammar | editors, CLI | NOT STARTED | T-30 |
+| D-15 | system | `docs/system/components/sys-2026-0010-ffi-surface-and-packaging.md` | §31 | Workspace, facade, features, `setup_ffi` design, handle lifecycle state machine, artifacts | library, ffi | NOT STARTED | TASK-082 |
+| D-16 | system | `docs/system/components/sys-2026-0011-highlighting-and-grammar-generation.md` | §31 | Token classes, parser-span tokenizer, generator pipeline, drift test | language | NOT STARTED | TASK-082 |
+| D-17 | demo | `docs/demos/14-globals/` (README DEMO-2026-0016, `app.rivet`, `policy.json`) | Show globals + exact manifest | Steps, success and failure (`check.global_*`), verification record | language | NOT STARTED | T-30 |
+| D-18 | demo | `docs/demos/15-ffi/` (README DEMO-2026-0017, C and Python programs) | Show the C ABI | Build, link shared and static, run, stream, cancel, misuse error | FFI | NOT STARTED | T-30 |
+| D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | NOT STARTED | T-30 |
+| D-64 | release verification | `docs/demos/demo-2026-0019-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-18; per-surface success/failure incl. FFI and editor; cleanup; verification record | all | NOT STARTED | T-30 |
+| D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | NOT STARTED | T-31, T-33 |
+| D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | NOT STARTED | review |
+
+### Updated documents (feature chapters)
+
+| ID | Artifact | Exact path | Why it changes | Required addition / removal | Related interfaces | Status | Verification |
+|---|---|---|---|---|---|---|---|
+| D-20 | manual (root) | `docs/manuals/man-2026-0001-rivet-manual.md` | §30 | What's New in 0.2.0; feature catalogue rows (envelopes, pretty, globals, Cargo dependency, C ABI, highlighting) with why/when and demo links; reading path adds MAN-0009/0010; limitations update | all | NOT STARTED | T-30 |
+| D-21 | manual | `docs/manuals/man-2026-0002-installation-and-quickstart.md` | Install changes | `perch install` / `cargo install rivet-runtime --features cli --git …`; installing `librivet`; installing the `.vsix`; quickstart with envelopes | CLI | NOT STARTED | T-30 |
+| D-22 | manual | `docs/manuals/man-2026-0003-language-guide.md` | New form | **Globals chapter** (syntax, allowed expressions, lookup order, errors, examples); syntax table row | language | NOT STARTED | T-29 |
+| D-23 | manual | `docs/manuals/man-2026-0004-cli-reference.md` | New flags/command | `--data`, `--input`, `--pretty`, `--params` deprecation, `rivet highlight`, envelope output for every command; exit codes | CLI | NOT STARTED | T-02 |
+| D-24 | manual | `docs/manuals/man-2026-0005-policy-and-io-manifest-guide.md` | Globals → exact | Globals in targets, exact grants | policy, audit | NOT STARTED | T-08 |
+| D-25 | manual | `docs/manuals/man-2026-0006-serving-and-surfaces.md` | Wire change | Envelopes per surface, `?pretty=true`, `Deprecation` monitoring, WS/poll/MCP shapes | serve | NOT STARTED | T-01 |
+| D-26 | manual | `docs/manuals/man-2026-0007-embedding-library.md` | Library change | Cargo dependency (git tag), features, facade, `Runtime::call`, envelopes, link to MAN-0009 for non-Rust | library | NOT STARTED | T-09 |
+| D-27 | manual | `docs/manuals/man-2026-0008-protocols-and-connectors.md` | Features | Which protocols need which feature; `unsupported.feature` | transports | NOT STARTED | T-10 |
+| D-28 | manual index | `docs/manuals/index.md` | New manuals | MAN-0009, MAN-0010 rows; reading order | — | NOT STARTED | T-31 |
+| D-29 | reference manual links | all manual cross-links to API-2026-0006/0007 | Navigation | Links | — | NOT STARTED | T-31 |
+| D-30 | architecture | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md` + index | §31 | Workspace crates, facade boundary, `ffi` surface, envelope edge layer, feature gates (diagrams) | all | NOT STARTED | T-31 |
+| D-31 | system | `docs/system/components/sys-2026-0001-compiler-and-catalog.md` | Globals, highlighting | `global` lowering, `compile_globals`, tokenizer link | language | NOT STARTED | TASK-082 |
+| D-32 | system | `docs/system/runtime/sys-2026-0002-execution-scopes-and-dag.md` | Frame | Global scope lookup order | execution | NOT STARTED | TASK-082 |
+| D-33 | system | `docs/system/components/sys-2026-0003-policy-broker-and-io-manifest.md` | Manifest | Global substitution | audit | NOT STARTED | TASK-082 |
+| D-34 | system | `docs/system/components/sys-2026-0004-surfaces-and-serve.md` | Wire | Input parser, envelope writer, pretty, Deprecation, remote client | serve | NOT STARTED | TASK-082 |
+| D-35 | system | `docs/system/integrations/sys-2026-0005-protocol-adapters.md`, `sys-2026-0006-oauth-and-credentials.md`, `sys-2026-0009-mcp-client-connectors.md` | Features | Feature gates per adapter; examples re-shaped | transports, auth, connectors | NOT STARTED | TASK-082 |
+| D-36 | system | `docs/system/runtime/sys-2026-0007-sessions.md`, `docs/system/configuration/sys-2026-0008-policy-json-reference.md`, `docs/system/index.md` | Wire | Receipts/records as envelopes; index rows for SYS-0010/0011 | sessions | NOT STARTED | TASK-082 |
+| D-37 | security | `docs/security/sec-2026-0001-policy-and-sandbox-model.md` + index | New boundary | FFI trust boundary (host = library principal), memory-safety guarantees and non-guarantees, globals cannot hold secrets | ffi, language | NOT STARTED | T-12, T-31 |
+| D-38 | operations / runbooks | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/runbooks/run-2026-0001-…`, `run-2026-0002-…` + indexes | Wire / install | `cli` feature install; `Deprecation` and `deprecated=1` monitoring; envelope examples in procedures | serve | NOT STARTED | T-30 (dry run) |
+| D-39 | onboarding | `docs/onboarding/onb-2026-0001-contributor-setup.md` + index | Dev setup | Workspace, features, `cbindgen`, C compiler, Node/npx for editors, new suites, grammar regeneration | — | NOT STARTED | T-31 |
+
+### Updated documents (envelope sweep — every current-state file with 0.1.0 wire examples, TASK-070)
+
+| ID | Exact path(s) | Required change | Status | Verification |
+|---|---|---|---|---|
+| D-40 | `docs/api/api-2026-0001-http-rest-sse-polling.md` | Every request/response/SSE/polling example → envelopes; `pretty`; `Deprecation`; new errors | NOT STARTED | T-31 |
+| D-41 | `docs/api/api-2026-0002-websocket-rivet-v1.md` | Frames `{type:"request",ref,operation,data}`; record frames | NOT STARTED | T-31 |
+| D-42 | `docs/api/api-2026-0003-mcp-server-tools.md` | `structuredContent` envelope; `rivet.request` `{operation,data}` | NOT STARTED | T-31 |
+| D-43 | `docs/api/api-2026-0004-rust-library.md` | Facade, features, dependency snippet, `call`, envelopes | NOT STARTED | T-09 |
+| D-44 | `docs/api/api-2026-0005-error-registry.md` + `docs/api/index.md` | New codes: `validation.input_envelope`, `validation.pretty_stream`, `syntax.global`, `check.global_*` (5), `unsupported.feature`, `validation.ffi_argument`, `internal.panic`; examples re-shaped; index rows API-0006/0007 | NOT STARTED | T-31 |
+| D-45 | `docs/references/ref-2026-0002-language-and-usage.md` | `global` syntax row + examples; CLI mapping; envelope examples; status lines re-verified | NOT STARTED | T-29 |
+| D-46 | `docs/manuals/man-2026-0001…0008` (all eight) | Example outputs re-shaped (in addition to D-20…D-27 content) | NOT STARTED | T-30 |
+| D-47 | `docs/system/**` (nine SYS docs + `docs/system/index.md`) | Example outputs re-shaped | NOT STARTED | TASK-082 |
+| D-48 | `docs/architecture/arch-2026-0001…`, `docs/security/sec-2026-0001…`, `docs/operations/ops-2026-0001…`, `docs/runbooks/run-2026-0002…` | Example outputs re-shaped | NOT STARTED | T-31 |
+| D-49 | `README.md`, `docs/README.md` | Quickstart output re-shaped; 0.2.0 state | NOT STARTED | T-31 |
+| D-50 | `docs/demos/01-catalog/README.md` + `requests/{add.http,add.mcp,countdown.http,initialize.mcp,list.mcp,outputs.mcp}.json`, `requests/ws-frames.jsonl` | Re-executed; input envelopes | NOT STARTED | T-30 |
+| D-51 | `docs/demos/02-file-crud/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-52 | `docs/demos/03-http/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-53 | `docs/demos/04-streaming/README.md` | Re-executed (records) | NOT STARTED | T-30 |
+| D-54 | `docs/demos/05-dag/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-55 | `docs/demos/06-mcp-bridge/README.md`, `fixtures/crm_mcp.py`, `schemas/{search-result,tools-list}.fixture.json` | Re-executed; fixture shapes (remote MCP responses stay MCP-shaped; only Rivet output changes) | NOT STARTED | T-30 |
+| D-56 | `docs/demos/07-oauth2/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-57 | `docs/demos/08-udp/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-58 | `docs/demos/09-quic/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-59 | `docs/demos/10-grpc/README.md` + `requests/{initialize.mcp,open.http,open.mcp,sessions-finish.mcp,sessions-read.mcp,sessions-send.mcp}.json`, `requests/ws-chat.jsonl` | Re-executed; input envelopes | NOT STARTED | T-30 |
+| D-60 | `docs/demos/11-sandbox/README.md` | Re-executed | NOT STARTED | T-30 |
+| D-61 | `docs/demos/12-library/README.md`, `embedding.rs` | Facade API, `call`, envelopes; compiled example | NOT STARTED | T-09, T-30 |
+| D-62 | `docs/demos/13-real-world-apis/README.md` (+ its report RPT-2026-0014, historical, unchanged) | Commands and outputs re-shaped where local fixtures allow; public-API steps marked as not re-verifiable offline | NOT STARTED | T-30 |
+| D-63 | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` | Rows for 14–16 and DEMO-2026-0019; `verified_against: "0.2.0"` | NOT STARTED | T-31 |
+| D-65 | `docs/demos/demo-2026-0015-v0-1-0-release-verification.md` | **Not changed**: historical verification of v0.1.0 (NOT APPLICABLE: records a past release) | NOT APPLICABLE | — |
+
+### Lifecycle, navigation and agent guide
+
+| ID | Artifact | Exact path | Required change | Status | Verification |
+|---|---|---|---|---|---|
+| D-66 | navigation | `docs/index.md`, `docs/README.md` | New dirs/docs (migrations/, API-0006/0007, MAN-0009/0010, SYS-0010/0011, demos 14–16, DEMO-0019, RPT-0015, REL-0.2.0); current release 0.2.0; risks | NOT STARTED | T-31 |
+| D-67 | proposal lifecycle | `docs/proposals/approved/prop-2026-0002-…` → `docs/proposals/implemented/` + indexes | Status `implemented` at P5 | NOT STARTED | T-31 |
+| D-70 | agent guide | `AGENTS.md` project facts | Workspace crates, `ffi` surface, features, editors dir | NOT STARTED | review |
+
+**Six post-release documentation-impact decisions** (§31), all expected `UPDATED`:
+
+| Artifact | Expected decision | Covered by |
+|---|---|---|
+| Release verification guide / demo | UPDATED | D-17…D-19, D-50…D-64 |
+| Top-level README.md | UPDATED | D-49 |
+| system/ | UPDATED | D-15, D-16, D-31…D-36, D-47 |
+| architecture/ | UPDATED | D-30 |
+| api/ and CLI reference | UPDATED | D-10…D-12, D-23, D-40…D-44 |
+| manuals/ | UPDATED | D-13, D-14, D-20…D-28, D-46 |
+
+## Version, Release and Rollout Checklist
+
+| Item | Source / target | Required action | Dependency | Status | Evidence |
+|---|---|---|---|---|---|
+| Version | workspace `Cargo.toml` (single source for `rivet-runtime` and `rivet-ffi`) | `0.1.0` → `0.2.0`; `.vsix` version synced; T-33 | TASK-090 | NOT STARTED | |
+| Breaking change | MIG-2026-0001 | Linked from REL-0.2.0 "Breaking Changes" | TASK-074 | NOT STARTED | |
+| Release notes | `docs/releases/rel-0.2.0-release-notes.md` | Full §33 template | TASK-092 | NOT STARTED | |
+| Release commit | repository | `release: v0.2.0`; full SHA | TASK-092 | NOT STARTED | |
+| Tag | repository | `git tag -a v0.2.0`; verify | TASK-093 | NOT STARTED | |
+| Artifacts | local `dist/v0.2.0/` (git-ignored) | binary, `librivet` shared + static, `rivet.h`, `rivet.pc`, `.vsix`, `SHA256SUMS` | TASK-093 | NOT STARTED | |
+| Push / publish | remote | Push branch and tags; GitHub release assets | a remote | BLOCKED | no git remote |
+| Post-release verification | DEMO-2026-0019 | On published artifacts | TASK-095 | BLOCKED | no git remote |
+
+```text
+ workspace version 0.2.0 ─► commit "release: v0.2.0" ─► SHA ─► tag v0.2.0 ─► dist/v0.2.0/{rivet, librivet.*, rivet.h, rivet.pc, *.vsix, SHA256SUMS}
+        └── T-33: Cargo == --version == serverInfo == capabilities == rivet_version() == vsix ──┘      └─► REL-0.2.0 ─► §34
+```
+
+## Decisions, Findings, Deviations and Blockers
+
+| Timestamp | Type | Task / requirement | Finding or decision | Impact | Owner / follow-up | Linked |
+|---|---|---|---|---|---|---|
+| 2026-09-28 | Decision | TASK-001 | PROP-2026-0002 approved; Q-01…Q-06 resolved per recommendations | Scope fixed | Maintainer | ADR-0004 |
+| 2026-09-28 | Decision | — | Agents run sequentially in the main checkout, not in parallel worktrees: 4.3 GiB free and `target/` at 28 GiB | Longer wall-clock; no disk exhaustion | Implementer | TASK-008 |
+| 2026-09-28 | Deviation | IDs | The new release verification guide is DEMO-2026-0019 because DEMO-2026-0016…0018 go to the three new demos (DEMO-2026-0014/0015 are taken) | — | Implementer | D-17…D-19, D-64 |
+| 2026-09-28 | Deviation | IDs | The validation report is RPT-2026-0015 (RPT-2026-0014 belongs to the 13-real-world-apis smoke tests) | — | Implementer | D-08 |
+| 2026-09-28 | Blocker | TASK-095/096 | No git remote: push, CI and git-dependency consumers of the tag cannot be verified remotely | Local release only | Maintainer | — |
+| 2026-09-28 | Scope | TASK-038 | crates.io publication deferred (G-PUB) | Git dependency path | Maintainer | ADR-0004 |
+
+## Rollout Strategy
+
+1. Local release, as with v0.1.0: tag `v0.2.0` plus `dist/v0.2.0/` artifacts with checksums.
+2. Once a remote exists:
+   1. Push `main`, `v0.1.0` and `v0.2.0`.
+   2. Consumers add `rivet = { package = "rivet-runtime", git = …, tag = "v0.2.0" }`.
+   3. C hosts download `librivet` and `rivet.h`.
+   4. Authors install the `.vsix`.
+3. The migration window runs through 0.2.x: legacy input is accepted with deprecation signals. Operators watch
+   `deprecated=1` in the access log before upgrading to 0.3.0.
+
+## Rollback Strategy
+
+| Scenario | Action |
+|---|---|
+| A client breaks on the new output | Pin `v0.1.0` (MIG-2026-0001 rollback section); the input aliases do not help output consumers |
+| An FFI defect in the field | Mark `librivet` experimental in a 0.2.x patch; Rust and CLI unaffected |
+| The feature split breaks an embedder | Use the default features (all runtime features on) |
+| A release defect | Patch release 0.2.1 through the same gates; never move a tag |
+
+## Risks
+
+| Risk | Likelihood | Impact | Mitigation | Owner |
+|---|---|---|---|---|
+| The envelope sweep misses a doc or surface | Medium | High | Grep gate: no `"result":` in `src/`, and D-40…D-63 lists every file; T-01 schema | Implementer |
+| Disk exhaustion during builds | High | Medium | TASK-008; sequential agents; `cargo clean` between phases | Implementer |
+| The `vhco` workspace is not accepted | Medium | Medium | E1 first; fallback to an `ffi` feature in the main crate (ADR-0005) | Implementer |
+| Static-link system library drift per OS | Medium | Low | `native-static-libs` captured into `rivet.pc` | Implementer |
+| Node tooling unavailable | Low | Low | Python keyword-drift check is mandatory; Node snapshot job optional | Implementer |
+| Hidden behaviour change during the envelope work | Low | High | T-34: all 0.1.0 suites stay green with shape-only edits | Implementer |
+
+## Completion Criteria and Final Traceability
+
+The plan is complete when every in-scope task is DONE (or NOT APPLICABLE/DEFERRED with a reason) and the §34 gate
+is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, as with v0.1.0.
+
+| Requirement / UC | Implementation tasks | File changes | Tests | Docs / demo | Release update | Final status |
+|---|---|---|---|---|---|---|
+| R1 / UC-01, 02 | 010–016, 018 | PF-01–PF-04 | T-01, T-04, T-34 | D-10, D-11, D-40–D-42, D-46–D-63 | U-01 | NOT STARTED |
+| R2 / UC-01 | 010, 017 | PF-01, PF-02 | T-01 | D-10, D-44 | U-02 | NOT STARTED |
+| R3 / UC-01 | 011, 012 | PF-03 | T-03 | D-23, D-40 | U-03 | NOT STARTED |
+| R4 / UC-01 | 010–015, 019 | PF-01, PF-03, PF-T07 | T-02 | D-10, D-23, D-40–D-42, D-50, D-59 | U-04 | NOT STARTED |
+| R5 / UC-09 | 010–012, 014 | PF-01, PF-03 | T-15 | D-09, D-44 | U-05 | NOT STARTED |
+| R6 / UC-03 | 010–012 | PF-01, PF-03 | T-05 | D-10, D-23, D-25 | U-06 | NOT STARTED |
+| R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | NOT STARTED |
+| R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | NOT STARTED |
+| R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | NOT STARTED |
+| R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | NOT STARTED |
+| R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | NOT STARTED |
+| R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | NOT STARTED |
+| R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | NOT STARTED |
+| R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | NOT STARTED |
+| R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | NOT STARTED |
+| R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | NOT STARTED |
+| R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | NOT STARTED |
+| R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-70 | U-18 | NOT STARTED |
+
+```text
+ R-n ──► TASK-0xx ──► PF-xx ──► T-nn (TEST-2026-00nn) ──► D-xx (docs/demo) ──► U-nn (DEMO-2026-0019) ──► REL-0.2.0
+```
+
+## Post-Implementation Review
+
+To be written at P5: what the experiments changed, the envelope sweep cost, incidents found, and what to carry
+into 0.3.0 (alias removal, G-PUB, tree-sitter).
+
+## Related Documents
+
+- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)
+- [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [REL-0.1.0](../releases/rel-0.1.0-release-notes.md) · [RPT-2026-0001](../reports/rpt-2026-0001-validation-of-plan-2026-0001.md)
+- [DOCUMENTATION.md](../../DOCUMENTATION.md) · [AGENTS.md](../../AGENTS.md)
+
+## Change History
+
+| Revision | Date | Author | Change |
+|---|---|---|---|
+| 1 | 2026-09-28 | Claude | Created from approved PROP-2026-0002 (ADR-0004): P1–P5, 65 tasks, file/test checklists, and a complete documentation checklist D-01…D-70 including the 62-file envelope sweep. |

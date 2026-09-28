@@ -36,7 +36,7 @@ Navigate the design corpus. Current-state claims belong in README.md; design dec
 docs/
 ├── README.md            current state, risks, gates
 ├── index.md             this navigation page
-├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox (all approved)
+├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox · ADR-0004 v0.2.0 approval
 ├── incidents/           INC-2026-0001 … 0008 (all resolved; found during implementation)
 ├── troubleshooting/     TRBL-2026-0001 … 0003
 ├── research/            RES-2026-0001 Capy spike · 0002 crates · 0003 sandbox (completed)
@@ -51,9 +51,9 @@ docs/
 ├── testing/             TEST-2026-0001 … 0033 (one per plan test row, latest recorded result)
 ├── reports/             RPT-2026-0001 validation of PLAN-2026-0001
 ├── releases/            REL-0.1.0 (first release, tag v0.1.0)
-├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
+├── plans/               PLAN-2026-0001 (v0.1.0, released) · PLAN-2026-0002 (v0.2.0, in progress)
 ├── proposals/           design proposals by lifecycle
-│   ├── approved/        (empty)
+│   ├── approved/        PROP-2026-0002 (v0.2.0: envelopes, globals, library, C ABI, highlighting)
 │   ├── implemented/     PROP-2026-0001 Rivet runtime (implemented in v0.1.0, revision 9)
 │   └── draft/           (empty)
 ├── references/          REF-2026-0001 request + evidence, REF-2026-0002 numbered examples S01–S159

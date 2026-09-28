@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -53,7 +53,8 @@ Every release originates from a plan with `status: approved` (§24).
 
 | Plan | Status | Baseline | Target | Summary |
 |---|---|---|---|---|
-| [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | approved | PROP-2026-0001 rev 8 | v0.1.0 | P1 approval/discovery → P2 implementation (Stage A + B) → P3 tests/validation → P4 docs/demos → P5 release. 96 tasks; P1 in progress |
+| [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | approved | PROP-2026-0001 rev 8 | v0.1.0 | P1 approval/discovery → P2 implementation (Stage A + B) → P3 tests/validation → P4 docs/demos → P5 release. 96 tasks; v0.1.0 released locally (tag v0.1.0); remote-dependent tasks blocked |
+| [PLAN-2026-0002](plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) | approved | PROP-2026-0002 rev 2 | v0.2.0 | Envelopes, pretty JSON, globals, Cargo library, C ABI, highlighting; 65 tasks; documentation checklist D-01…D-70; P1 in progress |
 
 ```text
  PROP-2026-0001 ──approve──► PLAN-2026-0001 ──► v0.1.0 (Stage A + B)
@@ -89,5 +90,6 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-28 | Claude | Added PLAN-2026-0002. |
 | 2 | 2026-09-28 | Claude | P1 progress: gates closed, TASK-005 approved. |
 | 1 | 2026-09-28 | Claude | Created plans index with PLAN-2026-0001. |

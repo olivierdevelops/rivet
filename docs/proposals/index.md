@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 8
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -39,8 +39,8 @@ Design proposals for Rivet, one directory per lifecycle state. Documents are nam
      │                          │
      └─(rejection)─▶ rejected/  └─(replaced)─▶ superseded/                  (none)
 
-  today:  draft/     PROP-2026-0002  (envelopes, globals, library, C ABI, highlighting → v0.2.0)
-          approved/  (empty)
+  today:  draft/     (empty)
+          approved/  PROP-2026-0002  ── ADR-0004 ──▶ PLAN-2026-0002 (v0.2.0)
           implemented/  PROP-2026-0001  rev 9  ── ADR-0001 ──▶ PLAN-2026-0001 ──▶ v0.1.0
 ```
 
@@ -49,8 +49,8 @@ Design proposals for Rivet, one directory per lifecycle state. Documents are nam
 | Directory | Contents | Index |
 |---|---|---|
 | `implemented/` | [PROP-2026-0001 — Rivet runtime](implemented/prop-2026-0001-rivet-runtime.md), implemented in v0.1.0, R1–R26 | [implemented/index.md](implemented/index.md) |
-| `approved/` | Empty — nothing approved and awaiting implementation | [approved/index.md](approved/index.md) |
-| `draft/` | [PROP-2026-0002 — envelopes, globals, library, C ABI, highlighting](draft/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md), awaiting review | [draft/index.md](draft/index.md) |
+| `approved/` | [PROP-2026-0002 — envelopes, globals, library, C ABI, highlighting](approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md), approved (ADR-0004), in PLAN-2026-0002 | [approved/index.md](approved/index.md) |
+| `draft/` | Empty | [draft/index.md](draft/index.md) |
 
 1. [Implemented proposals](implemented/index.md), then [PROP-2026-0001](implemented/prop-2026-0001-rivet-runtime.md).
 2. [ADR-0001](../decisions/adr-0001-approve-rivet-runtime-design.md): the approval record.
@@ -68,6 +68,7 @@ TASK-010). Update this index when a document changes lifecycle or a new related 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-28 | Claude | PROP-2026-0002 approved (ADR-0004). |
 | 8 | 2026-09-28 | Claude | PROP-2026-0002 drafted. |
 | 7 | 2026-09-28 | Claude | PROP-2026-0001 implemented in v0.1.0; moved to implemented/. |
 | 6 | 2026-09-28 | Claude | PROP-2026-0001 approved (ADR-0001) and moved to `approved/`; revision 8; draft/ now empty; linked approved/index.md and decisions. |
