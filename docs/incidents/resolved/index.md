@@ -45,6 +45,7 @@ Incidents in the `resolved` lifecycle state. See the [incidents index](../index.
 | [INC-2026-0004](inc-2026-0004-dag-dependents-saw-bare-values.md) | S3 | resolved | DAG dependents saw bare values instead of envelopes |
 | [INC-2026-0005](inc-2026-0005-url-grant-path-prefix-match.md) | S2 | resolved | URL grant paths matched as raw string prefixes |
 | [INC-2026-0006](inc-2026-0006-codec-keyword-variable-collision.md) | S3 | resolved | Codec keywords replaced by same-named variables at run time |
+| [INC-2026-0007](inc-2026-0007-demo-verification-defects.md) | S3 | resolved | Six defects found by release demo verification |
 
 ## Recently added or updated
 

@@ -37,7 +37,7 @@ docs/
 ├── README.md            current state, risks, gates
 ├── index.md             this navigation page
 ├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox (all approved)
-├── incidents/           INC-2026-0001 … 0006 (all resolved; found during implementation)
+├── incidents/           INC-2026-0001 … 0007 (all resolved; found during implementation)
 ├── troubleshooting/     TRBL-2026-0001 … 0003
 ├── research/            RES-2026-0001 Capy spike · 0002 crates · 0003 sandbox (completed)
 ├── manuals/             MAN-2026-0001 manual + 7 volumes (current-state book)
