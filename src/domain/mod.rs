@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod contracts;
+pub mod dag;
 pub mod effect_checks;
 pub mod errors;
 pub mod files;

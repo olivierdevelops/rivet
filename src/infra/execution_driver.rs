@@ -250,6 +250,8 @@ pub struct Interpreter {
     files: Arc<dyn FileAccess>,
     policy: Arc<dyn PolicyEvaluator>,
     dispatcher: OnceLock<Arc<dyn Dispatcher>>,
+    /// The `execution.run_dag` use case, injected by the orchestrator.
+    dag: OnceLock<Arc<dyn crate::domain::dag::DagExecutor>>,
     adapters: HashMap<String, Arc<dyn EffectAdapter>>,
     /// Live input feeds for runs of operations that declare `receives`, keyed
     /// by request ID; `drive` takes the feed and exposes it as `incoming`.
@@ -267,6 +269,7 @@ impl Interpreter {
             files,
             policy,
             dispatcher: OnceLock::new(),
+            dag: OnceLock::new(),
             adapters: HashMap::new(),
             inputs: std::sync::Mutex::new(HashMap::new()),
         }
@@ -291,6 +294,11 @@ impl Interpreter {
     /// Nested `(request …)` target; set once by the orchestrator after the dispatcher exists.
     pub fn set_dispatcher(&self, d: Arc<dyn Dispatcher>) {
         let _ = self.dispatcher.set(d);
+    }
+
+    /// DAG scheduling is the `execution.run_dag` use case; the orchestrator sets it once.
+    pub fn set_dag_executor(&self, d: Arc<dyn crate::domain::dag::DagExecutor>) {
+        let _ = self.dag.set(d);
     }
 
     pub fn register_adapter(&mut self, kind: &str, adapter: Arc<dyn EffectAdapter>) {
@@ -1452,192 +1460,39 @@ impl<'a> Machine<'a> {
         nodes: &[DagNode],
         span: &SourceSpan,
     ) -> RivetResult<()> {
-        #[derive(Clone, Copy, PartialEq, Debug)]
-        enum St {
-            Pending,
-            Running,
-            Succeeded,
-            Failed,
-            Cancelled,
-            Blocked,
-            Skipped,
-        }
-        let name = |s: St| match s {
-            St::Pending => "pending",
-            St::Running => "running",
-            St::Succeeded => "succeeded",
-            St::Failed => "failed",
-            St::Cancelled => "cancelled",
-            St::Blocked => "blocked",
-            St::Skipped => "skipped",
+        let executor = self
+            .interp
+            .dag
+            .get()
+            .cloned()
+            .ok_or_else(|| RivetError::internal("dag executor not configured"))?;
+        let input = crate::domain::dag::DagInput {
+            nodes: nodes
+                .iter()
+                .map(|n| crate::domain::dag::DagNodeSpec {
+                    id: n.name.clone(),
+                    after: n.after.clone(),
+                })
+                .collect(),
+            failure: options.failure,
+            limit: options.limit.unwrap_or(4).max(1) as usize,
+            timeout_ms: options.timeout_ms,
         };
-        let limit = options.limit.unwrap_or(4).max(1) as usize;
-        let mut state = vec![St::Pending; nodes.len()];
-        let mut values: Vec<Value> = vec![Value::Null; nodes.len()];
-        let mut errors: Vec<Option<RivetError>> = vec![None; nodes.len()];
-        let mut fatal: Option<RivetError> = None;
-        let deadline = options
-            .timeout_ms
-            .map(|ms| Instant::now() + Duration::from_millis(ms));
-        {
-            let mut running = FuturesUnordered::new();
-            loop {
-                // Block descendants of failed/blocked nodes.
-                let mut changed = true;
-                while changed {
-                    changed = false;
-                    for i in 0..nodes.len() {
-                        if state[i] == St::Pending
-                            && nodes[i].after.iter().any(|d| {
-                                nodes.iter().position(|n| &n.name == d).is_some_and(|j| {
-                                    matches!(
-                                        state[j],
-                                        St::Failed | St::Blocked | St::Cancelled | St::Skipped
-                                    )
-                                })
-                            })
-                        {
-                            state[i] = St::Blocked;
-                            changed = true;
-                        }
-                    }
-                }
-                if fatal.is_none() {
-                    for i in 0..nodes.len() {
-                        if running.len() >= limit {
-                            break;
-                        }
-                        let ready = state[i] == St::Pending
-                            && nodes[i].after.iter().all(|d| {
-                                nodes
-                                    .iter()
-                                    .position(|n| &n.name == d)
-                                    .is_some_and(|j| state[j] == St::Succeeded)
-                            });
-                        if ready {
-                            state[i] = St::Running;
-                            let mut child = frame.clone();
-                            for (j, n) in nodes.iter().enumerate() {
-                                if state[j] == St::Succeeded {
-                                    child.define(
-                                        &n.name,
-                                        Value::object([
-                                            ("status", Value::text("succeeded")),
-                                            ("result", values[j].clone()),
-                                            ("error", Value::Null),
-                                        ]),
-                                    );
-                                }
-                            }
-                            let expr = &nodes[i].expr;
-                            running.push(async move {
-                                let r = self.eval(&mut child, expr).await;
-                                (i, r)
-                            });
-                        }
-                    }
-                }
-                if running.is_empty() {
-                    break;
-                }
-                let next = match deadline {
-                    Some(d) => match tokio::time::timeout(
-                        d.saturating_duration_since(Instant::now()),
-                        running.next(),
-                    )
-                    .await
-                    {
-                        Ok(n) => n,
-                        Err(_) => {
-                            fatal = Some(
-                                RivetError::new(
-                                    ErrorKind::Timeout,
-                                    "timeout.dag",
-                                    "dag exceeded its timeout",
-                                )
-                                .with_span(Some(span.clone())),
-                            );
-                            break;
-                        }
-                    },
-                    None => running.next().await,
-                };
-                let Some((i, r)) = next else { break };
-                match r {
-                    Ok(v) => {
-                        state[i] = St::Succeeded;
-                        values[i] = v;
-                    }
-                    Err(mut e) => {
-                        state[i] = St::Failed;
-                        e.node_id = Some(nodes[i].name.clone());
-                        if options.failure == FailurePolicy::Fast && fatal.is_none() {
-                            fatal = Some(e.clone());
-                        }
-                        errors[i] = Some(e);
-                    }
-                }
-            }
-            // Dropping `running` cancels still-running nodes (fail fast / timeout).
+        let runner = NodeRunner {
+            machine: self,
+            base: frame.clone(),
+            nodes,
+        };
+        let completion = executor.run(input, &runner).await;
+        // Every node name now evaluates to its {status, result, error} envelope.
+        for status in &completion.nodes {
+            frame.define(&status.id, status.envelope());
         }
-        for s in state.iter_mut() {
-            match *s {
-                St::Running => *s = St::Cancelled,
-                St::Pending => {
-                    *s = if fatal.is_some() {
-                        St::Skipped
-                    } else {
-                        St::Blocked
-                    }
-                }
-                _ => {}
-            }
-        }
-        for (i, n) in nodes.iter().enumerate() {
-            let result = if state[i] == St::Succeeded {
-                values[i].clone()
-            } else {
-                Value::Null
-            };
-            let error = errors[i]
-                .as_ref()
-                .map(|e| e.to_value())
-                .unwrap_or(Value::Null);
-            frame.define(
-                &n.name,
-                Value::object([
-                    ("status", Value::text(name(state[i]))),
-                    ("result", result),
-                    ("error", error),
-                ]),
-            );
-        }
-        match fatal {
-            Some(mut e) => {
-                e.details = match e.details {
-                    Value::Null => Value::object([(
-                        "nodes",
-                        Value::List(
-                            nodes
-                                .iter()
-                                .enumerate()
-                                .map(|(i, n)| {
-                                    Value::object([
-                                        ("id", Value::text(&n.name)),
-                                        ("status", Value::text(name(state[i]))),
-                                    ])
-                                })
-                                .collect(),
-                        ),
-                    )]),
-                    d => d,
-                };
-                Err(e)
-            }
+        match completion.fatal {
+            Some(e) => Err(e.with_span(Some(span.clone()))),
             None => Ok(()),
         }
     }
-
     fn eval<'b>(&'b self, frame: &'b mut Frame, e: &'b Expr) -> BoxFuture<'b, RivetResult<Value>> {
         Box::pin(async move {
             match e {
@@ -2132,5 +1987,28 @@ struct IncomingHandle {
 impl ResourceHandle for IncomingHandle {
     async fn next(&mut self, _ctx: &EffectCtx) -> RivetResult<Option<Value>> {
         Ok(self.rx.recv().await)
+    }
+}
+
+/// Evaluates one DAG node's expression in a copy of the enclosing frame, with
+/// the envelopes of its completed dependencies in scope.
+struct NodeRunner<'m> {
+    machine: &'m Machine<'m>,
+    base: Frame,
+    nodes: &'m [DagNode],
+}
+
+#[async_trait]
+impl crate::domain::dag::DagNodeRunner for NodeRunner<'_> {
+    async fn run_node(
+        &self,
+        index: usize,
+        dependencies: Vec<(String, Value)>,
+    ) -> RivetResult<Value> {
+        let mut child = self.base.clone();
+        for (name, envelope) in dependencies {
+            child.define(&name, envelope);
+        }
+        self.machine.eval(&mut child, &self.nodes[index].expr).await
     }
 }

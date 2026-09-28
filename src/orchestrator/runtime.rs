@@ -517,6 +517,7 @@ impl Runtime {
                 oauth,
             }
         });
+        inner.driver.set_dag_executor(Arc::new(DagUseCase));
         inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
             runtime: Arc::downgrade(&inner),
         }));
@@ -1072,6 +1073,20 @@ fn rebase_prefix(output: &str, root: &str) -> String {
     let mut parts: Vec<String> = vec!["..".to_string(); a.len() - common];
     parts.extend(b[common..].iter().cloned());
     parts.join("/")
+}
+
+/// The interpreter's DagExecutor: runs the `execution.run_dag` use case.
+struct DagUseCase;
+
+#[async_trait]
+impl crate::domain::dag::DagExecutor for DagUseCase {
+    async fn run(
+        &self,
+        input: crate::domain::dag::DagInput,
+        runner: &dyn crate::domain::dag::DagNodeRunner,
+    ) -> crate::domain::dag::DagCompletion {
+        crate::features::execution::run_dag::run_dag(input, runner).await
+    }
 }
 
 #[cfg(test)]
