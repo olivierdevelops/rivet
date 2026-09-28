@@ -40,6 +40,26 @@ async fn run(src: &str, params: Value) -> Result<Value, rivet::domain::RivetErro
     rt.request("t.run", params, None).await.map(|c| c.result)
 }
 
+// vhco:test language.compile_program -- G30: infix inside objects, lists and call arguments parses AND evaluates (`{n: n - 1}`, `[a + 1]`, `(request "x" {v: a * 2})`)
+#[tokio::test]
+async fn infix_inside_objects_lists_and_call_arguments_evaluates() {
+    let src = "operation t.run\n    param a integer required\n    output json\n    o = {n: a - 1, big: a > 2 and true}\n    l = [a + 1, a * a, (length [a, a + 1])]\n    c = (request \"t.two\" {v: a * 2})\n    return {o: o, l: l, c: c}\nend\n\noperation t.two\n    param v integer required\n    output json\n    return {twice: v, half: v / 2}\nend\n";
+    let p = compile(src).unwrap();
+    assert_eq!(p.operation("t.run").unwrap().calls, vec!["t.two".to_string()]);
+    let v = run(src, Value::object([("a", Value::Int(3))]))
+        .await
+        .unwrap()
+        .to_json();
+    assert_eq!(
+        v,
+        serde_json::json!({
+            "o": {"n": 2, "big": true},
+            "l": [4, 9, 2],
+            "c": {"twice": 6, "half": 3}
+        })
+    );
+}
+
 // vhco:test language.compile_program -- a prefix call keeps named arguments as one trailing object and a literal `(request "ID" {…})` joins the call graph
 #[tokio::test]
 async fn prefix_calls_with_trailing_objects() {
