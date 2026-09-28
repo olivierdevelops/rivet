@@ -4,8 +4,8 @@ title: "Rivet execution, scopes and DAG runtime"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [execution, files]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
-scope: How one request is dispatched, bounded, interpreted, scoped, cancelled and validated, including file operations and DAG scheduling, as implemented in the Rivet 0.1.0 runtime.
+scope: How one request is dispatched, bounded, interpreted, scoped, cancelled and validated, including file operations and DAG scheduling, as implemented in the Rivet 0.1.0 and 0.2.0 runtime (0.2.0: the global scope of each file, envelope outcomes at the surfaces, module operations and catalog snapshots).
 reason: Every surface (CLI, HTTP, SSE, polling, WebSocket, MCP, library) funnels into one dispatcher and one interpreter; maintainers need the current lifecycle, limits, scope cleanup, DAG states, cancellation paths and exit codes in one verified place (PLAN-2026-0001 D-16).
-related_documents: [PROP-2026-0001, PLAN-2026-0001, SYS-2026-0001, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0007, SYS-2026-0008]
+related_documents: [PROP-2026-0001, PLAN-2026-0001, PROP-2026-0002, PLAN-2026-0002, API-2026-0006, SYS-2026-0001, SYS-2026-0003, SYS-2026-0004, SYS-2026-0005, SYS-2026-0007, SYS-2026-0008]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, execution, dag, scopes, cancellation, files, errors]
@@ -31,11 +31,11 @@ tags: [rivet, system, execution, dag, scopes, cancellation, files, errors]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** execution, files
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -50,7 +50,9 @@ scheduled by the `execution.run_dag` use case (`src/features/execution/run_dag.r
 effects go through `files.apply_file_operation` (`src/features/files/apply_file_operation.rs`)
 into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome is exactly one
 `Completion` or one `RivetError`, whose kind fixes the CLI exit code and HTTP status
-(`src/domain/errors.rs`).
+(`src/domain/errors.rs`). From 0.2.0 the surfaces render that outcome as one
+[ResponseEnvelope](../../api/api-2026-0006-envelopes.md) (`status` `ok`, `error` or `cancelled`), and a frame
+reads the operation file's frozen **global scope** after its locals and params.
 
 ```text
    CLI  HTTP  SSE  poll  WS  MCP  library          (surfaces: SYS-2026-0004)
@@ -108,7 +110,9 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
 - **Transport framing of results** (JSON, SSE, WS frames, polling batches, MCP tool results)
   belongs to the surfaces (SYS-2026-0004). Live input sessions are in SYS-2026-0007.
 - Execution does **not** retry effects, persist state, resume after restart, or run
-  compensations. There is no `finally` block in 0.1.0 (a known limitation).
+  compensations. There is no `finally` block (0.1.0 and 0.2.0; a known limitation).
+- **Rendering the outcome** as an envelope (`ResponseEnvelope::from_outcome`, `serve.parse_input` for the
+  input) happens at the surface edge (SYS-2026-0004). Execution still returns `Completion | RivetError`.
 
 ## Architecture
 
@@ -133,9 +137,10 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
  │   ├─ files.rs                   FileVerb, Codec, FileOperation
  │   ├─ errors.rs                  ErrorKind registry, RivetError, EffectsStatus
  │   ├─ contracts.rs               Request, Completion, DEFAULT_DEADLINE_MS = 30 000
+ │   ├─ envelope.rs                ResponseEnvelope, InputEnvelope, Envelope records (0.2.0; surfaces only)
  │   └─ policy.rs                  PolicyLimits (64 / 16 / 256 MiB)
  └─ infra/
-     ├─ execution_driver.rs        Interpreter (ExecutionDriver), Machine, Frame,
+     ├─ execution_driver.rs        Interpreter (ExecutionDriver, holds globals: file → Arc<Value>), Machine, Frame,
      │                             ResourceHandle, CLEANUP_GRACE = 5 s, DEADLINE_BACKSTOP = 250 ms,
      │                             NodeRunner, secret taint (SecretTaint, sink_guard)
      ├─ file_stream.rs             FileStreams: `with file open` handles (read chunks / write / append)
@@ -166,6 +171,7 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
     |                   |                            |------ drive(plan, sink) --->|                 |
     |                   |                            |                         | deadline = now+deadline_ms
     |                   |                            |                         | params -> frame scope 0
+    |                   |                            |                         | frame.globals = scope of op.file
     |                   |                            |                         | exec body; deadline+250 ms
     |                   |                            |                         |   fires the token (timeout)
     |                   |                            |                         |  emit -> check `emits` -> sink.send
@@ -193,7 +199,8 @@ dropped with it.
 
 ```text
  request req_01…  (Interpreter::drive, deadline D)
- └─ Frame  scopes[0] = params + operation-level assignments
+ └─ Frame  globals  = Arc<Value> of the operation's file (read-only, frozen at load; 0.2.0)
+    │      scopes[0] = params + operation-level assignments
     ├─ block scope (if / else / for / while / iterate / try / scope timeout "…")
     │   └─ loop variables, `error` in catch — block-local (Frame::define)
     ├─ with KIND … as a                       handle a  (Frame.handles, innermost last;
@@ -214,6 +221,25 @@ dropped with it.
 Assignment rules (`Frame::assign` / `Frame::define`): parameters, loop variables and `error`
 are block bindings; a new name assigned inside a block becomes an operation-level variable,
 visible after the block ends.
+
+### Global scope lookup order (0.2.0)
+
+`Interpreter::new` turns each `GlobalScope` of the program (SYS-2026-0001) into an `Arc<Value>` keyed by
+file. `drive` gives the frame the scope of the **operation's own file** (`frame.globals =
+globals.get(&op.file)`), so each module sees only its own globals. `Frame::get` resolves a name in this order:
+
+```text
+ name ─▶ block scopes, innermost first (loop vars, catch `error`, block locals)
+      ─▶ scopes[0] (params + operation-level assignments)
+      ─▶ frame.globals (the file's frozen constants)          ─▶ none: unknown name
+```
+
+The order matters only for speed: `check.global_shadow` and `check.global_assign` refuse, at compile time,
+every binding or assignment that reuses a global's name. At run time, therefore, a name is never both a local
+and a global. `Frame::assign` never writes to `globals`. DAG `NodeRunner`s, `concurrent` tasks and `map`
+items clone the frame, and with it the same `Arc`. A nested `(request …)` builds a new frame for the callee,
+with the callee's file scope. Globals are shared read-only across concurrent requests and are not copied per
+request.
 
 ### Resource handles and with-block cleanup
 
@@ -365,9 +391,12 @@ Scheduling loop (per iteration):
 ### Library entry points (`src/orchestrator/runtime.rs`)
 
 ```text
- Runtime::builder().file(p) | .source(path, text, root)
+ Runtime::builder().file(p) | .source(path, text, root) | .root(dir)   (root: 0.2.0, empty catalog)
                    .policy_file(p) | .policy(Policy)   [.ceiling(Policy)]
                    .build()                         -> Runtime
+ rt.call(InputEnvelope) / rt.call_json(&str)        -> ResponseEnvelope   (0.2.0 facade; setup_library.rs)
+ rt.load(path) / rt.load_as(path, alias)            -> Module             (0.2.0; new catalog snapshot)
+ module.call(id, data)                              -> ResponseEnvelope   (dispatches "alias.id")
  rt.request(id, params, sink?)                      -> Completion | RivetError  (principal local)
  rt.request_restricted(id, params, restrict, sink?) -> Completion | RivetError  (narrowed)
  rt.scope(|scope| … scope.stream / scope.duplex …)  -> owned handles, cancelled + joined at the end
@@ -380,36 +409,44 @@ Scheduling loop (per iteration):
 ### CLI
 
 ```text
- rivet [--file F] [--policy P] request ID --params JSON [--stream] [--timeout D]
-        │                                     │          │           └─ digits + ms|s|m|h → deadline_ms
-        │                                     │          └─ NDJSON data envelopes, then a result envelope
-        │                                     └─ object; unknown fields rejected
-        └─ stdout: Completion JSON (exit 0) · stderr: ErrorEnvelope (registry exit code)
+ rivet [--file F] [--policy P] [--pretty] request ID [--data JSON] [--stream] [--timeout D]
+ rivet [--file F] [--policy P] request --input FILE|-          (a whole InputEnvelope; 0.2.0)
+        │                                     │                  │           └─ digits + ms|s|m|h → deadline_ms
+        │                                     │                  └─ NDJSON records (type data …, then type result)
+        │                                     └─ object (default {}); unknown fields rejected
+        │                                        --params JSON: deprecated alias (warning[deprecated.params], removed in 0.3.0)
+        └─ stdout: ResponseEnvelope status ok (exit 0) · stderr: status error|cancelled (registry exit code)
  --timeout above 600000 ms (10m) → validation.usage (exit 2), the same host cap as HTTP deadline_ms
  Ctrl-C while running → execution.cancel_request → cancelled.request → exit 130
 ```
 
 ### HTTP
 
-`POST /v1/request {id, params, deadline_ms?, restrict?}` (SYS-2026-0004). `deadline_ms` is
+`POST /v1/request {operation, data, deadline_ms?, restrict?}` (SYS-2026-0004; the 0.1.0 keys `id` and
+`params` are accepted as deprecated aliases through 0.2.x and answered with `deprecation: true`). `deadline_ms` is
 clamped to `1..=600000` (`MAX_REQUEST_DEADLINE_MS` in `src/io/http/mod.rs`); the CLI's
 `--timeout` in `--endpoint` mode is sent as this field (and refused above the cap locally too).
 
-### Completion and error envelopes
+### Outcome and envelope
+
+Execution produces a `Completion {result, data_count, effects}` or a `RivetError` (with its own `effects`). In
+0.2.0 every surface renders both as one ResponseEnvelope (full reference:
+[API-2026-0006](../../api/api-2026-0006-envelopes.md); 0.1.0 shapes: [MIG-2026-0001](../../migrations/mig-2026-0001-response-and-input-envelopes.md)):
 
 ```text
- Completion                                    ErrorEnvelope
- {                                             {
-   "request_id": "req_…",                        "request_id": "req_…", "trace_id": "tr_…",
-   "trace_id":   "tr_…",                         "error": {
-   "result":     <validated value>,                "kind": "<ErrorKind>", "code": "<dotted.code>",
-   "data_count": <items emitted>,                  "message": "…", "retryable": bool,
-   "effects":    "none|committed|unknown"          "effects": "none|committed|partial|unknown",
- }                                                 "source"?, "operation_id"?, "node_id"?,
-                                                   "hint"?, "details"?, "cause"?, "suppressed"?
-                                                 }
-                                               }
+ Completion{result, data_count, effects}            RivetError{kind, code, message, …, effects}
+            │                                                 │
+            └────────────── ResponseEnvelope ─────────────────┘
+ {"request_id":"req_…","trace_id":"tr_…","operation":"<id>","type":"result",
+  "status":"ok" | "error" | "cancelled",
+  "data":  <validated result> | null,
+  "error": null | {kind, code, message, retryable, operation_id?, node_id?, details?, source?, hint?, cause?, suppressed?},
+  "effects":"none|committed|partial|unknown",        ← top level (was error.effects in 0.1.0)
+  "data_count": <items emitted>}
 ```
+
+A nested failure keeps the child's error object (its `operation_id`, `node_id` and `source`). The envelope's
+`request_id` is the **top-level** request's; in 0.1.0 the error envelope carried the child's `req_….N`.
 
 `effects` only ever rises (`none < committed < partial < unknown`, folded with `fetch_max`):
 a nested call's status is folded into its caller's, so an opaque remote MCP tool call
@@ -445,17 +482,23 @@ remote call returned.
 ```sh
 # scratch bundle: chain.a -> (request "chain.b") -> (request "chain.c")
 # policy.json: {"version":1,"grants":[],"deny":[],"limits":{"max_call_depth":1}}
-$ rivet --file app.rivet request chain.a --params '{}'
-{"request_id":"req_0197e00f65.1","trace_id":"tr_0197e00f65","error":{"kind":"limit","code":"limit.call_depth","message":"call depth 2 exceeds limits.max_call_depth 1","retryable":true,"effects":"none","source":{"file":"app.rivet","line":11,"column":13,"end_line":11,"end_column":20},"operation_id":"chain.b"}}
+$ rivet --file app.rivet request chain.a
+{"request_id":"req_013bed2b5d","trace_id":"tr_013bed2b5d","operation":"chain.a","type":"result","status":"error","data":null,"error":{"kind":"limit","code":"limit.call_depth","message":"call depth 2 exceeds limits.max_call_depth 1","retryable":true,"source":{"file":"app.rivet","line":8,"column":13,"end_line":8,"end_column":20},"operation_id":"chain.b"},"effects":"none","data_count":0}
 exit=5
-$ rivet --file app.rivet policy explain chain.a --params '{}'
+$ rivet --file app.rivet policy explain chain.a
 policy   ./policy.json (sha256:b2c04073986cca43ac35cebf62717a7db34703d914fd9d219ce3716389abe76c)
 base     .
 network  deny_private_ranges true
 limits   64 concurrent, depth 1, 268435456 buffered bytes
+
+OPERATION  KIND  ACCESS  TARGET  KNOWLEDGE  SOURCE       DECISION
+chain.a    (calls chain.b — no I/O)         app.rivet:3
+chain.b    (calls chain.c — no I/O)         app.rivet:8
+exit=0
 ```
 
-(Request and trace IDs vary per run; the `.1` suffix marks the nested child request.)
+(Request and trace IDs vary per run. The error object is the nested `chain.b` call's, as its `operation_id`
+and `source` show; the envelope `request_id` is the top-level request's.)
 
 ## Runtime Behaviour
 
@@ -489,37 +532,47 @@ Every timeout is kind `timeout` → exit 6, HTTP 504. Verified (scratch bundle; 
 polls forever, `scoped.timeout` wraps it in `scope timeout "100ms"`):
 
 ```sh
-$ rivet --file app.rivet request slow.wait --params {} --timeout 300ms
-{"request_id":"req_01bc72a1a5","trace_id":"tr_01bc72a1a5","error":{"kind":"timeout","code":"timeout.request","message":"`slow.wait` exceeded its 300 ms deadline","retryable":false,"effects":"none","operation_id":"slow.wait"}}
+$ rivet --file app.rivet request slow.wait --timeout 300ms
+{"request_id":"req_01383b0ba5","trace_id":"tr_01383b0ba5","operation":"slow.wait","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout.request","message":"`slow.wait` exceeded its 300 ms deadline","retryable":false,"source":{"file":"app.rivet","line":4,"column":5,"end_line":8,"end_column":8},"operation_id":"slow.wait"},"effects":"none","data_count":0}
 exit=6
-$ rivet --file app.rivet request scoped.timeout --params {}
-{"request_id":"req_01a6d14255","trace_id":"tr_01a6d14255","error":{"kind":"timeout","code":"timeout.scope","message":"scope exceeded 100 ms","retryable":false,"effects":"none","source":{"file":"app.rivet","line":47,"column":5,"end_line":52,"end_column":8},"operation_id":"scoped.timeout"}}
+$ rivet --file app.rivet request scoped.timeout
+{"request_id":"req_011568756d","trace_id":"tr_011568756d","operation":"scoped.timeout","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout.scope","message":"scope exceeded 100 ms","retryable":false,"source":{"file":"app.rivet","line":14,"column":5,"end_line":16,"end_column":8},"operation_id":"scoped.timeout"},"effects":"none","data_count":0}
 exit=6
-$ rivet --file app.rivet request slow.wait --params {} --timeout 2x
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.usage","message":"--timeout 2x: use digits plus ms, s, m or h","retryable":false,"effects":"none"}}
+$ rivet --file app.rivet request slow.wait --timeout 2x
+{"request_id":"","trace_id":"","operation":"slow.wait","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.usage","message":"--timeout 2x: use digits plus ms, s, m or h","retryable":false},"effects":"none","data_count":0}
 exit=2
 ```
 
-Over HTTP (`rivet serve` on 127.0.0.1:18422):
+Over HTTP (`rivet serve --listen 127.0.0.1:18900`, stopped after the capture):
 
 ```sh
-$ curl -s -X POST http://127.0.0.1:18422/v1/request -H 'content-type: application/json' \
-       -d '{"id":"slow.wait","params":{},"deadline_ms":200}'
-{"request_id":"req_0129730775","trace_id":"tr_0129730775","error":{"kind":"timeout","code":"timeout.request","message":"`slow.wait` exceeded its 200 ms deadline","retryable":false,"effects":"none","operation_id":"slow.wait"}}   # HTTP 504
+$ curl -s -i -X POST http://127.0.0.1:18900/v1/request -H 'content-type: application/json' \
+       -d '{"operation":"slow.wait","data":{},"deadline_ms":200}'
+HTTP/1.1 504 Gateway Timeout
+content-type: application/json
+traceparent: 00-68713364eb604a2dc6e2ebed68b69fa0-d6913ec122d9af75-01
+
+{"request_id":"req_01614fa83d","trace_id":"tr_01614fa83d","operation":"slow.wait","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout.request","message":"`slow.wait` exceeded its 200 ms deadline","retryable":false,"source":{"file":"app.rivet","line":4,"column":5,"end_line":8,"end_column":8},"operation_id":"slow.wait"},"effects":"none","data_count":0}
 ```
+
+The access log line shows the 250 ms backstop on top of the 200 ms deadline:
+`{"time":"2026-09-28T21:26:25.019Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"slow.wait","status":504,"duration_ms":452}`.
+The same body sent with the deprecated keys `{"id":"slow.wait","params":{},…}` gets the same 504 envelope plus
+the response header `deprecation: true`, and its log line ends in `"deprecated":1`.
 
 ### Cancellation (Ctrl-C)
 
 The CLI races the request against `tokio::signal::ctrl_c()`; on the signal it calls
 `Runtime::cancel` (which fires the request's token) and then awaits the request, which unwinds
 and ends with one `cancelled.request` error. Verified at commit `829ca43` by sending SIGINT one
-second into `slow.wait` (a `poll every "100ms" timeout "60s"` that never completes):
+second into `slow.wait` (a `poll every "100ms" timeout "60s"` that never completes), and re-verified
+on the 0.2.0-rc (`status: "cancelled"`):
 
 ```sh
-$ rivet --file slow.rivet request slow.wait > int.out 2> int.err &   # then: kill -INT $!
+$ rivet --file app.rivet request slow.wait > int.out 2> int.err &   # then: kill -INT $!
 exit=130
 stdout: (empty)
-stderr: {"request_id":"req_0100f8330d","trace_id":"tr_0100f8330d","error":{"kind":"cancelled","code":"cancelled.request","message":"`slow.wait` was cancelled","retryable":false,"effects":"none","source":{"file":"slow.rivet","line":5,"column":5,"end_line":8,"end_column":8},"operation_id":"slow.wait"}}
+stderr: {"request_id":"req_01275c018d","trace_id":"tr_01275c018d","operation":"slow.wait","type":"result","status":"cancelled","data":null,"error":{"kind":"cancelled","code":"cancelled.request","message":"`slow.wait` was cancelled","retryable":false,"source":{"file":"app.rivet","line":4,"column":5,"end_line":8,"end_column":8},"operation_id":"slow.wait"},"effects":"none","data_count":0}
 ```
 
 The error now carries the statement span where the run was interrupted, and `effects`
@@ -535,14 +588,14 @@ second signal is a no-op.
 
 ```sh
 $ cd docs/demos/05-dag
-$ rivet --file app.rivet request report.total --params '{"a":2,"b":3}'
-{"request_id":"req_01a64911bd","trace_id":"tr_01a64911bd","result":{"total":10},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request report.total --data '{"a":2,"b":3}'
+{"request_id":"req_01e9f53b15","trace_id":"tr_01e9f53b15","operation":"report.total","type":"result","status":"ok","data":{"total":10},"error":null,"effects":"none","data_count":0}
 exit=0
-$ rivet --file app.rivet request report.partial --params '{}'
-{"request_id":"req_01a5ec79c5","trace_id":"tr_01a5ec79c5","result":{"good":"succeeded","bad":"failed","blocked":"blocked"},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request report.partial
+{"request_id":"req_01e8e4f515","trace_id":"tr_01e8e4f515","operation":"report.partial","type":"result","status":"ok","data":{"good":"succeeded","bad":"failed","blocked":"blocked"},"error":null,"effects":"none","data_count":0}
 exit=0
-$ rivet --file app.rivet request report.total --params '{"a":2}'
-{"request_id":"req_01a35727d5","trace_id":"tr_01a35727d5","error":{"kind":"validation","code":"validation.required","message":"missing required parameter `b`","retryable":false,"effects":"none","operation_id":"report.total","details":{"field":"b"}}}
+$ rivet --file app.rivet request report.total --data '{"a":2}'
+{"request_id":"req_01e7e80235","trace_id":"tr_01e7e80235","operation":"report.total","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `b`","retryable":false,"operation_id":"report.total","details":{"field":"b"}},"effects":"none","data_count":0}
 exit=2
 ```
 
@@ -556,31 +609,33 @@ exit=2
    return {good: good.status, bad: bad.status, blocked: blocked.status}
 ```
 
-Node envelopes and the fatal node list, verified at commit `829ca43` (scratch `dag.rivet`:
-`w.one` returns 1, `w.boom` fails `w.boom`):
+Node envelopes and the fatal node list (scratch `app.rivet`: `w.one` returns 1, `w.boom` fails `w.boom`):
 
 ```sh
-$ rivet --file dag.rivet --json request w.env        # dag fail independent; return {a: a, b: b}
-{"request_id":"req_016054125d","trace_id":"tr_016054125d","result":{"a":{"status":"succeeded","result":1,"error":null,"started_at":"2026-09-28T09:52:42.060Z","ended_at":"2026-09-28T09:52:42.066Z"},"b":{"status":"failed","result":null,"error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"effects":"none","source":{"file":"dag.rivet","line":15,"column":5,"end_line":15,"end_column":21},"operation_id":"w.boom","node_id":"b","details":{}},"started_at":"2026-09-28T09:52:42.060Z","ended_at":"2026-09-28T09:52:42.066Z"}},"data_count":0,"effects":"none"}
-$ rivet --file dag.rivet --json request w.fast       # dag fail fast
-{"request_id":"req_015ff5ca95.2","trace_id":"tr_015ff5ca95","error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"effects":"none","source":{"file":"dag.rivet","line":15,"column":5,"end_line":15,"end_column":21},"operation_id":"w.boom","node_id":"b","details":{"nodes":[{"id":"a","status":"succeeded","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"},{"id":"b","status":"failed","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"}]}}}
+$ rivet --file app.rivet request w.env        # dag fail independent; return {a: a, b: b}
+{"request_id":"req_010d8e524d","trace_id":"tr_010d8e524d","operation":"w.env","type":"result","status":"ok","data":{"a":{"status":"succeeded","result":1,"error":null,"started_at":"2026-09-28T21:25:55.924Z","ended_at":"2026-09-28T21:25:55.924Z"},"b":{"status":"failed","result":null,"error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"effects":"none","source":{"file":"app.rivet","line":28,"column":5,"end_line":28,"end_column":18},"operation_id":"w.boom","node_id":"b"},"started_at":"2026-09-28T21:25:55.924Z","ended_at":"2026-09-28T21:25:55.924Z"}},"error":null,"effects":"none","data_count":0}
+exit=0
+$ rivet --file app.rivet request w.fast       # dag fail fast
+{"request_id":"req_010cf46f15","trace_id":"tr_010cf46f15","operation":"w.fast","type":"result","status":"error","data":null,"error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"source":{"file":"app.rivet","line":28,"column":5,"end_line":28,"end_column":18},"operation_id":"w.boom","node_id":"b","details":{"nodes":[{"id":"a","status":"succeeded","started_at":"2026-09-28T21:25:55.940Z","ended_at":"2026-09-28T21:25:55.940Z"},{"id":"b","status":"failed","started_at":"2026-09-28T21:25:55.940Z","ended_at":"2026-09-28T21:25:55.941Z"}]}},"effects":"none","data_count":0}
 exit=5
 ```
 
-`fail fast` (the default) makes the first failure fatal. Scratch bundle `dag.fast`
-(`dag limit 1`, nodes `bad`, `later after [bad]`, `other`), captured at `f40d4aa`:
+A node value inside `data` is a **language value** (`{status, result, error, started_at, ended_at}`), not a
+wire envelope. Its `error` object is the script-visible error and still carries `effects`, as in 0.1.0. Only
+the top-level envelope moved `effects` out of the error.
+
+`fail fast` (the default) makes the first failure fatal. Scratch bundle `df.rivet` (`dag limit 1`, nodes
+`bad`, `later after [bad]`, `other`):
 
 ```sh
-$ rivet --file app.rivet request dag.fast --params {}
-{"request_id":"req_01be5c5ccd.1","trace_id":"tr_01be5c5ccd","error":{"kind":"application","code":"fixture.failure","message":"Always fails.","retryable":false,"effects":"none","source":{"file":"app.rivet","line":6,"column":5,"end_line":6,"end_column":44},"operation_id":"fixture.fail","node_id":"bad","details":{"reason":"demo"}}}
+$ rivet --file df.rivet request dag.fast
+{"request_id":"req_0160be859d","trace_id":"tr_0160be859d","operation":"dag.fast","type":"result","status":"error","data":null,"error":{"kind":"application","code":"fixture.failure","message":"Always fails.","retryable":false,"source":{"file":"df.rivet","line":4,"column":5,"end_line":4,"end_column":44},"operation_id":"fixture.fail","node_id":"bad","details":{"reason":"demo","nodes":[{"id":"bad","status":"failed","started_at":"2026-09-28T21:26:11.715Z","ended_at":"2026-09-28T21:26:11.715Z"},{"id":"later","status":"blocked"},{"id":"other","status":"skipped"}]}},"effects":"none","data_count":0}
 exit=5
 ```
 
-Here `later` ends `blocked` and `other` ends `skipped` (unit test
-`fail_fast_skips_the_rest` in `run_dag.rs`). The raised error is the failing node's own
-error (its request ID is the nested child's), carrying `node_id`; since commit `829ca43` the
-node list is merged into its existing `details` (`merge into existing details`,
-G14); the capture above predates that change.
+`later` ends `blocked` and `other` ends `skipped` (unit test `fail_fast_skips_the_rest` in `run_dag.rs`).
+The raised error is the failing node's own error and carries `node_id`. The node list is merged into its
+existing `details` (`reason` is kept; G14, since `829ca43`).
 
 ### Streams and nested streams
 
@@ -595,17 +650,17 @@ SYS-2026-0007). `with (request.stream "ID" {…}) as events` runs the child in a
 by the scope and delivers items through a 16-slot channel:
 
 ```sh
-$ rivet --file app.rivet request events.count --params {} --stream
-{"request_id":"req_019e985a15","trace_id":"tr_019e985a15","seq":1,"type":"data","data":1}
-{"request_id":"req_019e985a15","trace_id":"tr_019e985a15","seq":2,"type":"data","data":2}
-{"request_id":"req_019e985a15","trace_id":"tr_019e985a15","seq":3,"type":"data","data":3}
-{"request_id":"req_019e985a15","trace_id":"tr_019e985a15","result":{"count":3},"data_count":3,"effects":"none","type":"result"}
+$ rivet --file app.rivet request events.count --stream
+{"request_id":"req_010bf80d8d","trace_id":"tr_010bf80d8d","operation":"events.count","type":"data","seq":1,"data":1,"error":null}
+{"request_id":"req_010bf80d8d","trace_id":"tr_010bf80d8d","operation":"events.count","type":"data","seq":2,"data":2,"error":null}
+{"request_id":"req_010bf80d8d","trace_id":"tr_010bf80d8d","operation":"events.count","type":"data","seq":3,"data":3,"error":null}
+{"request_id":"req_010bf80d8d","trace_id":"tr_010bf80d8d","operation":"events.count","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 exit=0
-$ rivet --file app.rivet request events.consume --params {}     # sums events.count via request.stream
-{"request_id":"req_019cfd397d","trace_id":"tr_019cfd397d","result":{"total":6},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request events.consume     # sums events.count via request.stream
+{"request_id":"req_010aedf38d","trace_id":"tr_010aedf38d","operation":"events.consume","type":"result","status":"ok","data":{"total":6},"error":null,"effects":"none","data_count":0}
 exit=0
-$ rivet --file app.rivet --json request demo.typed --stream          # emits integer; emit "not a number" (829ca43)
-{"request_id":"req_01b8df1f9d","trace_id":"tr_01b8df1f9d","error":{"kind":"output_invalid","code":"output.invalid","message":"emitted item 1 at $ must be integer, got text","retryable":false,"effects":"none","operation_id":"demo.typed","details":{"seq":1,"path":"$","expected":"integer","found":"text"}}}
+$ rivet --file app.rivet request demo.typed --stream          # emits integer; emit "not a number"
+{"request_id":"req_0109f96c05","trace_id":"tr_0109f96c05","operation":"demo.typed","type":"result","seq":1,"status":"error","data":null,"error":{"kind":"output_invalid","code":"output.invalid","message":"emitted item 1 at $ must be integer, got text","retryable":false,"operation_id":"demo.typed","details":{"seq":1,"path":"$","expected":"integer","found":"text"}},"effects":"none","data_count":0}
 exit=5
 ```
 
@@ -621,8 +676,8 @@ extra keys, lists and nested objects recurse; at most 32 violations are listed, 
 `details.truncated`. Committed effects are preserved on the error.
 
 ```sh
-$ rivet --file app.rivet request bad.output --params {}      # output integer; return "five"
-{"request_id":"req_01a861d59d","trace_id":"tr_01a861d59d","error":{"kind":"output_invalid","code":"output.invalid","message":"`bad.output` returned a result that does not match its declared output: at $ expected integer, found text","retryable":false,"effects":"none","operation_id":"bad.output","details":{"violations":[{"path":"$","expected":"integer","found":"text"}]}}}
+$ rivet --file app.rivet request bad.output      # output integer; return "five"
+{"request_id":"req_0108e76bf5","trace_id":"tr_0108e76bf5","operation":"bad.output","type":"result","status":"error","data":null,"error":{"kind":"output_invalid","code":"output.invalid","message":"`bad.output` returned a result that does not match its declared output: at $ expected integer, found text","retryable":false,"operation_id":"bad.output","details":{"violations":[{"path":"$","expected":"integer","found":"text"}]}},"effects":"none","data_count":0}
 exit=5
 ```
 
@@ -682,39 +737,41 @@ Verified with `docs/demos/02-file-crud` (copied to a scratch folder so the demo 
 clean):
 
 ```sh
-$ rivet --file app.rivet request notes.create --params '{"text":"first draft"}'
-{"request_id":"req_01c2a76edd","trace_id":"tr_01c2a76edd","result":{"created":true},"data_count":0,"effects":"committed"}
+$ mkdir out
+$ rivet --file app.rivet request notes.create --data '{"text":"first draft"}'
+{"request_id":"req_0159a36f7d","trace_id":"tr_0159a36f7d","operation":"notes.create","type":"result","status":"ok","data":{"created":true},"error":null,"effects":"committed","data_count":0}
 exit=0
-$ rivet --file app.rivet request notes.create --params '{"text":"again"}'
-{"request_id":"req_01bf4a5ffd","trace_id":"tr_01bf4a5ffd","error":{"kind":"conflict","code":"conflict.already_exists","message":"./out/note.json already exists","retryable":false,"effects":"none","source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create"}}
+$ rivet --file app.rivet request notes.create --data '{"text":"again"}'
+{"request_id":"req_015768642d","trace_id":"tr_015768642d","operation":"notes.create","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.already_exists","message":"./out/note.json already exists","retryable":false,"source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create"},"effects":"none","data_count":0}
 exit=4
-$ rivet --file app.rivet request notes.read --params '{}'
-{"request_id":"req_01be7b80dd","trace_id":"tr_01be7b80dd","result":{"text":"first draft"},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request notes.read
+{"request_id":"req_01564d87dd","trace_id":"tr_01564d87dd","operation":"notes.read","type":"result","status":"ok","data":{"text":"first draft"},"error":null,"effects":"none","data_count":0}
 exit=0
-$ rivet --file app.rivet request notes.update --params '{"text":"reviewed draft"}'
-{"request_id":"req_01bd27379d","trace_id":"tr_01bd27379d","result":{"updated":true},"data_count":0,"effects":"committed"}
+$ rivet --file app.rivet request notes.update --data '{"text":"reviewed draft"}'
+{"request_id":"req_0156b8303d","trace_id":"tr_0156b8303d","operation":"notes.update","type":"result","status":"ok","data":{"updated":true},"error":null,"effects":"committed","data_count":0}
 exit=0
-$ rivet --file app.rivet request notes.list --params '{}'
-{"request_id":"req_01bca3ce4d","trace_id":"tr_01bca3ce4d","result":[{"name":"note.json","type":"file","size":31}],"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request notes.list
+{"request_id":"req_01546b46e5","trace_id":"tr_01546b46e5","operation":"notes.list","type":"result","status":"ok","data":[{"name":"note.json","type":"file","size":31}],"error":null,"effects":"none","data_count":0}
 exit=0
-$ rivet --file app.rivet request notes.delete --params '{}'
-{"request_id":"req_01ba5f62a5","trace_id":"tr_01ba5f62a5","result":{"absent":true},"data_count":0,"effects":"committed"}
+$ rivet --file app.rivet request notes.delete
+{"request_id":"req_015351c7cd","trace_id":"tr_015351c7cd","operation":"notes.delete","type":"result","status":"ok","data":{"absent":true},"error":null,"effects":"committed","data_count":0}
 exit=0
-$ rivet --file app.rivet request notes.delete --params '{}'      # missing ok (f40d4aa capture)
-{"request_id":"req_01b9184a6d","trace_id":"tr_01b9184a6d","result":{"absent":true},"data_count":0,"effects":"committed"}
+$ rivet --file app.rivet request notes.delete      # missing ok: nothing deleted, effects none (since 2a751ab)
+{"request_id":"req_01525389f5","trace_id":"tr_01525389f5","operation":"notes.delete","type":"result","status":"ok","data":{"absent":true},"error":null,"effects":"none","data_count":0}
 exit=0
-# since 2a751ab a delete that finds nothing reports "effects":"none":
-{"request_id":"req_0122609e5d","trace_id":"tr_0122609e5d","result":{"absent":true},"data_count":0,"effects":"none"}
-$ rivet --file app.rivet request notes.update --params '{"text":"x"}'
-{"request_id":"req_01b831df0d","trace_id":"tr_01b831df0d","error":{"kind":"not_found","code":"not_found.file","message":"./out/note.json: no such file","retryable":false,"effects":"none","source":{"file":"app.rivet","line":30,"column":5,"end_line":30,"end_column":52},"operation_id":"notes.update"}}
+$ rivet --file app.rivet request notes.update --data '{"text":"x"}'
+{"request_id":"req_01515a5d7d","trace_id":"tr_01515a5d7d","operation":"notes.update","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.file","message":"./out/note.json: no such file","retryable":false,"source":{"file":"app.rivet","line":30,"column":5,"end_line":30,"end_column":52},"operation_id":"notes.update"},"effects":"none","data_count":0}
 exit=4
 ```
+
+Without the `out/` directory, every verb except `delete … missing ok` fails `not_found.file` (the demo README
+creates it first).
 
 Without `policy.json` beside the bundle (deny-by-default):
 
 ```sh
-$ rivet --file app.rivet request notes.create --params '{"text":"x"}'
-{"request_id":"req_01b83d6425","trace_id":"tr_01b83d6425","error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/note.json denied: no policy.json: allow_write is denied by default (add a grant for ./out/note.json)","retryable":false,"effects":"none","source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create","details":{"capability":"allow_write","access":"create","target":"./out/note.json"}}}
+$ rivet --file app.rivet request notes.create --data '{"text":"x"}'
+{"request_id":"req_0161980a65","trace_id":"tr_0161980a65","operation":"notes.create","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/note.json denied: no policy.json: allow_write is denied by default (add a grant for ./out/note.json)","retryable":false,"source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create","details":{"capability":"allow_write","access":"create","target":"./out/note.json"}},"effects":"none","data_count":0}
 exit=3
 ```
 
@@ -816,16 +873,25 @@ flows (branching on a secret, lengths, timing) are out of scope.
 
 ## Observability
 
-- **Completion / error envelopes** carry `request_id`, `trace_id`, `effects` and, for
-  errors, `source`, `operation_id` and `node_id`.
+- **Response envelopes** (0.2.0) carry `request_id`, `trace_id`, `operation`, `status`, `effects` and
+  `data_count`, and for errors `error.source`, `error.operation_id` and `error.node_id`.
 - **Trace store** (`src/infra/trace_store.rs`, `MemoryTraceStore`): every authorized or
   denied effect decision is recorded with request ID, effect ID, capability, access, target,
   decision and matching rule. Read with `rivet trace show REQUEST_ID` against a running
-  `serve` (the CLI's own process exits with its trace). Verified with the 02-file-crud bundle:
+  `serve` (the CLI's own process exits with its trace). The answer is a `rivet.trace.show` envelope.
+  Verified with a scratch copy of the 02-file-crud bundle on `127.0.0.1:18901`:
 
 ```sh
-$ rivet --endpoint http://127.0.0.1:18421 trace show req_01693e07ad
-{"request_id":"req_01693e07ad","attempts":[{"request_id":"req_01693e07ad","trace_id":"tr_01693e07ad","node_id":null,"attempt":1,"effect_id":"notes.create#1","operation_id":"notes.create","phase":"decision","capability":"allow_write","access":"create","target":"./out/note.json","decision":"allowed","policy_hash":"sha256:deccf2027323af83c9798a05d6cac1adb657a81852e54ac7b99ce3eca4b0bef3","source":null,"outcome":{"rule":"grant allow_write ./out/**"}}],"complete":true,"next_cursor":null,"gaps":0}
+$ rivet --endpoint http://127.0.0.1:18901 trace show req_01087ca4cd
+{"request_id":"req_0282643a62","trace_id":"tr_0282643a62","operation":"rivet.trace.show","type":"result","status":"ok","data":{"request_id":"req_01087ca4cd","attempts":[{"request_id":"req_01087ca4cd","trace_id":"tr_01087ca4cd","node_id":null,"attempt":1,"effect_id":"notes.create#1","operation_id":"notes.create","phase":"decision","capability":"allow_write","access":"create","target":"./out/note.json","decision":"allowed","policy_hash":"sha256:deccf2027323af83c9798a05d6cac1adb657a81852e54ac7b99ce3eca4b0bef3","source":{"file":"app.rivet","line":9,"column":5},"outcome":{"rule":"grant allow_write ./out/**"}}],"complete":true,"next_cursor":null,"gaps":0},"error":null,"effects":"none","data_count":0}
+```
+
+- **Deprecated input** (0.2.0). A request that arrived with the aliases `id`/`params` gets one extra trace row
+  with phase `input`, access `deprecated` and no effect ID (`Runtime::note_deprecated_input`). Manifests
+  ignore it:
+
+```text
+{"request_id":"req_030031b587",…,"attempt":0,"effect_id":null,"operation_id":"notes.read","phase":"input","capability":"input","access":"deprecated","target":"id,params","decision":"deprecated",…,"outcome":{"deprecated":["id","params"],"hint":"send `operation` and `data`; `id` and `params` are removed in 0.3.0"}}
 ```
 
 - `rivet policy explain ID` prints the effective `limits` line (see Configuration).
@@ -849,7 +915,14 @@ automatically; secret taint covers explicit flows only.
 
 ## Last Verified Version
 
-`0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
+`0.2.0-rc (main at 8031baa)`, 2026-09-29, macOS, `target/release/rivet` (`cargo build --release --features cli`).
+Every capture was re-run: `docs/demos/05-dag`, a scratch copy of `docs/demos/02-file-crud`, and scratch
+bundles for timeouts, SIGINT, DAG envelopes, streams, output validation and call depth. `rivet serve` ran on
+127.0.0.1:18900 and 127.0.0.1:18901 and was stopped after each capture. The global lookup order was read from
+`Frame::get` in `execution_driver.rs`. Request and trace IDs, timestamps and trace-parent headers differ on every
+run.
+
+History: `0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
 `f40d4aa`: commands were run from `docs/demos/05-dag`, a scratch copy of
 `docs/demos/02-file-crud`, and scratch bundles for timeouts, cancellation, output validation
 and call depth. Re-verified at `829ca43` for structured cancellation (SIGINT and deadline),
@@ -870,6 +943,8 @@ on every run.
 - [SYS-2026-0005 Protocol adapters](../integrations/sys-2026-0005-protocol-adapters.md)
 - [SYS-2026-0007 Duplex sessions](sys-2026-0007-sessions.md)
 - [SYS-2026-0008 policy.json reference](../configuration/sys-2026-0008-policy-json-reference.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md) and [MIG-2026-0001](../../migrations/mig-2026-0001-response-and-input-envelopes.md)
+- [PLAN-2026-0002 v0.2.0 plan](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (D-32, D-47)
 - [Demo folders](../../demos/README.md)
 
 ## Change History
@@ -878,3 +953,4 @@ on every run.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-16). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43, 2a751ab): structured cancellation (CancelToken, graceful close within the grace), DAG `started_at`/`ended_at` and merged `details.nodes`, `emits` validation, typed sink stop, enforced `max_buffered_bytes`, `--timeout` cap, `effects` folding (`unknown` for opaque MCP), file effect scopes, `with file open`, flock-guarded compare-and-replace, secret taint on every sink, per-request restriction; limitations reduced to the current ones. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-32/D-47 (TASK-073, TASK-070): frame global scope and lookup order (locals → params → file globals); outcome rendered as a ResponseEnvelope at the surfaces; CLI `--data`/`--input` (`--params` deprecated); HTTP `{operation, data}`; library `call`/`load`; every capture re-run on the 0.2.0-rc (envelopes); deprecated-input trace row. |
