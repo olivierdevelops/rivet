@@ -9,6 +9,7 @@ use crate::domain::errors::ErrorKind;
 use crate::domain::files::FileOperation;
 use crate::domain::ir::CompiledProgram;
 use crate::domain::policy::{EffectIntent, Permit, Policy};
+use crate::domain::ports::GrpcDriver;
 use crate::domain::ports::{
     DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SourceLoader,
 };
@@ -16,6 +17,7 @@ use crate::domain::source::SourceBundle;
 use crate::domain::{RivetError, RivetResult, Value};
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
+use crate::features::grpc::invoke_rpc::{check_program as check_grpc_program, invoke_rpc};
 use crate::features::language::compile_program::compile_program;
 use crate::features::policy::authorize_effect::authorize_effect;
 use crate::features::policy::load_policy::{load_policy, parse_policy};
@@ -24,6 +26,7 @@ use crate::features::registry::inspect_outputs::{OutputQuery, inspect_outputs};
 use crate::infra::capy_parser::CapyParser;
 use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
+use crate::infra::grpc_adapter::{GrpcEffects, GrpcTransport, InvokeFn};
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_file_reader::DiskPolicyReader;
 use crate::infra::registry::ProgramRegistry;
@@ -208,7 +211,17 @@ impl Runtime {
             raw: ConfinedFiles::new(&bundle.root),
         });
         let evaluator: Arc<dyn PolicyEvaluator> = broker.clone();
-        let driver = Arc::new(Interpreter::new(Arc::clone(&program), files, evaluator));
+        let mut interp = Interpreter::new(Arc::clone(&program), files, evaluator);
+        // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
+        // call modes fail the load before anything dials.
+        let grpc = Arc::new(GrpcTransport::load(&program, &bundle.root)?);
+        check_grpc_program(&program, grpc.catalog())?;
+        let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
+            let driver = Arc::clone(&grpc);
+            Box::pin(async move { invoke_rpc(plan, policy.as_ref(), driver.as_ref()).await })
+        });
+        interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
+        let driver = Arc::new(interp);
         let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)));
         let inner = Arc::new(Inner {
             bundle,

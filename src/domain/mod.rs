@@ -3,6 +3,7 @@
 pub mod contracts;
 pub mod errors;
 pub mod files;
+pub mod grpc;
 pub mod io_manifest;
 pub mod ir;
 pub mod outputs;

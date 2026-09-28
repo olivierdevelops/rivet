@@ -660,6 +660,11 @@ impl Lowerer {
         let rest_text = node.text("rest").trim().to_string();
         if EFFECT_WORDS.contains(&value_text.as_str()) {
             let head = self.args(node, "rest");
+            let head = if value_text == "grpc" {
+                grpc_head(head)
+            } else {
+                head
+            };
             let form = EffectForm {
                 kind: EffectKind::parse(&value_text),
                 head,
@@ -1184,6 +1189,9 @@ impl Lowerer {
         let body = self.lower_block(&body_nodes, BlockCtx::Body);
         let first = head_args.first().cloned();
         let (kind, head, source) = match &first {
+            Some(Arg::Word(w, _)) if w == "grpc" => {
+                (EffectKind::Grpc, grpc_head(head_args[1..].to_vec()), None)
+            }
             Some(Arg::Word(w, _)) if EFFECT_WORDS.contains(&w.as_str()) => {
                 (EffectKind::parse(w), head_args[1..].to_vec(), None)
             }
@@ -1299,6 +1307,15 @@ impl BlockCtx {
             _ => BlockCtx::Body,
         }
     }
+}
+
+/// `grpc users.GetUser`: the head names a descriptor method, not a variable
+/// path, so it stays a bare word (`users.GetUser`) and is never evaluated.
+fn grpc_head(mut head: Vec<Arg>) -> Vec<Arg> {
+    if let Some(Arg::Expr(Expr::Path(p, _), span)) = head.first() {
+        head[0] = Arg::Word(p.join("."), span.clone());
+    }
+    head
 }
 
 fn display_func(f: &str) -> String {

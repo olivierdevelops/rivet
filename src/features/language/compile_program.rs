@@ -192,20 +192,16 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
                         }
                     }
                 }
-                if f.kind == EffectKind::Grpc {
-                    if let Some(crate::domain::ir::Arg::Expr(
-                        crate::domain::ir::Expr::Path(p, span),
-                        _,
-                    )) = f.head.first()
-                    {
-                        if program.connector(&p[0]).is_none() {
-                            errors.push(RivetError::syntax(
-                                "check.unknown_connector",
-                                format!("unknown connector `{}`", p[0]),
-                                Some(span.clone()),
-                            ));
-                        }
-                    }
+                let grpc_connector = (f.kind == EffectKind::Grpc)
+                    .then(|| crate::domain::grpc::method_ref(&f.head))
+                    .flatten()
+                    .map(|(connector, _)| connector);
+                if let Some(connector) = grpc_connector.filter(|c| program.connector(c).is_none()) {
+                    errors.push(RivetError::syntax(
+                        "check.unknown_connector",
+                        format!("unknown connector `{connector}`"),
+                        f.head.first().map(|a| a.span().clone()),
+                    ));
                 }
             }
             for c in children {

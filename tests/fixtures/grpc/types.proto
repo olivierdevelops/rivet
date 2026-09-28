@@ -1,0 +1,37 @@
+// Test-only schema for T-17 (conformance_grpc): exercises the ProtoJSON mapping
+// that users.proto cannot (int64/uint64, bytes, map, oneof, enum, presence,
+// repeated, a bundled well-known type and a non-finite double).
+//
+// Regenerate the pinned descriptor (host preparation, never at runtime):
+//   protoc --proto_path=tests/fixtures/grpc --include_imports \
+//     --descriptor_set_out=tests/fixtures/grpc/types.pb tests/fixtures/grpc/types.proto
+syntax = "proto3";
+package fixture;
+
+import "google/protobuf/timestamp.proto";
+
+service Types {
+  rpc Echo (Sample) returns (Sample);
+}
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  RED = 1;
+  GREEN = 2;
+}
+
+message Sample {
+  int64 big = 1;
+  uint64 ubig = 2;
+  bytes blob = 3;
+  map<string, int32> counts = 4;
+  oneof choice {
+    string name = 5;
+    int32 number = 6;
+  }
+  Color color = 7;
+  repeated string tags = 8;
+  optional int32 maybe = 9;
+  google.protobuf.Timestamp at = 10;
+  double ratio = 11;
+}
