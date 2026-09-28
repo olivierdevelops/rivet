@@ -121,6 +121,26 @@ pub trait ResourceHandle: Send {
     async fn close(self: Box<Self>) -> RivetResult<()> {
         Ok(())
     }
+
+    /// Resources whose directions progress independently (gRPC bidi: one
+    /// `concurrent` task sends while another iterates) return a shared view;
+    /// the interpreter then calls it without holding the scope lock, so a
+    /// blocked `next` never blocks a `send`.
+    fn shared(&self) -> Option<Arc<dyn SharedResource>> {
+        None
+    }
+}
+
+/// Lock-free view of a scope-owned resource (see `ResourceHandle::shared`).
+#[async_trait]
+pub trait SharedResource: Send + Sync {
+    async fn call(&self, ctx: &EffectCtx, method: &str, args: Vec<EvalArg>) -> RivetResult<Value>;
+    async fn next(&self, ctx: &EffectCtx) -> RivetResult<Option<Value>>;
+    async fn property(&self, ctx: &EffectCtx, name: &str) -> RivetResult<Value>;
+}
+
+async fn shared_of(handle: &SharedHandle) -> Option<Arc<dyn SharedResource>> {
+    handle.lock().await.as_ref().and_then(|h| h.shared())
 }
 
 /// Cleanup grace period (PROP-2026-0001 defaults).
@@ -554,7 +574,11 @@ impl<'a> Machine<'a> {
                             if let Some(handle) = frame.handle(&path[0]) {
                                 loop {
                                     let ctx = self.ctx(frame, span);
-                                    let item = {
+                                    let item = if let Some(s) = shared_of(&handle).await {
+                                        s.next(&ctx)
+                                            .await
+                                            .map_err(|e| e.with_span(Some(span.clone())))?
+                                    } else {
                                         let mut guard = handle.lock().await;
                                         let h = guard.as_mut().ok_or_else(|| {
                                             RivetError::new(
@@ -764,18 +788,20 @@ impl<'a> Machine<'a> {
             args.push(self.eval_arg(frame, a).await?);
         }
         let ctx = self.ctx(frame, span);
-        let mut guard = handle.lock().await;
-        let h = guard.as_mut().ok_or_else(|| {
-            RivetError::new(
-                ErrorKind::Cleanup,
-                "cleanup.closed",
-                format!("`{name}` is already closed"),
-            )
-        })?;
-        let r = h
-            .call(&ctx, &method, args)
-            .await
-            .map_err(|e| e.with_span(Some(span.clone())));
+        let r = if let Some(s) = shared_of(&handle).await {
+            s.call(&ctx, &method, args).await
+        } else {
+            let mut guard = handle.lock().await;
+            let h = guard.as_mut().ok_or_else(|| {
+                RivetError::new(
+                    ErrorKind::Cleanup,
+                    "cleanup.closed",
+                    format!("`{name}` is already closed"),
+                )
+            })?;
+            h.call(&ctx, &method, args).await
+        }
+        .map_err(|e| e.with_span(Some(span.clone())));
         if r.is_ok() && (method.contains("send") || method.contains("write")) {
             frame.run.commit();
         }
@@ -1546,18 +1572,20 @@ impl<'a> Machine<'a> {
                                 ));
                             }
                             let ctx = self.ctx(frame, span);
-                            let mut guard = handle.lock().await;
-                            let h = guard.as_mut().ok_or_else(|| {
-                                RivetError::new(
-                                    ErrorKind::Cleanup,
-                                    "cleanup.closed",
-                                    format!("`{}` is already closed", path[0]),
-                                )
-                            })?;
-                            let mut v = h
-                                .property(&ctx, &path[1])
-                                .await
-                                .map_err(|e| e.with_span(Some(span.clone())))?;
+                            let mut v = if let Some(s) = shared_of(&handle).await {
+                                s.property(&ctx, &path[1]).await
+                            } else {
+                                let mut guard = handle.lock().await;
+                                let h = guard.as_mut().ok_or_else(|| {
+                                    RivetError::new(
+                                        ErrorKind::Cleanup,
+                                        "cleanup.closed",
+                                        format!("`{}` is already closed", path[0]),
+                                    )
+                                })?;
+                                h.property(&ctx, &path[1]).await
+                            }
+                            .map_err(|e| e.with_span(Some(span.clone())))?;
                             for seg in &path[2..] {
                                 v = v.get(seg).cloned().ok_or_else(|| {
                                     runtime_err(

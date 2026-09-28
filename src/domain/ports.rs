@@ -119,3 +119,59 @@ pub trait QuicDriver: Send + Sync {
     async fn resolve(&self, host: &str, port: u16) -> RivetResult<Vec<std::net::SocketAddr>>;
     async fn exchange(&self, plan: QuicPlan) -> RivetResult<QuicResult>;
 }
+
+/// Native gRPC transport over HTTP/2 driven by pinned descriptors. It never
+/// authorizes anything itself: callers pass an already authorized `GrpcDial`.
+#[async_trait]
+pub trait GrpcDriver: Send + Sync {
+    /// Connectors and methods from the pinned descriptor sets (read at load).
+    fn catalog(&self) -> &super::grpc::GrpcCatalog;
+    /// Check a ProtoJSON value against the method's input type (no I/O).
+    fn validate_input(
+        &self,
+        method: &super::grpc::GrpcMethodInfo,
+        message: &Value,
+    ) -> RivetResult<()>;
+    /// Resolve a host name to candidate addresses (the caller checks each one).
+    async fn resolve(&self, host: &str, port: u16) -> RivetResult<Vec<std::net::IpAddr>>;
+    /// Dial the checked address and start the call; returns its two halves.
+    async fn invoke(
+        &self,
+        dial: super::grpc::GrpcDial,
+    ) -> RivetResult<(Box<dyn GrpcSender>, Box<dyn GrpcReceiver>)>;
+}
+
+/// Send half of a started call (request messages, then half-close).
+#[async_trait]
+pub trait GrpcSender: Send {
+    /// Encode (ProtoJSON → protobuf, validated against the input type) and queue.
+    async fn send(&mut self, message: Value) -> RivetResult<()>;
+    /// Half-close the request stream; idempotent.
+    async fn finish(&mut self);
+}
+
+/// Receive half of a started call: messages in order, then exactly one End.
+#[async_trait]
+pub trait GrpcReceiver: Send {
+    async fn next_event(&mut self) -> RivetResult<super::grpc::GrpcEvent>;
+    /// Cancel the call (RST_STREAM) if it has not finished.
+    fn cancel(&mut self);
+}
+
+/// A scope-owned gRPC call with cardinality and status rules applied. Both
+/// halves may be used concurrently (bidi: one task sends, another receives).
+#[async_trait]
+pub trait GrpcCall: Send + Sync {
+    /// `rpc.send V`.
+    async fn send(&self, message: Value) -> RivetResult<()>;
+    /// `rpc.finish_send` (idempotent half-close).
+    async fn finish_send(&self) -> RivetResult<()>;
+    /// `for message in rpc`; `Ok(None)` only after a final OK status.
+    async fn next(&self) -> RivetResult<Option<Value>>;
+    /// `rpc.result` / unary response: the single message plus final OK.
+    async fn result(&self) -> RivetResult<super::grpc::GrpcResult>;
+    /// `rpc.completion`: final OK status, metadata and trailers.
+    async fn completion(&self) -> RivetResult<super::grpc::GrpcResult>;
+    /// Scope exit: cancel the call unless it already ended.
+    async fn close(&self);
+}

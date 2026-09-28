@@ -3,6 +3,7 @@
 pub mod capy_parser;
 pub mod execution_driver;
 pub mod file_access;
+pub mod grpc_adapter;
 pub mod policy_broker;
 pub mod policy_file_reader;
 pub mod quic_adapter;
