@@ -4,8 +4,8 @@ title: "Rivet protocol adapters"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [transports, datagrams, quic, grpc, http]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
-scope: The outbound protocol adapters behind Rivet effect statements (HTTP/1.1, HTTP/2, HTTP/3, SSE/JSONL/lines/bytes streams, TCP/Unix sockets, WebSocket client, argv-only processes and their OS sandboxes, UDP, native QUIC, gRPC and shared TLS), how each is wired, authorized, bounded and which error codes it emits.
+scope: The outbound protocol adapters behind Rivet effect statements (HTTP/1.1, HTTP/2, HTTP/3, SSE/JSONL/lines/bytes streams, TCP/Unix sockets, WebSocket client, argv-only processes and their OS sandboxes, UDP, native QUIC, gRPC and shared TLS), how each is wired, authorized, bounded and which error codes it emits, and (0.2.0) which Cargo feature compiles each adapter in.
 reason: Every network, socket and child-process effect a script performs goes through one of these adapters; maintainers and reviewers need one current-state map of what each adapter accepts, what it refuses, what it checks before the first byte leaves, and what the binary actually returns.
-related_documents: [PROP-2026-0001, PLAN-2026-0001, SYS-2026-0002, SYS-2026-0003, SYS-2026-0004, SYS-2026-0006, SYS-2026-0008, SYS-2026-0009, ADR-0002, ADR-0003]
+related_documents: [PROP-2026-0001, PLAN-2026-0001, PLAN-2026-0002, ADR-0005, API-2026-0006, SYS-2026-0010, SYS-2026-0002, SYS-2026-0003, SYS-2026-0004, SYS-2026-0006, SYS-2026-0008, SYS-2026-0009, ADR-0002, ADR-0003]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, transports, http, http3, quic, udp, grpc, websocket, sockets, process, sandbox, tls]
@@ -31,11 +31,11 @@ tags: [rivet, system, transports, http, http3, quic, udp, grpc, websocket, socke
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** transports, datagrams, quic, grpc, http
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -126,7 +126,7 @@ fixtures on 127.0.0.1 and no external network. The results appear in each sectio
   See [SYS-2026-0009](sys-2026-0009-mcp-client-connectors.md).
 - **Inbound serving** (REST, SSE, WebSocket and MCP server surfaces) is not in scope. See
   [SYS-2026-0004](../components/sys-2026-0004-surfaces-and-serve.md).
-- The 0.1.0 adapters do **not** provide:
+- The adapters (0.1.0 and 0.2.0) do **not** provide:
   - connection pooling
   - Alt-Svc discovery
   - TLS on raw TCP or Unix sockets
@@ -134,7 +134,7 @@ fixtures on 127.0.0.1 and no external network. The results appear in each sectio
   - interactive processes
   - QUIC migration or 0-RTT
   - gRPC compression or reflection
-  - a certified Linux or Windows process sandbox
+  - a certified Linux process sandbox (Windows is not a supported platform in 0.2.0, INC-2026-0011)
 
   See [Known Limitations](#known-limitations).
 
@@ -524,14 +524,14 @@ the local fixture described in [Last Verified Version](#last-verified-version). 
 server with no QUIC listener, reached with `tls ca_file "./ca.pem"`:
 
 ```text
-$ rivet --file app.rivet request items.strict3         # version 3            → exit 5, 3.04 s
-{"request_id":"req_010e9e11c5","trace_id":"tr_010e9e11c5","error":{"kind":"protocol","code":"http.version_unavailable","message":"HTTP/3 is not available: no QUIC answer from 127.0.0.1:18453 within 3000 ms","retryable":false,"effects":"none","source":{"file":"app.rivet","line":5,"column":5,"end_line":9,"end_column":8},"operation_id":"items.strict3","details":{"request_sent":false,"version":3}}}
+$ rivet --file app.rivet request items.strict3         # version 3            → exit 5, 3.08 s
+{"request_id":"req_01fe04d4a5","trace_id":"tr_01fe04d4a5","operation":"items.strict3","type":"result","status":"error","data":null,"error":{"kind":"protocol","code":"http.version_unavailable","message":"HTTP/3 is not available: no QUIC answer from 127.0.0.1:18913 within 3000 ms","retryable":false,"source":{"file":"app.rivet","line":3,"column":5,"end_line":7,"end_column":8},"operation_id":"items.strict3","details":{"request_sent":false,"version":3}},"effects":"none","data_count":0}
 
-$ rivet --file app.rivet request items.prefer          # version prefer [3, 1.1] → exit 0, 3.04 s
-{"request_id":"req_0158a874ed","trace_id":"tr_0158a874ed","result":{"items":[1,2,3],"version":1.1},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request items.prefer          # version prefer [3, 1.1] → exit 0, 3.08 s
+{"request_id":"req_0146fd9715","trace_id":"tr_0146fd9715","operation":"items.prefer","type":"result","status":"ok","data":{"items":[1,2,3],"version":1.1},"error":null,"effects":"none","data_count":0}
 
 $ rivet --file app.rivet request h.badpref             # version prefer [2, 3]   → exit 2
-{…,"error":{"kind":"validation","code":"validation.http_version","message":"expected `version 1.1|2|3` or `version prefer [3, 2]` (HTTP/3 may only come first; no repeats)",…}}
+{"request_id":"req_018c619a85","trace_id":"tr_018c619a85","operation":"h.badpref","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.http_version","message":"expected `version 1.1|2|3` or `version prefer [3, 2]` (HTTP/3 may only come first; no repeats)","retryable":false,"source":{"file":"app.rivet","line":23,"column":5,"end_line":26,"end_column":8},"operation_id":"h.badpref"},"effects":"none","data_count":0}
 ```
 
 Request and trace IDs vary between runs. The fixture log shows exactly one `GET /items` for the
@@ -543,13 +543,13 @@ The same fixture answers `/old` with `302 Location: /items`, and `/events` with 
 
 ```text
 $ rivet --file app.rivet request items.redirect_default   # accept status [302], no redirect line
-{"request_id":"req_01a1842bcd","trace_id":"tr_01a1842bcd","result":{"status":302,"location":"/items"},"data_count":0,"effects":"none"}
+{"request_id":"req_0188d94c95","trace_id":"tr_0188d94c95","operation":"items.redirect_default","type":"result","status":"ok","data":{"status":302,"location":"/items"},"error":null,"effects":"none","data_count":0}
 
 $ rivet --file app.rivet request items.redirect_follow    # redirect follow limit 1
-{"request_id":"req_019e136195","trace_id":"tr_019e136195","result":{"status":200,"body":{"items":[1,2,3]},"version":1.1},"data_count":0,"effects":"none"}
+{"request_id":"req_0183e10b1d","trace_id":"tr_0183e10b1d","operation":"items.redirect_follow","type":"result","status":"ok","data":{"status":200,"body":{"items":[1,2,3]},"version":1.1},"error":null,"effects":"none","data_count":0}
 
-$ rivet --file app.rivet request items.events             # with http get … as stream / stream sse
-{"request_id":"req_019b3daa3d","trace_id":"tr_019b3daa3d","result":[{"event":"tick","id":null,"data":{"n":1}},{"event":"tick","id":null,"data":{"n":2}}],"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request items.events             # with http get … as events / stream sse
+{"request_id":"req_017ed541c5","trace_id":"tr_017ed541c5","operation":"items.events","type":"result","status":"ok","data":[{"event":"tick","id":null,"data":{"n":1}},{"event":"tick","id":null,"data":{"n":2}}],"error":null,"effects":"none","data_count":0}
 ```
 
 ### Stream decoding (`StreamDecoder`, `src/infra/codec.rs`)
@@ -663,7 +663,9 @@ certified code path would behave as follows:
 - It applies both between fork and exec.
 - It refuses any policy that has deny entries, because Landlock cannot express them.
 
-Verified on macOS (Darwin 25.4.0), using a scratch bundle and the policy below:
+Verified on macOS (Darwin 25.4.0) with the 0.2.0-rc, using a scratch bundle and the policy below. The
+elided (`…`) error envelopes carry the usual `request_id`, `trace_id`, `operation`, `type`, `status: "error"`,
+`data: null`, `source`, `operation_id`, top-level `effects` and `data_count`:
 
 ```json
 {"version": 1,
@@ -674,7 +676,7 @@ Verified on macOS (Darwin 25.4.0), using a scratch bundle and the policy below:
 
 ```text
 $ rivet --file app.rivet request p.cat           # /bin/cat ./data/public.json, decode stdout json   → exit 0
-{"request_id":"req_0118cf4d15","trace_id":"tr_0118cf4d15","result":{"message":"public"},"data_count":0,"effects":"committed"}
+{"request_id":"req_0173659bb5","trace_id":"tr_0173659bb5","operation":"p.cat","type":"result","status":"ok","data":{"message":"public"},"error":null,"effects":"committed","data_count":0}
 
 $ rivet --file app.rivet request p.cat_private   # /bin/cat ./data/private/secret.json (deny wins in the kernel) → exit 5
 {…,"error":{"kind":"process","code":"process.exit","message":"`/bin/cat` exited with status 1",…,"details":{"exit":1,"stderr":"cat: ./data/private/secret.json: Operation not permitted\n"}}}
@@ -686,7 +688,7 @@ $ rivet --file app.rivet request p.bare          # command "cat"                
 {…,"error":{"kind":"validation","code":"validation.process_program","message":"`cat` is not a path; use an absolute path or a bundle-relative ./path (no PATH lookup)",…}}
 
 $ rivet --file app.rivet request p.lines         # with command "/usr/bin/printf" … stream stdout lines → exit 0
-{"request_id":"req_010fc74815","trace_id":"tr_010fc74815","result":["a","b"],"data_count":0,"effects":"none"}
+{"request_id":"req_016eeb7455","trace_id":"tr_016eeb7455","operation":"p.lines","type":"result","status":"ok","data":["a","b"],"error":null,"effects":"none","data_count":0}
 
 $ rivet --file app.rivet --policy narrowed.json request p.cat   # allow_read ./data/** access ["read"]  → exit 5
 {…,"error":{"kind":"unsupported","code":"unsupported.sandbox_backend","message":"the process sandbox cannot represent this policy exactly: allow_read ./data/** narrowed by access",…,"details":{"grant":"allow_read ./data/** narrowed by access"}}}
@@ -748,26 +750,27 @@ A sequence diagram of a multicast receive, as verified on loopback:
    │ end ─────────────────▶│ close: step Close ─────────────────────────────▶ leave group, drop socket ─────────────▶│
 ```
 
-Verified with a scratch bundle on ports 18450–18452 and Python fixtures:
+Verified with a scratch bundle on ports 18914–18915 and Python fixtures (0.2.0-rc):
 
 ```text
-$ rivet --file app.rivet request telemetry.status       # no fixture listening on 127.0.0.1:18450 → exit 5
-{"request_id":"req_019db5d83d","trace_id":"tr_019db5d83d","error":{"kind":"connection","code":"udp.receive_failed","message":"receive: Connection refused (os error 61)","retryable":false,"effects":"committed","source":{"file":"app.rivet","line":10,"column":9,"end_line":10,"end_column":48},"operation_id":"telemetry.status"}}
+$ rivet --file app.rivet request telemetry.status       # no fixture listening on 127.0.0.1:18914 → exit 5
+{"request_id":"req_0121c63dc5","trace_id":"tr_0121c63dc5","operation":"telemetry.status","type":"result","status":"error","data":null,"error":{"kind":"connection","code":"udp.receive_failed","message":"receive: Connection refused (os error 61)","retryable":false,"source":{"file":"app.rivet","line":6,"column":9,"end_line":6,"end_column":48},"operation_id":"telemetry.status"},"effects":"committed","data_count":0}
 
 $ rivet --file app.rivet request telemetry.status       # fixture replies {"state":"ready"}      → exit 0
 fixture got b'{"command":"status"}'
-{"request_id":"req_017d0ac17d","trace_id":"tr_017d0ac17d","result":{"state":"ready"},"data_count":0,"effects":"committed"}
+{"request_id":"req_01078d9d1d","trace_id":"tr_01078d9d1d","operation":"telemetry.status","type":"result","status":"ok","data":{"state":"ready"},"error":null,"effects":"committed","data_count":0}
 
-$ rivet --file app.rivet request telemetry.multicast    # sender loops "tick" to 239.255.42.99:18452 via 127.0.0.1 → exit 0
-{"request_id":"req_01ea6aeecd","trace_id":"tr_01ea6aeecd","result":{"peer":"127.0.0.1:52110","data":"tick"},"data_count":0,"effects":"none"}
+$ rivet --file app.rivet request telemetry.multicast    # sender loops "tick" to 239.255.42.99:18915 via 127.0.0.1 → exit 0
+{"request_id":"req_01054c61dd","trace_id":"tr_01054c61dd","operation":"telemetry.multicast","type":"result","status":"ok","data":{"peer":"127.0.0.1:59591","data":"tick"},"error":null,"effects":"none","data_count":0}
 
 $ rivet --file app.rivet --policy nojoin.json request telemetry.multicast   # allow_listen … access ["bind"] → exit 3
-{…,"error":{"kind":"permission","code":"permission.denied","message":"allow_listen multicast_join udp://0.0.0.0:18452 denied: grant allow_listen udp://0.0.0.0:18452 access [bind] does not include `multicast_join`",…,"details":{"capability":"allow_listen","access":"multicast_join","target":"udp://0.0.0.0:18452"}}}
+{"request_id":"req_01034acd75","trace_id":"tr_01034acd75","operation":"telemetry.multicast","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_listen multicast_join udp://0.0.0.0:18915 denied: grant allow_listen udp://0.0.0.0:18915 access [bind] does not include `multicast_join`","retryable":false,"source":{"file":"app.rivet","line":12,"column":5,"end_line":18,"end_column":8},"operation_id":"telemetry.multicast","details":{"capability":"allow_listen","access":"multicast_join","target":"udp://0.0.0.0:18915"}},"effects":"none","data_count":0}
 ```
 
 The first run fails because the connected socket received an ICMP port-unreachable, which the OS
 reports as `udp.receive_failed`. A silent peer would instead produce `timeout` (kind timeout, exit 6)
-with `effects: unknown` on the error. The request envelope rolls effects up as `none` or `committed`.
+with `effects: unknown`. In 0.2.0 `effects` is a single top-level envelope field that rolls every effect up
+(`none` < `committed` < `partial` < `unknown`); it is no longer repeated inside the error object.
 
 **Manifest alignment (B3).** Since commit `829ca43` the I/O manifest (`rivet io`, `--check-policy`,
 `policy generate`) lists a multicast site exactly as the table above authorizes it: `allow_network` connect
@@ -853,12 +856,12 @@ omitted. Keys named `authorization`, `proxy-authorization`, `cookie` or `set-coo
 Verified on the scratch copy of `10-grpc` with its descriptor generated:
 
 ```text
-$ rivet --file app.rivet --policy nogrpc.json request users.grpc_get --params '{"id":"42"}'   → exit 3
-{…,"error":{"kind":"permission","code":"permission.denied","message":"allow_grpc call users/example.Users/GetUser denied: no grant for allow_grpc users/example.Users/GetUser",…,"details":{"capability":"allow_grpc","access":"call","target":"users/example.Users/GetUser"}}}
+$ rivet --file app.rivet --policy nogrpc.json request users.grpc_get --data '{"id":"42"}'   → exit 3
+{"request_id":"req_01a755edc5","trace_id":"tr_01a755edc5","operation":"users.grpc_get","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_grpc call users/example.Users/GetUser denied: no grant for allow_grpc users/example.Users/GetUser","retryable":false,"source":{"file":"app.rivet","line":15,"column":5,"end_line":18,"end_column":8},"operation_id":"users.grpc_get","details":{"capability":"allow_grpc","access":"call","target":"users/example.Users/GetUser"}},"effects":"none","data_count":0}
 
-$ rivet --file local.rivet --policy local.json request users.grpc_get --params '{"id":"42"}'  → exit 5
-  (endpoint "http://127.0.0.1:18457", nothing listening)
-{…,"error":{"kind":"connection","code":"connection.refused","message":"gRPC connect to http://127.0.0.1:18457 failed: transport error: Connection refused (os error 61): Connection refused (os error 61)",…}}
+$ rivet --file local.rivet --policy local.json request users.grpc_get --data '{"id":"42"}'  → exit 5
+  (endpoint "http://127.0.0.1:18916", nothing listening)
+{"request_id":"req_01a6da9095","trace_id":"tr_01a6da9095","operation":"users.grpc_get","type":"result","status":"error","data":null,"error":{"kind":"connection","code":"connection.refused","message":"gRPC connect to http://127.0.0.1:18916 failed: transport error: Connection refused (os error 61): Connection refused (os error 61)","retryable":false,"source":{"file":"local.rivet","line":15,"column":5,"end_line":18,"end_column":8},"operation_id":"users.grpc_get"},"effects":"none","data_count":0}
 ```
 
 ### Error codes emitted, by adapter
@@ -934,12 +937,65 @@ sandbox backend contract is in [ADR-0003](../../decisions/adr-0003-process-sandb
 
 ## Deployment
 
-The adapters are compiled into the single `rivet` binary and into the `rivet` library crate. They are
-registered for every `Runtime`, whether it is built by the CLI, by `rivet serve` or by an embedding host.
-The adapters themselves have no feature flags. Platform differences are resolved at compile time:
+The adapters are compiled into the `rivet` binary (`--features cli`), into the `rivet` library crate
+(package `rivet-runtime`) and into `librivet` (`rivet-ffi`). They are registered for every `Runtime`,
+whether it is built by the CLI, by `rivet serve`, by an embedding host or through the C ABI.
+
+**Cargo features per adapter (0.2.0).** Three adapters are behind default-on Cargo features
+([ADR-0005](../../decisions/adr-0005-workspace-package-and-features.md),
+[SYS-2026-0010](../components/sys-2026-0010-ffi-surface-and-packaging.md#cargo-features)):
+
+| Adapter / effect | Cargo feature | Crates it pulls in | Without the feature (refused at load, before anything runs) |
+|---|---|---|---|
+| HTTP/1.1, HTTP/2, streams, TLS | always compiled | hyper, rustls | — |
+| TCP/Unix sockets, WebSocket client | always compiled | tokio, tokio-tungstenite | — |
+| Processes + sandbox | always compiled | — (OS APIs) | — |
+| UDP | always compiled | socket2 | — |
+| gRPC (`connector NAME grpc`, `grpc C.M`, `with grpc …`) | `grpc` | tonic, prost, prost-reflect, tower | `unsupported.feature` `details.feature: "grpc"` |
+| QUIC (`with quic …`) and HTTP/3 (`version 3`, `version prefer [3, …]`) | `quic` | quinn, h3, h3-quinn | `unsupported.feature` `details.feature: "quic"` |
+| OAuth (`auth NAME oauth2`, transports' `auth PROFILE`) | `oauth` | keyring-core and stores | `unsupported.feature` `details.feature: "oauth"` (SYS-2026-0006) |
+| MCP client connectors | always compiled (HTTP + processes) | — | — |
+
+```text
+ bundle ─▶ compile ─▶ effect sites ─▶ require_build_features(compiled program)
+                                         ├─ every needed feature compiled in ─▶ adapters registered ─▶ Runtime
+                                         └─ missing ─▶ unsupported.feature (kind unsupported, exit 5, HTTP 501)
+                                                       first use + every other use in `suppressed`, source order
+ rivet.capabilities: build_features [...] · protocol rows `unsupported` with
+                     reason "compiled without the `quic` Cargo feature (unsupported.feature)"
+```
+
+Real refusals from a lean build (`cargo build --release --no-default-features --features cli`, a scratch target
+directory; `build_features: ["cli"]`, `abi_version: 1`):
+
+```text
+$ rivet --file app.rivet check          # scratch copy of 10-grpc                       exit=5
+error[unsupported.feature]: gRPC connector `users` needs the `grpc` feature, which this build was compiled without (rebuild rivet-runtime with `--features grpc`)
+  --> app.rivet:1:1
+error[unsupported.feature]: a gRPC call in `users.grpc_get` needs the `grpc` feature, which this build was compiled without (rebuild rivet-runtime with `--features grpc`)
+  --> app.rivet:2:5                     (see Known Limitations: the call's span is the connector's endpoint line)
+… one more per gRPC operation (users.watch, users.upload, chat.exchange)
+
+$ rivet --file app.rivet check          # HTTP/3 scratch bundle above                    exit=5
+error[unsupported.feature]: HTTP/3 (`version 3` or `version prefer [3, …]`) in `items.strict3` needs the `quic` feature, which this build was compiled without (rebuild rivet-runtime with `--features quic`)
+  --> app.rivet:3:5
+… items.prefer, h.badpref
+
+$ rivet --file app.rivet --json check   # OAuth scratch bundle of SYS-2026-0006          exit=5
+{"request_id":"","trace_id":"","operation":"rivet.check","type":"result","status":"error","data":null,"error":{"kind":"unsupported","code":"unsupported.feature","message":"auth profile `crm_service` needs the `oauth` feature, which this build was compiled without (rebuild rivet-runtime with `--features oauth`)","retryable":false,"source":{"file":"app.rivet","line":1,"column":1,"end_line":11,"end_column":4},"details":{"feature":"oauth"},"suppressed":[{…"auth profile `crm_user` …"},{…"auth profile `crm_device` …"}]},"effects":"none","data_count":0}
+
+$ rivet --file app.rivet request rivet.capabilities     # 01-catalog; rows of data.features
+{"name": "http3", "stage": "B", "support": "unsupported", "selection": ["strict", "prefer [3, 2]"], "reason": "compiled without the `quic` Cargo feature (unsupported.feature)"}
+{"name": "quic_v1", "stage": "B", "support": "unsupported", "streams": ["bidi", "uni"], "reason": "compiled without the `quic` Cargo feature (unsupported.feature)"}
+{"name": "grpc", "stage": "B", "support": "unsupported", "modes": ["unary", "server_stream", "client_stream", "bidi"], "transport": "http2", "reason": "compiled without the `grpc` Cargo feature (unsupported.feature)"}
+{"name": "oauth2_client_credentials", "stage": "B", "support": "unsupported", "reason": "compiled without the `oauth` Cargo feature (unsupported.feature)"}
+```
+
+Platform differences are resolved at compile time:
 
 - Process sandbox backend: macOS gets Seatbelt, Linux gets the gated Landlock + seccomp backend, and every
-  other platform refuses.
+  other platform refuses. The supported platforms are macOS and Linux, both green in CI; Windows is not
+  supported in 0.2.0 ([INC-2026-0011](../../incidents/active/inc-2026-0011-windows-port-failures.md)).
 - Unix sockets are available only on `cfg(unix)`. Other platforms return `unsupported.unix`.
 - Multicast joins by interface name need `if_nametoindex`, which is available on Unix only.
 
@@ -1006,21 +1062,34 @@ From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.m
   `version prefer [3, …]`. A server that has no QUIC listener adds the 3 s handshake bound before a
   `prefer` fallback.
 - The process sandbox is active on macOS only. The Linux backend is built but gated
-  (`CERTIFIED = false`) until it is verified on a kernel of 6.12 or later. Windows and other platforms always
-  refuse sandboxed spawns (`unsupported.sandbox_backend`). Because `policy.json` makes the sandbox mandatory,
+  (`CERTIFIED = false`) until it is verified on a kernel of 6.12 or later; Linux CI asserts the typed
+  `unsupported.sandbox_backend` refusal instead of a spawn. Other platforms (Windows is unsupported,
+  INC-2026-0011) always refuse sandboxed spawns (`unsupported.sandbox_backend`). Because `policy.json` makes the sandbox mandatory,
   `command` and MCP stdio connectors cannot run on those platforms under a policy.
 - Stage C forms are refused: TLS on raw TCP or Unix sockets (`unsupported.tcp_tls`), socket `reconnect`
   (`unsupported.reconnect`), interactive processes (`unsupported.interactive`), named pipes
   (`unsupported.adapter`). `resume` is accepted and ignored.
 
+- **Misplaced `unsupported.feature` span for gRPC calls (0.2.0-rc).** In a build without `grpc`, the
+  diagnostic for each gRPC call points at the connector's first option line (`app.rivet:2:5`, the `endpoint`)
+  instead of the `grpc users.GetUser` statement. The code and message are correct. Reported to the plan owner.
+
 Behaviour by design: QUIC connection migration and 0-RTT are refused (the client never rebinds its UDP
 socket); the Seatbelt backend expresses only `DIR/**`, exact paths and `*` (not grants narrowed by `access`,
 or other globs) and the Linux backend also cannot express deny entries; gRPC has no compression and no server
-reflection, and the descriptor must be generated before the bundle loads.
+reflection, and the descriptor must be generated before the bundle loads. A lean build without `grpc`, `quic` or
+`oauth` refuses the bundles that need them (`unsupported.feature`); it never degrades silently.
 
 ## Last Verified Version
 
-`0.1.0-dev (commit 829ca43)`. First verified at `f40d4aa` with `target/debug/rivet` on macOS (Darwin 25.4.0)
+`0.2.0-rc (main at 8031baa)`, 2026-09-29, macOS (Darwin 25.4.0), `target/release/rivet` built with
+`cargo build --release --features cli`, plus a lean `--no-default-features --features cli` build in a scratch
+target directory. Every capture in this document was re-run as a 0.2.0 envelope on scratch fixtures on
+`127.0.0.1:18913` (HTTPS with a scratch CA, no QUIC listener), `18914`–`18915` (UDP unicast and multicast) and
+`18916` (unreachable gRPC), with Seatbelt process runs and a scratch copy of `10-grpc` with a `protoc`-generated
+descriptor. Every fixture was stopped afterwards. The QUIC rows of the table below were not re-run on the RC.
+
+History: `0.1.0-dev (commit 829ca43)`. First verified at `f40d4aa` with `target/debug/rivet` on macOS (Darwin 25.4.0)
 on 2026-09-28; the fix-batch changes (8 MiB defaults, multicast manifest alignment, secret sinks) were
 re-checked at `829ca43` against the source constants and `tests/conformance_udp.rs`,
 `tests/conformance_errors_limits_dag.rs` and the secret-taint tests; the table below is the original run.
@@ -1055,6 +1124,9 @@ paths are covered by the conformance suites (`tests/conformance_http3.rs`, `conf
 - [SYS-2026-0006 OAuth and credentials](sys-2026-0006-oauth-and-credentials.md)
 - [SYS-2026-0008 policy.json reference](../configuration/sys-2026-0008-policy-json-reference.md)
 - [SYS-2026-0009 MCP client connectors](sys-2026-0009-mcp-client-connectors.md)
+- [SYS-2026-0010 FFI surface, packaging and Cargo features](../components/sys-2026-0010-ffi-surface-and-packaging.md)
+- [ADR-0005 Workspace, package and features](../../decisions/adr-0005-workspace-package-and-features.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md)
 - [Demos](../../demos/README.md)
 
 ## Change History
@@ -1063,3 +1135,4 @@ paths are covered by the conformance suites (`tests/conformance_http3.rs`, `conf
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-19). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): 8 MiB defaults for HTTP body, stream items, socket and QUIC frames, process output and MCP messages; multicast manifest now mirrors the runtime (discrepancy removed); secret sink rule; limitations reduced to the current ones. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-35/D-47 (TASK-073, TASK-070): Cargo features per adapter (`grpc`, `quic`, `oauth`; others always compiled) with real lean-build refusals and capability rows; HTTP/3, redirect, SSE, process-sandbox, UDP and gRPC captures re-run as 0.2.0 envelopes; top-level `effects`; misplaced gRPC refusal span recorded; macOS/Linux only. |
