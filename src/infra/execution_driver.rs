@@ -182,6 +182,41 @@ pub struct EvaluatedForm {
     pub children: Vec<Vec<(String, Vec<EvalArg>)>>,
 }
 
+/// Codec and format words that select how a form reads or writes data.
+const FORM_KEYWORDS: [&str; 11] = [
+    "json",
+    "text",
+    "bytes",
+    "lines",
+    "jsonl",
+    "sse",
+    "xml",
+    "raw",
+    "newline",
+    "form",
+    "multipart",
+];
+
+/// Whether `args[i]` is a form keyword in keyword position: the first word of
+/// an option or call, the word after `as`, or a codec that a value follows
+/// (`text VALUE`). The slot right after a codec is always a value.
+fn keyword_slot(args: &[Arg], i: usize) -> bool {
+    let word = |k: usize| match args.get(k) {
+        Some(Arg::Word(w, _)) => Some(w.as_str()),
+        _ => None,
+    };
+    let Some(w) = word(i) else { return false };
+    if !FORM_KEYWORDS.contains(&w) {
+        return false;
+    }
+    let prev = i.checked_sub(1).and_then(word);
+    let is_codec = |x: &str| Codec::parse(x).is_some();
+    if prev.is_some_and(is_codec) {
+        return false;
+    }
+    i == 0 || prev == Some("as") || (is_codec(w) && i + 1 < args.len())
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum EvalArg {
     Word(String),
@@ -1312,8 +1347,8 @@ impl<'a> Machine<'a> {
         method.push(&call.method);
         let method = method.join(".");
         let mut args = Vec::with_capacity(call.args.len());
-        for a in &call.args {
-            args.push(self.eval_arg(frame, a).await?);
+        for (i, a) in call.args.iter().enumerate() {
+            args.push(self.eval_arg_at(frame, &call.args, i, a).await?);
         }
         // Socket/stream sends carry data to the handle's destination (G23b).
         sink_guard(
@@ -1703,12 +1738,13 @@ impl<'a> Machine<'a> {
                 out.head.push(EvalArg::Value(Value::Text(url)));
                 continue;
             }
-            out.head.push(self.eval_arg(frame, a).await?);
+            out.head
+                .push(self.eval_arg_at(frame, &form.head, i, a).await?);
         }
         for o in &form.options {
             let mut args = Vec::new();
-            for a in &o.args {
-                args.push(self.eval_arg(frame, a).await?);
+            for (i, a) in o.args.iter().enumerate() {
+                args.push(self.eval_arg_at(frame, &o.args, i, a).await?);
             }
             out.options.push((o.key.clone(), args));
             let mut kids = Vec::with_capacity(o.children.len());
@@ -1718,7 +1754,7 @@ impl<'a> Machine<'a> {
                     // A part's bare NAME is a literal name, never a variable lookup.
                     args.push(match a {
                         Arg::Word(w, _) if i == 0 => EvalArg::Word(w.clone()),
-                        _ => self.eval_arg(frame, a).await?,
+                        _ => self.eval_arg_at(frame, &c.args, i, a).await?,
                     });
                 }
                 kids.push((c.key.clone(), args));
@@ -1726,6 +1762,24 @@ impl<'a> Machine<'a> {
             out.children.push(kids);
         }
         Ok(out)
+    }
+
+    /// Evaluates `args[i]`, keeping a form keyword in keyword position as a
+    /// word even when a variable of the same name is in scope (a `text`
+    /// parameter must not turn `file append P text text` into two values).
+    async fn eval_arg_at(
+        &self,
+        frame: &mut Frame,
+        args: &[Arg],
+        i: usize,
+        a: &Arg,
+    ) -> RivetResult<EvalArg> {
+        if keyword_slot(args, i)
+            && let Arg::Word(w, _) = a
+        {
+            return Ok(EvalArg::Word(w.clone()));
+        }
+        self.eval_arg(frame, a).await
     }
 
     async fn eval_arg(&self, frame: &mut Frame, a: &Arg) -> RivetResult<EvalArg> {

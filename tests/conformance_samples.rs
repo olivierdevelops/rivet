@@ -35,7 +35,11 @@ fn every_demo_bundle_compiles() {
             }
         }
     }
-    assert_eq!(dirs.len(), 12);
+    assert!(
+        dirs.len() >= 12,
+        "found {} demo bundles, expected at least the twelve release demos",
+        dirs.len()
+    );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 

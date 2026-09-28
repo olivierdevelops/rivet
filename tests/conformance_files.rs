@@ -941,3 +941,21 @@ async fn scoped_file_handles_are_confined_and_typed() {
     .unwrap_err();
     assert_eq!(code(&e), ("unsupported.stage_c", 5));
 }
+
+// vhco:test files.apply_file_operation -- a variable named like a codec (`text`, `json`) never replaces the codec keyword: `text text` writes the variable, `as text` still selects the codec
+#[tokio::test]
+async fn codec_named_variables_keep_keywords() {
+    let b = bundle();
+    std::fs::write(b.path().join("out/log.txt"), "").unwrap();
+    let v = run(
+        b.path(),
+        "text = \"hello\"\njson = {n: 1}\nfile append \"./out/log.txt\" text \"${text}\\n\"\nfile append \"./out/log.txt\" text text\nfile create \"./out/n.json\" json json\nr = file read \"./out/log.txt\" as text\nreturn r",
+    )
+    .await
+    .unwrap();
+    assert_eq!(v, Value::Text("hello\nhello".into()));
+    assert_eq!(
+        json_file(b.path().join("out/n.json")),
+        serde_json::json!({"n": 1})
+    );
+}
