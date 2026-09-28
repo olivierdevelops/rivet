@@ -17,6 +17,7 @@ components: [policy, transports, connectors, execution]
 affected_versions:
   from: not-applicable
   to: "0.1.0"
+scope: Which operating systems confine child processes in v0.1.0 and how the others refuse.
 reason: PLAN-2026-0001 TASK-012 / PROP-2026-0001 F-14 and OQ-1 — decide which platforms confine sandboxed allow_exec and stdio MCP children in v0.1.0, with which mechanism and which exact source files, and which platforms refuse with unsupported.sandbox_backend.
 related_documents: [RES-2026-0003, RES-2026-0002, PROP-2026-0001, PLAN-2026-0001, ADR-0001, ADR-0002]
 supersedes: null

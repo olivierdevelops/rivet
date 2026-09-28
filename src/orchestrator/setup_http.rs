@@ -31,13 +31,16 @@
 // vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
 // vhco:api http audit/inspect_effects GET /v1/io -- the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
+// vhco:request { "query": "by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv" }
 // vhco:response { "bundle": "FileDigest", "policy": "FileDigest|null", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]" }
 // vhco:api http policy/generate_policy POST /v1/policy/generate -- least-privilege policy draft; never writes files
 // vhco:request { "ids": "string[]", "all": "bool" }
 // vhco:response { "policy": "policy.json v1", "review": "EffectSite[]", "complete": "bool" }
 // vhco:api http registry/describe_operations GET /v1/operations -- authorized operation summaries
+// vhco:request { "headers": "Authorization: Bearer TOKEN (when serve.auth is bearer)" }
 // vhco:response { "operations": "[{id, name, description, streaming}]", "next_cursor": "null" }
 // vhco:api http registry/inspect_outputs GET /v1/operations/{id}/outputs -- declared output, emits, receives and errors JSON Schema
+// vhco:request { "path": "id — operation ID" }
 // vhco:response { "id": "string", "output": "JSON Schema", "emits": "JSON Schema|null", "receives": "JSON Schema|null", "errors": "[{code, description}]" }
 
 use super::builtins::visible;

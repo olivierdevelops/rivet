@@ -12,7 +12,7 @@ authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [language, registry, execution, files, connectors, audit, policy, auth, datagrams, quic, grpc, sessions, serve, transports, cli, http, ws, poll, mcp, library, documentation]
+components: [language, registry, execution, files, connectors, audit, policy, auth, datagrams, quic, grpc, sessions, serve, transports, cli, http, ws, poll, mcp, library]
 affected_versions:
   from: not-applicable
   to: "0.1.0"

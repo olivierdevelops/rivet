@@ -10,7 +10,7 @@ authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [examples]
+components: [registry]
 affected_versions:
   from: not-applicable
   to: proposed-v0.1

@@ -12,10 +12,11 @@ approval:
   decision_date: 2026-09-28
   approvers: [Project maintainer]
 systems: [Rivet]
-components: [language, runtime, interfaces, sandbox, documentation]
+components: [language, execution, cli, http, mcp, library, policy]
 affected_versions:
   from: not-applicable
   to: "0.1.0"
+scope: Approval of PROP-2026-0001, the hand-authored contract and PLAN-2026-0001, and closure of the Capy licence gate.
 reason: Record the maintainer's approval of PROP-2026-0001, the hand-authored contract and PLAN-2026-0001, and the closure of the Capy licence gate.
 related_documents: [PROP-2026-0001, PLAN-2026-0001, REF-2026-0001]
 supersedes: null

@@ -1,6 +1,6 @@
 {
   "project": {
-    "summary": "Rivet design-only repository; Rust implementation pending approval."
+    "summary": "Rivet: Rust/Capy runtime for described operations over CLI, HTTP/SSE/polling/WebSocket/MCP and a Rust library; policy.json authority; I/O manifest."
   },
   "language": {
     "name": "rust",
@@ -11,5 +11,14 @@
     "dirs": [
       "docs"
     ]
+  },
+  "assurance": {
+    "tests": {
+      "commands": [
+        "cargo test --all-targets",
+        "cargo clippy --all-targets -- -D warnings",
+        "python3 scripts/check_docs.py"
+      ]
+    }
   }
 }

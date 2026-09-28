@@ -10,7 +10,7 @@ authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [documentation]
+components: [language, execution, policy, audit, serve]
 affected_versions:
   from: not-applicable
   to: "0.1.0"

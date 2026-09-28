@@ -17,6 +17,7 @@ components: [language, execution, files, connectors, policy, auth, datagrams, qu
 affected_versions:
   from: not-applicable
   to: "0.1.0"
+scope: The third-party Rust crates Rivet v0.1.0 depends on and why.
 reason: PLAN-2026-0001 TASK-012 — fix the third-party crates, versions and feature sets that TASK-014 writes into Cargo.toml, based on the RES-2026-0002 prototypes.
 related_documents: [RES-2026-0002, RES-2026-0001, PROP-2026-0001, PLAN-2026-0001, ADR-0001, ADR-0003]
 supersedes: null

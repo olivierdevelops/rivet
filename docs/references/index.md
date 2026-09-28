@@ -10,7 +10,7 @@ authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [language, runtime, interfaces, sandbox]
+components: [language, execution, cli, http, mcp, library, policy]
 affected_versions:
   from: not-applicable
   to: proposed-v0.1

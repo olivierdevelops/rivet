@@ -10,7 +10,7 @@ authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [language, runtime, interfaces, sandbox, policy, serve, inspection]
+components: [language, execution, cli, http, mcp, library, policy, serve, audit]
 affected_versions:
   from: not-applicable
   to: proposed-v0.1
@@ -249,11 +249,11 @@ All user-facing operations use the unified request contract described below. The
 
 ### Capy
 
-The inspected public API exposes `Library::new` and a recovering `Library::parse` with diagnostics and source spans. Use that AST as parser output, then lower it into Rivet-owned typed IR; do not execute generated Rust or shell. The grammar belongs in a bundled `.capy` library. Applicable lesson: reuse parsing and diagnostic locations, while retaining runtime authority in Rivet. Evidence: [local source](../../../.ignore/references/capy/rust/src/capy.rs), [embedding guide](../../../.ignore/references/capy/docs/embedding.md), [upstream commit](https://github.com/olivierdevelops/capy/tree/84f984c64e0811ef2bfff7835167d6630422ecaa). Capy's native call form is prefix (`(f x y)`), so Rivet adopts it rather than extending the grammar with `f(x, y)` (see [Increment 1](#increment-1--rust-capy-syntax-and-the-compilation-boundary)). Feasibility: **experiment needed** — the spike gate in Increment 1 must parse every sample cleanly. Licence: Capy's LICENSE files are source-available (no bundling, commercial use or derivatives) while its Cargo.toml says MIT; the owner (the project user) will relicense to MIT, tracked as approval gate **G-LIC**.
+The inspected public API exposes `Library::new` and a recovering `Library::parse` with diagnostics and source spans. Use that AST as parser output, then lower it into Rivet-owned typed IR; do not execute generated Rust or shell. The grammar belongs in a bundled `.capy` library. Applicable lesson: reuse parsing and diagnostic locations, while retaining runtime authority in Rivet. Evidence: local source (`.ignore/references/capy/rust/src/capy.rs`), embedding guide (`.ignore/references/capy/docs/embedding.md`), [upstream commit](https://github.com/olivierdevelops/capy/tree/84f984c64e0811ef2bfff7835167d6630422ecaa). Capy's native call form is prefix (`(f x y)`), so Rivet adopts it rather than extending the grammar with `f(x, y)` (see [Increment 1](#increment-1--rust-capy-syntax-and-the-compilation-boundary)). Feasibility: **experiment needed** — the spike gate in Increment 1 must parse every sample cleanly. Licence: Capy's LICENSE files are source-available (no bundling, commercial use or derivatives) while its Cargo.toml says MIT; the owner (the project user) will relicense to MIT, tracked as approval gate **G-LIC**.
 
 ### AI Manager function dispatcher
 
-`Function.Execute` yields data/error pairs and stops when the consumer declines another frame. Its input filtering can erase unknown fields before validation; its output validator currently returns nil. Applicable lesson: preserve the small dispatch/stream interface, validate before filtering, and make an empty result explicit. Evidence: [local reference](../../../.ignore/references/ai_manager/function.go). Rivet is an independent Rust design, not a port of that implementation.
+`Function.Execute` yields data/error pairs and stops when the consumer declines another frame. Its input filtering can erase unknown fields before validation; its output validator currently returns nil. Applicable lesson: preserve the small dispatch/stream interface, validate before filtering, and make an empty result explicit. Evidence: local reference (`.ignore/references/ai_manager/function.go`). Rivet is an independent Rust design, not a port of that implementation.
 
 ### MCP
 
