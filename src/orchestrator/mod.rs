@@ -1,2 +1,9 @@
+pub mod builtins;
 pub mod runtime;
 pub mod setup_cli;
+pub mod setup_http;
+pub mod setup_library;
+pub mod setup_mcp;
+pub mod setup_poll;
+pub mod setup_serve;
+pub mod setup_ws;
