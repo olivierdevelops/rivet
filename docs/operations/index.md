@@ -4,8 +4,8 @@ title: "Rivet operations"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -26,7 +26,7 @@ tags: [rivet, index]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** serve, auth, policy, audit
@@ -56,10 +56,11 @@ Naming: `ops-<year>-<nnnn>-<slug>.md`, document type `operations`.
 
 | Document | Status | Summary |
 |---|---|---|
-| [OPS-2026-0001](ops-2026-0001-operating-rivet-serve.md) | active | Operating `rivet serve`: shapes, bind/auth/principals/surfaces, limits, in-memory trace store, logs and exit codes, health checks, upgrade/rollback, capacity (binary sizes) |
+| [OPS-2026-0001](ops-2026-0001-operating-rivet-serve.md) | active | Operating `rivet serve`: install (`--features cli`), shapes, bind/auth/principals/surfaces, `Deprecation` monitoring, limits, in-memory trace store, logs and exit codes, health checks, upgrade/rollback, capacity (binary sizes) |
 
 ## Recently added or updated
 
+- 2026-09-29: OPS-2026-0001 revision 3 for 0.2.0 (PLAN-2026-0002 D-38). It adds the `cli` feature install, monitoring of deprecated input (`deprecation: true`, `"deprecated":1`, trace rows) and the 0.1.x → 0.2.0 upgrade order. All examples were re-captured as envelopes on the 0.2.0-rc. Supported platforms are macOS and Linux.
 - 2026-09-28: OPS-2026-0001 created and verified against 0.1.0-dev (commit f40d4aa) — PLAN-2026-0001 D-30.
 - 2026-09-28: OPS-2026-0001 revision 2 for the fix batch (commit `829ca43`): `/v1/health`, access log, SIGTERM
   drain, enforced `max_buffered_bytes`.
@@ -75,7 +76,7 @@ rotation) and [RUN-2026-0002](../runbooks/run-2026-0002-roll-out-policy-change.m
 
 ## Unresolved work
 
-0.1.0 has no persistent trace store, metrics or configuration reload (it does have `GET /v1/health`, a per-request
+Rivet (0.1.0 and 0.2.0) has no persistent trace store, metrics or configuration reload (it does have `GET /v1/health`, a per-request
 access log and a SIGTERM drain since commit `829ca43`); revisit this directory when any of
 them ships.
 
@@ -94,3 +95,4 @@ them ships.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created. |
 | 2 | 2026-09-28 | Claude | OPS-2026-0001 revision 2 (fix batch, commit 829ca43): health route, access log, SIGTERM drain. |
+| 3 | 2026-09-29 | Claude | OPS-2026-0001 revision 3 (0.2.0: cli install, Deprecation monitoring, envelope examples; D-38). |
