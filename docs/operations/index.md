@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -61,6 +61,8 @@ Naming: `ops-<year>-<nnnn>-<slug>.md`, document type `operations`.
 ## Recently added or updated
 
 - 2026-09-28: OPS-2026-0001 created and verified against 0.1.0-dev (commit f40d4aa) — PLAN-2026-0001 D-30.
+- 2026-09-28: OPS-2026-0001 revision 2 for the fix batch (commit `829ca43`): `/v1/health`, access log, SIGTERM
+  drain, enforced `max_buffered_bytes`.
 
 ## Deprecated, superseded or archived
 
@@ -73,7 +75,8 @@ rotation) and [RUN-2026-0002](../runbooks/run-2026-0002-roll-out-policy-change.m
 
 ## Unresolved work
 
-0.1.0 has no persistent trace store, access log, metrics or configuration reload; revisit this directory when any of
+0.1.0 has no persistent trace store, metrics or configuration reload (it does have `GET /v1/health`, a per-request
+access log and a SIGTERM drain since commit `829ca43`); revisit this directory when any of
 them ships.
 
 ## Reading order
@@ -90,3 +93,4 @@ them ships.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created. |
+| 2 | 2026-09-28 | Claude | OPS-2026-0001 revision 2 (fix batch, commit 829ca43): health route, access log, SIGTERM drain. |

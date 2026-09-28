@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, manual, serve, rest, sse, polling, websocket, mcp, auth]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet serving and surfaces
@@ -48,7 +49,8 @@ in [API-2026-0001](../api/api-2026-0001-http-rest-sse-polling.md) (REST, SSE, po
 ## Reading Order
 
 ```text
- start ─► auth + principals + surfaces ─► REST ─► SSE ─► polling ─► WebSocket ─► MCP ─► built-ins ─► --endpoint
+ start ─► health, access log, shutdown ─► auth + principals + surfaces ─► REST (restrict, traceparent) ─► SSE
+       ─► polling ─► WebSocket ─► MCP ─► built-ins ─► --endpoint
 ```
 
 ## Concepts
@@ -67,19 +69,22 @@ in [API-2026-0001](../api/api-2026-0001-http-rest-sse-polling.md) (REST, SSE, po
                                              │ authenticate (serve.auth) → principal
                                              │ authorize (serve.principals) → 403 if unlisted
                                              ▼
-                                   shared dispatcher → policy broker → effects
+                          shared dispatcher → policy broker (∩ restrict) → effects
+      GET /v1/health (always mounted)   ·   one access-log line per request on stderr
 ```
 
 | Setting (`policy.json` → `serve`) | Default | Effect |
 |---|---|---|
 | `surfaces` | all five | mount only these (`http`, `sse`, `poll`, `ws`, `mcp`); others answer `404 not_found.route` |
-| `auth.type` | `none` | `none` (loopback only), `bearer` (SHA-256 token hashes), `mtls` (refuses to start in 0.1.0) |
+| `auth.type` | `none` | `none` (loopback only), `bearer` (SHA-256 token hashes), `mtls` (refuses to start in 0.1.0: `unsupported.serve_mtls`, exit 5) |
 | `principals` | unrestricted | `{NAME: {operations: [patterns]}}`; unlisted operation → `403 permission.denied` |
 
 ## Task-Oriented Workflows
 
-Captured from `docs/demos/01-catalog/` (and a scratch bundle for live input). Response headers `date` and
-`content-length` are omitted; IDs vary per run.
+Captured from `docs/demos/01-catalog/` (and a scratch bundle for live input) at commit `f40d4aa`; the health,
+access-log, drain, `traceparent`, `restrict`, WebSocket refusal and MCP `tools/list` examples were captured at
+commit `829ca43` on `127.0.0.1:18901`–`18904` from a scratch bundle (`demo.read` reads a file under `./data`,
+`chat.echo` echoes live input). Response headers `date` and `content-length` are omitted; IDs vary per run.
 
 ### Start a server
 
@@ -94,9 +99,59 @@ stderr receipt:
 ```
 
 ```text
- state:  compile bundle ─► load policy ─► validate --listen / auth ─► bind ─► receipt ─► SERVING ─► SIGINT ─► exit 0
-                │ error exit 2     │ policy.invalid exit 2  │ serve.auth_required exit 2
-                                                          │ unsupported.serve_mtls exit 5
+ state:  compile bundle ─► load policy ─► validate --listen / auth ─► bind ─► receipt ─► SERVING
+                │ error exit 2     │ policy.invalid exit 2  │ serve.auth_required exit 2      │
+                                                          │ unsupported.serve_mtls exit 5   │ SIGINT or SIGTERM
+                                                                                            ▼
+                                   DRAINING: stop accepting ─► cancel requests + sessions (5 s grace) ─► exit 0
+```
+
+### Health, access log and shutdown
+
+**Health.** `GET /v1/health` is mounted whatever `serve.surfaces` says. On a loopback bind it needs no
+credentials; on any other bind it is authenticated like every route.
+
+```text
+$ curl -s -i http://127.0.0.1:18901/v1/health
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"status":"ok","catalog_version":"sha256:d222025d04822653861aeb757330b439afa51e871d3bd6e7be1e7ece1acf0627"}
+```
+
+**Access log.** After the receipt, every request on every surface writes one JSON line to stderr:
+`time`, `surface`, `method`, `route` (the matched pattern, never the query string), `principal`, `operation`,
+`status`, `duration_ms`. Params, bodies, query strings and tokens are never logged.
+
+```text
+{"time":"2026-09-28T09:47:49.689Z","surface":"http","method":"GET","route":"/v1/health","principal":null,"operation":"health","status":200,"duration_ms":1}
+{"time":"2026-09-28T09:47:49.715Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.read","status":200,"duration_ms":8}
+{"time":"2026-09-28T09:50:04.469Z","surface":"poll","method":"POST","route":"/v1/requests/{id}/cancel","principal":"local","operation":"rivet.sessions.cancel","status":200,"duration_ms":0}
+{"time":"2026-09-28T09:50:25.007Z","surface":"poll","method":"POST","route":"/v1/requests","principal":"local","operation":"chat.echo","status":202,"duration_ms":0}
+```
+
+**Shutdown.** SIGINT (Ctrl-C) and SIGTERM drain the same way: stop accepting, cancel every in-flight request and
+session (sessions end `cancelled.shutdown`; each run closes its handles in reverse order within the 5 s grace),
+let responses flush (up to 6 s) and exit **0**:
+
+```text
+$ rivet --file app.rivet serve --listen 127.0.0.1:18902 2> s2.err & P=$!
+$ curl -s -X POST http://127.0.0.1:18902/v1/requests -d '{"id":"chat.echo","params":{}}' >/dev/null
+$ kill -TERM $P; wait $P; echo "exit=$?"
+exit=0
+```
+
+**Trace correlation.** Send a W3C `traceparent` header and its trace-id becomes the request's `trace_id`; every
+answer that belongs to a request carries `traceparent` back:
+
+```text
+$ curl -s -i -X POST http://127.0.0.1:18901/v1/request \
+       -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+       -d '{"id":"demo.read","params":{"path":"data/a.txt"}}'
+HTTP/1.1 200 OK
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-e3d5d1aef9e4e4f9-01
+
+{"request_id":"req_0172f2620d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","result":"hello world!","data_count":0,"effects":"none"}
 ```
 
 | Failure | Output | Exit |
@@ -161,9 +216,11 @@ rivet serve --file app.rivet --policy policies/team.json --listen 127.0.0.1:1840
 | `… Bearer dev-token-ada` `GET /v1/io` | 403 | "principal \`ada\` may not call \`rivet.io\`" |
 | WebSocket upgrade (ws not in `surfaces`) | 404 | `not_found.route` |
 
-`rivet.io`, `rivet.policy.generate`, `rivet.trace.show` and `rivet.connectors.sync` need the local principal or
-an **exact** listing: a principal with `["*"]` still gets 403 on `/v1/io`; `["demo.health", "rivet.io"]` gets
-200 on `/v1/io` and 403 on `/v1/policy/generate`. With `auth` `none` the caller is the local principal.
+`rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export` and `rivet.connectors.sync` need the
+local principal or an **exact** listing: a principal with `["*"]` still gets 403 on `/v1/io`;
+`["demo.health", "rivet.io"]` gets 200 on `/v1/io` and 403 on `/v1/policy/generate`. With `auth` `none` the caller
+is the local principal. Note that `["*"]` **does** match the `rivet.auth.*` built-ins (a known limitation); what
+they can do is then decided by `allow_auth` grants.
 
 Rotating tokens: [RUN-2026-0001](../runbooks/run-2026-0001-rotate-serve-bearer-tokens.md).
 
@@ -189,8 +246,18 @@ HTTP/1.1 200 OK
 {"request_id":"req_010c731ded","trace_id":"tr_010c731ded","result":5,"data_count":0,"effects":"none"}
 ```
 
-`/v1/request` body: `{"id": "…", "params": {…}, "deadline_ms": N?}` (`deadline_ms` optional, capped at 600000;
-default 30000).
+`/v1/request` body: `{"id": "…", "params": {…}, "deadline_ms": N?, "restrict": {"grants": [...]}?}`
+(`deadline_ms` optional, capped at 600000; default 30000). `restrict` narrows this request's authority to its
+intersection with policy.json and never widens it ([MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md#narrow-one-request-with-restrict)):
+
+```text
+$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"demo.read","params":{"path":"data/a.txt"},
+       "restrict":{"grants":[{"capability":"allow_read","targets":["./data/other/**"],"access":["read"]}]}}'
+{"request_id":"req_02f181b92a",…,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt",…}}   [403]
+```
+
+`GET /v1/io` returns the bare I/O manifest; add `format=table|markdown|csv` or `report=true` for the rendered
+report (`{format, by, rendered, diagnostics, exit_code, manifest}`).
 
 | Failure | Status | Code |
 |---|---|---|
@@ -199,6 +266,7 @@ default 30000).
 | `{"id":"demo.nope"}` | 404 | `not_found.operation` |
 | streaming operation without `Accept: text/event-stream` | 422 | `stream.required` "use Accept: text/event-stream, POST /v1/requests, /v1/ws or rivet.sessions.open" |
 | `{"id":"lang.slow","deadline_ms":100}` | 504 | `timeout.request` |
+| `"restrict":{"bogus":1}` | 422 | `policy.invalid` `details.pointer` `/restrict/bogus` |
 | any unknown path | 404 | `not_found.route` |
 
 ### Stream over SSE
@@ -241,8 +309,14 @@ A failure after the stream started arrives as a terminal `event: error` carrying
       ├─ POST …/finish_input             (half-close input)
       ├─ GET  …/events?after_seq=N&wait_ms=M   (long-poll ≤ 5000 ms; acknowledges ≤ N)
       │        ─► {events:[…], last_seq, terminal}
-      └─ POST …/cancel ─► {state:"cancelled"}
+      └─ POST …/cancel ─► {state:"cancelled"}  (already finished: its terminal state, e.g. "succeeded")
 ```
+
+`POST /v1/requests` also accepts `deadline_ms` (the session's total deadline, default 30000, capped at 600000)
+and `restrict`. A background sweeper enforces the 60 s idle lease (the session is cancelled, `cancelled.idle`) and
+the 60 s retention after the terminal event (then `404 not_found.session`) without any client call. A cancel that
+arrives before a racing completion wins. The retained events of all sessions count against
+`limits.max_buffered_bytes` (`429 limit.buffered_bytes`).
 
 ```bash
 curl -sS -X POST $B/v1/requests -d '{"id":"demo.countdown","params":{}}'
@@ -264,8 +338,17 @@ POST …/finish_input                          → 200 {"session_id":"ses_01f4f2
 GET  …/events?after_seq=0&wait_ms=2000       → 200 {"events":[{…"type":"data","data":{"a":1}},{…"result":{"received":1},…}],"last_seq":2,"terminal":true}
 ```
 
-Resending the same `send_seq` returns the same acknowledgement (idempotent). Unknown session:
-`404 not_found.session` "no session \`ses_bogus\`". Sessions are owned by the principal that opened them.
+Resending the same `send_seq` returns the same acknowledgement (idempotent). An item that does not match the
+operation's `receives` is refused with `422 validation.input` (`details {seq, path, expected, found}`). Unknown
+session: `404 not_found.session` "no session \`ses_bogus\`". Sessions are owned by the principal that opened them.
+
+Cancel after the session finished (commit `829ca43`):
+
+```text
+POST …/finish_input                     → 200 {"session_id":"ses_0334a478ff","accepted_seq":null,"input_closed":true}
+GET  …/events?after_seq=0&wait_ms=1000  → 200 {…"events":[{…"result":{"echoed":0},…,"type":"result","seq":1}],"last_seq":1,"terminal":true}
+POST …/cancel                           → 200 {"session_id":"ses_0334a478ff","request_id":"req_0334a5816f","state":"succeeded"}
+```
 
 ### Multiplex over WebSocket
 
@@ -300,8 +383,13 @@ Captured frames (`docs/demos/01-catalog/requests/ws-frames.jsonl` sent over one 
 | reusing a ref that is in flight | `conflict.ref` "ref \`r2\` is already in flight" |
 | a ninth concurrent ref | `limit.ws_refs` error frame |
 | `cancel` on a running ref | `{"type":"error","ref":"r2",…,"error":{"kind":"cancelled","code":"cancelled.session",…}}` |
+| `input` with a skipped `seq` | terminal `{"type":"error","ref":"c1","error":{"code":"conflict.input_sequence","message":"expected send_seq 2, got 3",…}}` |
+| `input` that does not match `receives` | terminal `{"type":"error","ref":"c2","error":{"code":"validation.input","message":"input item 1 at $ must be text, got integer",…}}` |
+| `input` after `finish_input` | terminal `conflict.input_closed` |
 
-Closing the socket cancels every in-flight ref and waits for cleanup.
+Each ref has its own outbound lane of 16 frames, so one slow ref never stalls the others. A `request` frame may
+carry `"restrict": {"grants": [...]}`; a `traceparent` header on the upgrade sets the trace of every ref. Closing
+the socket (or a server drain) cancels every in-flight ref and waits for cleanup.
 
 ### Expose tools over MCP
 
@@ -334,6 +422,11 @@ mcp-session-id: mcp_1c380c9408750a025
 - A failed call is a tool result with `"isError": true` and the error envelope in `structuredContent`.
 - Missing session header after initialize: 422 `mcp.session_required`; after `DELETE`: 404
   `not_found.mcp_session`.
+- `tools/list` lists the direct tools, then every built-in the principal may call (the local principal sees 20:
+  `rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.*`, `rivet.io`,
+  `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.capabilities`,
+  `rivet.connectors.sync`, `rivet.auth.*`; commit `2a751ab`).
+- `tools/call` params may carry `"restrict": {"grants": [...]}` beside `name` and `arguments`.
 - `resources/list` and prompts are not served (`-32601 method not found`).
 
 **MCP over stdio** (for agent hosts that spawn a process):
@@ -351,11 +444,23 @@ Callable through every surface (`POST /v1/request {"id":"rivet.list"}`, MCP tool
 
 | Built-in | Purpose | Principal requirement |
 |---|---|---|
+| `rivet.capabilities` | what this build supports (stages, HTTP versions, sandbox backend/status, surfaces) | any authenticated principal |
 | `rivet.request` | generic dispatch `{id, params}` | the target must be allowed |
 | `rivet.list`, `rivet.describe`, `rivet.outputs` | catalog discovery | normal pattern matching |
 | `rivet.sessions.open/send/finish_input/read/cancel` | session control (`read` waits ≤ 5000 ms) | normal pattern matching |
 | `rivet.auth.begin/complete/status/disconnect/cancel` | OAuth accounts (MAN-2026-0008) | normal pattern matching + `allow_auth` grants |
-| `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.connectors.sync {name, output}` | inspection and admin | local principal or an **exact** listing |
+| `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export {request_id, path}`, `rivet.connectors.sync {name, output}` | inspection and admin | local principal or an **exact** listing |
+
+```text
+$ rivet --file app.rivet request rivet.capabilities          # abridged; also POST /v1/request, MCP tools/call
+{"request_id":"req_…","trace_id":"tr_…","result":{"version":"0.1.0-dev","platform":{"os":"macos","arch":"aarch64"},
+ "stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A",…},…],
+ "sandbox":{"backend":"macos-seatbelt","status":"active",…},"serve":{"surfaces":[…],"auth":["none","bearer"]}},…}
+```
+
+`rivet.trace.export {request_id, path}` (`output` is accepted as an alias) writes this server's trace of one
+request to a new file under the bundle, through the broker; `rivet --endpoint URL trace export REQ --output PATH`
+calls it (MAN-2026-0004).
 
 ### Use the CLI against a server
 
@@ -381,7 +486,7 @@ rivet --endpoint http://127.0.0.1:18406 --token-file ada.token request demo.coun
 |---|---|---|
 | no `--token-file` against a bearer server | `error[auth.required]: missing bearer token` | 3 |
 | `ci` token calling `demo.add` | `permission.denied` "principal \`ci\` may not call \`demo.add\`" | 3 |
-| `--endpoint … check` | "check, policy and serve work on a local bundle (--file); they are not available with --endpoint" | 2 |
+| `--endpoint … check` | "check, graph, policy and serve work on a local bundle (--file); they are not available with --endpoint" | 2 |
 | `--endpoint … --file app.rivet list` | "--endpoint cannot be combined with --file or --policy: the server owns the bundle and its policy" | 2 |
 | `--endpoint … io --check-files` | `validation.check_files_remote` | 2 |
 
@@ -389,26 +494,29 @@ Outputs and exit codes match local mode, apart from generated IDs.
 
 ### Expected Result and Side Effects
 
-Serving binds one TCP port. Sessions, MCP sessions, OAuth transactions and traces live in memory and are lost on
-restart. Stopping with SIGINT exits 0 and cancels in-flight work.
+Serving binds one TCP port and writes the receipt plus one access-log line per request to stderr. Sessions, MCP
+sessions, OAuth transactions and traces live in memory and are lost on restart. Stopping with SIGINT or SIGTERM
+drains (cancel in-flight work, close handles within 5 s) and exits 0.
 
 ### Verified Demo
 
 [01-catalog (DEMO-2026-0001)](../demos/01-catalog/README.md) with its `requests/` files and
 `policies/team.json`; live-input examples used a scratch bundle containing `lang.echo_input` (MAN-2026-0003).
-Verified with `rivet 0.1.0-dev` (commit `f40d4aa`) on `127.0.0.1:184xx`.
+Verified with `rivet 0.1.0-dev` (commit `f40d4aa`) on `127.0.0.1:184xx`; fix-batch examples at commit `829ca43`
+on `127.0.0.1:189xx`.
 
 ## Complete API and Event Reference
 
 | Method / Route / Event | Purpose | Auth | Request | Success Response | Errors / Status | Idempotency / Side Effects | Example | Since |
 |---|---|---|---|---|---|---|---|---|
-| `POST /v1/request` | invoke | bearer if configured | `{id, params, deadline_ms?}` | 200 Completion; SSE with `Accept: text/event-stream` | 400/401/403/404/422/5xx | runs the operation | above | 0.1.0 |
+| `POST /v1/request` | invoke | bearer if configured | `{id, params, deadline_ms?, restrict?}` + `traceparent?` | 200 Completion (+ `traceparent`); SSE with `Accept: text/event-stream` | 400/401/403/404/422/5xx | runs the operation | above | 0.1.0 |
+| `GET /v1/health` | liveness | none on loopback, else serve.auth | — | 200 `{status, catalog_version}` | 401 | none | above | 0.1.0 |
 | `GET /v1/operations` | list | same | — | 200 `{operations, next_cursor}` | 401 | none | above | 0.1.0 |
 | `GET /v1/operations/{id}` | describe | same | — | 200 descriptor | 404 | none | above | 0.1.0 |
 | `GET /v1/operations/{id}/outputs` | declared outputs | same | — | 200 `{id, output, emits, receives, errors}` | 404 | none | above | 0.1.0 |
-| `GET /v1/io?by=…&check_policy=…&needs=…` | I/O manifest | exact `rivet.io` | query | 200 manifest JSON | 403 | none | MAN-0005 | 0.1.0 |
+| `GET /v1/io?by=…&check_policy=…&needs=…` | I/O manifest | exact `rivet.io` | query | 200 bare manifest JSON (`format=table…`/`report=true`: IoReport) | 403 | none | MAN-0005 | 0.1.0 |
 | `POST /v1/policy/generate` | policy draft | exact listing | `{ids, all}` | 200 `{policy, review, complete}` | 403 | never writes | MAN-0005 | 0.1.0 |
-| `POST /v1/requests` | open session | same | `{id, params}` | 202 receipt | 403/404/422 | starts the request | above | 0.1.0 |
+| `POST /v1/requests` | open session | same | `{id, params, deadline_ms?, restrict?}` | 202 receipt | 403/404/422/429 | starts the request | above | 0.1.0 |
 | `GET /v1/requests/{id}/events` | read events | owner | `after_seq`, `wait_ms` | 200 batch | 404 | acknowledges ≤ after_seq | above | 0.1.0 |
 | `POST /v1/requests/{id}/input` / `finish_input` / `cancel` | drive session | owner | `{send_seq, data}` | 200 | 404 | same seq is idempotent | above | 0.1.0 |
 | `GET /v1/ws` | WebSocket | on upgrade | frames | 101 | 422 subprotocol | per-ref sessions | above | 0.1.0 |
@@ -427,19 +535,26 @@ Verified with `rivet 0.1.0-dev` (commit `f40d4aa`) on `127.0.0.1:184xx`.
 | `validation.subprotocol` | WS | missing `rivet.v1` | 422 | offer `rivet.v1` | no | WS |
 | `mcp.session_required` / `not_found.mcp_session` | MCP | missing/expired session | 422 / 404 | re-initialize | yes | MCP |
 | `not_found.session`, `not_found.ref`, `conflict.ref`, `limit.ws_refs` | polling, WS | session/ref misuse | 404/error frames | fix IDs; wait for refs | depends | sessions |
+| `conflict.input_sequence`, `validation.input`, `conflict.input_closed` | polling, WS | refused input | 409/422; WS terminal frame for that ref | resend in order / fix the item | depends | sessions |
+| `limit.buffered_bytes` | polling, WS, MCP sessions | host byte budget full | 429 | read and acknowledge events; raise the limit | yes, after backoff | limits |
+| `cancelled.idle`, `cancelled.shutdown` | sessions | idle lease expired / server drain | terminal cancel event | read sooner / restart | re-run | sessions |
 
 ## Limitations
 
-- No mTLS and no TLS listener in 0.1.0: terminate TLS in a proxy and use bearer auth.
+The serving rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.md#known-limitations):
+
+- No mTLS (`unsupported.serve_mtls`, exit 5) and no TLS listener: terminate TLS in a proxy and use bearer auth.
+- The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`).
 - `--timeout` is not applied over the WebSocket duplex path; deadlines inside the operation still apply.
 - MCP server exposes tools only (no resources, resource templates or prompts); no legacy HTTP+SSE MCP transport.
-- Sessions, traces and OAuth transactions are in memory only.
+- No persistent trace store; sessions and OAuth transactions are in memory only.
 
 ## Version Applicability
 
 | Feature / Interface | Introduced | Changed | Deprecated / Removed | Applicable Environment |
 |---|---|---|---|---|
 | `rivet serve`, REST/SSE/polling/WS/MCP, bearer auth, principals, surfaces | 0.1.0 | — | — | server, development |
+| `/v1/health`, access log, SIGTERM drain, `traceparent`, `restrict` | 0.1.0 | — | — | server, development |
 | `--endpoint` client | 0.1.0 | — | — | any |
 
 ## Related Documents
@@ -457,3 +572,4 @@ Verified with `rivet 0.1.0-dev` (commit `f40d4aa`) on `127.0.0.1:184xx`.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial serving and surfaces guide for 0.1.0, captured from a live 0.1.0-dev (commit f40d4aa) server. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: health/access-log/shutdown section, `traceparent`, `restrict`, bare `/v1/io`, polling `deadline_ms`, sweeper, cancel after finish, WebSocket lanes and specific refusal frames, MCP `tools/list` built-ins, `rivet.capabilities` and `rivet.trace.export` (dispatched and listed since 2a751ab); limitations aligned with MAN-2026-0001. |

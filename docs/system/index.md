@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -66,7 +66,8 @@ subject. When the code changes, the document is revised in place (Change History
                  └──────────────────┬────────────────────┘        └──────────────┬───────────────┘
                                     ▼                                            │
                  ┌──── execution, scopes, DAG (SYS-0002) ─────────────────────────┘
-                 │ dispatcher · limits · interpreter · with-handles · dag · cancel · deadlines
+                 │ dispatcher · limits · interpreter · with-handles · dag · structured cancel ·
+                 │ deadlines · secret taint · restrict stack
                  └──────────────────┬───────────────────────────────────────────────┐
                                     │ every effect attempt                          │
                                     ▼                                               │
@@ -117,6 +118,13 @@ SYS-0003 (every effect passes the broker) and then SYS-0005.
 
 - 2026-09-28: all nine documents and the five indexes created for PLAN-2026-0001 phase P4 (D-15 to D-23),
   verified against `0.1.0-dev` commit `f40d4aa`.
+- 2026-09-28: all nine documents revised (revision 2) for the post-P3 fix batch and re-verified at commit
+  `829ca43` (TASK-092 code ≈ docs drift check): `else`, `check.unknown_function` and warnings (SYS-0001);
+  structured cancellation, DAG timestamps, `emits` validation, `with file open`, locked compare-and-replace,
+  secret taint (SYS-0002); host ceiling, `restrict`, `explain --params`, `graph`, trace export, multicast manifest
+  (SYS-0003); health, access log, drain, `traceparent`, WS lanes, MCP built-ins (SYS-0004); 8 MiB defaults
+  (SYS-0005); token reuse and cache key (SYS-0006); sweeper, `deadline_ms`, cancel-wins, byte budget (SYS-0007);
+  limit widths, `max_buffered_bytes` enforced (SYS-0008); drift check, sync order, opaque effects (SYS-0009).
 
 ## Deprecated, superseded or archived
 
@@ -133,9 +141,17 @@ None.
 
 ## Unresolved work and open questions
 
-0.1.0 known limitations, recorded in the relevant documents: mTLS for `serve`, Linux/Windows process sandbox,
-`finally`, Alt-Svc HTTP/3 discovery, connection pooling, a persistent trace store, MCP resource templates and the
-legacy MCP HTTP+SSE transport, `--timeout` over the WebSocket duplex path. `docs/system/deployment/` does not exist
+0.1.0 known limitations (the complete list is the
+[manual's Known Limitations](../manuals/man-2026-0001-rivet-manual.md#known-limitations)), recorded in the relevant
+documents: no `import` form (single-file bundles), mTLS for `serve`, the gated Linux sandbox and unsupported
+Windows/other OSes, `finally`, unused `approved.overlaps`, `*` matching `rivet.auth.*`, `--timeout` over the
+WebSocket duplex path, MCP 401 without retry, Alt-Svc HTTP/3 discovery, connection pooling, a persistent trace
+store, MCP resource templates and the legacy MCP HTTP+SSE transport, Stage C forms.
+
+Drift found by TASK-092 at `829ca43` (the `rivet.trace.export` built-in had no dispatcher handler and MCP
+`tools/list` omitted `rivet.capabilities` and `rivet.trace.export`) was fixed in commit `2a751ab` (INC-2026-0007).
+
+`docs/system/deployment/` does not exist
 yet: Rivet ships as a single binary and library with no deployment topology of its own.
 
 ## Related directories
@@ -149,3 +165,4 @@ yet: Rivet ships as a single binary and library with no deployment topology of i
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the system/ index for PLAN-2026-0001 D-15 to D-23. |
+| 2 | 2026-09-28 | Claude | Recorded the fix-batch revision of all nine documents (TASK-092, commits 829ca43 and 2a751ab), the current limitations and the drift found and fixed. |

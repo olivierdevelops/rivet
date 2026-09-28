@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,6 +24,7 @@ superseded_by: null
 tags: [rivet, architecture, index]
 confidentiality: internal
 review_cycle: on-release
+next_review_date: 2026-10-28
 ---
 
 # Rivet architecture documentation index
@@ -64,6 +65,8 @@ review_cycle: on-release
 
 2026-09-28 — ARCH-2026-0001 created for 0.1.0 from commit `f40d4aa`.
 
+2026-09-28 — ARCH-2026-0001 revision 2 for the fix batch (commit `829ca43`): 40 use cases, ceiling and restriction layers, structured cancellation, secret taint, serve health/access log/drain, WS lanes, library scopes; drift recorded and fixed in `2a751ab` (`rivet.trace.export` dispatch).
+
 ## Deprecated, superseded or archived
 
 None.
@@ -75,7 +78,7 @@ None.
 
 ## Unresolved work and open questions
 
-Update ARCH-2026-0001 when a persistent trace store, TLS listener or connection pooling is added (all absent in 0.1.0).
+Update ARCH-2026-0001 when a persistent trace store, TLS listener or connection pooling is added (all absent in 0.1.0). (The `rivet.trace.export` dispatch drift found at `829ca43` was fixed in `2a751ab`.) Current limitations: [manual's Known Limitations](../manuals/man-2026-0001-rivet-manual.md#known-limitations).
 
 ## Recommended reading order
 
@@ -86,3 +89,4 @@ Update ARCH-2026-0001 when a persistent trace store, TLS listener or connection 
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the architecture index with ARCH-2026-0001. |
+| 2 | 2026-09-28 | Claude | Recorded ARCH-2026-0001 revision 2 (fix batch, commit 829ca43) and the open drift. |

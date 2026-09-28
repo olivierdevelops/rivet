@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [transports, datagrams, quic, grpc, http]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: The outbound protocol adapters behind Rivet effect statements (HTTP/1.1, HTTP/2, HTTP/3, SSE/JSONL/lines/bytes streams, TCP/Unix sockets, WebSocket client, argv-only processes and their OS sandboxes, UDP, native QUIC, gRPC and shared TLS), how each is wired, authorized, bounded and which error codes it emits.
@@ -34,7 +35,7 @@ tags: [rivet, system, transports, http, http3, quic, udp, grpc, websocket, socke
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** transports, datagrams, quic, grpc, http
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -177,7 +178,7 @@ Shared infra:
  HttpExchange ─┬─ method, url, headers, query, body: CodecInput?, version: HttpVersionPolicy
                ├─ decode: CodecKind?, accept: [u16], retry: RetryPolicy?, redirect_limit (0 = never follow)
                ├─ tls: TlsMaterial{server_name, ca_pem, cert_pem, key_pem}, stream: StreamMode?, unix_socket?
-               └─ max_body (default 64 MiB), origin: EffectOrigin{operation_id, span}
+               └─ max_body (default 8 MiB), origin: EffectOrigin{operation_id, span}
         │ use case authorizes + resolves
         ▼
  HttpWire { …, target: WireTarget::Tcp(checked SocketAddr) | Unix(path), version, stream: bool }
@@ -205,7 +206,7 @@ Shared infra:
                 early_data, timeout_ms?, tls: QuicTls, peer_addr?, steps: [QuicStep], context }
  QuicStep      Connect | OpenStream | AcceptStream | Send | Receive | FinishSend | CloseStream
                | SendDatagram | ReceiveDatagram | Close
- Framing       { kind Raw|Newline|Length32{big_endian}|Delimiter(bytes), max_frame (default 1 MiB) }
+ Framing       { kind Raw|Newline|Length32{big_endian}|Delimiter(bytes), max_frame (default 8 MiB) }
 ```
 
 `src/domain/grpc.rs` covers gRPC:
@@ -365,7 +366,7 @@ below list every option each parser accepts. Any other option returns the per-ad
 | `tls server_name V` / `tls ca_file P` / `tls cert_file P` + `tls key_file P` | — | platform verifier | Files are read through `allow_read`. `cert_file` and `key_file` must be given together (`validation.tls`). |
 | `unix "PATH"` | path | — | HTTP over a Unix socket, authorized as `allow_unix connect PATH`. It cannot be combined with `auth`. |
 | `auth PROFILE account "A"` | — | — | An origin-bound bearer credential. See [SYS-2026-0006](sys-2026-0006-oauth-and-credentials.md). |
-| `max_body N` | bytes | 64 MiB | A buffered body over the limit returns `limit.http_body`. |
+| `max_body N` | bytes | 8 MiB | A buffered body over the limit returns `limit.http_body`. |
 | `stream sse\|jsonl\|ndjson\|lines\|bytes` | scoped only | — | `with http` without it returns `validation.http_stream`. |
 
 ### Sockets (`with tcp "H:P"`, `with unix "PATH"`, `with websocket "ws(s)://…"`)
@@ -373,7 +374,7 @@ below list every option each parser accepts. Any other option returns the per-ad
 | Option | Applies to | Default | Notes / errors |
 |---|---|---|---|
 | `framing newline\|raw\|length32 [endian big\|little]\|delimiter "S" [max_frame N]` | tcp, unix | `raw` | Bad syntax returns `validation.framing`. |
-| `max_frame N` | all | 16 MiB | A bigger frame returns `limit.frame`. For WebSocket it also bounds the message and frame size. |
+| `max_frame N` | all | 8 MiB | A bigger frame returns `limit.frame`. For WebSocket it also bounds the message and frame size. |
 | `timeout "D"` | all | request deadline | The connect budget and the scope deadline. `timeout.connect` and `timeout.receive` are returned when exceeded. |
 | `tls …` | websocket (`wss`) | platform verifier | ALPN is `http/1.1`. |
 | `tls …` | tcp, unix | — | Refused with **`unsupported.tcp_tls`** before any file read or dial. |
@@ -399,7 +400,7 @@ Other process refusals:
 - The program must contain `/`. A bare name returns `validation.process_program`, because PATH lookup is not allowed.
 - A shell (`sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`, `csh`, `tcsh`, `cmd.exe` or `powershell`) called
   with a `-…c…` flag returns `unsupported.shell`.
-- Captured output is limited to 64 MiB per pipe. Output past the limit returns `limit.process_output`.
+- Captured output is limited to 8 MiB per pipe. Output past the limit returns `limit.process_output`.
 
 ### UDP (`with udp "H:P"`, `with udp bind "IP:P"`, `with udp multicast "GROUP:P"`)
 
@@ -421,7 +422,7 @@ Other process refusals:
 | `early_data true` | false | Refused with **`unsupported.quic_early_data`**. |
 | `timeout "D"` | request deadline | The handshake and step bound. |
 | `tls server_name\|ca_file\|cert_file\|key_file V` | URL host, platform verifier | TLS 1.3 only. `ca_file` replaces the roots. The files are `allow_read` intents. |
-| child: `framing raw\|newline\|length32 [endian …]\|delimiter "S" [max_frame N]`, `timeout "D"` | raw, 1 MiB | `max_frame 0` returns `validation.quic_option`. |
+| child: `framing raw\|newline\|length32 [endian …]\|delimiter "S" [max_frame N]`, `timeout "D"` | raw, 8 MiB | `max_frame 0` returns `validation.quic_option`. |
 
 The endpoint must be `quic://HOST:PORT` with an explicit port, or `https://HOST[:PORT]` (default port 443),
 with no path or query. Anything else returns `validation.quic_endpoint`.
@@ -562,7 +563,7 @@ $ rivet --file app.rivet request items.events             # with http get … as
  jsonl  one JSON value per non-blank line ("ndjson" is an alias)         parse.json on a bad line
  lines  one text item per LF (CRLF trimmed)                               parse.utf8 on bad UTF-8
  bytes  each chunk as bytes
- every  a line longer than 16 MiB (MAX_STREAM_ITEM) → limit.stream_item
+ every  a line longer than 8 MiB (MAX_STREAM_ITEM) → limit.stream_item
         no chunk before the scope deadline → timeout.stream
         at EOF: final unterminated line / pending event is flushed; child streams then check exit (process.exit)
 ```
@@ -768,6 +769,12 @@ The first run fails because the connected socket received an ICMP port-unreachab
 reports as `udp.receive_failed`. A silent peer would instead produce `timeout` (kind timeout, exit 6)
 with `effects: unknown` on the error. The request envelope rolls effects up as `none` or `committed`.
 
+**Manifest alignment (B3).** Since commit `829ca43` the I/O manifest (`rivet io`, `--check-policy`,
+`policy generate`) lists a multicast site exactly as the table above authorizes it: `allow_network` connect
+on the **group**, and `allow_listen` `bind` + `multicast_join` on the **bind address** (the `bind` option,
+or the unspecified address on the group's port by default). The static verdict now matches the runtime for
+every grant combination (`tests/conformance_udp.rs`, including the `docs/demos/08-udp` bundle).
+
 ### Native QUIC (`quic.exchange_quic`)
 
 ```text
@@ -887,13 +894,22 @@ The size bounds are summarised here:
 
 | Bound | Value | Source |
 |---|---|---|
-| HTTP buffered body | 64 MiB (`max_body`) | `http_adapter.rs` `DEFAULT_MAX_BODY` |
-| Stream item (SSE event / line) | 16 MiB | `MAX_STREAM_ITEM` |
-| Socket frame (tcp/unix/ws) | 16 MiB (`max_frame`) | `socket_adapter.rs` `DEFAULT_MAX_FRAME` |
-| QUIC stream frame | 1 MiB (`max_frame`) | `transport.rs` `DEFAULT_MAX_FRAME` |
+| HTTP buffered body | 8 MiB (`max_body`) | `http_adapter.rs` `DEFAULT_MAX_BODY` |
+| Stream item (SSE event / line) | 8 MiB | `MAX_STREAM_ITEM` |
+| Socket frame (tcp/unix/ws) | 8 MiB (`max_frame`) | `socket_adapter.rs` `DEFAULT_MAX_FRAME` |
+| QUIC stream frame | 8 MiB (`max_frame`) | `transport.rs` `DEFAULT_MAX_FRAME` |
+| MCP client message | 8 MiB | `mcp_client.rs` `MAX_MESSAGE` |
 | UDP payload | 8192 default, 65507 max | `DEFAULT_MAX_DATAGRAM`, `MAX_UDP_PAYLOAD` |
-| Process stdout / stderr | 64 MiB each; streaming stderr tail 64 KiB | `DEFAULT_MAX_OUTPUT` |
-| gRPC message | 4 MiB; queue 16 per direction | `grpc_adapter.rs` |
+| Process stdout / stderr | 8 MiB each; streaming stderr tail 64 KiB | `DEFAULT_MAX_OUTPUT` |
+| gRPC message | 4 MiB; queue 16 per direction | `grpc_adapter.rs` `MAX_MESSAGE_BYTES` |
+
+```text
+  8 MiB default for every frame/body/item/output (PROP-2026-0001 default, G11)
+    HTTP body ── max_body N ──┐        socket / QUIC frame ── max_frame N ──┐
+    SSE / JSONL / line item ──┼── fixed                  process output ────┼── fixed
+    MCP message ──────────────┘                          file read / chunk ─┘
+  above the bound ─▶ limit.http_body | limit.stream_item | limit.frame | limit.process_output | limit.mcp_message
+```
 | HTTP/3 handshake + h3 setup | 3 s | `H3_HANDSHAKE_TIMEOUT` |
 
 ## Dependencies
@@ -960,6 +976,10 @@ the operator generates ahead of time with
   refused rather than widened.
 - **gRPC.** Rivet refuses reserved metadata and redacts credential-like metadata in script views. The
   descriptor set is pinned by its hash.
+- **Secrets.** Before any adapter runs, the interpreter checks every part of the effect form (URL, headers,
+  body, query, options, child parts) and every handle send for a `secret` value (or a derived encoding); only
+  a network destination whose `scheme://host:port` is one of the secret's bound origins may receive it. File,
+  process, Unix-socket and pipe sinks never do (`permission.denied`, `details.secret`; SYS-2026-0002).
 
 ## Observability
 
@@ -979,30 +999,31 @@ the operator generates ahead of time with
 
 ## Known Limitations
 
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+
 - There is no connection pooling. Every HTTP attempt, HTTP/3 exchange and gRPC call dials a new connection.
 - There is no Alt-Svc discovery. HTTP/3 is used only when the script asks for it with `version 3` or
   `version prefer [3, …]`. A server that has no QUIC listener adds the 3 s handshake bound before a
   `prefer` fallback.
-- TLS on raw TCP or Unix sockets (`unsupported.tcp_tls`) and socket `reconnect` (`unsupported.reconnect`)
-  are not available. `resume` is accepted and ignored.
-- QUIC connection migration and 0-RTT are refused. The client never rebinds its UDP socket.
 - The process sandbox is active on macOS only. The Linux backend is built but gated
-  (`CERTIFIED = false`) until T-08 passes on a kernel of 6.12 or later. Windows and other platforms always
-  refuse sandboxed spawns. Because `policy.json` makes the sandbox mandatory, `command` and MCP stdio
-  connectors cannot run on those platforms under a policy.
-- The Seatbelt backend expresses only `DIR/**`, exact paths and `*`. It cannot express grants narrowed by
-  `access`, or other globs. The Linux backend also cannot express deny entries.
-- Interactive processes are not available (`unsupported.interactive`).
-- gRPC has no compression and no server reflection. The descriptor must be generated before the bundle
-  loads.
-- `rivet io` lists a UDP multicast site as `multicast_join` on the **group** (for example
-  `udp://239.255.42.99:18452`) plus `bind` on the bind address. The runtime authorizes `multicast_join` on
-  the **bind** address and `connect` on the group. As a result, `io --check-policy` can report `denied`
-  for a policy that the runtime accepts; the verified multicast run succeeded under exactly such a policy.
+  (`CERTIFIED = false`) until it is verified on a kernel of 6.12 or later. Windows and other platforms always
+  refuse sandboxed spawns (`unsupported.sandbox_backend`). Because `policy.json` makes the sandbox mandatory,
+  `command` and MCP stdio connectors cannot run on those platforms under a policy.
+- Stage C forms are refused: TLS on raw TCP or Unix sockets (`unsupported.tcp_tls`), socket `reconnect`
+  (`unsupported.reconnect`), interactive processes (`unsupported.interactive`), named pipes
+  (`unsupported.adapter`). `resume` is accepted and ignored.
+
+Behaviour by design: QUIC connection migration and 0-RTT are refused (the client never rebinds its UDP
+socket); the Seatbelt backend expresses only `DIR/**`, exact paths and `*` (not grants narrowed by `access`,
+or other globs) and the Linux backend also cannot express deny entries; gRPC has no compression and no server
+reflection, and the descriptor must be generated before the bundle loads.
 
 ## Last Verified Version
 
-`0.1.0-dev (commit f40d4aa)`. Verified with `target/debug/rivet` on macOS (Darwin 25.4.0) on 2026-09-28.
+`0.1.0-dev (commit 829ca43)`. First verified at `f40d4aa` with `target/debug/rivet` on macOS (Darwin 25.4.0)
+on 2026-09-28; the fix-batch changes (8 MiB defaults, multicast manifest alignment, secret sinks) were
+re-checked at `829ca43` against the source constants and `tests/conformance_udp.rs`,
+`tests/conformance_errors_limits_dag.rs` and the secret-taint tests; the table below is the original run.
 No external network was used. All fixtures ran on 127.0.0.1 ports 18450–18459 from a scratchpad directory,
 and the demo folders were not modified.
 
@@ -1041,3 +1062,4 @@ paths are covered by the conformance suites (`tests/conformance_http3.rs`, `conf
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-19). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): 8 MiB defaults for HTTP body, stream items, socket and QUIC frames, process output and MCP messages; multicast manifest now mirrors the runtime (discrepancy removed); secret sink rule; limitations reduced to the current ones. |

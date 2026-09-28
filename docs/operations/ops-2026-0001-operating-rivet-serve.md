@@ -5,7 +5,7 @@ document_type: operations
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -14,11 +14,12 @@ components: [serve, auth, policy, audit, http, ws, poll, mcp, sessions, cli]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
 applicable_environments: [development, server]
 audience: [operators, maintainers]
 confidentiality: internal
 review_cycle: on-release
+next_review_date: 2026-10-28
 scope: How to deploy, configure, observe, upgrade and roll back one `rivet serve` process in Rivet 0.1.0.
 reason: PLAN-2026-0001 D-30 — `rivet serve` is a new network surface and needs a current-state operations guide.
 related_documents: [PLAN-2026-0001, PROP-2026-0001, ADR-0002, RUN-2026-0001, RUN-2026-0002, REF-2026-0001, TRBL-2026-0003]
@@ -43,7 +44,8 @@ Every surface — REST, SSE, polling, WebSocket and MCP (Streamable HTTP) — sh
 dispatcher and one authenticator. This guide covers the deployment shapes, the configuration an operator owns
 (bind address, `serve.auth`, `serve.principals`, `serve.surfaces`, `limits`), what the process writes, how to check
 health, and how to upgrade and roll back. Every command and output below was run against the built binary
-(`rivet 0.1.0-dev`, commit `f40d4aa`) on macOS on 2026-09-28. Request, trace and catalog IDs and hashes differ on
+(`rivet 0.1.0-dev`, commit `f40d4aa`; health, access log, drain and limits rows re-run at commit `829ca43`) on macOS
+on 2026-09-28. Request, trace and catalog IDs and hashes differ on
 each run.
 
 ```text
@@ -189,15 +191,17 @@ routes answer `404 not_found.route`. Observed with `"surfaces": ["http", "mcp"]`
 |---|---|---|---|
 | `max_concurrent_requests` | `policy.json` `limits` | 64 | new request fails `limit.concurrency` (HTTP 429, exit 5) |
 | `max_call_depth` | `policy.json` `limits` | 16 | nested `(request …)` chain refused with a `limit.*` error |
-| `max_buffered_bytes` | `policy.json` `limits` | 268435456 (256 MiB) | buffering beyond the bound fails with a `limit.*` error |
-| request deadline | `deadline_ms` on `/v1/request`, `--timeout` on the CLI | 30000 ms | `timeout` (HTTP 504, exit 6); `deadline_ms` is capped at 600000 |
+| `max_buffered_bytes` | `policy.json` `limits` | 268435456 (256 MiB) | bytes retained by all session queues of the process; a new event beyond it fails `limit.buffered_bytes` (HTTP 429, exit 5) |
+| request deadline | `deadline_ms` on `/v1/request` and `POST /v1/requests`, `--timeout` on the CLI | 30000 ms | `timeout` (HTTP 504, exit 6); capped at 600000 (the CLI refuses a larger `--timeout`, exit 2) |
+| outbound frame/body/item | built in (`max_body`, `max_frame` options raise per call) | 8 MiB | `limit.*` (exit 5) |
 | sessions per principal | built in | 8 | polling/WS session refused |
-| session idle lease | built in | 60 s | session cancelled with `cancelled.idle` |
+| session idle lease | built in | 60 s | session cancelled with `cancelled.idle` by a background sweeper |
 | WS refs per connection | built in | 8 | further `ref`s on that connection refused |
 | cleanup grace | built in | 5 s | `with`-block handles closed in reverse order within 5 s |
 
 `rivet policy explain` prints the effective limits, for example
-`limits   64 concurrent, depth 16, 268435456 buffered bytes`. Non-positive limits are `policy.invalid`.
+`limits   64 concurrent, depth 16, 268435456 buffered bytes`. Non-positive limits and values wider than their
+field (`must be at most 4294967295`) are `policy.invalid`.
 
 ## Trace Storage
 
@@ -219,7 +223,12 @@ store inside the serve process.
 - Access: `rivet.trace.show` is a sensitive built-in: the loopback `local` principal, or a principal listing
   `rivet.trace.show` exactly.
 - A persistent trace store is a known 0.1.0 limitation; keep the response envelopes (`request_id`, `trace_id`,
-  error `code`) in your own client logs if you need history.
+  error `code`) and the access log in your own logs if you need history. To keep one trace, export it from the
+  serving process before it restarts: `rivet --endpoint URL trace export REQ --output ./audit/REQ.json` (the
+  file is written on the server, inside the bundle, and needs an `allow_write` `create` grant and an exact
+  `rivet.trace.export` listing for network principals); a library host uses `Runtime::export_trace`.
+- Correlate with your own tracing: send a W3C `traceparent` header and its trace-id becomes the request's
+  `trace_id`; responses carry `traceparent` back.
 
 Example (`auth none`, loopback):
 
@@ -230,13 +239,22 @@ $ rivet --endpoint http://127.0.0.1:18481 trace show req_03e2a6bdff
 
 ## Logs and Exit Codes
 
-`rivet serve` writes exactly one line on success — a JSON **startup receipt on stderr** — and nothing per request
-(0.1.0 installs no log subscriber). Capture stderr from your supervisor.
+`rivet serve` writes a JSON **startup receipt on stderr**, then **one JSON access-log line per request** on stderr:
+`{time, surface, method, route, principal, operation, status, duration_ms}` — the route is the matched pattern
+(never the query string), and params, bodies and tokens are never logged. Capture stderr from your supervisor.
 
 ```text
-$ rivet --file app.rivet serve --listen 127.0.0.1:18471 2> serve.log &
+$ rivet --file app.rivet serve --listen 127.0.0.1:18901 2> serve.log &          # commit 829ca43
 $ cat serve.log
-{"listen_addr":"127.0.0.1:18471","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"bearer","catalog_version":"sha256:67104f0e…","policy_hash":"sha256:ea001264…"}
+{"listen_addr":"127.0.0.1:18901","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"none","catalog_version":"sha256:d222025d…0627","policy_hash":"sha256:de3e7b37…1398"}
+{"time":"2026-09-28T09:47:49.689Z","surface":"http","method":"GET","route":"/v1/health","principal":null,"operation":"health","status":200,"duration_ms":1}
+{"time":"2026-09-28T09:47:49.715Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.read","status":200,"duration_ms":8}
+{"time":"2026-09-28T09:47:49.731Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.read","status":403,"duration_ms":1}
+```
+
+```text
+ request ──▶ surface router ──▶ handler ──▶ response
+                   └── access_log middleware: after the response ──▶ stderr (or a library access_log sink)
 ```
 
 | Receipt field | Use |
@@ -259,29 +277,45 @@ All rows below were reproduced on 2026-09-28.
 | bad token hash (`"sha256":"abc"`) | `policy.invalid` — `/serve/auth/tokens/0/sha256: must be 64 hex characters` | 2 |
 | unknown key under `serve` | `policy.invalid` — `/serve/extra: unknown key` | 2 |
 | port already in use | `connection.bind` — `Address already in use (os error 48)` | 5 |
-| SIGINT (Ctrl-C) while serving | graceful shutdown | 0 |
-| SIGTERM while serving | default signal disposition, no drain | 143 |
+| SIGINT (Ctrl-C) while serving | drain | 0 |
+| SIGTERM while serving | drain (same as SIGINT) | 0 |
 
-Stop the server with **SIGINT** (`kill -INT PID`), not SIGTERM, when you want in-flight work to be shut down
-through the listener. The full CLI exit-code registry: 0 ok, 2 syntax/validation/config, 3 permission/auth,
+**Drain.** SIGINT and SIGTERM behave the same: stop accepting, cancel every in-flight request and session
+(sessions end `cancelled.shutdown`; each run closes its handles in reverse order within the 5 s grace), wait up to
+6 s for responses to flush, exit 0. Verified at `829ca43` with a live polling session:
+
+```text
+$ rivet --file app.rivet serve --listen 127.0.0.1:18902 2> s2.err & P=$!
+$ curl -s -X POST http://127.0.0.1:18902/v1/requests -d '{"id":"chat.echo","params":{}}' >/dev/null
+$ kill -TERM $P; wait $P; echo "exit=$?"
+exit=0
+```
+
+Supervisors that stop services with SIGTERM (systemd, Kubernetes, launchd) therefore get a clean drain. The full CLI exit-code registry: 0 ok, 2 syntax/validation/config, 3 permission/auth,
 4 not_found/conflict, 5 dependency/runtime/unsupported/output_invalid/limit, 6 timeout, 7 inspection incomplete,
 130 cancelled.
 
 ## Health Checks
 
-There is no dedicated health route (`GET /healthz` answers 404). Use these instead:
+`GET /v1/health` answers `{"status":"ok","catalog_version":"sha256:…"}`. It is mounted whatever
+`serve.surfaces` says, needs no credentials on a loopback bind, and is authenticated like every route on any
+other bind (any valid bearer token; no `serve.principals` entry is needed). `GET /healthz` answers 404.
 
 ```text
- liveness   GET /v1/operations        200 ⇒ listener up, auth works, catalog loaded
-            (send the probe's bearer token; give the probe principal a narrow listing such as ["demo.health"])
+ liveness   GET /v1/health            200 {"status":"ok","catalog_version":…} ⇒ listener up, catalog loaded
+            (non-loopback: send the probe's bearer token)
  readiness  POST /v1/request {"id":"<a pure operation>"}   e.g. demo.health → {"ready":true}
  config     compare the startup receipt's policy_hash / catalog_version with the files you deployed
  policy     rivet --file app.rivet io --check-policy        (offline; exit 0 = every site allowed, 3 = something denied)
 ```
 
 ```text
-$ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18471/v1/operations -H "Authorization: Bearer $(cat new.token)"
-200
+$ rivet --file app.rivet --policy policies/team.json serve --listen 0.0.0.0:18905 &      # 01-catalog, commit 829ca43
+$ curl -s -i http://127.0.0.1:18905/v1/health                                           # no token
+HTTP/1.1 401 Unauthorized
+{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false,"effects":"none"}}
+$ curl -s -H 'Authorization: Bearer dev-token-ci' http://127.0.0.1:18905/v1/health
+{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730"}
 ```
 
 ## Upgrade and Rollback
@@ -302,11 +336,11 @@ credential store, not in the process). An upgrade is therefore stop → replace 
 2. Validate the unchanged bundle with the new binary, offline:
    `rivet-new --file app.rivet check` (expect `ok: N operations, …`, exit 0) and
    `rivet-new --file app.rivet io --check-policy` (same decisions as before).
-3. `kill -INT <pid>`; wait for exit 0.
+3. `kill -TERM <pid>` (or `-INT`); wait for exit 0 (the drain takes at most ~6 s).
 4. Start the new binary with the same `--listen` and files; confirm the startup receipt's `policy_hash` and
    `catalog_version` are unchanged.
 5. Run the liveness and readiness probes.
-6. Rollback: `kill -INT`, start `rivet.prev` with the same arguments, re-probe.
+6. Rollback: `kill -TERM`, start `rivet.prev` with the same arguments, re-probe.
 
 Expect a short outage between steps 3 and 4: two processes cannot share the port (the second one exits 5 with
 `connection.bind`). Clients should retry `limit.*` and connection errors; in-flight requests, sessions and traces
@@ -322,7 +356,7 @@ of the old process are lost. Policy-only changes follow
 | Release binary `target/release/rivet` (`cargo build --release`, default release profile) | 17 043 360 bytes (≈ 16 MiB), macOS arm64; `target/release/` ≈ 523 MiB |
 | Full `target/` directory after debug build + tests | ≈ 14 GiB — keep ≥ 20 GiB free when building ([TRBL-2026-0003](../troubleshooting/trbl-2026-0003-linker-fails-with-no-space-left-on-device.md)) |
 | Concurrency | `max_concurrent_requests` (default 64) per process |
-| Memory ceiling for buffered data | `max_buffered_bytes` (default 256 MiB) plus up to 10 000 trace events |
+| Memory ceiling for buffered data | `max_buffered_bytes` (default 256 MiB, enforced across all session queues) plus up to 10 000 trace events |
 | Sessions | 8 per principal, 16 queued frames, 32 MiB queue, 60 s idle lease |
 | Horizontal scale | run independent processes on different ports; nothing is shared between them (traces, sessions and MCP session IDs are per process), so a load balancer must keep a session's requests on one process |
 
@@ -331,15 +365,19 @@ of the old process are lost. Policy-only changes follow
 - Keep the listener on loopback unless `serve.auth` is `bearer`; Rivet enforces this at startup.
 - Rivet serves plain HTTP. Put TLS in front for anything leaving the host.
 - Store tokens in files with mode 600 and pass them with `--token-file` (never argv or env).
-- Give each client its own principal and the narrowest `operations` listing; sensitive built-ins need exact entries.
+- Give each client its own principal and the narrowest `operations` listing; sensitive built-ins need exact entries,
+  and a `"*"` listing also reaches `rivet.auth.*` (keep `allow_auth` narrow).
+- Clients may narrow individual requests with `restrict {grants}`; it can never widen `policy.json`.
 - `policy.json` is the security boundary: review every change with `io --check-policy` and `policy explain`
   ([RUN-2026-0002](../runbooks/run-2026-0002-roll-out-policy-change.md)).
 
 ## Known Limitations
 
-mTLS serve, persistent trace store, per-request access logs, configuration reload without restart, connection
-pooling for outbound HTTP, Linux/Windows process sandbox, and `--timeout` over the WebSocket duplex path are not
-available in 0.1.0.
+The operational rows of the [manual's Known Limitations](../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+mTLS serve (refuses to start, exit 5); no persistent trace store; no connection pooling for outbound HTTP; the Linux
+sandbox is gated until verified on kernel ≥ 6.12 and Windows/other OSes are unsupported (process-spawning
+operations under a policy cannot run there); `--timeout` is not applied over the WebSocket duplex path; the `"*"`
+principal pattern matches `rivet.auth.*`. Configuration is not reloaded without a restart (by design).
 
 ## Related Documents
 
@@ -356,3 +394,4 @@ available in 0.1.0.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial operations guide, verified against 0.1.0-dev (f40d4aa). |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `/v1/health` probes, per-request access log, SIGTERM drains (exit 0) and upgrade steps use it, enforced `max_buffered_bytes`, `--timeout` cap, 8 MiB outbound bounds, `traceparent`, `restrict`; limitations aligned with the manual. |

@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [connectors, mcp, policy]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: How Rivet calls remote MCP servers as a client. Covers `connector NAME mcp` declarations, stdio and Streamable HTTP transports, reviewed snapshots (format rivet.mcp.snapshot/1, sha256 approval in policy.json), imported operation IDs, the connectors.invoke_mcp use case, `rivet connectors sync` / rivet.connectors.sync, bridge recursion guards and the typed error codes.
@@ -34,7 +35,7 @@ tags: [rivet, system, mcp, connectors, snapshots, streamable-http, stdio, bridge
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** connectors, mcp, policy
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -83,7 +84,10 @@ running catalog.
 - **No sampling, elicitation or roots.** The client declares no capabilities in `initialize`.
 - **No legacy HTTP+SSE transport** and no resource templates or subscriptions.
 - **Remote effects are opaque.** Rivet cannot see what a remote tool does. The I/O manifest marks the
-  call `opaque_remote`, and a tool call's Completion reports `effects: "unknown"`.
+  call `opaque_remote`, and a tool call's Completion reports `effects: "unknown"` — whether the tool is
+  called directly or through an operation that wraps it (the caller's status is folded upward with
+  `unknown` > `partial` > `committed` > `none`, so a wrapper never reports `committed` just because the
+  remote call returned).
 - **gRPC connectors** (`connector NAME grpc`) are not covered here; see
   [SYS-2026-0005](sys-2026-0005-protocol-adapters.md).
 
@@ -196,6 +200,9 @@ error[mcp.snapshot_unapproved]: snapshot ./schemas/crm.json of connector `crm` i
    │                         │                │                                 │   protocol.mcp_version      │
    │                         │                │                                 │──notifications/initialized─▶│
    │                         │                │ capability "tools"? (protocol.mcp_capability)                 │
+   │                         │                │ first use of the session: live tools/list vs the approved     │
+   │                         │                │   snapshot (name + inputSchema per exposed tool, key order    │
+   │                         │                │   ignored) ─ differs? mcp.schema_drift, the call is NOT sent  │
    │                         │                │──request tools/call {name, arguments,                          │
    │                         │                │    _meta{rivet/hops: h+1, rivet/chain: chain+[entry]}}────────▶│
    │                         │                │                                 │  ping → {} ; sampling/       │
@@ -225,7 +232,7 @@ runs under the request deadline; when it expires the result is `timeout.mcp` (ex
 | TLS | — | `tls` files read through the policed `FileAccess` (`allow_read`) |
 | Auth | not allowed | `Authorization: Bearer` from an origin-bound OAuth lease |
 | Close | stdin EOF, drain up to 500 ms, terminate and reap | `DELETE` with the session id (200/202/204/404/405 accepted) |
-| Message cap | 16 MiB (`limit.mcp_message`) | 16 MiB (`limit.mcp_message`) |
+| Message cap | 8 MiB (`limit.mcp_message`) | 8 MiB (`limit.mcp_message`) |
 
 On macOS the Seatbelt sandbox confines stdio children. A child that must read files needs matching
 `allow_read` grants. In the verification below, a stdio child failed with `Operation not permitted`
@@ -250,7 +257,22 @@ until the child bundle directory was granted.
   └────────────────────┘                                                     └────────────────────────────┘
 ```
 
-A refresh never overwrites: syncing to an existing path fails with `conflict.already_exists` (exit 4).
+A refresh never overwrites: syncing to an existing path fails with `conflict.already_exists` (exit 4)
+**before** anything contacts the server.
+
+**Drift check.** An approved snapshot is also checked against the live server: at the first use of each
+connector session, Rivet reads `tools/list` and compares every exposed tool's name and `inputSchema` with the
+snapshot (JSON equality, key order ignored). A changed or missing tool fails `mcp.schema_drift` (protocol,
+exit 5) before the tool call is sent, and the live schema is never used. Servers that did not negotiate
+`tools` are left to the call's own capability check.
+
+```text
+ approved snapshot (sha256 in policy.json)        live server
+        │                                            │ tools/list (first use of the session)
+        └──────────── compare exposed tools ─────────┘
+              same name + same inputSchema ─▶ proceed with tools/call
+              changed / missing           ─▶ mcp.schema_drift (nothing sent) ─▶ connectors sync → review → approve
+```
 Write the refresh to a new path (for example `crm.next.json`), review the diff, then switch `schema` and
 the approved hash together.
 
@@ -260,6 +282,7 @@ the approved hash together.
  rivet --file app.rivet --policy ./policies/sync.json connectors sync crm --output ./schemas/crm.json
    │
    ├─ CLI: --output must resolve inside the bundle root, else validation.output (exit 2)
+   ├─ --output exists? ─▶ conflict.already_exists (exit 4) BEFORE any discovery traffic
    ├─ Runtime built with connector_discovery(): McpPeer::load(discovery = true)
    ├─ invoke_mcp(method "discover")
    │    ├─ allow_mcp call crm/discover                         (permission.denied, exit 3)
@@ -268,7 +291,8 @@ the approved hash together.
    │    │    cursor paging, ≤ 100 pages → limit.mcp_pages)       JSON-RPC error → protocol.mcp_error)
    │    └─ McpSnapshot::parse(listing)                         (invalid listing → mcp.snapshot)
    ├─ serialize (pretty JSON + "\n"), sha256
-   ├─ FileOperation create, overwrite false, bytes             (allow_write PATH; exists → conflict.already_exists)
+   ├─ FileOperation create, overwrite false, bytes             (allow_write PATH; a path that appeared meanwhile
+   │                                                              → conflict.already_exists)
    └─ stdout: receipt JSON · stderr: "wrote candidate snapshot … approve it in policy.json …"
 ```
 
@@ -307,10 +331,11 @@ Usage: rivet connectors sync [OPTIONS] --output <OUTPUT> <NAME>
 | `validation.mcp_params` | validation | 422 / 2 | params fail the snapshot (details `problems[]`) |
 | `validation.output` | validation | 422 / 2 | sync output outside the bundle |
 | `permission.denied` | permission | 403 / 3 | `allow_mcp`, `allow_network`, `allow_exec`, `allow_write` or auth grants |
-| `conflict.already_exists` | conflict | 409 / 4 | sync output exists |
+| `conflict.already_exists` | conflict | 409 / 4 | sync output exists (checked before discovery) |
 | `unsupported.auth` | unsupported | 501 / 5 | connector `auth` on a host without a credential provider |
 | `limit.mcp_hops`, `limit.mcp_recursion` | limit | 429 / 5 | bridge guards (retryable flag set by kind) |
-| `limit.mcp_pages`, `limit.mcp_message` | limit | 429 / 5 | more than 100 list pages; message over 16 MiB |
+| `limit.mcp_pages`, `limit.mcp_message` | limit | 429 / 5 | more than 100 list pages; message over 8 MiB |
+| `mcp.schema_drift` | protocol | 502 / 5 | the live `tools/list` no longer matches the approved snapshot (first use of a session); nothing sent |
 | `mcp.tool_failed` | application | 502 / 5 | `isError: true`; details `{tool, content, structuredContent?}`, effects `unknown` |
 | `protocol.mcp_error` | protocol | 502 / 5 | JSON-RPC error; details `{code, message, method, data?}` |
 | `protocol.mcp_initialize`, `protocol.mcp_version` | protocol | 502 / 5 | initialize failed / incompatible version |
@@ -408,8 +433,13 @@ $ head -8 schemas/crm.json
 $ shasum -a 256 schemas/crm.json
 ab6b8ae3a332bf859f4d4ab1dae097e49973f0289aa9f2a00baffc5eeff3d805  schemas/crm.json
 
-$ rivet … connectors sync crm --output ./schemas/crm.json          # again: never overwrites
+$ rivet … connectors sync crm --output ./schemas/crm.json          # again: never overwrites (f40d4aa)
 {"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists","retryable":false,"effects":"none"}}
+exit 4
+
+# at 829ca43 the check runs first and names the rule (docs/demos/06-mcp-bridge, no server contacted):
+$ rivet --file app.rivet connectors sync crm --output ./schemas/crm.json
+{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists; connectors sync never overwrites a snapshot","retryable":false,"effects":"none","details":{"path":"./schemas/crm.json"}}}
 exit 4
 ```
 
@@ -481,8 +511,9 @@ exit 7
 **4. Calls.**
 
 ```text
-$ rivet --file app.rivet request contacts.find --params '{"query":"Ada"}'
+$ rivet --file app.rivet request contacts.find --params '{"query":"Ada"}'          # captured at f40d4aa
 {"request_id":"req_0174bd72c5","trace_id":"tr_0174bd72c5","result":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"data_count":0,"effects":"committed"}
+   (since 829ca43 the wrapping operation reports "effects":"unknown" — G22, tests/conformance_mcp.rs)
    server saw: initialize · notifications/initialized ·
                tools/call _meta {"rivet/hops": 1, "rivet/chain": ["rivet:232af55e413a4e42/crm.tools.search"]} · DELETE
 
@@ -613,21 +644,24 @@ confined spawns are refused.
 
 ## Known Limitations
 
-- No legacy HTTP+SSE MCP transport, no resource templates or subscriptions, and no sampling,
-  elicitation or roots.
-- One session per call. There is no connection or session pooling, so each call pays for `initialize`.
-- The HTTP reply stream is read only for the current request. Server-to-client messages on a separate
-  GET stream are not consumed.
-- `connectors sync` contacts the server before it checks whether `--output` exists. Choose a new path
-  to avoid a wasted discovery.
-- A resource 401 invalidates the OAuth lease but the MCP call is not retried.
-- The minimal JSON Schema checker ignores unsupported keywords, such as `pattern`, `format` and `$ref`.
-- `docs/demos/06-mcp-bridge` ships no `schemas/crm.json` and targets a placeholder host. Its success path
-  needs a live server; it was verified here only with a scratch copy and a local fixture.
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+
+- No legacy HTTP+SSE MCP transport and no resource templates.
+- **MCP 401 invalidates the lease without retry**: a resource 401 drops the cached OAuth token, the call
+  fails `http.status` (401), and the next call reacquires.
+- No connection or session pooling: one session per call, so each call pays for `initialize` (and the drift
+  check's `tools/list`).
+
+Other current behaviour (by design): no subscriptions, sampling, elicitation or roots; the HTTP reply stream is
+read only for the current request (server-to-client messages on a separate GET stream are not consumed); the
+minimal JSON Schema checker ignores unsupported keywords such as `pattern`, `format` and `$ref`;
+`docs/demos/06-mcp-bridge` targets a placeholder host, so its success path needs a live server.
 
 ## Last Verified Version
 
-0.1.0-dev (commit f40d4aa), on macOS (darwin 25.4.0), 2026-09-28. Commands were run with
+0.1.0-dev (commit 829ca43), on macOS (darwin 25.4.0), 2026-09-28. The drift check, sync-output check, opaque
+effects and 8 MiB message cap were re-verified at `829ca43` (source, `tests/conformance_mcp.rs`, and the
+`connectors sync` refusal against `docs/demos/06-mcp-bridge`). First verified at `f40d4aa`: commands were run with
 `target/debug/rivet` from `docs/demos/06-mcp-bridge`. The full journey used scratch copies with a
 fixture MCP server on `127.0.0.1:18443` and `rivet serve` on `127.0.0.1:18444`, both stopped
 afterwards, plus a stdio child Rivet bundle.
@@ -651,3 +685,4 @@ afterwards, plus a stdio child Rivet bundle.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-23). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): live `tools/list` drift check (`mcp.schema_drift`), sync refuses an existing `--output` before discovery, remote effects stay `unknown` when wrapped, 8 MiB message cap; limitations reduced to the current ones. |

@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, server]
 audience: [developers, integrators, operators]
-scope: Every HTTP route mounted by `rivet serve` except /v1/ws (API-2026-0002) and /mcp (API-2026-0003) — REST, SSE framing and the polling session routes, with request/response JSON, auth, status codes and captured examples.
+scope: Every HTTP route mounted by `rivet serve` except /v1/ws (API-2026-0002) and /mcp (API-2026-0003) — REST, SSE framing, the polling session routes and GET /v1/health, with request/response JSON, per-request `restrict`, W3C `traceparent`, auth, status codes, the access log and captured examples.
 reason: DOCUMENTATION.md §31 API impact for PLAN-2026-0001 row D-24; the HTTP surface is new in 0.1.0 and needs a current-state contract verified against the build.
 related_documents: [PLAN-2026-0001, PROP-2026-0001, API-2026-0002, API-2026-0003, API-2026-0005, ARCH-2026-0001, SEC-2026-0001]
 supersedes: null
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, api, http, rest, sse, polling, serve]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet HTTP API: REST, SSE and polling
@@ -38,7 +39,7 @@ last_verified_version: "0.1.0-dev (commit f40d4aa)"
 
 ## Summary
 
-One `rivet serve` process binds **one** listener and mounts every enabled surface on it. This document is the contract for the plain-HTTP routes: REST (`/v1/request`, `/v1/operations…`, `/v1/io`, `/v1/policy/generate`), Server-Sent Events (the same `/v1/request` with `Accept: text/event-stream`) and polling sessions (`/v1/requests…`). WebSocket and MCP on the same listener are in [API-2026-0002](api-2026-0002-websocket-rivet-v1.md) and [API-2026-0003](api-2026-0003-mcp-server-tools.md).
+One `rivet serve` process binds **one** listener and mounts every enabled surface on it. This document is the contract for the plain-HTTP routes: REST (`/v1/request`, `/v1/operations…`, `/v1/io`, `/v1/policy/generate`), Server-Sent Events (the same `/v1/request` with `Accept: text/event-stream`), polling sessions (`/v1/requests…`) and the liveness route `GET /v1/health`. WebSocket and MCP on the same listener are in [API-2026-0002](api-2026-0002-websocket-rivet-v1.md) and [API-2026-0003](api-2026-0003-mcp-server-tools.md).
 
 ```text
    rivet --file app.rivet serve --listen 127.0.0.1:8080
@@ -52,11 +53,14 @@ One `rivet serve` process binds **one** listener and mounts every enabled surfac
    │   generate   │              │   /cancel        │               │          │
    └──────┬───────┴──────┬───────┴────────┬─────────┴───────┬───────┴────┬─────┘
           └──────────────┴── authenticate_principal ─▶ authorize_operation ┘
-                                  │
+                                  │         GET /v1/health (always mounted)
                           Runtime::dispatch_request  (the same dispatcher as CLI + library)
+                                  │   effective authority = policy.json ∩ restrict (per request)
+                                  ▼
+          every response on every surface ─▶ one JSON access-log line on stderr
 ```
 
-Every example below was captured from a live `rivet serve` built from commit `f40d4aa` running [docs/demos/01-catalog](../demos/01-catalog/app.rivet) on `127.0.0.1:18431` (no policy.json, so auth `none`). Request, trace and session IDs, `expires_at` and `date` headers differ on every run.
+Examples marked `18431`–`18435` were captured from a live `rivet serve` built from commit `f40d4aa` running [docs/demos/01-catalog](../demos/01-catalog/app.rivet) (no policy.json, so auth `none`); examples on `18901`–`18903` were captured on commit `829ca43` from a scratch bundle with a file-reading operation `demo.read` (`return file read path as text`, policy granting `allow_read ./data/**` and `allow_write create ./out/**`) and the duplex `chat.echo`. Request, trace and session IDs, `expires_at`, `time` and `date` values differ on every run.
 
 ## Audience and Stability
 
@@ -86,7 +90,7 @@ Authentication is configured only in `policy.json` → `serve.auth`. It is appli
                                                    └ not listed ─▶ 403 permission.denied
 ```
 
-**Operation authorization** (`serve.principals`). With no `serve.principals` map, every authenticated principal may call every public operation *except* the sensitive built-ins. With the map, an entry must match the operation ID exactly, by `*`, or by a trailing `prefix.*`. The four sensitive built-ins — `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.connectors.sync` — match **only an exact entry** for a network principal (never `*` or `demo.*`); the `local` principal may call them. Unlisted IDs are hidden from catalog routes (they answer 404 as if unknown) and refused on `/v1/request` (403).
+**Operation authorization** (`serve.principals`). With no `serve.principals` map, every authenticated principal may call every public operation *except* the sensitive built-ins. With the map, an entry must match the operation ID exactly, by `*`, or by a trailing `prefix.*`. The five sensitive built-ins — `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.connectors.sync` — match **only an exact entry** for a network principal (never `*` or `demo.*`); the `local` principal may call them. `rivet.capabilities` and the generic built-ins (`rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.*`) are open to every authenticated principal; the generic ones authorize the operation they name. Note that a `*` pattern also matches `rivet.auth.*` (their use is then governed by `allow_auth` grants). Unlisted IDs are hidden from catalog routes (they answer 404 as if unknown) and refused on `/v1/request` (403).
 
 Captured with [policies/team.json](../demos/01-catalog/policies/team.json) (`ada` → `demo.*`, `ci` → `demo.health`; fixture tokens `dev-token-ada`, `dev-token-ci`) on `127.0.0.1:18433`:
 
@@ -119,7 +123,7 @@ HTTP/1.1 403 Forbidden
 {"request_id":"req_028d671a4a","trace_id":"tr_028d671a4a","error":{"kind":"permission","code":"permission.denied","message":"principal `ada` may not call `rivet.io`","retryable":false,"effects":"none"}}
 ```
 
-A surface disabled in `serve.surfaces` is not mounted: its routes answer `404 not_found.route` (team.json omits `ws`, so `GET /v1/ws` → 404).
+A surface disabled in `serve.surfaces` is not mounted: its routes answer `404 not_found.route` (team.json omits `ws`, so `GET /v1/ws` → 404). `GET /v1/health` is mounted whatever `serve.surfaces` says: unauthenticated on a loopback bind, authenticated per `serve.auth` otherwise.
 
 ## Endpoints or Events
 
@@ -136,7 +140,8 @@ A surface disabled in `serve.surfaces` is not mounted: its routes answer `404 no
 | GET | `/v1/requests/{session_id}/events` | `poll` | Long-poll a batch of session events | 200 |
 | POST | `/v1/requests/{session_id}/input` | `poll` | Send one input item (duplex operations) | 200 |
 | POST | `/v1/requests/{session_id}/finish_input` | `poll` | Half-close input | 200 |
-| POST | `/v1/requests/{session_id}/cancel` | `poll` | Cancel the session | 200 |
+| POST | `/v1/requests/{session_id}/cancel` | `poll` | Cancel the session (a finished session reports its terminal state) | 200 |
+| GET | `/v1/health` | always | Liveness `{status:"ok", catalog_version}` | 200 |
 | any | anything else | — | — | 404 `not_found.route` |
 
 When `http` is disabled but `sse` is enabled, only `POST /v1/request` is mounted (and it answers only SSE requests).
@@ -151,17 +156,40 @@ Every reserved `rivet.*` ID is dispatched through the same `/v1/request` route (
 | `rivet.list` / `rivet.describe` / `rivet.outputs` | `{}` / `{id}` / `{id?, all?}` | filtered by the principal's listing |
 | `rivet.sessions.open` / `send` / `finish_input` / `read` / `cancel` | see [Polling sessions](#polling-sessions) | own sessions only |
 | `rivet.auth.begin` / `complete` / `status` / `disconnect` / `cancel` | profile/account parameters | listed (or no `serve.principals` map) |
+| `rivet.capabilities` | `{}` | any authenticated principal |
 | `rivet.io` | as `/v1/io` query | **exact** listing |
 | `rivet.policy.generate` | `{ids?, all?}` | **exact** listing |
 | `rivet.trace.show` | `{request_id}` | **exact** listing |
+| `rivet.trace.export` | `{request_id, path}` (`output` accepted as an alias) | **exact** listing |
 | `rivet.connectors.sync` | `{name, output}` | **exact** listing |
+
+`rivet.capabilities` answers what this build supports (Stage A/B/C features, HTTP versions, sandbox backend and status, serve surfaces and auth types); it performs no I/O:
+
+```text
+$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"rivet.capabilities"}'      # abridged
+{"request_id":"req_07847f7a3b","trace_id":"tr_07847f7a3b","result":{"version":"0.1.0-dev","platform":{"os":"macos","arch":"aarch64"},
+ "stages":{"A":"supported","B":"supported","C":"unsupported"},
+ "features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]},
+             …,{"name":"file_watch","stage":"C","support":"unsupported","reason":"Stage C (`with file watch` fails unsupported.stage_c)"},…],
+ "sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},
+ "serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]}},"data_count":0,"effects":"none"}
+```
+
+`rivet.trace.export` writes the serving process's trace of one request as JSON to a **new** bundle-relative file through the broker (`allow_write` access `create`; an existing file is `409 conflict.already_exists`) — captured at commit `2a751ab`:
+
+```text
+$ curl -s -X POST http://127.0.0.1:18908/v1/request \
+       -d '{"id":"rivet.trace.export","params":{"request_id":"req_01a505ce1d","path":"./out/trace2.json"}}'
+{"request_id":"req_041d697644","trace_id":"tr_041d697644","result":{"request_id":"req_01a505ce1d","path":"./out/trace2.json","events":1,"bytes":718},"data_count":0,"effects":"none"}
+```
 
 ## Request Format
 
 ### `POST /v1/request`
 
 ```json
-{ "id": "demo.add", "params": { "a": 2, "b": 3 }, "deadline_ms": 5000 }
+{ "id": "demo.read", "params": { "path": "data/a.txt" }, "deadline_ms": 5000,
+  "restrict": { "grants": [ { "capability": "allow_read", "targets": ["./data/**"], "access": ["read"] } ] } }
 ```
 
 | Field | Type | Required | Notes |
@@ -169,6 +197,19 @@ Every reserved `rivet.*` ID is dispatched through the same `/v1/request` route (
 | `id` | string | yes | Operation ID or `rivet.*` built-in. Empty/missing → 422 `validation.required`. |
 | `params` | object | no | Checked against the operation's input schema: unknown fields, missing required, wrong types, min/max/enum. Defaults are injected after validation. |
 | `deadline_ms` | integer | no | Request deadline; clamped to 1…600000 (10 minutes). Default deadline is 30000 ms. |
+| `restrict` | object | no | `{"grants": [...]}` in the policy.json grant format. Intersected with the loaded policy for **this request and its nested calls only**: it can narrow, never widen. Any other key, or a malformed grant, is 422 `policy.invalid` with `details.pointer` under `/restrict`. |
+
+| Header | Notes |
+|---|---|
+| `traceparent` | Optional W3C trace context `00-<32 hex trace-id>-<16 hex parent-id>-<flags>`. A valid value makes its trace-id the request's `trace_id`; an invalid one is ignored. Every answer that belongs to a request carries a `traceparent` response header (same trace-id, the request's span id). |
+
+```text
+  caller authority                     server authority (policy.json)
+  restrict {grants:[./data/other/**]}  grants: allow_read ./data/** , allow_write ./out/**
+            │                                     │
+            └──────────── ∩ (every broker decision, nested calls included) ─────────▶ effective
+  restrict naming ./**  ─▶ still only ./data/**  (a restriction never adds a grant)
+```
 
 - An empty or whitespace body is treated as `{}`.
 - A body that is not JSON → **400** `validation.malformed_json` (the only 400 in the API).
@@ -177,7 +218,7 @@ Every reserved `rivet.*` ID is dispatched through the same `/v1/request` route (
 
 ### `GET /v1/io` query
 
-Query keys map onto the `rivet.io` parameters: `by=operation|target|capability`, `kind=K`, `access=V,V`, `check_policy=true`, `needs=true`, `strict=true`, `include_bootstrap=true`, `ids=ID,ID`, `all=true`, `trace=REQ`, `format=json|table|markdown|csv`. The literal values `true` / `false` become booleans; everything else is text. `check_files` is refused remotely (`validation.check_files_remote`).
+Query keys map onto the `rivet.io` parameters: `by=operation|target|capability`, `kind=K`, `access=V,V`, `check_policy=true`, `needs=true`, `strict=true`, `include_bootstrap=true`, `ids=ID,ID`, `all=true`, `trace=REQ`, `format=json|table|markdown|csv`, `report=true`. The literal values `true` / `false` become booleans; everything else is text. `check_files` is refused remotely (`validation.check_files_remote`). The answer is the bare **IoManifest**; `format=table|markdown|csv` or `report=true` returns the rendered IoReport instead (below).
 
 ### `POST /v1/policy/generate`
 
@@ -187,7 +228,7 @@ Query keys map onto the `rivet.io` parameters: `by=operation|target|capability`,
 
 | Route | Body / query |
 |---|---|
-| `POST /v1/requests` | `{id, params}` (same parser as `/v1/request`; `deadline_ms` is ignored) |
+| `POST /v1/requests` | `{id, params, deadline_ms?, restrict?}` (same parser as `/v1/request`); `deadline_ms` is the session's total deadline (default 30000, capped at 600000); a `traceparent` header sets the session's trace |
 | `GET …/events` | `after_seq=N` (default 0), `wait_ms=M` (default 1000, max 5000), `max_events=K` (default 16, max 16, min 1). Non-integer → 422 `validation.type`. Unknown keys ignored. |
 | `POST …/input` | `{"send_seq": 1, "data": <any JSON>}`; `send_seq` required |
 | `POST …/finish_input`, `POST …/cancel` | no body |
@@ -225,7 +266,7 @@ Query keys map onto the `rivet.io` parameters: `by=operation|target|capability`,
  "emits":null,"receives":null,"errors":[],"delivery":"unary","source":{"file":"app.rivet","line":9}}
 ```
 
-`GET /v1/operations/demo.countdown/outputs`:
+`GET /v1/operations/demo.countdown/outputs` (captured at `f40d4aa`; since commit `2a751ab` the `emits` and `receives` schemas also carry the declared `description`, e.g. `"emits":{"type":"integer","description":"One countdown value per item."}`):
 
 ```json
 {"id":"demo.countdown","output":{"type":"object","properties":{"count":{"type":"integer","description":"Number of items emitted."}},
@@ -235,12 +276,16 @@ Query keys map onto the `rivet.io` parameters: `by=operation|target|capability`,
 
 ### I/O manifest and policy draft
 
-`GET /v1/io?format=json` returns the IoReport wrapper — `format`, `by`, `rendered` (the text the CLI would print), `diagnostics`, `exit_code` and the structured `manifest`:
+`GET /v1/io` (or `format=json`) returns the bare IoManifest; `format=table|markdown|csv` or `report=true` returns the IoReport wrapper — `format`, `by`, `rendered` (the text the CLI would print), `diagnostics`, `exit_code` and the structured `manifest`. Captured on `18901` (abridged):
 
-```json
-{"format":"json","by":"operation","rendered":"{\n  \"bundle\": {…}\n}\n","diagnostics":"","exit_code":0,
- "manifest":{"bundle":{"file":"app.rivet","sha256":"67104f0e…9730"},"policy":null,"complete":true,
-             "sites":[],"targets":[],"needs":[],"bootstrap":[]}}
+```text
+$ curl -s 'http://127.0.0.1:18901/v1/io?format=json'
+{"bundle":{"file":"app.rivet","sha256":"ef6bc126…25f6"},"policy":{"file":"policy.json","sha256":"sha256:de3e7b37…1398"},
+ "complete":true,"sites":[{"effect_id":"demo.copy#1","operation_id":"demo.copy",…},…],…}
+
+$ curl -s 'http://127.0.0.1:18901/v1/io?format=table&ids=demo.read'
+{"format":"table","by":"operation","rendered":"OPERATION  KIND  ACCESS  TARGET  KNOWLEDGE        SOURCE\ndemo.read  file  read    {path}  param_dependent  app.rivet:73\n",
+ "diagnostics":"","exit_code":0,"manifest":{…}}
 ```
 
 `POST /v1/policy/generate {"all":true}`:
@@ -325,9 +370,13 @@ Polling is the HTTP projection of `rivet.sessions.*`. Sessions are **principal-o
 |---|---|
 | Open sessions per principal | 8 (`limit.sessions`, 429) |
 | Retained events per session | 16 frames / 32 MiB |
-| Idle timeout / retention after terminal | 60 s / 60 s |
+| Bytes held by all session queues of the host | `limits.max_buffered_bytes` (default 256 MiB) → `limit.buffered_bytes` (429) |
+| Total deadline | `deadline_ms` (default 30000, cap 600000) → `timeout.request` |
+| Idle lease / retention after terminal | 60 s / 60 s, enforced by a background sweeper (no client call needed): an idle session is cancelled (`cancelled.idle`), a terminal one is evicted |
 | `wait_ms` default / max | 1000 / 5000 ms |
 | `max_events` default / cap | 16 / 16 |
+
+**Cancel.** `POST …/cancel` fires the session's cancellation token; the run closes its handles within the 5 s grace and the session ends `cancelled`. When the cancel signal arrives before a racing completion, `cancelled` wins. Cancelling a session that already ended does nothing and reports its terminal state (`succeeded`, `failed` or `cancelled`) instead of `cancelled`.
 
 Input sequencing: `send_seq` starts at 1 and increases by one. An identical retry of the most recent sequence is acknowledged again without enqueuing; a gap → 409 `conflict.input_sequence`; input after `finish_input` → 409 `conflict.input_closed`. Another principal's, unknown or expired session → 404 `not_found.session`.
 
@@ -353,8 +402,16 @@ $ curl -s 'http://127.0.0.1:18431/v1/requests/ses_01db3ed345/events?after_seq=2&
   {"request_id":"req_09ddeac775","trace_id":"tr_09ddeac775","result":{"count":3},"data_count":3,"effects":"none","type":"result","seq":4}],
  "last_seq":4,"terminal":true}
 
-$ curl -s -X POST http://127.0.0.1:18431/v1/requests/ses_01db3ed345/cancel
+$ curl -s -X POST http://127.0.0.1:18431/v1/requests/ses_01db3ed345/cancel     # before the terminal event
 {"session_id":"ses_01db3ed345","request_id":"req_09ddeac775","state":"cancelled"}
+
+# commit 829ca43: cancel AFTER the session finished reports the terminal state
+$ curl -s -X POST http://127.0.0.1:18901/v1/requests/ses_0334a478ff/finish_input
+{"session_id":"ses_0334a478ff","accepted_seq":null,"input_closed":true}
+$ curl -s 'http://127.0.0.1:18901/v1/requests/ses_0334a478ff/events?after_seq=0&wait_ms=1000'
+{"session_id":"ses_0334a478ff","events":[{"request_id":"req_0334a5816f","trace_id":"tr_0334a5816f","result":{"echoed":0},"data_count":0,"effects":"none","type":"result","seq":1}],"last_seq":1,"terminal":true}
+$ curl -s -X POST http://127.0.0.1:18901/v1/requests/ses_0334a478ff/cancel
+{"session_id":"ses_0334a478ff","request_id":"req_0334a5816f","state":"succeeded"}
 
 $ curl -s -i http://127.0.0.1:18431/v1/requests/ses_bogus/events
 HTTP/1.1 404 Not Found
@@ -427,11 +484,12 @@ GET  /v1/nothing                                     → 404 not_found.route "no
 
 There is no per-client rate limiter in 0.1.0. Bounded resources answer `429 limit.*` with `retryable: true`:
 
-- `limits.max_concurrent_requests` in policy.json (default 64) → `limit.concurrency` for top-level requests beyond the budget;
+- `limits.max_concurrent_requests` in policy.json (default 64) → `limit.concurrency` for top-level requests beyond the budget (refused immediately, not queued);
 - 8 open sessions per principal → `limit.sessions`;
-- `limits.max_call_depth` (default 16) → `limit.call_depth` for nested `(request …)` chains.
+- `limits.max_call_depth` (default 16) → `limit.call_depth` for nested `(request …)` chains;
+- `limits.max_buffered_bytes` (default 256 MiB) → `limit.buffered_bytes` when the retained events of all sessions of the host would exceed it.
 
-Rivet sets no explicit HTTP body limit; the framework default of the axum server applies to request bodies.
+Rivet sets no explicit HTTP request-body limit; the framework default of the axum server applies to request bodies. Outbound adapters default to 8 MiB per response body, stream item, socket/QUIC frame and process output (see [SYS-2026-0005](../system/integrations/sys-2026-0005-protocol-adapters.md)).
 
 ## Versioning and Deprecation
 
@@ -457,7 +515,50 @@ $ curl -s -X POST http://127.0.0.1:18431/v1/request -d '{"id":"rivet.list","para
 {"request_id":"req_07da2eeb53","trace_id":"tr_07da2eeb53","result":{"operations":[{"id":"demo.greet",…}],…},…}
 ```
 
-The start-up receipt (first line) is written to stderr. Refused starts, captured from the same folder:
+The start-up receipt (first line) is written to stderr, followed by **one JSON access-log line per request** on stderr — `{time, surface, method, route, principal, operation, status, duration_ms}`; the route is the matched pattern, and params, bodies, query strings and tokens are never logged:
+
+```text
+$ rivet --file app.rivet serve --listen 127.0.0.1:18901          # commit 829ca43, stderr
+{"listen_addr":"127.0.0.1:18901","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"none","catalog_version":"sha256:d222025d…0627","policy_hash":"sha256:de3e7b37…1398"}
+{"time":"2026-09-28T09:47:49.689Z","surface":"http","method":"GET","route":"/v1/health","principal":null,"operation":"health","status":200,"duration_ms":1}
+{"time":"2026-09-28T09:47:49.715Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.read","status":200,"duration_ms":8}
+{"time":"2026-09-28T09:47:49.731Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.read","status":403,"duration_ms":1}
+{"time":"2026-09-28T09:50:04.469Z","surface":"poll","method":"POST","route":"/v1/requests/{id}/cancel","principal":"local","operation":"rivet.sessions.cancel","status":200,"duration_ms":0}
+
+$ curl -s -i http://127.0.0.1:18901/v1/health
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"status":"ok","catalog_version":"sha256:d222025d04822653861aeb757330b439afa51e871d3bd6e7be1e7ece1acf0627"}
+
+$ curl -s -i -X POST http://127.0.0.1:18901/v1/request \
+       -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
+       -d '{"id":"demo.read","params":{"path":"data/a.txt"}}'
+HTTP/1.1 200 OK
+content-type: application/json
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-e3d5d1aef9e4e4f9-01
+
+{"request_id":"req_0172f2620d","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","result":"hello world!","data_count":0,"effects":"none"}
+
+$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"demo.read","params":{"path":"data/a.txt"},
+       "restrict":{"grants":[{"capability":"allow_read","targets":["./data/other/**"],"access":["read"]}]}}'     # 403
+{"request_id":"req_02f181b92a","trace_id":"tr_02f181b92a","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt","retryable":false,"effects":"none","source":{"file":"app.rivet","line":73,"column":5,"end_line":73,"end_column":34},"operation_id":"demo.read","details":{"capability":"allow_read","access":"read","target":"data/a.txt"}}}
+
+$ curl -s -X POST http://127.0.0.1:18901/v1/request -d '{"id":"demo.read","params":{"path":"app.rivet"},
+       "restrict":{"grants":[{"capability":"allow_read","targets":["./**"],"access":["read"]}]}}'               # 403: never widens
+{"request_id":"req_0464c9c9dc","trace_id":"tr_0464c9c9dc","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on app.rivet denied: no grant for allow_read app.rivet",…}}
+```
+
+**Shutdown.** SIGINT (Ctrl-C) and SIGTERM drain the same way: stop accepting, cancel every in-flight request and session (sessions end `cancelled.shutdown`; each run closes its handles within the 5 s grace), let in-flight responses flush (up to 6 s), then exit **0**:
+
+```text
+$ rivet --file app.rivet serve --listen 127.0.0.1:18902 2> s2.err & P=$!
+$ curl -s -X POST http://127.0.0.1:18902/v1/requests -d '{"id":"chat.echo","params":{}}' >/dev/null   # a live session
+$ kill -TERM $P; wait $P; echo "exit=$?"
+exit=0
+```
+
+Refused starts, captured from the demo folder:
 
 ```text
 $ rivet --file app.rivet serve --listen 0.0.0.0:18434
@@ -469,14 +570,14 @@ $ rivet --file app.rivet --policy mtls.json serve --listen 127.0.0.1:18435     #
 exit 5
 ```
 
-The remote CLI (`rivet --endpoint URL [--token-file PATH] …`) is a client of these same routes: `request` → `POST /v1/request` (SSE with `--stream`), `list/describe/outputs` → `GET /v1/operations…`, `io` → `GET /v1/io`, `auth`/`trace show`/`connectors sync` → `POST /v1/request` with the built-in ID, and `--input-jsonl -` → `/v1/ws`.
+The remote CLI (`rivet --endpoint URL [--token-file PATH] …`) is a client of these same routes: `request` → `POST /v1/request` (SSE with `--stream`), `list/describe/outputs` → `GET /v1/operations…`, `io` → `GET /v1/io`, `auth`/`trace show`/`trace export`/`connectors sync` → `POST /v1/request` with the built-in ID, and `--input-jsonl -` → `/v1/ws`.
 
 ## Compatibility Notes
 
 - HTTP/1.1 and HTTP/2 (cleartext) on the listener; TLS termination is the job of a front proxy in 0.1.0.
 - Request IDs look like `req_NN…` and trace IDs `tr_NN…`; treat both as opaque strings.
-- W3C `traceparent` is neither read nor emitted in 0.1.0.
-- Known limitations: no mTLS listener, no persistent trace store (traces live in the serving process), no `Last-Event-ID` resume on SSE, no pagination (`next_cursor` is always `null`).
+- W3C `traceparent` is accepted on every HTTP route (REST, SSE, polling, the WebSocket upgrade and `/mcp`) and emitted on responses that belong to a request.
+- Known limitations: no mTLS listener (`unsupported.serve_mtls`, exit 5), no persistent trace store (traces live in the serving process), no `Last-Event-ID` resume on SSE, no pagination (`next_cursor` is always `null`); see the [manual's limitations chapter](../manuals/man-2026-0001-rivet-manual.md#known-limitations).
 
 ## Related Documents
 
@@ -489,3 +590,4 @@ The remote CLI (`rivet --endpoint URL [--token-file PATH] …`) is a client of t
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state contract for REST, SSE and polling, with examples captured from `rivet serve` at commit f40d4aa. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`rivet.trace.export` dispatched with `{request_id, path}`; emits/receives descriptions): `GET /v1/health`, per-request `restrict`, W3C `traceparent` in/out, access-log line, SIGTERM drain, bare `/v1/io` manifest, polling `deadline_ms`/`restrict`, background sweeper, cancel of a finished session, `limit.buffered_bytes`, `rivet.capabilities` and `rivet.trace.export` (known dispatcher defect) built-ins, five sensitive IDs. |

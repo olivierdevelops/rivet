@@ -5,7 +5,7 @@ document_type: troubleshooting
 status: resolved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -72,6 +72,20 @@ Structural corpus walk (no stray `end`, every catch after a try) and tests/confo
 
 `finally` sections are not supported by the grammar in v0.1.0.
 
+The same Capy rule shapes `if … else … end` (commit `b09dcc8`, verified at `829ca43`): `else` **is** a bare block
+section of `if`, so it takes no argument. `else if COND` is therefore refused (`syntax.else_if`, with a hint to nest
+`if COND … end` inside the `else` body), and an orphan or second `else` is `syntax.else_without_if`.
+
+```text
+ if COND            ◀── block opener
+     …
+ else               ◀── bare section (no captures allowed)  ── `else if X` → syntax.else_if
+     if X           ◀── nested block instead
+         …
+     end
+ end                ◀── closes the if
+```
+
 ## Current Status
 
 Resolved.
@@ -90,3 +104,4 @@ Problem → Symptoms → Investigation → Experiments → Root cause → Soluti
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Recorded. |
+| 2 | 2026-09-28 | Claude | Noted that `else` uses the same bare-section rule, which is why `else if` is refused (`syntax.else_if`). |

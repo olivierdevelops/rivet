@@ -5,7 +5,7 @@ document_type: runbook
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -80,7 +80,8 @@ grants.
 - `deny` always wins over `grants`. Private address ranges stay denied unless named literally.
 - `io --check-policy` exits **3 when any site is denied**, including sites you intend to keep denied. Restrict it to
   the operations the change is for, or read the table.
-- Stop with SIGINT (`kill -INT`), not SIGTERM.
+- Stop with SIGINT (`kill -INT`) or SIGTERM: both drain in-flight work and exit 0 (since commit `829ca43`).
+- A value in `limits` wider than its field (for example `4294967297`) is now `policy.invalid` too; the preview catches it.
 
 ## Procedure
 
@@ -254,14 +255,19 @@ decisions differ from the step 2 preview.
 ## Related Monitoring
 
 Watch the startup receipt (`policy_hash`), client error rates for `permission.denied` (HTTP 403 / exit 3) after the
-restart, and spot-check `trace show` for denied requests. Rivet 0.1.0 has no metrics endpoint or access log; see
-[OPS-2026-0001](../operations/ops-2026-0001-operating-rivet-serve.md#logs-and-exit-codes).
+restart, and spot-check `trace show` for denied requests. The per-request access log on stderr shows each
+request's `operation` and `status` (403 lines are denials at the principal or broker level); `GET /v1/health`
+confirms the restarted listener. There is no metrics endpoint; see
+[OPS-2026-0001](../operations/ops-2026-0001-operating-rivet-serve.md#logs-and-exit-codes). Before rolling out, a
+single concrete call can be checked offline with `rivet policy explain ID --params '{…}'` (exit 3 when denied).
 
 ## Last Validation Date
 
 2026-09-28 — executed end to end (steps 0–5 and rollback) against `target/debug/rivet` 0.1.0-dev (commit `f40d4aa`)
 on macOS arm64, listener `127.0.0.1:18481`, using a temporary copy of the 02-file-crud bundle. Hashes and request IDs
-shown are from that run.
+shown are from that run. The fix-batch changes that touch this runbook (SIGTERM drain, access log, `/v1/health`,
+`policy explain --params`, limit widths) were verified separately at commit `829ca43`; the procedure's commands are
+unchanged.
 
 ## Related Documents
 
@@ -276,3 +282,4 @@ shown are from that run.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial runbook, validated against 0.1.0-dev (f40d4aa). |
+| 2 | 2026-09-28 | Claude | Fix batch (829ca43): SIGTERM drains like SIGINT; monitoring uses the access log and `/v1/health`; `policy explain --params` pre-check; limit widths. Procedure unchanged. |

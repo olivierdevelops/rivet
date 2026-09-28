@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, manual, http, http3, websocket, tcp, udp, quic, grpc, oauth, mcp, sandbox]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet protocols and connectors
@@ -77,6 +78,13 @@ Common rules for every transport:
 - `with` blocks close their handles in reverse order within 5 s on any exit.
 - No connection pooling in 0.1.0: every request opens its own connections.
 - Mutations are never replayed automatically; `retry` applies only where you declare it.
+- Size bounds default to **8 MiB**: a buffered HTTP response body (`max_body N` overrides), one stream item (SSE
+  event, JSON line, text line), a socket or QUIC frame (`max_frame N` overrides), a process's collected output,
+  one MCP message, a file read, and a `with file open` chunk. Exceeding one fails `limit.*` (exit 5). The retained
+  events of all sessions of the host share `limits.max_buffered_bytes` (default 256 MiB, `limit.buffered_bytes`).
+- A `secret` value may be sent only to the origins it is bound to (`for "ORIGIN"`), in any part of any effect —
+  URL, header, body, query, socket or UDP payload, gRPC/MCP message; files, processes, Unix sockets and pipes never
+  receive it (`permission.denied`, `details.secret`; MAN-2026-0003).
 
 ## Task-Oriented Workflows
 
@@ -117,7 +125,7 @@ target must be granted literally).
 |---|---|---|
 | `{"id":42}` | `{"id":42,"name":"Ada"}` | 0 |
 | `{"id":7}` (404 accepted, then `fail`) | `application` `users.not_found` "404 from the service." | 5 |
-| same request without `accept status` | `http` `http.status` "GET http://127.0.0.1/users/7 returned 404", `details.status: 404` | 5 |
+| same request without `accept status` | `http` `http.status` "GET http://127.0.0.1:18910/users/7 returned 404" (the message names scheme, host, explicit port and path — never userinfo or query; re-captured at `2a751ab` against a local server on 18910), `details {status: 404, method: "GET"}` | 5 |
 | 503 after `retry 2 on status [503]` | `http.status` with `details.status: 503` | 5 |
 | no grant | `permission.denied` "allow_network connect http://127.0.0.1:18480/users/42 denied …" | 3 |
 
@@ -320,9 +328,10 @@ end
 | `with udp bind "h:p"` + `receive_from` / `send_to peer` | `allow_listen udp://h:p` (bind) + `allow_network` for each reply peer | no bind grant → `permission.denied` "allow_listen bind udp://127.0.0.1:7001 denied …"; the reply target is dynamic (`io --strict` exit 7) |
 | `with udp multicast "group:p"` + `bind "0.0.0.0:p"` [+ `interface "IF"`] | `allow_network udp://group:p` **and** `allow_listen udp://0.0.0.0:p` with `bind` and `multicast_join` | with those grants the join succeeds and a quiet group times out (`timeout` "no datagram within 1000 ms"); a `bind`-only access list → `permission.denied` "… does not include `multicast_join`" |
 
-Manifest discrepancy (0.1.0): `rivet io --check-policy` reports the multicast site as `multicast_join` on the
-**group** target, while the runtime checks `multicast_join` on the **bind** address. To make both agree, also
-grant `{"capability":"allow_listen","targets":["udp://239.0.0.1:5000"],"access":["multicast_join"]}`.
+The I/O manifest mirrors exactly what the runtime authorizes when the socket opens: `allow_network` connect on
+the **group**, then `allow_listen` `bind` **and** `multicast_join` on the **bind address** (the `bind` option, or
+the unspecified address on the group's port). `rivet io --check-policy` and the run therefore agree; no extra
+grant on the group target is needed.
 
 A successful send proves only local acceptance; a lost reply is a timeout with uncertain effects. Clipped
 payloads fail `udp.truncated`. Demo: [08-udp](../demos/08-udp/README.md).
@@ -411,6 +420,20 @@ users/example.Users/Watch      call server_stream   allow_grpc     users.watch
 
 All profiles take `issuer`, `scopes`, `resource_origins` (the only origins the token may be sent to) and
 `store memory|keychain "NS"`.
+
+**Token reuse.** A cached access token is reused only while it has a known expiry that is not near (refreshed
+early by min(30 s, half its lifetime)). A token issued **without** `expires_in` is never reused across uses:
+`client_credentials` reacquires it, user flows refresh it when they hold a refresh token (the account stays
+connected) and otherwise need a new login (`auth.login_required`). The cache key is the principal, the profile
+(name + configuration hash), the account, the audience, the set of resource origins and the set of scopes (sorted
+and de-duplicated), so two identities that differ in any of them never share a token.
+
+```text
+ use of `auth P account "A"` ─► cache[(principal, P+hash, A, audience, {origins}, {scopes})]
+       hit, expiry known and not near ─► reuse
+       hit, no expiry / near expiry ───► client_credentials: reacquire │ user flow: refresh token? refresh : login_required
+       miss ──────────────────────────► acquire (policy: allow_auth use, allow_credentials, allow_network)
+```
 
 Grants (verified wording):
 
@@ -526,8 +549,18 @@ $ rivet request --file app.rivet bridge.add --params '{"a":2}'
 - The snapshot starts with `"format": "rivet.mcp.snapshot/1"`; re-running `sync` on an unchanged server yields
   the same sha256.
 - Imported tools are listed as `CONNECTOR.tools.NAME` and return the MCP result
-  `{content, structuredContent, isError}` (`effects: "unknown"` when called directly); `isError: true` becomes
-  `mcp.tool_failed`.
+  `{content, structuredContent, isError}`; `isError: true` becomes `mcp.tool_failed`.
+- A remote tool is opaque, so its effects are **`unknown`** — both when it is called directly and when an
+  operation wraps it: the wrapping request reports `effects: "unknown"` (never `committed` just because the remote
+  call returned).
+- **Drift check.** At the first use of each connector session, Rivet compares the server's live `tools/list` with
+  the approved snapshot: every exposed tool must still exist under the same name with an identical `inputSchema`
+  (key order ignored). Otherwise the call fails `mcp.schema_drift` (exit 5) before it is sent, and the live schema
+  is never used — run `connectors sync` again and review the new candidate.
+- `connectors sync` refuses an existing `--output` path (`conflict.already_exists`, exit 4) **before** contacting
+  the server.
+- An HTTP MCP server that answers **401** to the bearer token invalidates the cached token and the call fails
+  `http.status` (401) without retry; the next call reacquires a token (a known limitation).
 - `transport http "https://…/mcp"` (Streamable HTTP; `allow_network`) and `transport command "/abs/bin"`
   (`allow_exec`) are supported; `auth PROFILE account "A"` adds an OAuth token for HTTP transports.
 - Sampling and other server-to-client requests are declined. Legacy HTTP+SSE MCP servers are not supported.
@@ -537,7 +570,9 @@ $ rivet request --file app.rivet bridge.add --params '{"a":2}'
 | `not_found.mcp_snapshot` | schema file missing | 4 |
 | `mcp.snapshot_unapproved` | sha256 not in `approved.snapshots` | 2 |
 | `permission.denied` "allow_mcp call peer/discover denied" | sync without a discover grant | 3 |
-| `conflict.already_exists` | sync `--output` exists | 4 |
+| `conflict.already_exists` | sync `--output` exists (checked before any connection) | 4 |
+| `mcp.schema_drift` | live `tools/list` differs from the approved snapshot | 5 |
+| `http.status` (401) | the MCP server rejected the bearer token; the lease is invalidated | 5 |
 | `not_found.mcp_connector` | unknown connector name | 4 |
 | `mcp.tool_failed` | remote tool returned `isError: true` | 5 |
 
@@ -556,7 +591,9 @@ store (`memory` = the running process).
 [06-mcp-bridge](../demos/06-mcp-bridge/README.md), [07-oauth2](../demos/07-oauth2/README.md),
 [08-udp](../demos/08-udp/README.md), [09-quic](../demos/09-quic/README.md), [10-grpc](../demos/10-grpc/README.md),
 [11-sandbox](../demos/11-sandbox/README.md) — each run with `rivet 0.1.0-dev` (commit `f40d4aa`) as described in
-its section.
+its section. The fix-batch behaviour (8 MiB defaults, multicast manifest alignment, token reuse and cache key,
+opaque MCP effects, drift check, sync output check, secret sinks) is covered by `tests/conformance_*.rs` at
+commit `829ca43`; the `connectors sync` refusal was re-run against [06-mcp-bridge](../demos/06-mcp-bridge/README.md).
 
 ## Errors and Recovery Reference
 
@@ -575,17 +612,25 @@ its section.
 | `not_found.descriptor` | gRPC | missing descriptor | exit 4 at load | generate it with protoc | no | gRPC |
 | `auth.client_secret_missing`, `validation.auth_flow` | OAuth | env unset / wrong command | exit 5 / 2 | set the env var / use first use | no | OAuth |
 | `not_found.mcp_snapshot`, `mcp.snapshot_unapproved` | MCP | review not done | exit 4 / 2 at load | sync, review, approve | no | MCP |
+| `mcp.schema_drift` | MCP | server changed since review | exit 5, nothing sent | sync, review, approve again | after re-approval | MCP |
+| `limit.response_body`, `limit.frame`, `limit.stream_item`, `limit.process_output`, `limit.mcp_message` | all | a payload exceeds its bound (default 8 MiB) | exit 5 | raise `max_body` / `max_frame`, or stream | yes, after change | size bounds |
+| `permission.denied` (`details.secret`) | all | a secret would reach a sink outside its bound origins | exit 3, nothing sent | send it only to its `for` origin | no | secrets |
 
 ## Limitations
 
-- No connection pooling; no Alt-Svc discovery; no QUIC migration or 0-RTT.
-- Process sandbox active on macOS only; Linux gated; others refuse.
-- `with file open` / `with file watch` are unavailable at run time (MAN-2026-0003).
-- MCP: no legacy HTTP+SSE transport; server-to-client requests (sampling) are declined.
-- `rivet io --check-policy` names a different target for `multicast_join` than the runtime checks (workaround
-  above).
-- WebSocket, QUIC, HTTP/3 and gRPC were verified in this manual only up to the policy and DNS boundaries; their
-  wire behaviour is covered by the conformance suites (`tests/conformance_*.rs`).
+The protocol rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.md#known-limitations):
+
+- No connection pooling; no Alt-Svc discovery (HTTP/3 only when requested).
+- Process sandbox active on macOS only; the Linux sandbox is gated until verified on kernel ≥ 6.12; Windows and
+  other OSes are unsupported (`unsupported.sandbox_backend`).
+- MCP client: a 401 invalidates the token lease without retrying the call.
+- MCP: no legacy HTTP+SSE transport and no resource templates.
+- Stage C forms are refused: `with pipe`, TCP/Unix `tls`, `reconnect`, `interactive true`, custom codecs.
+
+By design (not limitations): QUIC migration and 0-RTT are refused; server-to-client MCP requests (sampling) are
+declined; a sandboxed process needs grants the sandbox can express (`DIR/**`, exact paths, `*`, no `access`
+narrowing on read/write grants). WebSocket, QUIC, HTTP/3 and gRPC were verified in this manual only up to the
+policy and DNS boundaries; their wire behaviour is covered by the conformance suites (`tests/conformance_*.rs`).
 
 ## Version Applicability
 
@@ -610,3 +655,4 @@ its section.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial protocols and connectors guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa with local fixtures. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`http.status` messages name the explicit port): 8 MiB size defaults and the host byte budget, secret sinks, multicast manifest now mirrors the runtime (workaround removed), OAuth token reuse and cache key, opaque MCP effects `unknown`, `mcp.schema_drift` drift check, sync output check first, MCP 401 lease invalidation; limitations aligned with MAN-2026-0001. |

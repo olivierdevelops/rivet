@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [language, registry]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: How Rivet turns a .rivet entry file into an immutable, described operation catalog (grammar, Capy AST boundary, lowering to IR, compile-time checks, declared outputs, registry) and how check/list/describe/outputs expose it.
@@ -34,7 +35,7 @@ tags: [rivet, system, compiler, capy, grammar, ir, registry, catalog, outputs]
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -70,14 +71,14 @@ no I/O and runs nothing. The only file read is the host bootstrap read of the en
 | Rivet-owned syntax tree | `src/domain/syntax_tree.rs` | `SyntaxTree`, `SyntaxNode`, `Capture`, `SyntaxDiagnostic` |
 | Source bytes and positions | `src/domain/source.rs`, `src/infra/source_loader.rs` | `SourceBundle`, `SourceFile`, `SourceSpan` |
 | Lower statements to typed IR | `src/features/language/lowering/lower.rs` | Header order, option lines, try/catch pairing, effect forms, dag, map/poll, with |
-| Parse expressions and arguments | `src/features/language/lowering/expr.rs` | Literals, `${dotted.path}` templates, prefix calls, infix operators |
+| Parse expressions and arguments | `src/features/language/lowering/expr.rs` | Literals, `${dotted.path}` templates, prefix calls (checked against `BUILTIN_FUNCTIONS`), infix operators anywhere a value goes (objects, lists, call arguments) |
 | Typed IR | `src/domain/ir.rs` | `Expr`, `Stmt`, `EffectForm`, `Operation`, `Declaration`, `CompiledProgram` |
-| Whole-bundle checks and hash | `src/features/language/compile_program.rs` | Duplicate IDs, unknown/cyclic calls, unknown auth profiles and connectors |
+| Whole-bundle checks, warnings and hash | `src/features/language/compile_program.rs` | Duplicate IDs, unknown/cyclic calls, unknown auth profiles and connectors; warnings `docs.undeclared_error` and `check.unguarded_result` |
 | Declared output types | `src/features/language/compile_output_spec.rs`, `src/domain/outputs.rs` | `ValueSpec`, `OutputSpec`, `FieldSpec`, `ParamSpec`, `DeclaredError` |
 | Documentation gate | `strict_doc_findings` in `lower.rs` | Only runs for `rivet check --strict-docs` |
 | Immutable catalog | `src/infra/registry.rs` | `ProgramRegistry` implements the `Registry` port |
 | Catalog queries | `src/features/registry/describe_operations.rs`, `inspect_outputs.rs` | Private filtering, not_found, output reports |
-| CLI projection | `src/orchestrator/setup_cli.rs` | `check`, `list`, `describe`, `outputs` |
+| CLI projection | `src/orchestrator/setup_cli.rs` | `check` (warnings on stderr), `list`, `describe`, `outputs`; `graph` reads the same registry (`features/audit/build_graph.rs`, SYS-2026-0003) |
 
 ## Boundaries and Non-Responsibilities
 
@@ -90,8 +91,10 @@ no I/O and runs nothing. The only file read is the host bootstrap read of the en
                                                               └─────────────────────────────────────┘
 ```
 
-- **No execution.** The compiler never evaluates expressions or effects. For example, the name of a
-  prefix-call function such as `(length xs)` is resolved only when the operation runs. See Known Limitations.
+- **No execution.** The compiler never evaluates expressions or effects. It does resolve names that are
+  known statically: a prefix-call function outside `BUILTIN_FUNCTIONS` (`request`, `request.stream`,
+  `length`, `base64.encode`, `base64.decode`, `text`, `keys`, `xml.element`) fails `check.unknown_function`
+  with a did-you-mean hint (`closest_builtin`, edit distance ≤ 3 or a prefix match such as `len` → `length`).
 - **No option semantics beyond shape.** The grammar gives every option line (`timeout`, `header`, `tls`, …)
   a free `tail`. Lowering records it as `OptionLine { key, args, children }`. The protocol adapters check
   what each option means (SYS-2026-0005).
@@ -219,12 +222,14 @@ its flat form. Examples are `output` and `output_block`, `field` and `field_bloc
 | Header order | name, description, private, param, output, emits, receives, error | `lower_operation` | `syntax.header_order` |
 | Header after body | Header lines must precede the first body statement | `lower_operation` | `syntax.option_after_body` |
 | Output required | Every operation declares `output` | `lower_operation` | `syntax.output_required` |
+| if/else | `if COND` … [`else` …] `end`: `else` is a Capy block **section** of `if`, alone on its line at the `if`'s indentation; lowering fills `Stmt::If.otherwise`. No `else if` | `rivet.capy` (`if` section `else`), `capy_parser.rs` diagnostic mapping, `lower_stmt` | `syntax.else_if` (`else COND`), `syntax.else_without_if` (orphan or second `else`) |
 | try/catch | `try` must be followed by `catch error [kind K \| code "C"]`. There is no `finally` | `lower_block`, `catch_filter` | `syntax.try_without_catch`, `syntax.catch_without_try`, `syntax.catch` |
+| Prefix-call functions | `(NAME arg …)` with NAME in `BUILTIN_FUNCTIONS` | `expr.rs` | `check.unknown_function` (+ hint) |
 | yield | Only inside a `map` or `poll` body | `lower_stmt` (`BlockCtx::MapOrPoll`) | `syntax.yield` |
 | map | The body must `yield`. The only option is `limit N` | `lower_stmt` | `syntax.map_yield`, `syntax.map` |
 | poll | Needs `timeout "D"`. `every "D"` is optional | `lower_stmt` | `syntax.poll` |
 | dag | Contains only `node` lines. Names are unique, every `after [..]` names a known node, and a node that reads another node must declare it in `after`. No cycles (Kahn) | `lower_stmt`, `check_dag` | `syntax.dag`, `syntax.dag_cycle` |
-| with | `with RESOURCE … as NAME`. The resource is an effect word, `(request.stream …)` or `HANDLE.open` | `lower_with` | `syntax.with` |
+| with | `with RESOURCE … as NAME`. The resource is an effect word (including `file open PATH mode M` and `file watch …`), `(request.stream …)` or `HANDLE.open` | `lower_with` | `syntax.with` |
 
 ### Expression parser (`src/features/language/lowering/expr.rs`)
 
@@ -671,7 +676,9 @@ remote surfaces (`ErrorKind::exit_code` in `src/domain/errors.rs`).
 | Lower | `syntax.fcall_style` / `syntax.trailing` | `f(…)` call style / unexpected text after a value | `lower.rs` |
 | Lower | `syntax.duration` | A duration that is not a quoted `N(ms\|s\|m\|h)` | `lower.rs` |
 | Lower | `syntax.http` / `syntax.file` | Malformed `http METHOD URL` / `file VERB PATH` head | `lower.rs` |
+| Parse | `syntax.else_if` / `syntax.else_without_if` | `else COND` / `else` not directly inside an `if` (orphan or second) | `capy_parser.rs` |
 | Lower | `syntax.try_without_catch` / `syntax.catch_without_try` / `syntax.catch` | try/catch pairing and filter | `lower.rs` |
+| Lower | `check.unknown_function` | A prefix call to a name outside `BUILTIN_FUNCTIONS` (hint: closest built-in) | `expr.rs` |
 | Lower | `syntax.yield` / `syntax.map` / `syntax.map_yield` / `syntax.poll` / `syntax.until` | map/poll/yield rules | `lower.rs` |
 | Lower | `syntax.dag` / `syntax.dag_cycle` | dag node rules / cycle in `after` edges | `lower.rs` |
 | Lower | `syntax.concurrent` / `syntax.group_option` / `syntax.iterate` / `syntax.scope` | Block-form rules and group options (`limit`, `timeout`, `fail fast\|independent`) | `lower.rs` |
@@ -681,6 +688,16 @@ remote surfaces (`ErrorKind::exit_code` in `src/domain/errors.rs`).
 | Bundle | `check.call_cycle` | Cycle in the literal call graph (DFS) | `compile_program.rs` |
 | Bundle | `check.unknown_auth_profile` / `check.unknown_connector` | An `auth NAME` option or `grpc CONN.Method` naming an undeclared profile or connector | `compile_program.rs` |
 | Docs gate | `docs.description` / `docs.param_description` / `docs.output_description` / `docs.field_description` / `docs.undeclared_error` | Only with `check --strict-docs`, for public operations | `lower.rs` `strict_doc_findings` |
+| Warning | `docs.undeclared_error` | A `fail "CODE"` without an `error "CODE"` line — always a warning; an error under `--strict-docs` | `compile_program.rs` |
+| Warning | `check.unguarded_result` | `return` reads `NODE.result` of a `fail independent` DAG node with no enclosing `if NODE.status …` | `compile_program.rs` `unguarded_results` |
+
+```text
+ compile_program
+   lowerer.errors non-empty ──▶ Err(first, suppressed = rest)            (exit 2)
+   else program.warnings = strict_doc_findings(docs.undeclared_error) + unguarded_results(…)
+        └─▶ rivet check prints "warning: <rendered>" on stderr, then "ok: …", exit 0
+            (with --strict-docs the undeclared-code warning is reported once, as an error)
+```
 
 Load failures around compilation use other kinds. `not_found.source` (exit 4) means the entry file could
 not be read. `validation.usage` (exit 2) means `--file` is missing.
@@ -714,10 +731,14 @@ for the life of the `Runtime`. A new catalog requires a new `Runtime`.
 ```text
  Operation ───────────────▶ RegistryEntry
    id, name, description      id, name, description, kind, private
-   params, output             params, output, emits, receives, errors
-   emits, receives, errors    source (span)
+   params, output             params, output, emits, receives, errors,
+   emits, receives, errors    emits_description, receives_description (since 2a751ab), source (span)
    span                       raw_input_schema / raw_output_schema = None  (set only for MCP imports)
 ```
+
+The declared `emits`/`receives` descriptions are kept on the entry (`emits_description`, `receives_description`)
+and shown by `outputs`/`describe` (`emits   integer  One countdown value per item.`) and as `description` in the
+item JSON Schema on REST, MCP and the library (commit `2a751ab`).
 
 `RegistryEntry::streaming()` is true when `emits` or `receives` is present. `delivery()` then returns
 `session`; otherwise it returns `unary`.
@@ -761,8 +782,9 @@ To change the grammar, edit `src/infra/rivet.capy` and rebuild.
 - Diagnostics carry `file:line:column` spans. The rendered form shows a source excerpt with a caret
   underline and an optional `= hint:` line. The JSON form carries `source {file, line, column, end_line,
   end_column}`.
-- `rivet check` prints counts (`ok: N operations, C connectors, A auth profiles`). It would also print any
-  `program.warnings` as `warning: …` lines on stderr, but the current lowering produces no warnings.
+- `rivet check` prints counts (`ok: N operations, C connectors, A auth profiles`) and, before them, every
+  entry of `program.warnings` as a `warning: …` line on stderr (the rendered error form after the prefix,
+  e.g. `warning: error[check.unguarded_result]: …`).
 - `source_hash` (`sha256:…`) pins requests, sessions and manifests to the exact program. See SYS-2026-0002
   and SYS-2026-0003.
 - Compilation emits no trace events. Tracing starts when a request starts.
@@ -770,12 +792,10 @@ To change the grammar, edit `src/infra/rivet.capy` and rebuild.
 ## Known Limitations
 
 - **Single-file bundles.** `DiskSourceLoader` loads only the entry file (`files` has one element), and
-  the grammar has no import form. `compile_program` does loop over `files`, so a library caller that
+  the grammar has no import form (`import "x.rivet"` is `syntax.unknown_statement`). `compile_program` does loop over `files`, so a library caller that
   passes a `SourceBundle` directly could give it more than one file.
-- **Function names are not checked at compile time.** An unknown prefix-call function such as `(len xs)`
-  compiles. It fails only at run time, with `call.unknown` (exit 2), in `src/infra/execution_driver.rs`.
-- **No compile warnings.** `CompiledProgram.warnings` exists but nothing fills it. Missing descriptions
-  and undeclared `fail` codes are reported only under `--strict-docs`, where they are errors.
+- **Missing descriptions are not warnings.** They are reported only under `--strict-docs`, where they are
+  errors.
 - **Static call checks cover only literal targets.** A computed `(request id …)` target is bounded at run
   time by the call-depth limit (SYS-2026-0002).
 - **Some Capy messages are generic.** For example, an unclosed bracket may be reported as
@@ -786,10 +806,12 @@ To change the grammar, edit `src/infra/rivet.capy` and rebuild.
 
 ## Last Verified Version
 
-0.1.0-dev (commit f40d4aa). Verified by reading the listed source files and by running `target/debug/rivet`
-`check`, `list`, `describe`, `outputs` and `request` against `docs/demos/01-catalog/app.rivet`, and
-against scratch bundles (typo, duration, graph, header, fcall, tpl, dag, try, yield, indent, noend,
-reserved, unknown, nodoc, tour) kept outside the repository. Outputs are pasted exactly as printed.
+0.1.0-dev (commit 829ca43). First verified at f40d4aa by reading the listed source files and by running
+`target/debug/rivet` `check`, `list`, `describe`, `outputs` and `request` against
+`docs/demos/01-catalog/app.rivet`, and against scratch bundles (typo, duration, graph, header, fcall, tpl, dag,
+try, yield, indent, noend, reserved, unknown, nodoc, tour) kept outside the repository. Re-verified at 829ca43
+for `if … else … end`, `syntax.else_if`/`syntax.else_without_if`, `check.unknown_function`, the two `check`
+warnings, infix inside literals and `import`/`finally` refusals, using scratch bundles. Outputs are pasted exactly as printed.
 Request and trace IDs vary between runs.
 
 ## Related Documents
@@ -810,3 +832,4 @@ Request and trace IDs vary between runs.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-15). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43, 2a751ab: emits/receives descriptions kept): `if … else … end` grammar and codes, `check.unknown_function` with did-you-mean, `check` warnings (`docs.undeclared_error`, `check.unguarded_result`), infix inside literals, `with file open`; obsolete limitations removed. |

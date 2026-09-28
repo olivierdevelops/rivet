@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [execution, files]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: How one request is dispatched, bounded, interpreted, scoped, cancelled and validated, including file operations and DAG scheduling, as implemented in the Rivet 0.1.0 runtime.
@@ -34,7 +35,7 @@ tags: [rivet, system, execution, dag, scopes, cancellation, files, errors]
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** execution, files
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -107,7 +108,7 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
 - **Transport framing of results** (JSON, SSE, WS frames, polling batches, MCP tool results)
   belongs to the surfaces (SYS-2026-0004). Live input sessions are in SYS-2026-0007.
 - Execution does **not** retry effects, persist state, resume after restart, or run
-  compensations. There is no `finally` block in 0.1.0.
+  compensations. There is no `finally` block in 0.1.0 (a known limitation).
 
 ## Architecture
 
@@ -124,18 +125,23 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
  │   ├─ cancel_request.rs          use case: owner-checked cancel signal
  │   └─ ports.rs                   ExecutionDriver, RequestControl, DagNodeRunner
  ├─ features/files/
- │   └─ apply_file_operation.rs    use case: intents → evaluator → FileAccess
+ │   ├─ apply_file_operation.rs    use case: intents → evaluator → FileAccess
+ │   └─ open_file_stream.rs        use case: `with file open` mode/chunk checks + authorization
  ├─ domain/
- │   ├─ dag.rs                     NodeState, DagInput, NodeStatus.envelope(), DagCompletion
+ │   ├─ cancel.rs                  CancelToken (tree of tokens), CancelReason cancelled|timeout
+ │   ├─ dag.rs                     NodeState, DagInput, NodeStatus.envelope() (+ started_at/ended_at), DagCompletion
  │   ├─ files.rs                   FileVerb, Codec, FileOperation
  │   ├─ errors.rs                  ErrorKind registry, RivetError, EffectsStatus
  │   ├─ contracts.rs               Request, Completion, DEFAULT_DEADLINE_MS = 30 000
  │   └─ policy.rs                  PolicyLimits (64 / 16 / 256 MiB)
  └─ infra/
      ├─ execution_driver.rs        Interpreter (ExecutionDriver), Machine, Frame,
-     │                             ResourceHandle, CLEANUP_GRACE = 5 s, NodeRunner
+     │                             ResourceHandle, CLEANUP_GRACE = 5 s, DEADLINE_BACKSTOP = 250 ms,
+     │                             NodeRunner, secret taint (SecretTaint, sink_guard)
+     ├─ file_stream.rs             FileStreams: `with file open` handles (read chunks / write / append)
      ├─ request_control.rs         RunningRequests (RequestControl), recent ring of 1024
-     └─ file_access.rs             ConfinedFiles (FileAccess), MAX_READ_BYTES = 8 MiB
+     └─ file_access.rs             ConfinedFiles (FileAccess), MAX_READ_BYTES = 8 MiB,
+                                   locked compare-and-replace (flock, LOCK_WAIT 10 s)
 ```
 
 ### Request lifecycle (sequence)
@@ -149,8 +155,8 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
     |                   | id starts "rivet." -> builtins::dispatch_builtin     |                     |
     |                   | depth==0: concurrency.try_acquire_owned()            |                     |
     |                   |   none left -> limit.concurrency (429 / exit 5)      |                     |
-    |                   | depth==0: RunningRequests.start(id, owner)           |                     |
-    |                   |---- select { run , cancelled.notified() } -->|       |                     |
+    |                   | depth==0: RunningRequests.start(id, owner, token)    |                     |
+    |                   |---- select { run , token fired + grace (last resort) } |                   |
     |                   |                            | registry.describe(id)   |                     |
     |                   |                            |   miss -> not_found.operation                 |
     |                   |                            | depth > max_call_depth -> limit.call_depth    |
@@ -160,8 +166,10 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
     |                   |                            |------ drive(plan, sink) --->|                 |
     |                   |                            |                         | deadline = now+deadline_ms
     |                   |                            |                         | params -> frame scope 0
-    |                   |                            |                         | exec body (timeout)
-    |                   |                            |                         |  data -> sink.send
+    |                   |                            |                         | exec body; deadline+250 ms
+    |                   |                            |                         |   fires the token (timeout)
+    |                   |                            |                         |  emit -> check `emits` -> sink.send
+    |                   |                            |                         |  return -> secret-taint check
     |                   |                            |<---- RunOutcome{result,data_count,effects}   |
     |                   |                            |---------------------------------------------->|
     |                   |                            |<-------- verdict (valid | output.invalid) ----|
@@ -172,9 +180,10 @@ into a confined, no-follow adapter (`src/infra/file_access.rs`). Every outcome i
 
 Nested `(request "ID" {…})` and `with (request.stream "ID" {…}) as NAME` build a child
 `Request` (`depth + 1`, `include_private: true`, same principal and trace ID, request ID
-`<parent>.<suffix>`) and re-enter `dispatch_request` through `NestedDispatcher`. Nested calls
-skip the principal check and the concurrency permit (they run inside the parent's permit),
-but pass the depth check and parameter validation. Their `deadline_ms` is the parent's
+`<parent>.<suffix>`, a **child cancellation token** of the caller's) and re-enter
+`dispatch_request` through `NestedDispatcher`. Nested calls skip the principal check and the
+concurrency permit (they run inside the parent's permit), but pass the depth check and
+parameter validation, and inherit every per-request `restrict` on the task's restriction stack. Their `deadline_ms` is the parent's
 **remaining** time, so children never outlive the parent deadline.
 
 ### Scope tree
@@ -185,9 +194,10 @@ dropped with it.
 ```text
  request req_01…  (Interpreter::drive, deadline D)
  └─ Frame  scopes[0] = params + operation-level assignments
-    ├─ block scope (if / for / while / iterate / try / scope timeout "…")
+    ├─ block scope (if / else / for / while / iterate / try / scope timeout "…")
     │   └─ loop variables, `error` in catch — block-local (Frame::define)
-    ├─ with KIND … as a                       handle a  (Frame.handles, innermost last)
+    ├─ with KIND … as a                       handle a  (Frame.handles, innermost last;
+    │                                                    KIND includes `file open PATH mode M`)
     │   └─ with KIND … as b                   handle b
     │       └─ body …                         exit order: close b, then close a
     ├─ dag limit N [timeout "T"] [fail fast|fail independent]
@@ -227,9 +237,30 @@ through the adapter registered for `KIND` (or the built-in `request.stream`, or
   outer one resumes, so handles close innermost first.
 - Handles are not values: they cannot be returned, stored or passed to DAG nodes.
 - `CLEANUP_GRACE` (5 s) bounds each `close()` on normal exit, error, `break` and `return`.
-  When the request is **cancelled or its deadline fires**, the whole future is dropped
-  instead; handles are released by their `Drop` implementations (child processes are
-  killed on drop) and no graceful `close()` runs.
+- When the request is **cancelled or its deadline fires**, cancellation is structured: the
+  request's `CancelToken` fires, every await point and handle operation observes it, the
+  body unwinds through its `with` blocks and each `close()` runs with the **rest of the
+  grace** (`RunState::close_budget`, at least 50 ms); child processes are reaped. Only if the
+  body is still running when the grace (+ 250 ms backstop) ends is the future dropped, and
+  the terminal error then carries `cleanup.timeout` under `suppressed`.
+
+```text
+ cancel / deadline ─▶ token.cancel(Cancelled|Timeout) ─▶ children tokens fire too
+        │                (nested requests, DAG nodes, concurrent tasks, request.stream)
+        ▼
+ body unwinds ─▶ with c: close()  ─▶ with b: close() ─▶ with a: close()   (reverse, ≤ grace)
+        │
+        ├─ finished within 5 s ─▶ one error: cancelled.request | timeout.request
+        └─ still running        ─▶ future dropped (last resort) + suppressed cleanup.timeout
+```
+
+`with file open PATH mode read|write|append as NAME` (`src/infra/file_stream.rs`) is
+authorized by `files.open_file_stream` per mode (read → `allow_read` read; write →
+`allow_write` create + update; append → `allow_write` append), opens a no-follow handle
+under the bundle root (reads need a regular file, writes refuse hard links, append never
+creates), yields bytes chunks of at most `chunk_size` (default 64 KiB, 1 … 8 MiB) for
+`for chunk in NAME`, accepts `NAME.write text|bytes V`, and flushes + syncs on close.
+`with file watch` is Stage C (`unsupported.stage_c`).
 
 ### DAG node state machine
 
@@ -275,39 +306,40 @@ Scheduling loop (per iteration):
 - Default `limit` is 4 (`options.limit.unwrap_or(4)` in `Machine::run_dag`); default failure
   policy is `fail fast`.
 - After the block, **every node name evaluates to its envelope**
-  `{status, result, error}` (`NodeStatus::envelope` in `src/domain/dag.rs`); `result` is
-  `null` unless `status` is `succeeded`.
+  `{status, result, error, started_at, ended_at}` (`NodeStatus::envelope` in
+  `src/domain/dag.rs`; RFC 3339 timestamps with milliseconds, `null` for a node that never
+  started); `result` is `null` unless `status` is `succeeded` (`rivet check` warns with
+  `check.unguarded_result` when a `return` reads it unguarded).
 - Under `fail fast` the fatal error (the first failing node's error, with `node_id` set) is
-  raised from the `dag` statement. If that error has no `details`, the scheduler attaches
-  `details.nodes = [{id, status}…]`. `fail independent` raises nothing; the body inspects
-  the envelopes.
+  raised from the `dag` statement, and the scheduler **merges** `details.nodes =
+  [{id, status, started_at, ended_at}…]` into that error's existing `details`.
+  `fail independent` raises nothing; the body inspects the envelopes.
 - A dag `timeout "T"` expiry is `timeout.dag` (exit 6).
 
 ### Cancellation propagation
 
 ```text
-  Ctrl-C (CLI)            rivet.sessions.cancel / WS cancel / poll cancel     SSE client disconnect
-      │                              │  (SYS-2026-0007)                              │
-      ▼                              ▼                                               ▼
-  Runtime::cancel(id, local)     SessionHost.cancel: drop input,             AbortOnDrop aborts the
-      │                          abort run task, join ≤ 5 s                   dispatch task
-      ▼                              │                                               │
-  execution.cancel_request           │                                               │
-   lookup(id) owner == principal?    │                                               │
-   no  -> not_found.request (404/4)  │                                               │
-   terminal -> {state: succeeded|failed|cancelled}                                   │
-   running -> RunningRequests.signal -> Notify                                       │
-      │                              │                                               │
-      ▼                              ▼                                               ▼
-  dispatch_request select! fires ── the request future is DROPPED ───────────────────┘
-      │
-      ├─ Interpreter::drive future dropped
-      │    ├─ DAG / concurrent / map futures dropped   (nodes -> gone, no envelopes)
-      │    ├─ nested (request …) futures dropped       (children cancelled with the parent)
-      │    ├─ request.stream child task: handle dropped
-      │    └─ ResourceHandles dropped (processes killed on drop)
+  Ctrl-C (CLI)        rivet.sessions.cancel / WS cancel / poll cancel     SSE disconnect    deadline      serve drain
+      │                          │  (SYS-2026-0007)                          │                │               │
+      ▼                          ▼                                           ▼                │               ▼
+  Runtime::cancel(id, local)  SessionHost.cancel: mark cancel-requested,  AbortOnDrop        │     Runtime::shutdown:
+      │                       drop input, fire the session's token        │                  │     cancel_all requests
+      ▼                          │                                        │                  │     + sessions
+  execution.cancel_request       │                                        │                  │     (cancelled.shutdown)
+   lookup(id) owner == principal?│                                        │                  │
+   no  -> not_found.request      │                                        │                  │
+   terminal -> {state: succeeded|failed|cancelled}                        │                  │
+   running -> token.cancel(Cancelled)                                     │     token.cancel(Timeout)
+      │                          │                                        │                  │
+      ▼                          ▼                                        ▼                  ▼
+  the request's CancelToken fires ──▶ every child token fires (nested requests, DAG nodes,
+      │                              concurrent tasks, map items, request.stream children)
+      ├─ the interpreter observes it at its next await point / handle operation
+      ├─ `with` scopes close handles in reverse order within the 5 s grace; processes reaped
       ▼
-  one error: cancelled.request  kind cancelled  effects "unknown"  → exit 130 / HTTP 409
+  one error: cancelled.request | timeout.request   (effects = what actually happened)
+      → exit 130 / HTTP 409  (timeout: exit 6 / HTTP 504)
+  only after the grace (+ backstop): the remaining future is dropped, cleanup.timeout suppressed
   RunningRequests.finish(id, "cancelled")  (kept in a 1024-entry recent ring for late cancels)
 ```
 
@@ -334,12 +366,15 @@ Scheduling loop (per iteration):
 
 ```text
  Runtime::builder().file(p) | .source(path, text, root)
-                   .policy_file(p) | .policy(Policy)
+                   .policy_file(p) | .policy(Policy)   [.ceiling(Policy)]
                    .build()                         -> Runtime
  rt.request(id, params, sink?)                      -> Completion | RivetError  (principal local)
+ rt.request_restricted(id, params, restrict, sink?) -> Completion | RivetError  (narrowed)
+ rt.scope(|scope| … scope.stream / scope.duplex …)  -> owned handles, cancelled + joined at the end
  rt.new_request(id, params, principal)              -> Request (deadline_ms 30 000)
  rt.dispatch_request(request, sink?)                -> Completion | RivetError
  rt.cancel(request_id, principal)                   -> CancelReceipt {request_id, state}
+ rt.shutdown(drain)                                 -> cancel every request and session
 ```
 
 ### CLI
@@ -350,14 +385,15 @@ Scheduling loop (per iteration):
         │                                     │          └─ NDJSON data envelopes, then a result envelope
         │                                     └─ object; unknown fields rejected
         └─ stdout: Completion JSON (exit 0) · stderr: ErrorEnvelope (registry exit code)
+ --timeout above 600000 ms (10m) → validation.usage (exit 2), the same host cap as HTTP deadline_ms
  Ctrl-C while running → execution.cancel_request → cancelled.request → exit 130
 ```
 
 ### HTTP
 
-`POST /v1/request {id, params, deadline_ms?}` (SYS-2026-0004). `deadline_ms` is clamped to
-`1..=600000` (`MAX_REQUEST_DEADLINE_MS` in `src/io/http/mod.rs`); the CLI's `--timeout` in
-`--endpoint` mode is sent as this field.
+`POST /v1/request {id, params, deadline_ms?, restrict?}` (SYS-2026-0004). `deadline_ms` is
+clamped to `1..=600000` (`MAX_REQUEST_DEADLINE_MS` in `src/io/http/mod.rs`); the CLI's
+`--timeout` in `--endpoint` mode is sent as this field (and refused above the cap locally too).
 
 ### Completion and error envelopes
 
@@ -368,12 +404,17 @@ Scheduling loop (per iteration):
    "trace_id":   "tr_…",                         "error": {
    "result":     <validated value>,                "kind": "<ErrorKind>", "code": "<dotted.code>",
    "data_count": <items emitted>,                  "message": "…", "retryable": bool,
-   "effects":    "none" | "committed"              "effects": "none|committed|partial|unknown",
+   "effects":    "none|committed|unknown"          "effects": "none|committed|partial|unknown",
  }                                                 "source"?, "operation_id"?, "node_id"?,
                                                    "hint"?, "details"?, "cause"?, "suppressed"?
                                                  }
                                                }
 ```
+
+`effects` only ever rises (`none < committed < partial < unknown`, folded with `fetch_max`):
+a nested call's status is folded into its caller's, so an opaque remote MCP tool call
+(`unknown`) keeps the wrapping request `unknown` — never `committed` merely because the
+remote call returned.
 
 ## Configuration
 
@@ -383,11 +424,13 @@ Scheduling loop (per iteration):
 |---|---|---|---|---|
 | `limits.max_concurrent_requests` | 64 | `policy.json` `limits` → `PolicyLimits` (`src/domain/policy.rs`, parsed in `src/features/policy/load_policy.rs`) | `Semaphore` in `dispatch_request` (top-level only, `try_acquire`, no queue) | `limit.concurrency` (429 / 5) |
 | `limits.max_call_depth` | 16 | same | `request_operation` (`depth > max`) | `limit.call_depth` (429 / 5) |
-| `limits.max_buffered_bytes` | 268 435 456 (256 MiB) | same | parsed and reported by `policy explain`; not consulted by the dispatcher | — |
-| Request deadline | 30 000 ms | `DEFAULT_DEADLINE_MS` (`src/domain/contracts.rs`) | `Interpreter::drive` (`tokio::time::timeout`) and a per-statement check in `exec_block` | `timeout.request` (504 / 6) |
-| CLI `--timeout D` | — | `request --timeout` → `deadline_ms` | same | `validation.usage` for a bad duration |
+| `limits.max_buffered_bytes` | 268 435 456 (256 MiB) | same | host-wide `BufferBudget` reserved by every retained session event (SYS-2026-0007) | `limit.buffered_bytes` (429 / 5) |
+| Request deadline | 30 000 ms | `DEFAULT_DEADLINE_MS` (`src/domain/contracts.rs`) | `Interpreter::drive`: deadline + 250 ms fires the token (`Timeout`); a per-statement check in `exec_block` | `timeout.request` (504 / 6) |
+| CLI `--timeout D` | — | `request --timeout` → `deadline_ms`, at most 600 000 ms | same | `validation.usage` for a bad duration or above the cap |
 | HTTP `deadline_ms` | — | request body, clamped to 1..600 000 | same | — |
-| Cleanup grace | 5 s | `CLEANUP_GRACE` (`src/infra/execution_driver.rs`) | `run_with` | `cleanup.timeout` |
+| Cleanup grace | 5 s | `CLEANUP_GRACE` (`src/infra/execution_driver.rs`) | `run_with`; after cancellation the remaining grace bounds each close | `cleanup.timeout` |
+| `with file open` chunk | 64 KiB (1 … 8 MiB) | `chunk_size N` option | `files.open_file_stream` | `limit.chunk_size` |
+| File lock wait (`update`/`write` of an existing file) | 10 s | `LOCK_WAIT` (`src/infra/file_access.rs`) | `locked_replace` | `timeout.file_lock` |
 | DAG / map concurrency | 4 | `limit N` option, else 4 | `run_dag`, `run_map` | — |
 | `concurrent` concurrency | number of tasks | `limit N` option | `run_concurrent` | — |
 | `poll` interval / timeout | 1 s / 30 s | `every` / `timeout` options | `run_poll` | `timeout.poll` |
@@ -468,21 +511,25 @@ $ curl -s -X POST http://127.0.0.1:18422/v1/request -H 'content-type: applicatio
 ### Cancellation (Ctrl-C)
 
 The CLI races the request against `tokio::signal::ctrl_c()`; on the signal it calls
-`Runtime::cancel` and then awaits the request, which ends with one `cancelled.request` error.
-Verified by sending SIGINT one second into `slow.wait`:
+`Runtime::cancel` (which fires the request's token) and then awaits the request, which unwinds
+and ends with one `cancelled.request` error. Verified at commit `829ca43` by sending SIGINT one
+second into `slow.wait` (a `poll every "100ms" timeout "60s"` that never completes):
 
 ```sh
-$ rivet --file app.rivet request slow.wait --params '{}' &   # then: kill -INT $!
+$ rivet --file slow.rivet request slow.wait > int.out 2> int.err &   # then: kill -INT $!
 exit=130
 stdout: (empty)
-stderr: {"request_id":"req_0169ffda35","trace_id":"tr_0169ffda35","error":{"kind":"cancelled","code":"cancelled.request","message":"the request was cancelled by its caller","retryable":false,"effects":"unknown"}}
+stderr: {"request_id":"req_0100f8330d","trace_id":"tr_0100f8330d","error":{"kind":"cancelled","code":"cancelled.request","message":"`slow.wait` was cancelled","retryable":false,"effects":"none","source":{"file":"slow.rivet","line":5,"column":5,"end_line":8,"end_column":8},"operation_id":"slow.wait"}}
 ```
+
+The error now carries the statement span where the run was interrupted, and `effects`
+reports what actually happened (here `none`); `unknown` is reported only when the grace ran
+out and the future had to be dropped.
 
 `cancel_request` semantics: unknown IDs and IDs owned by another principal are both
 `not_found.request` (ownership is not disclosed); an already-terminal request returns its
 terminal state (`succeeded`, `failed` or `cancelled`) instead of pretending to cancel; a
-second signal is a no-op. Effects are reported as `unknown` because the scope was dropped
-mid-flight.
+second signal is a no-op.
 
 ### DAG runs — verified with `docs/demos/05-dag`
 
@@ -509,8 +556,19 @@ exit=2
    return {good: good.status, bad: bad.status, blocked: blocked.status}
 ```
 
+Node envelopes and the fatal node list, verified at commit `829ca43` (scratch `dag.rivet`:
+`w.one` returns 1, `w.boom` fails `w.boom`):
+
+```sh
+$ rivet --file dag.rivet --json request w.env        # dag fail independent; return {a: a, b: b}
+{"request_id":"req_016054125d","trace_id":"tr_016054125d","result":{"a":{"status":"succeeded","result":1,"error":null,"started_at":"2026-09-28T09:52:42.060Z","ended_at":"2026-09-28T09:52:42.066Z"},"b":{"status":"failed","result":null,"error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"effects":"none","source":{"file":"dag.rivet","line":15,"column":5,"end_line":15,"end_column":21},"operation_id":"w.boom","node_id":"b","details":{}},"started_at":"2026-09-28T09:52:42.060Z","ended_at":"2026-09-28T09:52:42.066Z"}},"data_count":0,"effects":"none"}
+$ rivet --file dag.rivet --json request w.fast       # dag fail fast
+{"request_id":"req_015ff5ca95.2","trace_id":"tr_015ff5ca95","error":{"kind":"application","code":"w.boom","message":"always","retryable":false,"effects":"none","source":{"file":"dag.rivet","line":15,"column":5,"end_line":15,"end_column":21},"operation_id":"w.boom","node_id":"b","details":{"nodes":[{"id":"a","status":"succeeded","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"},{"id":"b","status":"failed","started_at":"2026-09-28T09:52:42.085Z","ended_at":"2026-09-28T09:52:42.085Z"}]}}}
+exit=5
+```
+
 `fail fast` (the default) makes the first failure fatal. Scratch bundle `dag.fast`
-(`dag limit 1`, nodes `bad`, `later after [bad]`, `other`):
+(`dag limit 1`, nodes `bad`, `later after [bad]`, `other`), captured at `f40d4aa`:
 
 ```sh
 $ rivet --file app.rivet request dag.fast --params {}
@@ -520,14 +578,20 @@ exit=5
 
 Here `later` ends `blocked` and `other` ends `skipped` (unit test
 `fail_fast_skips_the_rest` in `run_dag.rs`). The raised error is the failing node's own
-error (its request ID is the nested child's), carrying `node_id`; because it already has
-`details`, no `details.nodes` list is attached.
+error (its request ID is the nested child's), carrying `node_id`; since commit `829ca43` the
+node list is merged into its existing `details` (`merge into existing details`,
+G14); the capture above predates that change.
 
 ### Streams and nested streams
 
-`emit` requires a declared `emits` type (`stream.emits_undeclared` otherwise) and awaits
-the sink, so a slow consumer applies backpressure. A consumer that stops is
-`consumer_failed`. `with (request.stream "ID" {…}) as events` runs the child in a task owned
+`emit` requires a declared `emits` type (`stream.emits_undeclared` otherwise), **validates
+the item against it** (a mismatch is `output.invalid` "emitted item N at PATH must be …" with
+`details {seq, path, expected, found}`), refuses a secret-tainted value (`permission.denied`
+"cannot be emitted") and awaits the sink, so a slow consumer applies backpressure. A sink that
+returns `RivetError::consumer_stop()` stops the request cleanly (`cancelled` /
+`consumer.stop`); any other sink error is `consumer_failed`. Items received through
+`incoming` are validated against `receives` by the session driver (`validation.input`,
+SYS-2026-0007). `with (request.stream "ID" {…}) as events` runs the child in a task owned
 by the scope and delivers items through a 16-slot channel:
 
 ```sh
@@ -540,6 +604,9 @@ exit=0
 $ rivet --file app.rivet request events.consume --params {}     # sums events.count via request.stream
 {"request_id":"req_019cfd397d","trace_id":"tr_019cfd397d","result":{"total":6},"data_count":0,"effects":"none"}
 exit=0
+$ rivet --file app.rivet --json request demo.typed --stream          # emits integer; emit "not a number" (829ca43)
+{"request_id":"req_01b8df1f9d","trace_id":"tr_01b8df1f9d","error":{"kind":"output_invalid","code":"output.invalid","message":"emitted item 1 at $ must be integer, got text","retryable":false,"effects":"none","operation_id":"demo.typed","details":{"seq":1,"path":"$","expected":"integer","found":"text"}}}
+exit=5
 ```
 
 An operation that declares `receives` cannot run unary (`stream.input_required`, exit 2);
@@ -581,15 +648,35 @@ exit=5
 | `list` | read/list | entries sorted by name | `[{name, type, size}]` |
 | `stat` | read/stat | no-follow metadata | `{path, type, size, version}` |
 | `create` | write/create | exclusive (`create_new`) → `conflict.already_exists` | `{path, created, version}` |
-| `update` | read/stat + write/update | must exist (`not_found.file`); `if_version` guard → `conflict.version`; atomic temp-file + rename | `{path, updated, version}` |
+| `update` | read/stat + write/update | must exist (`not_found.file`); locked compare-and-replace (below); `if_version` mismatch → `conflict.version` | `{path, updated, version}` |
 | `write` | write/create + write/update | create or replace atomically | `{path, created\|updated, version}` |
 | `append` | write/append | default codec text | `{path, appended}` |
-| `delete` | delete/delete | `missing ok` → `deleted:false` | `{path, deleted}` |
+| `delete` | delete/delete | `missing ok` → `deleted:false` and no effect recorded (`effects` stays `none`) | `{path, deleted}` |
 | `copy` / `move` | read/read src + write/create dst (+ write/update if overwrite) (+ delete/delete src for move) | `overwrite false` → `conflict.already_exists` | `{path, version}` |
 
 `version` is `v:` plus the first 8 bytes of the SHA-256 of the content, hex. Hard-linked
 targets (link count > 1) are refused for write, delete, copy destination and move source
 (`file.hardlink_refused`). A mutating file verb marks the request's effects `committed`.
+Every file effect runs inside its effect scope, so the broker intent — and therefore the
+trace entry and any `permission.denied` — names the operation ID and the statement's source
+span.
+
+**Replacing an existing file** (`update`, `write`, `copy`/`move` with overwrite) is a
+compare-and-replace under an exclusive advisory lock (Unix `flock`):
+
+```text
+ open target no-follow ─▶ flock(LOCK_EX) (wait ≤ 10 s, else timeout.file_lock)
+   ─▶ fd still the file at PATH? (dev+ino) ── no ─▶ retry on the new file
+   ─▶ nlink > 1 → file.hardlink_refused
+   ─▶ read via the locked fd; if_version given and ≠ current → conflict.version (file unchanged)
+   ─▶ write temp sibling ─▶ fsync ─▶ rename over PATH (lock still held) ─▶ release
+```
+
+This is atomic against every writer that takes the same lock (all Rivet runtimes); a process
+that writes without the lock is outside what an advisory lock can stop. On platforms without
+`flock` (non-Unix) a conditional update is refused with `unsupported.conditional_update`
+before anything is written. A variable named like a codec never replaces the codec keyword
+(`file append P text text` appends the variable `text`).
 
 Verified with `docs/demos/02-file-crud` (copied to a scratch folder so the demo tree stays
 clean):
@@ -613,9 +700,11 @@ exit=0
 $ rivet --file app.rivet request notes.delete --params '{}'
 {"request_id":"req_01ba5f62a5","trace_id":"tr_01ba5f62a5","result":{"absent":true},"data_count":0,"effects":"committed"}
 exit=0
-$ rivet --file app.rivet request notes.delete --params '{}'      # missing ok
+$ rivet --file app.rivet request notes.delete --params '{}'      # missing ok (f40d4aa capture)
 {"request_id":"req_01b9184a6d","trace_id":"tr_01b9184a6d","result":{"absent":true},"data_count":0,"effects":"committed"}
 exit=0
+# since 2a751ab a delete that finds nothing reports "effects":"none":
+{"request_id":"req_0122609e5d","trace_id":"tr_0122609e5d","result":{"absent":true},"data_count":0,"effects":"none"}
 $ rivet --file app.rivet request notes.update --params '{"text":"x"}'
 {"request_id":"req_01b831df0d","trace_id":"tr_01b831df0d","error":{"kind":"not_found","code":"not_found.file","message":"./out/note.json: no such file","retryable":false,"effects":"none","source":{"file":"app.rivet","line":30,"column":5,"end_line":30,"end_column":52},"operation_id":"notes.update"}}
 exit=4
@@ -670,7 +759,8 @@ wins over a cleanup error, which is attached under `suppressed`.
 - The trace store is in memory (`MemoryTraceStore`, see Observability); it disappears with
   the process.
 - File operations touch only paths under the bundle root; `update`, `write`, `copy` and
-  `move` write a sibling temporary file `.<name>.rivet-tmp` and rename it over the target.
+  `move` write a sibling temporary file `.<name>.rivet-tmp` and rename it over the target
+  (under the file lock when the target exists).
 
 ## Dependencies
 
@@ -702,8 +792,23 @@ store) across all surfaces and principals.
  files     ──▶ every touched path authorized first; cap-std root; no absolute paths,
                no `..` escape, symlinks refused, hard links refused for mutation
  cancel    ──▶ only the owning principal; foreign IDs look like unknown IDs
- budgets   ──▶ max_concurrent_requests / max_call_depth / deadlines bound resource use
+ budgets   ──▶ max_concurrent_requests / max_call_depth / max_buffered_bytes / deadlines
+ secrets   ──▶ taint: a `secret … for ORIGIN` value (and forms derived by explicit flows)
+               reaches only a network sink whose scheme://host:port is a bound origin
+ restrict  ──▶ per-request restriction stack: every decision must pass policy ∩ restrict…
 ```
+
+**Secret taint** (`execution_driver.rs`, G23b). A `secret NAME from env "VAR" for ORIGIN…`
+records the value as a taint *form*. Explicit flows keep it recognisable: assignment,
+interpolation, list/object construction (the form appears as a substring), and the encoding
+helpers (`base64.encode`, `text`, …) whose **output** is recorded as a new derived form
+(≥ 4 bytes, at most 64 forms per secret). Every sink is checked: the head, options and child
+parts of every effect form (URL, headers, body, query), `with` opens, handle member calls
+(socket/stream/UDP sends), nested `(request …)` params (so MCP and gRPC calls), `return` and
+`emit`. A sink passes only when it is a network destination whose `scheme://host:port` is one
+of the bound origins; files, processes, Unix sockets, pipes, nested requests, `return` and
+`emit` never pass. Refusals are `permission.denied` with `details {secret, origin?}`. Implicit
+flows (branching on a secret, lengths, timing) are out of scope.
 
 - Nested calls inherit the caller's principal and cannot widen authority.
 - File errors name the source path, never file content; the CLI stdin feeder never echoes
@@ -724,31 +829,32 @@ $ rivet --endpoint http://127.0.0.1:18421 trace show req_01693e07ad
 ```
 
 - `rivet policy explain ID` prints the effective `limits` line (see Configuration).
+- `Runtime::export_trace` (and the `rivet.trace.export` built-in behind `rivet --endpoint … trace export`,
+  dispatched since commit `2a751ab`) writes one request's trace to a new file through the broker.
 
 ## Known Limitations
 
-- `limits.max_buffered_bytes` is parsed, validated and displayed but not enforced by the
-  dispatcher or interpreter.
-- The concurrency budget does not queue: the 65th simultaneous top-level request fails
-  immediately with `limit.concurrency` (retryable).
-- `emit` checks that `emits` is declared but does not validate each item against the
-  `emits` type; only the final result is validated (`output.invalid`).
-- On cancellation or deadline expiry the request future is dropped: `with` handles are
-  released by `Drop`, not by an awaited `close()`, so the 5 s graceful close applies only to
-  normal exit, error, `break` and `return`.
-- DAG completion records statuses, results and errors only; there are no per-node
-  `started_at` / `ended_at` timestamps, and under `fail fast` the node list is attached to
-  the fatal error only when that error has no `details` of its own.
-- No `finally` blocks, no automatic retries, no persistence or resume after restart.
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations), the
+ones that concern execution:
+
+- No `finally` blocks; Stage C forms (`with file watch`, `with pipe`, `reconnect`,
+  `interactive true`) are refused at run time.
 - CLI `--timeout` is not forwarded over the WebSocket duplex path (`--endpoint` with
   `--input-jsonl -`).
-- The local CLI does not cap `--timeout`; only HTTP `deadline_ms` is capped at 600 000 ms.
+- No persistent trace store (and no persistence or resume after restart).
+
+Behaviour by design: the concurrency budget does not queue (the 65th simultaneous top-level
+request fails immediately with `limit.concurrency`, retryable); effects are never retried
+automatically; secret taint covers explicit flows only.
 
 ## Last Verified Version
 
-`0.1.0-dev (commit f40d4aa)`, 2026-09-28, macOS, `target/debug/rivet`. Commands were run
-from `docs/demos/05-dag`, a scratch copy of `docs/demos/02-file-crud`, and scratch bundles
-for timeouts, cancellation, output validation and call depth. `rivet serve` was used on
+`0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
+`f40d4aa`: commands were run from `docs/demos/05-dag`, a scratch copy of
+`docs/demos/02-file-crud`, and scratch bundles for timeouts, cancellation, output validation
+and call depth. Re-verified at `829ca43` for structured cancellation (SIGINT and deadline),
+DAG timestamps and `details.nodes`, `emits` item validation, `with file open`, `if_version`
+under the lock and secret taint, using scratch bundles. `rivet serve` was used on
 127.0.0.1:18421 and 127.0.0.1:18422 and stopped afterwards. Request and trace IDs differ
 on every run.
 
@@ -771,3 +877,4 @@ on every run.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-16). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43, 2a751ab): structured cancellation (CancelToken, graceful close within the grace), DAG `started_at`/`ended_at` and merged `details.nodes`, `emits` validation, typed sink stop, enforced `max_buffered_bytes`, `--timeout` cap, `effects` folding (`unknown` for opaque MCP), file effect scopes, `with file open`, flock-guarded compare-and-replace, secret taint on every sink, per-request restriction; limitations reduced to the current ones. |

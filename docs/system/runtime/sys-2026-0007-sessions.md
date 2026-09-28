@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [sessions, execution, ws, poll]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: The host-owned live session runtime (open, send, finish input, read, cancel, retention, limits) and how the CLI, rivet.sessions.* built-ins, HTTP polling and WebSocket surfaces project it in Rivet 0.1.0.
@@ -34,7 +35,7 @@ tags: [rivet, system, sessions, streaming, duplex, polling, websocket]
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** sessions, execution, ws, poll
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -60,8 +61,9 @@ itself is an ordinary request through the shared dispatcher (`Runtime::dispatch_
                                                  v
    +-------------------------------------------------------------------------------------------+
    | SessionHost (SessionDriver)   map<session_id, Session>                                    |
-   |   Session { owner, request_id, trace_id, InputSequencer, EventLog(≤16), input tx(16),     |
-   |             run task, read_lock }                                                         |
+   |   Session { owner, request_id, trace_id, InputSequencer, EventLog(≤16 frames, ≤32 MiB),   |
+   |             input tx(16), CancelToken, run task, read_lock }                              |
+   |   BufferBudget (host-wide, limits.max_buffered_bytes) · background sweeper                |
    +--------+-------------------------------------------------+--------------------------------+
             | launch (spawned task)                           ^ SessionSink.send (blocks at 16)
             v                                                 |
@@ -80,8 +82,10 @@ itself is an ordinary request through the shared dispatcher (`Runtime::dispatch_
 | Sequence and enqueue input (`send_seq`, payload hash, 16-slot queue, 5 s action deadline) | `sessions.send_input`, `InputSequencer` (`src/domain/sessions.rs`), `SessionHost::send` |
 | Half-close input | `sessions.finish_input`, `SessionHost::finish_input` |
 | Long-poll the event log with acknowledgement cursor | `sessions.read_events`, `EventLog`, `SessionHost::read` |
-| Cancel the run, join within 5 s, record one terminal event | `sessions.cancel_session`, `SessionHost::cancel` |
-| Expire retained sessions (60 s) and cancel idle ones (60 s) | `SessionHost::sweep` |
+| Cancel the run (fire its token), join within the 5 s grace, record one terminal event — a cancel requested before completion wins | `sessions.cancel_session`, `SessionHost::cancel`, `Session::request_cancel` |
+| Expire retained sessions (60 s) and cancel idle ones (60 s) from a background sweeper | `SessionHost::start_sweeper`, `sweep` |
+| Reserve every retained output event against the host byte budget | `BufferBudget` (`limits.max_buffered_bytes`) |
+| Cancel every session on host shutdown | `SessionHost::cancel_all` (`cancelled.shutdown`) |
 | Project sessions onto HTTP polling and WebSocket | `serve.project_polling`, `serve.multiplex_ws` |
 
 ## Boundaries and Non-Responsibilities
@@ -107,7 +111,7 @@ itself is an ordinary request through the shared dispatcher (`Runtime::dispatch_
             │   send(seq) ─▶ enqueue | duplicate ack       │   otherwise input starts closed)
             │   read(after_seq) ─▶ batch                   │
             └──────────┬──────────────────────┬────────────┘
-                       │ finish_input         │ cancel / idle 60 s
+                       │ finish_input         │ cancel / idle 60 s (sweeper) / shutdown
                        ▼                      │
             ┌──────────────────────────┐      │
             │ active, input closed     │      │
@@ -115,21 +119,24 @@ itself is an ordinary request through the shared dispatcher (`Runtime::dispatch_
             │     input_closed         │      │
             │   read(after_seq)        │      │
             └──────────┬───────────────┘      │
-                       │ run ends             │ cancel: drop input, abort task,
-                       │ (result | error)     │ join ≤ 5 s, push cancelled error
+                       │ run ends             │ cancel: record cancel-requested, drop input,
+                       │ (result | error)     │ fire token, join ≤ 5 s (+1 s, then abort),
+                       │                      │ push cancelled error (wins over a later result)
                        ▼                      ▼
             ┌──────────────────────────────────────────────┐
             │ terminal: exactly one result|error event      │
             │ retained ≤ 60 s (retention_ms) for reads      │
             └──────────────────────┬───────────────────────┘
-                                   │ next sweep after 60 s
+                                   │ background sweep after 60 s
                                    ▼
                                expired (removed → not_found.session)
 ```
 
 Terminal state names come from the last event (`terminal_state` in
 `src/domain/sessions.rs`): `result` → `succeeded`; `error` of kind `cancelled` →
-`cancelled`; any other error → `failed`.
+`cancelled`; any other error → `failed`. The state is kept on the session even after its
+terminal event was acknowledged and evicted from the log, so a later `cancel` of a finished
+session reports it.
 
 ### Event sequence (polling example)
 
@@ -161,13 +168,13 @@ Terminal state names come from the last event (`terminal_state` in
                                  CancelReceipt, InputSequencer, EventLog, terminal_state/envelope,
                                  MAX_WS_REFS = 8
  src/features/sessions/          open_session · send_input · finish_input · read_events · cancel_session
- src/infra/session_driver.rs     SessionHost (SessionDriver), Session, SessionSink,
-                                 ACTION_DEADLINE = 5 s, CLEANUP_GRACE = 5 s
+ src/infra/session_driver.rs     SessionHost (SessionDriver), Session, SessionSink, BufferBudget, sweeper,
+                                 ACTION_DEADLINE = 5 s, CLEANUP_GRACE = 5 s, JOIN_MARGIN = 1 s
  src/orchestrator/setup_library.rs  session_host(): launch = Runtime::dispatch_session,
                                  mint = Runtime::new_request, validate = validate_params
  src/orchestrator/builtins.rs    rivet.sessions.{open,send,finish_input,read,cancel}, rivet.request
  src/orchestrator/setup_poll.rs  /v1/requests… routes → serve.project_polling
- src/orchestrator/setup_ws.rs    /v1/ws upgrade, per-ref pump, close → cancel all refs
+ src/orchestrator/setup_ws.rs    /v1/ws upgrade, per-ref pump + 16-frame lane (WsOutbox), close → cancel all refs
  src/orchestrator/setup_cli.rs   run_duplex (local --input-jsonl -)
  src/orchestrator/remote_cli.rs  feed_stdin_jsonl, INPUT_QUEUE = 16, remote duplex over WS
 ```
@@ -178,7 +185,7 @@ Terminal state names come from the last event (`terminal_state` in
 
 | Use case | Input → output | Early checks in the use case |
 |---|---|---|
-| `sessions.open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms?}` → `SessionReceipt` | blank `id` → `validation.required`; non-object params → `validation.params` |
+| `sessions.open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms?, trace?, restrict?}` → `SessionReceipt` | blank `id` → `validation.required`; non-object params → `validation.params` |
 | `sessions.send_input` | `SessionSendInput {session_id, send_seq, data, principal}` → `SessionAck` | `send_seq` 0 → `conflict.input_sequence` |
 | `sessions.finish_input` | `SessionRef` → `SessionAck {accepted_seq: null, input_closed: true}` | blank ID → `not_found.session` |
 | `sessions.read_events` | `SessionReadInput {session_id, after_seq, max_events?, wait_ms?}` → `SessionBatch` | blank ID → `not_found.session`; clamp wait/max |
@@ -201,15 +208,16 @@ Port: `SessionDriver { open; send; finish_input; read; cancel; limits }`
 ```
 
 `expires_at` is `now + min(idle_ms, deadline_ms)`; with the defaults that is 30 s after
-open (the request deadline is shorter than the 60 s idle lease).
+open (the request deadline is shorter than the 60 s idle lease). `deadline_ms` is the
+caller's requested total deadline (default 30 000, clamped to 1 … 600 000).
 
 ### Surfaces
 
 | Surface | Open | Send | Finish | Read | Cancel |
 |---|---|---|---|---|---|
-| Built-ins (`/v1/request`, MCP tools, CLI `request`, library) | `rivet.sessions.open {id, params}`; `rivet.request {id, params}` also returns a receipt when the target streams | `rivet.sessions.send {session_id, send_seq, data}` | `rivet.sessions.finish_input {session_id}` | `rivet.sessions.read {session_id, after_seq, max_events?, wait_ms?}` | `rivet.sessions.cancel {session_id}` |
-| HTTP polling (`setup_poll.rs`) | `POST /v1/requests {id, params}` → 202 + `events_url` | `POST /v1/requests/{id}/input {send_seq, data}` | `POST /v1/requests/{id}/finish_input` | `GET /v1/requests/{id}/events?after_seq=N&wait_ms=M&max_events=K` | `POST /v1/requests/{id}/cancel` |
-| WebSocket `/v1/ws`, subprotocol `rivet.v1` (`setup_ws.rs`) | `{type:"request", ref, id, params}` | `{type:"input", ref, seq, data}` | `{type:"finish_input", ref}` | server pushes `{type:"data"…}` then one `result` or `error` per ref | `{type:"cancel", ref}`; socket close cancels all refs |
+| Built-ins (`/v1/request`, MCP tools, CLI `request`, library) | `rivet.sessions.open {id, params, deadline_ms?}`; `rivet.request {id, params}` also returns a receipt when the target streams | `rivet.sessions.send {session_id, send_seq, data}` | `rivet.sessions.finish_input {session_id}` | `rivet.sessions.read {session_id, after_seq, max_events?, wait_ms?}` | `rivet.sessions.cancel {session_id}` |
+| HTTP polling (`setup_poll.rs`) | `POST /v1/requests {id, params, deadline_ms?, restrict?}` (+ `traceparent`) → 202 + `events_url` | `POST /v1/requests/{id}/input {send_seq, data}` | `POST /v1/requests/{id}/finish_input` | `GET /v1/requests/{id}/events?after_seq=N&wait_ms=M&max_events=K` | `POST /v1/requests/{id}/cancel` |
+| WebSocket `/v1/ws`, subprotocol `rivet.v1` (`setup_ws.rs`) | `{type:"request", ref, id, params, restrict?}` (no deadline field: 30 s) | `{type:"input", ref, seq, data}` | `{type:"finish_input", ref}` | server pushes `{type:"data"…}` then one `result` or `error` per ref | `{type:"cancel", ref}`; socket close cancels all refs |
 | CLI local | `rivet request ID --stream --input-jsonl -` — stdin JSONL lines are input, EOF finishes input, NDJSON envelopes on stdout (no SessionHost; direct `dispatch_session`) | | | | Ctrl-C or a bad line → `Runtime::cancel` |
 | CLI remote | same flags with `--endpoint URL` → one WebSocket ref (`src/infra/remote_client.rs`) | | | | Ctrl-C or a bad line → `cancel` frame |
 
@@ -221,21 +229,23 @@ principal, so foreign session IDs are `not_found.session`.
 ## Configuration
 
 Session limits are compiled-in defaults (`SessionLimits::default()` in
-`src/domain/sessions.rs`); policy.json has no session keys.
+`src/domain/sessions.rs`; a library host may pass its own with `RuntimeBuilder::session_limits`).
+The only related policy.json key is the host-wide `limits.max_buffered_bytes`.
 
 | Limit | Value | Effect | Error |
 |---|---|---|---|
 | `per_principal` | 8 | live (non-terminal) sessions per principal; WS refs excluded | `limit.sessions` (429 / 5, retryable) |
 | WS refs per connection | 8 (`MAX_WS_REFS`) | in-flight refs on one socket | `limit.ws_refs` |
 | `queue_frames` | 16 | input channel capacity **and** retained output events | producer waits (backpressure) |
-| `queue_bytes` | 32 MiB | declared; not consulted by `SessionHost` | — |
+| `queue_bytes` | 32 MiB | retained output bytes per session (an event always fits an empty log) | producer waits (backpressure) |
+| `limits.max_buffered_bytes` (policy.json) | 256 MiB | bytes retained by **all** sessions of the host; each retained event holds a reservation until acknowledged | `limit.buffered_bytes` (429 / 5) ends the run |
 | `retention_ms` | 60 000 | terminal session kept for reads | then `not_found.session` |
-| `idle_ms` | 60 000 | no open/send/finish/read/cancel touch → cancelled | terminal `cancelled.idle` |
+| `idle_ms` | 60 000 | no open/send/finish/read/cancel touch → cancelled by the background sweeper | terminal `cancelled.idle` |
 | `wait_default_ms` / `wait_max_ms` | 1000 / 5000 | read long-poll wait | — |
 | `max_events_default` / `max_events_cap` | 16 / 16 (min 1) | events per batch | — |
 | Action deadline | 5 s (`ACTION_DEADLINE`) | a send waiting for queue space | `limit.input_queue` |
-| Cleanup grace | 5 s (`CLEANUP_GRACE`) | join of the aborted run on cancel | — |
-| Run deadline | 30 000 ms (`DEFAULT_DEADLINE_MS`) | every session run; surfaces pass `deadline_ms: None` | terminal `timeout.request` |
+| Cleanup grace | 5 s (`CLEANUP_GRACE`) + 1 s (`JOIN_MARGIN`) | join of the cancelled run; abort only after it | — |
+| Run deadline | 30 000 ms default; `deadline_ms` from polling / `rivet.sessions.open` / library, capped at 600 000 | every session run (WS refs and MCP streaming tools use the default) | terminal `timeout.request` |
 | CLI stdin queue | 16 (`INPUT_QUEUE`) | lines read ahead of the run | backpressure on stdin |
 
 ## Runtime Behaviour
@@ -252,7 +262,7 @@ Session limits are compiled-in defaults (`SessionLimits::default()` in
 
 Before sequencing, `SessionHost::send` requires the operation to declare `receives`
 (`validation.no_input`) and checks the item against the `receives` type
-(`validation.input`, 422). A send after the run ended is `conflict.session_terminal`. An
+(`validation.input`, 422, `details {seq, path, expected, found}`). A send after the run ended is `conflict.session_terminal`. An
 acknowledgement only proves local queue acceptance.
 
 ### Event log and cursor (`EventLog`)
@@ -277,20 +287,33 @@ events, so clients deduplicate by `seq`. Nothing is appended after the terminal 
 
 ```text
  cancel(session)
-   ├─ touch, drop input sender, closed = true
-   ├─ abort run task ── dropping the request future cancels its whole scope (SYS-2026-0002)
-   ├─ join ≤ 5 s
-   ├─ finish(Err cancelled.session)   (no-op if a terminal event already exists)
-   └─ CancelReceipt.state = terminal_state(last event)
+   ├─ touch; request_cancel: if no terminal event yet, record cancel-requested
+   │   (from now on the session WILL end cancelled), close input, fire the run's token
+   ├─ drop input sender
+   ├─ join ≤ 5 s grace (+1 s margin): the run unwinds and closes its handles (SYS-2026-0002);
+   │   abort only if it ignored the grace
+   ├─ finish(Err cancelled.session)   (no-op if a terminal event already exists; a result that
+   │   lands after the cancel was requested is replaced by cancelled, keeping its effects)
+   └─ CancelReceipt.state = terminal_state   (already finished → succeeded | failed | cancelled)
 
- sweep()  (runs at the start of open and of every session lookup)
-   ├─ terminal and older than 60 s   -> removed
-   └─ live and untouched for 60 s    -> abort + terminal cancelled.idle
+ background sweeper (starts with the first session; interval min(idle, retention)/4 clamped
+ to 20 ms … 1 s; stops when the host is dropped) — no session call needed:
+   ├─ terminal and older than 60 s   -> removed (later calls: not_found.session)
+   └─ live and untouched for 60 s    -> cancel-requested + token fired ─▶ terminal cancelled.idle
+
+ shutdown (serve drain, Runtime::shutdown) -> every live session ─▶ cancelled.shutdown
 ```
 
-Because input is closed before the abort, an operation whose body ends as soon as
-`incoming` ends can finish with its own `result` first; the receipt and the terminal event
-then report `succeeded` (observed on the WebSocket run below).
+A cancel that is requested before the run completes now always wins: the session ends
+`cancelled` even if the operation's own `result` arrives while it unwinds. Cancelling a
+session that had already recorded its terminal event changes nothing and reports that
+state. Verified over polling at commit `829ca43`:
+
+```text
+POST …/finish_input                     → {"session_id":"ses_0334a478ff","accepted_seq":null,"input_closed":true}
+GET  …/events?after_seq=0&wait_ms=1000  → {…"events":[{…"result":{"echoed":0},…,"type":"result","seq":1}],"last_seq":1,"terminal":true}
+POST …/cancel                           → {"session_id":"ses_0334a478ff","request_id":"req_0334a5816f","state":"succeeded"}
+```
 
 ### Verified: CLI duplex (local bundle)
 
@@ -419,25 +442,30 @@ naming SSE, polling, WebSocket and `rivet.sessions.open`.
  request frame ─▶ multiplex_ws: dup ref? conflict.ref │ 9th ref? limit.ws_refs │ require_operation
                ─▶ SessionDriver.open(connection_owned = true) ─▶ spawn pump(ref)
  pump: loop read(after, wait 5000) ─▶ data frames … ─▶ one result|error frame ─▶ ref freed
- input / finish_input refused ─▶ the ref is cancelled (the pump sends the terminal error frame)
+ input / finish_input refused ─▶ multiplex_ws sends that ref's terminal error frame with the
+                                SPECIFIC code first, then cancels the session (its own frame is dropped)
+ outbound: one 16-frame lane per ref (WsOutbox) merged into the socket writer
  cancel frame  ─▶ SessionDriver.cancel
  socket close  ─▶ cancel + join every in-flight ref (connection-owned), abort pumps
 ```
 
-A refused input frame is not answered with its own error frame; the ref is cancelled and its
-single terminal frame is `cancelled.session`:
+A refused input frame ends its ref with the **specific** error (commit `829ca43`; `chat.echo`
+here receives and emits `text`):
 
 ```text
- >> {"type":"request","ref":"b","id":"chat.echo","params":{}}
- >> {"type":"input","ref":"b","seq":1,"data":{"text":"ok"}}
- >> {"type":"input","ref":"b","seq":2,"data":{"txt":1}}
- << {"type":"data","ref":"b","request_id":"req_01fb3a544d","trace_id":"tr_01fb3a544d","seq":1,"data":{"text":"ok"}}
- << {"type":"error","ref":"b","request_id":"req_01fb3a544d","trace_id":"tr_01fb3a544d","error":{"kind":"cancelled","code":"cancelled.session","message":"the session was cancelled","retryable":false,"effects":"none"}}
+ >> {"type":"request","ref":"c1","id":"chat.echo","params":{}}
+ >> {"type":"input","ref":"c1","seq":1,"data":"hi"}
+ << {"type":"data","ref":"c1","request_id":"req_01c6d564cd","trace_id":"tr_01c6d564cd","seq":1,"data":"hi"}
+ >> {"type":"input","ref":"c1","seq":3,"data":"skip"}
+ << {"type":"error","ref":"c1","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
+ >> {"type":"request","ref":"c2","id":"chat.echo","params":{}}
+ >> {"type":"input","ref":"c2","seq":1,"data":5}
+ << {"type":"error","ref":"c2","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
 ```
 
-A `cancel` frame sent immediately after `request` for `chat.echo` produced
-`{"type":"result","ref":"x","completion":{…"result":{"count":0}…}}`: closing input ended the
-loop before the abort landed (see Cancel, idle and retention).
+(At `f40d4aa` the same refusal produced only `cancelled.session`, and a `cancel` sent right
+after `request` could still end with the operation's own `result`; both behaviours changed
+with the fix batch.)
 
 The CLI's remote duplex uses the same WebSocket path:
 
@@ -454,7 +482,8 @@ exit=0
 `docs/demos/10-grpc` (`chat.exchange` with `chat-input.jsonl`) needs a gRPC fixture server
 that was not running; the gRPC adapter side of a duplex session was not exercised here (see
 SYS-2026-0005). Idle expiry (60 s) and retention expiry (60 s) were not waited out; they are
-described from `SessionHost::sweep`. MCP `tools/call` of `rivet.sessions.*` was not run for
+described from the background sweeper in `src/infra/session_driver.rs` and its unit tests
+(`cancel_wins_the_race_with_completion` and the sweeper tests in `tests/conformance_sessions.rs`). MCP `tools/call` of `rivet.sessions.*` was not run for
 this document.
 
 ## Data and Storage
@@ -467,7 +496,8 @@ Arc<Session>>`):
  ├─ id "ses_NN…" · request_id · trace_id · owner (principal name) · connection_owned
  ├─ receives: Option<ValueSpec>          (input validation; None → input closed at open)
  ├─ State { InputSequencer{last_seq,last_hash,closed}, EventLog{events≤16,last_seq,acked,delivered,terminal},
- │          last_touch, terminal_at }
+ │          held (seq, Reservation)[], held_bytes, cancel_requested?, terminal_state?, last_touch, terminal_at }
+ ├─ token: CancelToken                   (fired by cancel / idle / shutdown)
  ├─ input: Option<mpsc::Sender<Value>>   (capacity 16; dropped by finish_input / cancel)
  ├─ task: JoinHandle (the run)           · read_lock (one reader at a time)
  └─ changed: Notify                      (wakes readers and blocked producers)
@@ -513,27 +543,27 @@ owning principal. The CLI stdin feeder never echoes line content in errors.
 - Effect decisions of the run are in the trace store under the run's `request_id`
   (`rivet trace show`, SYS-2026-0002).
 - Terminal errors distinguish cause by code: `cancelled.session` (explicit cancel or WS
-  close), `cancelled.idle` (idle lease), `timeout.request` (run deadline), or the
+  close), `cancelled.idle` (idle lease), `cancelled.shutdown` (serve drain),
+  `timeout.request` (run deadline), `limit.buffered_bytes` (host byte budget), or the
   operation's own error.
+- Session requests carry the caller's W3C trace (`traceparent` on polling open and the WS
+  upgrade; `rivet.sessions.open` inherits the calling request's trace).
 
 ## Known Limitations
 
-- Surfaces open sessions with the default 30 s run deadline; there is no way to raise it for
-  a session, and `--timeout` is not forwarded over the WebSocket duplex path.
-- Idle and retention expiry run lazily, only when a session call (open, send, finish, read,
-  cancel) reaches `SessionHost`; an idle session on an otherwise quiet host is cancelled at
-  the next call, though its run still stops at its deadline.
-- `queue_bytes` (32 MiB) is declared but not enforced; only the 16-frame bounds apply.
-- Cancel closes input before aborting, so an input-driven operation can finish with its own
-  result instead of `cancelled`; the receipt reports the actual terminal state.
-- On WebSocket, a refused `input` or `finish_input` frame is not answered with its specific
-  error; the ref is cancelled and ends with `cancelled.session`.
-- No persistence, resume or reconnection to a session after a process restart.
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+
+- `--timeout` is not forwarded over the WebSocket duplex path; WS refs (and MCP streaming
+  tools) run with the default 30 s deadline.
+- No persistence, resume or reconnection to a session after a process restart (no
+  persistent store of any kind).
 
 ## Last Verified Version
 
-`0.1.0-dev (commit f40d4aa)`, 2026-09-28, macOS, `target/debug/rivet`, with a scratch bundle
-(`chat.echo`, `demo.countdown`, `demo.add`) and `rivet serve --listen 127.0.0.1:18420`,
+`0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
+`f40d4aa` with a scratch bundle (`chat.echo`, `demo.countdown`, `demo.add`) and
+`rivet serve --listen 127.0.0.1:18420`; the cancel-after-finish, WebSocket refusal frames and
+SIGTERM drain were re-verified at `829ca43` on `127.0.0.1:18901`–`18904`; all servers were
 stopped afterwards. Session, request and trace IDs, `catalog_version` and `expires_at`
 differ per run.
 
@@ -553,3 +583,4 @@ differ per run.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-21). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): configurable `deadline_ms` (cap 600 000), background sweeper, cancel wins the race, terminal state reported by cancel, `queue_bytes` and host `max_buffered_bytes` enforced, structured cancel with grace, `cancelled.shutdown`, WS specific refusal frames and per-ref lanes, `restrict`/`trace` on open; limitations reduced to the current ones. |

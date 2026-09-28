@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -64,6 +64,8 @@ Naming: `run-<year>-<nnnn>-<slug>.md`, document type `runbook`; front matter car
 
 - 2026-09-28: RUN-2026-0001 and RUN-2026-0002 created and executed end to end against 0.1.0-dev (commit f40d4aa) —
   PLAN-2026-0001 D-31, D-32.
+- 2026-09-28: both revised (revision 2) for the fix batch at commit `829ca43`: SIGTERM drains, access log and
+  `/v1/health` monitoring; procedures unchanged.
 
 ## Deprecated, superseded or archived
 
@@ -72,7 +74,7 @@ None.
 ## Important relationships
 
 Both runbooks depend on the facts in [OPS-2026-0001](../operations/ops-2026-0001-operating-rivet-serve.md): policy is
-read only at startup, and SIGINT is the graceful stop.
+read only at startup, and SIGINT or SIGTERM is the graceful stop (both drain and exit 0 since commit `829ca43`).
 
 ## Unresolved work
 
@@ -93,3 +95,4 @@ Re-validate both runbooks on the 0.1.0 release build and on Linux; revise them i
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created. |
+| 2 | 2026-09-28 | Claude | Both runbooks revised for the fix batch (829ca43): SIGTERM drain, access log and `/v1/health` monitoring. |

@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [auth, transports]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: How Rivet validates `auth NAME oauth2` profiles, runs the client_credentials, authorization_code (PKCE S256) and device_code grants, keeps principal-bound authorization transactions, stores and refreshes tokens (memory or keychain), binds bearer tokens to resource origins, and exposes all of this through the rivet.auth.* built-ins and the `rivet auth …` CLI.
@@ -34,7 +35,7 @@ tags: [rivet, system, oauth2, pkce, device-flow, credentials, keychain, tokens, 
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** auth, transports
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -157,6 +158,9 @@ touches a secret, a clock or the network is in `OAuthAdapter`.
 Resource origins are normalized with the default port made explicit (`https://api.example.com` →
 `https://api.example.com:443`). The `config_hash` is SHA-256 over the canonical JSON of every option.
 It is part of the credential cache key, so an edited profile never reuses tokens minted for the old one.
+The key also carries an explicit digest of the **audience**, the **set of resource origins** and the **set of
+scopes** (each sorted and de-duplicated), so two identities that differ in any of them never share a token
+even if the configuration hash ignored them.
 
 ### Grant flows
 
@@ -170,7 +174,7 @@ It is part of the credential cache key, so an edited profile never reuses tokens
    │               │               │ origin ∈ resource_origins? else auth.origin_not_bound          │
    │               │               │ scopes ⊆ profile, audience equal? else validation.auth_scope    │
    │               │               │ allow_auth P/A/use · allow_credentials P/A read                 │
-   │               │               │──acquire──────────────▶│ lock slot(principal/P#hash/A)         │
+   │               │               │──acquire──────────────▶│ lock slot(principal/P#hash/A@ident)   │
    │               │               │                        │ cached & fresh? ──yes──▶ lease         │
    │               │               │                        │ no: allow_env VAR → secret             │
    │               │               │                        │     allow_network token_url            │
@@ -182,7 +186,8 @@ It is part of the credential cache key, so an edited profile never reuses tokens
    │◀── response ──│ (401 → invalidate lease; one retry only if method replay-safe and not streaming)
 ```
 
-A client_credentials token without `expires_in` is never reused; the next use exchanges again.
+A client_credentials token without `expires_in` is never reused; the next use exchanges again (the same holds
+for user flows, below).
 
 #### authorization_code + PKCE S256
 
@@ -310,8 +315,20 @@ between calls.
 ```
 
 Freshness (`usable`): the token is present, its SHA-256 is not in the revoked set, and
-`now + skew < expires_at` with `skew = min(30 s, lifetime / 2)`. A user-flow token without expiry is
-reused; a client_credentials token without expiry is not.
+`now + skew < expires_at` with `skew = min(30 s, lifetime / 2)`. A token **without expiry is never reused**,
+whatever the flow (`usable` returns false): client_credentials exchanges again; a user-flow account that holds
+a refresh token is refreshed at every use (and reported `connected` by `auth status`); without a refresh token
+the next use is `auth.login_required`.
+
+```text
+ acquire(P, A) ─▶ Stored record?
+      ├─ access token, expiry known, now + skew < exp, not revoked ─▶ reuse (lease)
+      ├─ no expiry / near expiry / revoked:
+      │      client_credentials ─▶ new exchange
+      │      user flow + refresh token ─▶ refresh (single flight) ─▶ lease
+      │      user flow, no refresh token ─▶ auth.login_required
+      └─ none ─▶ client_credentials: exchange │ user flow: auth.login_required (run auth begin/complete)
+```
 
 Generation: every new login (code, device, or a client_credentials exchange into an empty entry) sets
 `generation = previous + 1`. Refresh keeps the generation. `disconnect` writes a token-free tombstone
@@ -613,7 +630,8 @@ reveal whether the other transaction exists.
  ├── slots          HashMap<key, tokio Mutex>                      single flight per credential
  └── revoked        HashSet<sha256(access_token)>                  tokens a resource answered 401 to
 
- key    = "<principal>/<profile>#<config_hash[..12]>/<account>"
+ key    = "<principal>/<profile>#<config_hash[..12]>/<account>@<identity_digest[..12]>"
+          identity_digest = sha256("aud=…\nres=<sorted origins>\nscope=<sorted scopes>")
  Stored = {generation, version, profile_hash, access_token?, refresh_token?, expires_at?, issued_at, scopes}
 ```
 
@@ -717,8 +735,10 @@ calls return standard Completions and ErrorEnvelopes with `operation_id` `rivet.
   the language.
 - A refresh runs inside the caller that holds the single-flight slot. If that caller is cancelled, the
   refresh is abandoned and the next caller starts again.
-- The resource-401 retry applies to HTTP effects. MCP connectors invalidate the lease but do not
-  retry the call (see [SYS-2026-0009](sys-2026-0009-mcp-client-connectors.md)).
+- **MCP 401 invalidates the lease without retry** (a known limitation, see the
+  [manual](../../manuals/man-2026-0001-rivet-manual.md#known-limitations)): the resource-401 retry applies to
+  HTTP effects only; MCP connectors invalidate the lease but do not retry the call (see
+  [SYS-2026-0009](sys-2026-0009-mcp-client-connectors.md)).
 - `store keychain` was not exercised against the real macOS Keychain in this verification. Unit tests
   cover it with an in-memory `SecretBackend`
   (`keychain_entries_round_trip_without_plaintext_defaults`).
@@ -727,7 +747,9 @@ calls return standard Completions and ErrorEnvelopes with `operation_id` `rivet.
 
 ## Last Verified Version
 
-0.1.0-dev (commit f40d4aa), on macOS (darwin 25.4.0), 2026-09-28. Commands were run with
+0.1.0-dev (commit 829ca43), on macOS (darwin 25.4.0), 2026-09-28. The token-reuse and cache-key changes (G20)
+were checked at `829ca43` against `src/infra/oauth_adapter.rs` (`usable`, `key`, `identity_digest`) and
+`tests/conformance_oauth.rs`; the flows below were first run at `f40d4aa`. Commands were run with
 `target/debug/rivet` from `docs/demos/07-oauth2`. The end-to-end grants were run against a scratch
 fixture authorization server on `127.0.0.1:18440` and `rivet serve` on `127.0.0.1:18442`. Both were
 stopped afterwards.
@@ -750,3 +772,4 @@ stopped afterwards.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-20). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for G20 (829ca43): tokens without expiry are never reused in any flow (user flows refresh or need login), cache key includes the audience, resource-origin set and scope set; MCP 401 limitation linked to the manual. |

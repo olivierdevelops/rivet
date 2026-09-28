@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,6 +24,7 @@ superseded_by: null
 tags: [rivet, api, index]
 confidentiality: internal
 review_cycle: on-release
+next_review_date: 2026-10-28
 ---
 
 # Rivet API documentation index
@@ -63,15 +64,17 @@ review_cycle: on-release
 
 | ID | Document | Covers |
 |---|---|---|
-| API-2026-0001 | [HTTP REST, SSE and polling](api-2026-0001-http-rest-sse-polling.md) | `/v1/request`, `/v1/operations…`, `/v1/io`, `/v1/policy/generate`, SSE framing, `/v1/requests…` sessions, auth |
-| API-2026-0002 | [WebSocket rivet.v1](api-2026-0002-websocket-rivet-v1.md) | `/v1/ws` frames, refs (8 per socket), limits, close semantics |
-| API-2026-0003 | [MCP server tools](api-2026-0003-mcp-server-tools.md) | `/mcp` Streamable HTTP and `serve --stdio`: initialize, tools/list, direct tools, built-ins, session delivery |
-| API-2026-0004 | [Rust library](api-2026-0004-rust-library.md) | `Runtime`, `RuntimeBuilder`, `policy_from_json`, sessions, audit, embedding serve |
-| API-2026-0005 | [Error registry](api-2026-0005-error-registry.md) | 22 kinds → HTTP → exit → retryable; every emitted code |
+| API-2026-0001 | [HTTP REST, SSE and polling](api-2026-0001-http-rest-sse-polling.md) | `/v1/request` (with `restrict`, `traceparent`), `/v1/operations…`, `/v1/io`, `/v1/policy/generate`, `/v1/health`, SSE framing, `/v1/requests…` sessions, auth, access log, drain |
+| API-2026-0002 | [WebSocket rivet.v1](api-2026-0002-websocket-rivet-v1.md) | `/v1/ws` frames, refs (8 per socket, 16-frame lane each), specific refusal frames, limits, close semantics |
+| API-2026-0003 | [MCP server tools](api-2026-0003-mcp-server-tools.md) | `/mcp` Streamable HTTP and `serve --stdio`: initialize, tools/list (direct tools + built-ins), `restrict`, session delivery |
+| API-2026-0004 | [Rust library](api-2026-0004-rust-library.md) | `Runtime`, `RuntimeBuilder` (+ `.ceiling`), `Policy::from_file/from_json`, `Runtime::scope` stream/duplex, `request_restricted`, sessions, audit (`export_trace`, `graph`), embedding serve |
+| API-2026-0005 | [Error registry](api-2026-0005-error-registry.md) | 22 kinds → HTTP → exit → retryable; every emitted code; `check` warnings |
 
 ## Recently added or updated
 
 2026-09-28 — all five documents created for the 0.1.0 release (PLAN-2026-0001 D-24 – D-28), verified against commit `f40d4aa`.
+
+2026-09-28 (revision 2 of each) — updated for the post-P3 fix batch and re-verified against commit `829ca43`: `/v1/health`, `restrict`, `traceparent`, access log and SIGTERM drain; WebSocket lanes and specific refusal frames; MCP `tools/list` built-ins; library scopes, ceiling and `Policy` constructors; new error codes and `check` warnings.
 
 ## Deprecated, superseded or archived
 
@@ -85,7 +88,8 @@ None.
 
 ## Unresolved work and open questions
 
-- 0.1.0 limitations recorded in the documents: no mTLS listener, no SSE resume, no pagination, no `traceparent`, MCP built-ins beyond the nine generic ones are callable but not listed in `tools/list`, WebSocket reports `cancelled.session` rather than the specific refusal for a refused input.
+- 0.1.0 limitations recorded in the documents: no mTLS listener, no SSE resume, no pagination, `--timeout` not applied on the WebSocket duplex path, no MCP resources/resource templates or legacy HTTP+SSE transport, no persistent trace store. The full list is the [manual's limitations chapter](../manuals/man-2026-0001-rivet-manual.md#known-limitations).
+- The `rivet.trace.export` dispatch defect and the missing MCP `tools/list` entries found at `829ca43` were fixed in commit `2a751ab` (INC-2026-0007).
 - Re-verify every captured example when the wire contracts change.
 
 ## Related directories
@@ -97,3 +101,4 @@ None.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the API index with API-2026-0001 to API-2026-0005. |
+| 2 | 2026-09-28 | Claude | Recorded the fix-batch updates of all five API documents (commits 829ca43 and 2a751ab); refreshed limitations. |

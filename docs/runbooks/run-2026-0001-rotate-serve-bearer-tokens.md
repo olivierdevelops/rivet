@@ -5,7 +5,7 @@ document_type: runbook
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -76,8 +76,8 @@ both hashes are accepted, clients switch, then the old hash is removed.
   server returns 401 `auth.invalid` for the real token.
 - A malformed hash (not 64 hex characters) makes the server refuse to start (`policy.invalid`, exit 2). Always run
   `rivet --file app.rivet check` after editing, before restarting.
-- Stop with SIGINT (`kill -INT`), not SIGTERM. SIGINT exits 0 after shutting the listener down; SIGTERM exits 143 with
-  no drain.
+- Stop with SIGINT (`kill -INT`) or SIGTERM (`kill -TERM`): since commit `829ca43` both drain (cancel in-flight
+  requests and sessions, close their handles within 5 s) and exit 0. The procedure below uses SIGINT.
 
 ## Procedure
 
@@ -242,15 +242,18 @@ token is suspected leaked and the server cannot be restarted, or if an unknown h
 
 ## Related Monitoring
 
-Rivet 0.1.0 logs only the startup receipt (stderr). Monitor: the receipt's `policy_hash` after each restart; the
-liveness probe `GET /v1/operations` with the probe's own token (expect 200); client-side 401 counts during the
-overlap window. See [OPS-2026-0001 Health Checks](../operations/ops-2026-0001-operating-rivet-serve.md#health-checks).
+Rivet writes the startup receipt and one JSON access-log line per request to stderr. Monitor: the receipt's
+`policy_hash` after each restart; the liveness probe `GET /v1/health` with the probe's own token on a non-loopback
+bind (expect 200 `{"status":"ok",…}`); the access log's `status` 401 lines (and their `principal: null`) during the
+overlap window — a rise after step 6 means a client still sends the old token. See [OPS-2026-0001 Health Checks](../operations/ops-2026-0001-operating-rivet-serve.md#health-checks).
 
 ## Last Validation Date
 
 2026-09-28 — executed end to end (steps 1–7 and rollback) against `target/debug/rivet` 0.1.0-dev (commit
 `f40d4aa`) on macOS arm64, listener `127.0.0.1:18471`, using a temporary copy of the 01-catalog bundle. Hashes and
-request IDs shown are from that run.
+request IDs shown are from that run. The fix-batch changes that touch this runbook (SIGTERM drains with exit 0,
+`/v1/health`, the access log) were verified separately at commit `829ca43` (see OPS-2026-0001); the procedure's
+commands are unchanged.
 
 ## Related Documents
 
@@ -264,3 +267,4 @@ request IDs shown are from that run.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial runbook, validated against 0.1.0-dev (f40d4aa). |
+| 2 | 2026-09-28 | Claude | Fix batch (829ca43): SIGTERM now drains like SIGINT; monitoring uses `/v1/health` and the per-request access log. Procedure unchanged. |

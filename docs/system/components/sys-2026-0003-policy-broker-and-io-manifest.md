@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [policy, audit]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: How Rivet loads policy.json, authorizes every effect attempt through the traced policy broker, and derives the static I/O manifest, policy drafts and request traces.
@@ -34,7 +35,7 @@ tags: [rivet, system, policy, broker, audit, io-manifest, trace, least-privilege
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, audit
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -45,12 +46,16 @@ before it touches the outside world. The **audit** feature turns the compiled pr
 **I/O manifest** (`rivet io`) that lists every effect site, its target and its access verbs; the same
 manifest can be checked against the policy, probed on disk, joined to a request trace, or turned into
 a least-privilege policy draft (`rivet policy generate`). Each brokered decision is recorded in a
-bounded, in-memory **trace store** readable with `rivet trace show`.
+bounded, in-memory **trace store** readable with `rivet trace show` and exportable with
+`Runtime::export_trace`. The effective authority of one attempt is **policy.json ∩ library host
+ceiling ∩ every per-request `restrict`** — callers and hosts can only narrow. The audit feature also
+builds the static call graph behind `rivet graph`.
 
 ```text
                        ┌──────────────────────────── policy feature ─────────────────────────────┐
   policy.json ──read──▶│ load_policy ──▶ Policy ──▶ PolicyBroker ◀── authorize_effect (decide fn) │
-  (or --policy PATH)   └────────────────────────────────┬────────────────────────────────────────┘
+  (or --policy PATH)   │   .ceiling(Policy) (library) ─┘   policy ∩ ceiling, then ∩ restrict stack │
+                       └────────────────────────────────┬────────────────────────────────────────┘
                                                         │ evaluate(EffectIntent) → Permit
                          adapters / file use cases ─────┤
                                                         ▼
@@ -60,8 +65,8 @@ bounded, in-memory **trace store** readable with `rivet trace show`.
   compiled program ───▶│ effect_sites::analyze_program ──▶ EffectCatalog ──▶ inspect_effects     │
                        │         (static, nothing evaluated)                   │  ├─▶ IoManifest  │
                        │                                                       │  ├─▶ render      │
-                       │ read_trace ◀────────── rivet trace show                │  └─▶ generate_   │
-                       │                                                       │      policy      │
+                       │ read_trace ◀────────── rivet trace show / export       │  └─▶ generate_   │
+                       │ build_graph ◀───────── rivet graph (registry only)     │      policy      │
                        └───────────────────────────────────────────────────────┴──────────────────┘
 ```
 
@@ -79,6 +84,10 @@ bounded, in-memory **trace store** readable with `rivet trace show`.
 | Render tables, markdown, CSV and JSON | `src/features/audit/support/render.rs` | `rivet io` |
 | Produce a least-privilege draft and write it exclusively | `src/features/policy/generate_policy.rs`, `src/infra/policy_draft_writer.rs` | `rivet policy generate`, `POST /v1/policy/generate`, `rivet.policy.generate` |
 | Read one request's recorded decisions | `src/features/audit/read_trace.rs` | `rivet trace show`, `rivet.trace.show` |
+| Export one request's trace to a new file through the broker (`allow_write` create) | `Runtime::export_trace` (`src/orchestrator/runtime.rs`) | `rivet trace export` (remote), `rivet.trace.export {request_id, path}`, `Runtime::export_trace` |
+| Static call graph of one operation | `src/features/audit/build_graph.rs`, `src/domain/call_graph.rs` | `rivet graph ID [--all] [--json]`, `Runtime::graph` |
+| Intersect with a library host ceiling | `Policy::with_ceiling` (`src/domain/policy.rs`), first check in `authorize_effect` | `RuntimeBuilder::ceiling` |
+| Intersect with per-request restrictions | `REQUEST_RESTRICTION` task-local stack in `TracedEvaluator` (`src/orchestrator/runtime.rs`) | `restrict` on HTTP, polling, WS, MCP; `Runtime::request_restricted` |
 
 ## Boundaries and Non-Responsibilities
 
@@ -116,6 +125,7 @@ bounded, in-memory **trace store** readable with `rivet trace show`.
  src/features/audit/
    inspect_effects.rs          inspect_effects()  (query → IoReport)
    read_trace.rs               read_trace()       (paging over TraceStore)
+   build_graph.rs              build_graph()      (registry → CallGraph: calls, connectors, effects, DAG, if arms)
    support/effect_sites.rs     analyze_program()  (compiled IR → EffectCatalog)
    support/render.rs           table / markdown / csv renderers
 
@@ -132,7 +142,27 @@ bounded, in-memory **trace store** readable with `rivet trace show`.
 ### Authorization decision flow (`authorize_effect`)
 
 The decision function is pure: `(EffectIntent, Policy, bundle_root) → Permit`. Checks run in this fixed
-order; the first one that decides wins.
+order; the first one that decides wins. A library **host ceiling** (`Policy.ceiling`) is evaluated first with
+the same function: if it denies, the attempt is denied with rule `host ceiling: …` whatever policy.json grants
+(a ceiling never grants; limits narrow to the smaller value). After the broker allows an attempt, the
+`TracedEvaluator` evaluates it again against every **per-request restriction** on the task's stack; a denial
+there reads `request restriction: …`.
+
+```text
+ intent ─▶ ceiling? ── deny ─▶ "host ceiling: …"
+             │ allow / none
+             ▼
+          policy.json checks (below) ── deny ─▶ rule
+             │ allow
+             ▼
+          restrict stack (request + nested calls) ── any deny ─▶ "request restriction: …"
+             │ all allow
+             ▼
+          Permit allowed  ─▶ trace event
+```
+
+URL grants with a path match **whole segments**: `/users/42` covers `/users/42` and `/users/42/…` but not
+`/users/420`; a selector ending in `/` covers what is below it; an explicit trailing `*` is a raw prefix.
 
 ```text
             EffectIntent { capability, verb, target, operation_id, effect_id?, span? }
@@ -290,10 +320,12 @@ non-param expression; shown as `<dynamic: EXPR>`), `opaque_remote` and `opaque_n
 |---|---|---|
 | `rivet check --file F [--policy P]` | compiles and loads the policy; a schema error stops here | 0, 2 |
 | `rivet policy explain --file F` | prints the effective policy (file + sha256, base dir, network, limits, every grant/deny; `"*"` flagged as broad) | 0, 2 |
-| `rivet policy explain ID --file F` | the above plus the `--check-policy` table for that operation (`--params` is accepted but not used) | 0, 2, 4 |
+| `rivet policy explain ID --file F [--params JSON]` | the above plus the `--check-policy` table for that operation; with `--params`, each site whose placeholders are all params of the call is filled with the concrete target (`fill_params`, knowledge `exact`) and evaluated | 0, 2, 4; **3** when `--params` is given and a concrete target is denied |
 | `rivet io [ID …] [--all] [--by operation\|target\|capability] [--kind K] [--access V,V] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]` | the I/O manifest | 0, 2, 3, 4, 7 |
 | `rivet policy generate [ID …\|--all] [--output PATH]` | least-privilege draft | 0, 4, 7 |
 | `rivet trace show REQ` | one request's decisions from this host's trace store | 0, 2, 4 |
+| `rivet trace export REQ --output PATH` | write that trace as JSON to a new bundle-relative file (broker: `allow_write` create) | 0, 3, 4 |
+| `rivet graph ID [--all] [--json]` | static call graph (local only) | 0, 2, 4 |
 | `rivet --endpoint URL [--token-file F] io …` / `trace show REQ` | the same use cases on a running server (`--endpoint` refuses `--file`/`--policy`) | as above, 3 when the principal is not allowed |
 
 ### Library (`src/orchestrator/runtime.rs`)
@@ -301,18 +333,21 @@ non-param expression; shown as `<dynamic: EXPR>`), `opaque_remote` and `opaque_n
 ```text
 Runtime::builder().file(p) | .source(path, text, root)
                   .policy_file(p)        -- explicit file (same rules as --policy)
-                  .policy(Policy)        -- a Policy built by the host
+                  .policy(Policy)        -- Policy::from_file(p) / Policy::from_json(bytes) / built by the host
+                  .ceiling(Policy)       -- host ceiling (intersection; limits take the minimum)
                   .build()
-rivet::policy_from_json(bytes, base_dir) -- same strict parser as policy.json
+rivet::orchestrator::runtime::policy_from_json(bytes, base_dir) -- same strict parser as policy.json
 rt.policy() · rt.io(&IoQuery) · rt.generate_policy_draft(ids, all, output) · rt.trace(req) · rt.trace_store()
+rt.export_trace(req, path) · rt.graph(&GraphQuery) · rt.request_restricted(id, params, restrict, sink)
 ```
 
 Without `.file(...)` and without an explicit policy, the builder uses `Policy::deny_all(root)`.
 
 ### Network surfaces
 
-`GET /v1/io`, `POST /v1/policy/generate` (never writes files), and the built-ins `rivet.io`,
-`rivet.policy.generate`, `rivet.trace.show` are served by `rivet serve`. They reveal internal URLs and
+`GET /v1/io` (the bare `IoManifest`; `format=table|markdown|csv` or `report=true` for the rendered
+`IoReport`), `POST /v1/policy/generate` (never writes files), and the built-ins `rivet.io`,
+`rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export` are served by `rivet serve`. They reveal internal URLs and
 paths, so a network principal needs an **exact** entry for them in `serve.principals` (`*` and `prefix.*`
 never match them); the loopback principal `local` may always call them. Details in
 [SYS-2026-0004](sys-2026-0004-surfaces-and-serve.md).
@@ -463,7 +498,20 @@ per verb:
 | `dynamic`, `opaque_native`, empty template | — | `unknown` |
 
 The worst verb decides the site (`denied` > `partial` > `unknown` > `allowed`). Exit 3 when any site is
-`denied` or `partial`.
+`denied` or `partial`. UDP multicast sites mirror exactly what the runtime authorizes when the socket opens:
+`allow_network` connect on the group, then `allow_listen` `bind` and `multicast_join` on the **bind address**
+(the `bind` option, or the unspecified address on the group's port), so the static verdict and the run agree.
+
+With `policy explain ID --params JSON`, param-dependent sites of the entry operation are first filled with the
+call's values, so they are evaluated as `exact` targets (scratch bundle at `829ca43`, `demo.read` =
+`return file read path as text`, policy granting `allow_read ./data/**`):
+
+```text
+$ rivet --file app.rivet policy explain demo.read --params '{"path":"app.rivet"}'           exit 3
+OPERATION  KIND  ACCESS  TARGET     KNOWLEDGE  SOURCE        DECISION
+demo.read  file  read    app.rivet  exact      app.rivet:73  denied
+denied: demo.read#1 allow_read app.rivet (read)
+```
 
 ### Views, needs and file probes
 
@@ -586,6 +634,17 @@ exit=0
 (In that run principal `ci` had an exact `rivet.trace.show` entry in `serve.principals`; a principal
 listed only with `*` got ``principal `ada` may not call `rivet.trace.show` ``, exit 3.)
 
+File decisions carry the operation ID and the statement span (every file effect runs in its effect scope), so
+their trace events have a `source`. `Runtime::export_trace(req, path)` serializes the same `TraceResult` as
+pretty JSON and writes it with a `file create` through the broker; verified from a library host at `829ca43`:
+
+```text
+export -> {"request_id":"req_0195ed6d65","path":"./audit/trace.json","events":1,"bytes":649}
+export again -> conflict.already_exists
+(with a host ceiling that lacks allow_write ./audit/**)
+export -> permission.denied allow_write create on ./audit/trace.json denied: host ceiling: no grant for allow_write ./audit/trace.json
+```
+
 ## Data and Storage
 
 | Data | Where | Bound | Lifetime |
@@ -649,7 +708,11 @@ loop is:
   listed but never granted.
 - **Network exposure of evidence.** Manifest, drafts and traces reveal internal URLs and paths, so
   network principals need exact `serve.principals` entries for `rivet.io`, `rivet.policy.generate`,
-  `rivet.trace.show` (and `rivet.connectors.sync`).
+  `rivet.trace.show`, `rivet.trace.export` (and `rivet.connectors.sync`).
+- **Narrow-only layering.** A host ceiling and per-request restrictions can only remove authority; a
+  restriction naming ungranted targets adds nothing, and a malformed one is `policy.invalid` (`/restrict/…`).
+- **Secrets.** The broker authorizes targets; the interpreter additionally refuses to let a `secret` value reach
+  any sink outside its bound origins (SYS-2026-0002).
 
 ## Observability
 
@@ -659,28 +722,31 @@ loop is:
 | What will this operation touch, and is it allowed? | `rivet io ID --check-policy`, `rivet policy explain ID` |
 | Which files must exist before a run? | `rivet io --needs`, `rivet io --check-files` |
 | Why was an attempt denied? | the `permission.denied` message and `details {capability, access, target}`; `outcome.rule` in the trace |
-| What did a request actually do? | `rivet --endpoint URL trace show REQ`, `rivet io --trace REQ` (planned vs actual, `unplanned` attempts) |
+| What did a request actually do? | `rivet --endpoint URL trace show REQ`, `rivet io --trace REQ` (planned vs actual, `unplanned` attempts), `Runtime::export_trace` |
+| Would this concrete call be allowed? | `rivet policy explain ID --params JSON` (exit 3 when denied) |
+| What does this operation call and touch? | `rivet graph ID [--json]` |
 
 Summaries (decision counts, probe counts, incompleteness) go to stderr; stdout carries only the requested
 format, so `--format json` output can be piped.
 
 ## Known Limitations
 
-- The trace store is in memory only, bounded at 10 000 events, and lost when the process exits; a
-  one-shot CLI process always has an empty store.
-- Trace events for file effects currently carry `source: null` (the policed file port passes no span).
-- There is no host ceiling or per-request restriction: the effective policy is exactly the loaded file
-  (or the `Policy` a library host passes).
-- `rivet policy explain ID` accepts `--params` but does not use it, and exits 0 even when sites are denied
-  (use `rivet io ID --check-policy` for a gating exit code).
-- On macOS and Windows path selectors and targets are compared lower-cased.
-- `limits.max_buffered_bytes` and `approved.overlaps` are parsed and shown but not enforced by this
-  version (see [SYS-2026-0008](../configuration/sys-2026-0008-policy-json-reference.md)).
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+
+- **No persistent trace store**: traces are in memory only, bounded at 10 000 events, and lost when the process
+  exits; a one-shot CLI process always has an empty store.
+- **`approved.overlaps` is unused**: parsed and validated, never consulted.
+- The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`; see SYS-2026-0004).
+
+Other current behaviour: on macOS and Windows path selectors and targets are compared lower-cased. The
+`rivet.trace.export` dispatch defect found at `829ca43` was fixed in `2a751ab` (INC-2026-0007); a literal call to an
+operation without sites renders as `(calls X — no I/O)` in `io --check-policy` tables.
 
 ## Last Verified Version
 
-0.1.0-dev (commit f40d4aa), macOS, `target/debug/rivet`. All outputs above were produced with that
-binary against `docs/demos/02-file-crud` and scratch bundles; request IDs, trace IDs and policy hashes
+0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`. Outputs were first produced at `f40d4aa` against
+`docs/demos/02-file-crud` and scratch bundles; the ceiling, restriction, `explain --params`, trace export and
+multicast rows were verified at `829ca43` (scratch bundles, a library host and `tests/conformance_udp.rs`); request IDs, trace IDs and policy hashes
 vary per run and per file.
 
 ## Related Documents
@@ -702,3 +768,4 @@ vary per run and per file.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-17). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): host ceiling and per-request restriction in the decision flow, URL path segments, `policy explain --params` (exit 3), multicast manifest mirrors the runtime, file decisions carry source spans, `Runtime::export_trace`, `rivet graph`, bare `/v1/io`; limitations reduced to the current ones; export defect fixed in 2a751ab. |

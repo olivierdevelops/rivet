@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, api, rust, library, embedding]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet Rust library API
@@ -42,19 +43,21 @@ The Rust library is the same runtime the CLI and `rivet serve` use — not a cli
 
 ```text
    host process (tokio)
-   ┌────────────────────────────────────────────────────────────────────────┐
-   │  Runtime::builder()                                                    │
-   │     .file("app.rivet")  | .source(path, text, root)                    │
-   │     .policy_file(p)     | .policy(Policy)      (else: discover / deny) │
-   │     .build()?  ─────────────▶ compile → load policy → wire adapters    │
-   │                                                                        │
-   │  rt.request(id, params, sink)      ─▶ Completion         unary/stream  │
-   │  rt.open_session / send_input / finish_input / read_events / cancel_*  │
-   │                                    ─▶ duplex + resumable streams       │
-   │  rt.list / describe / outputs      ─▶ catalog                          │
-   │  rt.io / generate_policy / trace   ─▶ audit                            │
-   │  setup_serve::start(rt, opts)      ─▶ embed every network surface      │
-   └────────────────────────────────────────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │  Runtime::builder()                                                         │
+   │     .file("app.rivet")  | .source(path, text, root)                         │
+   │     .policy_file(p)     | .policy(Policy::from_file(p)? | from_json(b)?)    │
+   │     .ceiling(Policy)    host ceiling: every attempt needs policy ∩ ceiling  │
+   │     .build()?  ─────────────▶ compile → load policy → wire adapters         │
+   │                                                                             │
+   │  rt.request(id, params, sink)          ─▶ Completion   (DataSink may Stop)  │
+   │  rt.request_restricted(id, p, restrict, sink) ─▶ narrowed for this request  │
+   │  rt.scope(|scope| … scope.stream / scope.duplex …)  ─▶ owned, joined        │
+   │  rt.open_session / send_input / finish_input / read_events / cancel_*       │
+   │  rt.list / describe / outputs / graph   ─▶ catalog and static call graph    │
+   │  rt.io / generate_policy / trace / export_trace ─▶ audit                    │
+   │  setup_serve::start(rt, opts)          ─▶ embed every network surface       │
+   └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The crate is `rivet` 0.1.0 (edition 2024, Rust ≥ 1.90), used as a path or git dependency; an async host needs Tokio (multi-thread runtime).
@@ -78,18 +81,23 @@ In-process calls run as `Principal::local()` (`name: "local"`, `authenticated_by
 | `RuntimeBuilder::source` | `(self, path: &str, text: &str, root: &str) -> Self` | In-memory source; `root` anchors relative paths. **No policy is discovered**: without `.policy…` the runtime is deny-by-default. |
 | `RuntimeBuilder::policy_file` | `(self, path: &str) -> Self` | Exactly one policy file (like `--policy PATH`). Missing file → `policy.invalid`. |
 | `RuntimeBuilder::policy` | `(self, policy: Policy) -> Self` | An already-parsed policy. |
+| `RuntimeBuilder::ceiling` | `(self, ceiling: Policy) -> Self` | **Host ceiling.** Every attempt must be allowed by the loaded policy **and** the ceiling; a deny in either wins and `limits` narrow to the smaller value. Calling it twice intersects both ceilings. A ceiling denial reads `… denied: host ceiling: no grant for …`. |
+| `RuntimeBuilder::session_limits` | `(self, limits: SessionLimits) -> Self` | Host session caps (per-principal count, queue frames/bytes, idle lease, retention, wait/max_events). |
 | `RuntimeBuilder::connector_discovery` | `(self) -> Self` | Loads MCP connectors whose snapshot is missing/unapproved without their imports (for `sync_connector`). |
-| `RuntimeBuilder::build` | `(self) -> RivetResult<Runtime>` | Compiles, loads policy, loads connector snapshots and gRPC descriptors (bootstrap reads), wires adapters. |
-| `rivet::orchestrator::runtime::policy_from_json` | `(bytes: &[u8], base_dir: &str) -> RivetResult<Policy>` | Same strict schema v1 as policy.json; relative targets resolve against `base_dir`. |
+| `RuntimeBuilder::build` | `(self) -> RivetResult<Runtime>` | Compiles, loads policy, applies the ceiling, loads connector snapshots and gRPC descriptors (bootstrap reads), wires adapters. |
+| `Policy::from_file` | `(path: &str) -> RivetResult<Policy>` | Strict schema v1; relative targets resolve against the file's directory; its sha256 is the policy hash. |
+| `Policy::from_json` | `(bytes: &[u8]) -> RivetResult<Policy>` | Strict schema v1 from memory; relative targets resolve against the bundle root of the runtime it is given to. |
+| `rivet::orchestrator::runtime::policy_from_json` | `(bytes: &[u8], base_dir: &str) -> RivetResult<Policy>` | Same, with an explicit base directory. |
 
 ```text
-  policy source decision in build()
+  policy source decision in build()                        then: effective = policy ∩ ceiling?
   ┌───────────────────────┬───────────────────────────────────────────────┐
   │ .policy(Policy)       │ used as given                                 │
   │ .policy_file(p)       │ load p (strict v1)                            │
   │ .file(entry), neither │ discover policy.json beside entry, else deny  │
   │ .source(…),  neither  │ deny-by-default (pure operations still run)   │
   └───────────────────────┴───────────────────────────────────────────────┘
+  per request:  effective ∩ restrict₁ ∩ restrict₂ …   (request_restricted / nested restrictions)
 ```
 
 `Runtime` is `Clone` (an `Arc` inside); clones share catalog, broker, sessions and trace store.
@@ -99,34 +107,66 @@ In-process calls run as `Principal::local()` (`name: "local"`, `authenticated_by
 | Method | Signature |
 |---|---|
 | `request` | `async (&self, operation_id: &str, params: Value, sink: Option<Arc<dyn DataSink>>) -> RivetResult<Completion>` — as `local` |
+| `request_restricted` | `async (&self, operation_id: &str, params: Value, restrict: Value, sink: Option<Arc<dyn DataSink>>) -> RivetResult<Completion>` — `restrict` is `{"grants": [...]}` in the policy.json grant format, intersected with the effective policy for this request and its nested calls only (narrows, never widens; malformed → `policy.invalid` with a `/restrict` pointer) |
 | `request_as` | `async (&self, principal: Principal, operation_id: &str, params: Value, sink: Option<Arc<dyn DataSink>>) -> RivetResult<Completion>` |
 | `new_request` | `(&self, operation_id: &str, params: Value, principal: Principal) -> Request` — fresh `request_id`/`trace_id`, default deadline 30000 ms |
-| `dispatch_request` | `async (&self, req: Request, sink: Option<Arc<dyn DataSink>>) -> RivetResult<Completion>` — set `req.deadline_ms` etc. first |
+| `dispatch_request` | `async (&self, req: Request, sink: Option<Arc<dyn DataSink>>) -> RivetResult<Completion>` — set `req.deadline_ms`, `req.restrict` etc. first |
 | `cancel` | `(&self, request_id: &str, principal: Principal) -> RivetResult<CancelReceipt>` — cancel one of that principal's running top-level requests (idempotent) |
+| `shutdown` | `async (&self, drain: Duration)` — cancel every running request and session and wait up to `drain` |
 
 `params` is `rivet::domain::Value` (`Value::from_json(&serde_json::Value)`, `Value::object([...])`, `Value::text(..)`); results convert back with `.to_json()`. **Streaming** uses a `DataSink`:
 
 ```rust
 #[async_trait::async_trait]
 pub trait DataSink: Send + Sync {
-    async fn send(&self, event: DataEvent) -> RivetResult<()>;   // Err stops the producer → consumer_failed
+    async fn send(&self, event: DataEvent) -> RivetResult<()>;
 }
 ```
 
-Each emitted item arrives in order as `DataEvent {request_id, trace_id, seq, data}`; the `Completion` is returned after the last item. Dropping the request future drops its whole scope (tasks, handles and child processes are released).
+| Sink returns | Effect |
+|---|---|
+| `Ok(())` | keep producing |
+| `Err(RivetError::consumer_stop())` | **typed stop**: the producer stops, cleanup runs and the request ends `cancelled` / `consumer.stop` — not a failure |
+| any other `Err(e)` | the request fails `consumer_failed` |
+
+Each emitted item arrives in order as `DataEvent {request_id, trace_id, seq, data}`; the `Completion` is returned after the last item. Cancellation is **structured**: `cancel`, a deadline or `shutdown` fires the request's token, the interpreter unwinds at its next await point and closes every `with` handle in reverse order within the 5 s grace (child processes are reaped); the future is dropped only if the run ignores the grace. Dropping the request future also releases its whole scope.
+
+### Scopes: owned streams and duplex handles
+
+`Runtime::scope` runs a body with a `Scope`; every stream or duplex the scope starts is cancelled (if still running) and joined when the body returns, and aborted if the scope future is dropped.
+
+| Item | Signature |
+|---|---|
+| `Runtime::scope` | `async (&self, body: F) -> RivetResult<T>` where `F: FnOnce(Scope) -> Fut`, `Fut: Future<Output = RivetResult<T>>` |
+| `Scope::stream` | `async (&self, id: &str, params: Value) -> RivetResult<StreamHandle>` — an operation that `emits` |
+| `Scope::duplex` | `async (&self, id: &str, params: Value) -> RivetResult<DuplexHandle>` — an operation that `receives` |
+| `StreamHandle::next` | `async (&mut self) -> RivetResult<Option<Envelope>>` — `Data` items in order, one `Result`, then `None`; a terminal error is returned as `Err` |
+| `DuplexHandle::send` | `async (&mut self, item: Value) -> RivetResult<()>` — checked against `receives` (`validation.input`); after `finish_send` or the end → `conflict.input_finished` |
+| `DuplexHandle::finish_send` / `next` / `into_split` | end input (idempotent) / as `StreamHandle::next` / `(DuplexSender, StreamHandle)` for two tasks |
+| `request_id()` | on both handles |
+
+```text
+ rt.scope(|scope| async move {
+     let mut s = scope.stream("demo.countdown", p).await?;   ─┐ task + request   (16-envelope queue)
+     while let Some(env) = s.next().await? { … }               │ Data … Result
+     let mut d = scope.duplex("chat.echo", p).await?;        ─┤ task + input feed (16 items)
+     d.send(v).await?; d.finish_send(); d.next().await?;       │
+     Ok(())                                                    │
+ }).await   ── body done ─▶ cancel unfinished requests ─▶ join (≤ 5 s each, then abort) ──┘
+```
 
 ### Sessions (duplex and resumable streams)
 
 | Method | Input → Output |
 |---|---|
-| `open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms}` → `SessionReceipt` |
+| `open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms, trace, restrict}` → `SessionReceipt` |
 | `send_input` | `SessionSendInput {session_id, send_seq, data, principal}` → `SessionAck` |
 | `finish_input` | `SessionRef {session_id, principal}` → `SessionAck` |
 | `read_events` | `SessionReadInput {session_id, after_seq, max_events, wait_ms, principal}` → `SessionBatch` |
-| `cancel_session` | `SessionRef` → `CancelReceipt` |
+| `cancel_session` | `SessionRef` → `CancelReceipt` (a finished session reports its terminal state) |
 | `sessions` | `-> Arc<dyn SessionDriver>` (the driver shared with polling, WebSocket and MCP) |
 
-A `receives` operation iterates its input as `incoming`; items sent with `send_input` feed it in `send_seq` order. Limits are those of [polling sessions](api-2026-0001-http-rest-sse-polling.md#polling-sessions).
+A `receives` operation iterates its input as `incoming`; items sent with `send_input` feed it in `send_seq` order and are validated against `receives`. `deadline_ms` defaults to 30000 and is capped at 600000; `trace` is an optional W3C `TraceContext`; `restrict` narrows as in `request_restricted`. Limits are those of [polling sessions](api-2026-0001-http-rest-sse-polling.md#polling-sessions), including the host byte budget `limits.max_buffered_bytes` (`limit.buffered_bytes`).
 
 ### Catalog, audit and connectors
 
@@ -135,19 +175,21 @@ A `receives` operation iterates its input as `incoming`; items sent with `send_i
 | `list` | `(&self) -> RivetResult<Catalog>` — public entries |
 | `describe` | `(&self, ids: &[String]) -> RivetResult<Catalog>` |
 | `outputs` | `(&self, id: Option<&str>, all: bool) -> RivetResult<Vec<OutputReport>>` |
+| `graph` | `(&self, query: &GraphQuery) -> RivetResult<CallGraph>` — `GraphQuery {id, all}`; the static call graph `rivet graph` prints |
 | `catalog_version` | `(&self) -> String` — `sha256:` of the bundle sources |
 | `io` | `(&self, query: &IoQuery) -> RivetResult<IoReport>` — the I/O manifest (sync; reads only catalog and policy) |
 | `generate_policy` | `(&self, ids: &[&str]) -> RivetResult<PolicyDraft>` — empty = every public op; never writes |
 | `generate_policy_draft` | `(&self, ids: &[String], all: bool, output: Option<&str>) -> RivetResult<PolicyDraft>` — `output` creates a new file, refusing to overwrite |
 | `trace` | `(&self, request_id: &str) -> RivetResult<TraceResult>` — this process's recorded broker decisions |
+| `export_trace` | `async (&self, request_id: &str, path: &str) -> RivetResult<TraceExport>` — writes the sanitized trace JSON to a **new** bundle-relative file through the broker (`allow_write` access `create`); an existing file is `conflict.already_exists`, an unknown request `not_found.trace`. `TraceExport {request_id, path, events, bytes}` |
 | `decisions` | `(&self) -> Vec<Permit>` — every broker decision so far |
-| `policy` | `(&self) -> &Policy` |
-| `sync_connector` | `async (&self, name: &str, output: &str) -> RivetResult<ConnectorSync>` — discover an MCP connector and exclusively create a candidate snapshot |
+| `policy` | `(&self) -> &Policy` — the effective policy (ceiling applied) |
+| `sync_connector` | `async (&self, name: &str, output: &str) -> RivetResult<ConnectorSync>` — refuses an existing `output` before contacting the server, then discovers and exclusively creates a candidate snapshot |
 | `connector_imports` | `(&self) -> Vec<String>` |
 
 ### Embedding `serve`
 
-`rivet::orchestrator::setup_serve::start(rt, ServeOptions {listen: Some("127.0.0.1:0".into()), stdio: false, authenticator: None}).await? -> ServeHandle` binds one listener with every enabled surface; `handle.addr` is the bound address and `handle.shutdown().await` stops it. The same start-up refusals apply (`serve.auth_required`, `unsupported.serve_mtls`).
+`rivet::orchestrator::setup_serve::start(rt, ServeOptions {listen: Some("127.0.0.1:0".into()), ..ServeOptions::default()}).await? -> ServeHandle` binds one listener with every enabled surface (plus `GET /v1/health`); `ServeOptions` also takes `stdio`, an `authenticator` that replaces `serve.auth`, and an `access_log` sink (`Arc<dyn Fn(&str) + Send + Sync>`, default stderr) that receives one JSON line per request. `handle.addr` is the bound address and `handle.shutdown().await` drains like SIGTERM (cancel in-flight requests and sessions, up to 6 s). The same start-up refusals apply (`serve.auth_required`, `unsupported.serve_mtls`).
 
 ## Request Format
 
@@ -171,29 +213,18 @@ The crate version is `0.1.0`; semantic versioning applies from the first release
 
 ## Examples
 
-The program below was compiled and run against the crate at commit `f40d4aa` (a scratch binary crate with `rivet = { path = … }`, `tokio`, `async-trait`, `serde_json`):
+The program below was compiled and run against the crate at commit `829ca43` (a scratch binary crate `libcheck` with `rivet = { path = … }`, `tokio` (rt-multi-thread, macros), `async-trait` and `serde_json`; run from a folder containing `data/a.txt` = `hello` and an empty `audit/`). It exercises `Policy::from_json`, the host ceiling, `scope.stream`, `scope.duplex`, the typed sink stop, `request_restricted` and `export_trace`:
 
 ```rust
 use async_trait::async_trait;
 use rivet::Runtime;
-use rivet::domain::contracts::{DataEvent, Principal};
-use rivet::domain::io_manifest::IoQuery;
+use rivet::domain::contracts::DataEvent;
+use rivet::domain::policy::Policy;
 use rivet::domain::ports::DataSink;
-use rivet::domain::sessions::{SessionOpenInput, SessionReadInput, SessionRef, SessionSendInput};
-use rivet::domain::{RivetResult, Value};
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::domain::{RivetError, RivetResult, Value};
 use std::sync::Arc;
 
 const APP: &str = r#"
-operation demo.add
-    name "Add two integers"
-    description "Add two signed integers and return their sum."
-    param a integer required description "First operand."
-    param b integer default 0 description "Second operand; defaults to zero."
-    output integer description "Sum of a and b."
-    return a + b
-end
-
 operation demo.countdown
     name "Count down"
     description "Emit 3, 2, 1 as data items and then return a summary."
@@ -222,65 +253,83 @@ operation chat.echo
     end
     return {echoed: count}
 end
+
+operation files.read
+    name "Read a file"
+    description "Read one text file under ./data."
+    param path text required description "Bundle-relative path."
+    output text description "File content."
+    return file read path as text
+end
 "#;
 
-struct Print;
+/// Stops after the first item: the request ends `cancelled` / consumer.stop.
+struct FirstOnly;
 
 #[async_trait]
-impl DataSink for Print {
+impl DataSink for FirstOnly {
     async fn send(&self, event: DataEvent) -> RivetResult<()> {
-        println!("data seq={} {}", event.seq, event.data.to_json());
-        Ok(())
+        println!("sink got seq={} {}", event.seq, event.data.to_json());
+        Err(RivetError::consumer_stop())
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<(), rivet::domain::RivetError> {
-    // In-memory source + explicit in-memory policy (no grants: deny-by-default for effects).
-    let policy = policy_from_json(br#"{"version": 1}"#, ".")?;
-    let rt = Runtime::builder().source("app.rivet", APP, ".").policy(policy).build()?;
+async fn main() -> Result<(), RivetError> {
+    let policy = Policy::from_json(
+        br#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"],"access":["read"]},
+                                   {"capability":"allow_write","targets":["./audit/**"],"access":["create"]}]}"#,
+    )?;
+    // The host ceiling can only narrow: it does not grant ./audit/**, so trace export is denied.
+    let ceiling = Policy::from_json(
+        br#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"],"access":["read"]}],
+             "limits":{"max_concurrent_requests":8}}"#,
+    )?;
+    let rt = Runtime::builder().source("app.rivet", APP, ".").policy(policy).ceiling(ceiling).build()?;
 
-    let add = Value::from_json(&serde_json::json!({"a": 2, "b": 3}));
-    println!("add -> {}", rt.request("demo.add", add, None).await?.to_json());
+    // Scope-owned stream and duplex.
+    rt.scope(|scope| async move {
+        let mut s = scope.stream("demo.countdown", Value::Object(vec![])).await?;
+        while let Some(env) = s.next().await? {
+            println!("stream {}", env.to_json());
+        }
+        let mut d = scope.duplex("chat.echo", Value::Object(vec![])).await?;
+        d.send(Value::text("hi")).await?;
+        let bad = d.send(Value::Int(5)).await.unwrap_err();
+        println!("duplex bad item -> {} {}", bad.code, bad.message);
+        d.finish_send();
+        while let Some(env) = d.next().await? {
+            println!("duplex {}", env.to_json());
+        }
+        Ok(())
+    })
+    .await?;
 
-    let c = rt.request("demo.countdown", Value::Object(vec![]), Some(Arc::new(Print))).await?;
-    println!("countdown -> {}", c.to_json());
+    // Typed DataSink stop.
+    let e = rt.request("demo.countdown", Value::Object(vec![]), Some(Arc::new(FirstOnly))).await.unwrap_err();
+    println!("sink stop -> kind={} code={}", e.kind.as_str(), e.code);
 
-    let ids: Vec<String> = rt.list()?.entries.iter().map(|e| e.id.clone()).collect();
-    println!("list -> {ids:?}");
-    println!("outputs -> {}", rt.outputs(Some("demo.add"), false)?[0].to_json());
+    // Per-request restriction (narrows only).
+    let p = Value::from_json(&serde_json::json!({"path": "data/a.txt"}));
+    let ok = rt.request("files.read", p.clone(), None).await?;
+    println!("read -> {}", ok.result.to_json());
+    let narrow = Value::from_json(&serde_json::json!({"grants": [{"capability": "allow_read", "targets": ["./data/other/**"]}]}));
+    let e = rt.request_restricted("files.read", p, narrow, None).await.unwrap_err();
+    println!("restricted -> {} {}", e.code, e.message);
 
-    // Duplex through a session.
-    let me = Principal::local();
-    let r = rt.open_session(SessionOpenInput {
-        id: "chat.echo".into(), params: Value::Object(vec![]),
-        principal: me.clone(), connection_owned: false, deadline_ms: None,
-    }).await?;
-    for (i, word) in ["hi", "there"].iter().enumerate() {
-        rt.send_input(SessionSendInput {
-            session_id: r.session_id.clone(), send_seq: i as u64 + 1,
-            data: Value::text(*word), principal: me.clone(),
-        }).await?;
-    }
-    rt.finish_input(SessionRef { session_id: r.session_id.clone(), principal: me.clone() }).await?;
-    let mut after = 0;
-    loop {
-        let b = rt.read_events(SessionReadInput {
-            session_id: r.session_id.clone(), after_seq: after,
-            max_events: None, wait_ms: Some(1000), principal: me.clone(),
-        }).await?;
-        for ev in &b.events { println!("session event {}", ev.to_json()); }
-        after = b.last_seq;
-        if b.terminal { break; }
-    }
+    // Trace export goes through the broker as allow_write create; the ceiling denies ./audit/**.
+    let e = rt.export_trace(&ok.request_id, "./audit/trace.json").await.unwrap_err();
+    println!("export -> {} {}", e.code, e.message);
 
-    let io = rt.io(&IoQuery { format: "json".into(), ..IoQuery::default() })?;
-    println!("io complete={} exit={}", io.manifest.complete, io.exit_code);
-    let draft = rt.generate_policy(&[])?;
-    println!("draft complete={} grants={}", draft.complete, draft.grants.len());
-
-    let e = rt.request("demo.add", Value::Object(vec![]), None).await.unwrap_err();
-    println!("error {} kind={} exit={} http={}", e.code, e.kind.as_str(), e.exit_code(), e.http_status());
+    // Without the ceiling the same export writes a NEW file (never overwrites).
+    let rt2 = Runtime::builder().source("app.rivet", APP, ".").policy(Policy::from_json(
+        br#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"],"access":["read"]},
+                                   {"capability":"allow_write","targets":["./audit/**"],"access":["create"]}]}"#)?).build()?;
+    let c = rt2.request("files.read", Value::from_json(&serde_json::json!({"path": "data/a.txt"})), None).await?;
+    let receipt = rt2.export_trace(&c.request_id, "./audit/trace.json").await?;
+    println!("export -> {}", receipt.to_json());
+    let again = rt2.export_trace(&c.request_id, "./audit/trace.json").await.unwrap_err();
+    println!("export again -> {}", again.code);
     Ok(())
 }
 ```
@@ -288,45 +337,48 @@ async fn main() -> Result<(), rivet::domain::RivetError> {
 Output (IDs differ per run):
 
 ```text
-add -> {"request_id":"req_01cbd43edd","trace_id":"tr_01cbd43edd","result":5,"data_count":0,"effects":"none"}
-data seq=1 3
-data seq=2 2
-data seq=3 1
-countdown -> {"request_id":"req_024a3c0902","trace_id":"tr_024a3c0902","result":{"count":3},"data_count":3,"effects":"none"}
-list -> ["demo.add", "demo.countdown", "chat.echo"]
-outputs -> {"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]}
-session event {"request_id":"req_03c970f8af","trace_id":"tr_03c970f8af","seq":1,"type":"data","data":"hi"}
-session event {"request_id":"req_03c970f8af","trace_id":"tr_03c970f8af","seq":2,"type":"data","data":"there"}
-session event {"request_id":"req_03c970f8af","trace_id":"tr_03c970f8af","result":{"echoed":2},"data_count":2,"effects":"none","type":"result","seq":3}
-io complete=true exit=0
-draft complete=true grants=0
-error validation.required kind=validation exit=2 http=422
+stream {"request_id":"req_01956a2955","trace_id":"tr_01956a2955","seq":1,"type":"data","data":3}
+stream {"request_id":"req_01956a2955","trace_id":"tr_01956a2955","seq":2,"type":"data","data":2}
+stream {"request_id":"req_01956a2955","trace_id":"tr_01956a2955","seq":3,"type":"data","data":1}
+stream {"request_id":"req_01956a2955","trace_id":"tr_01956a2955","result":{"count":3},"data_count":3,"effects":"none","type":"result"}
+duplex bad item -> validation.input input item at $ must be text, got integer
+duplex {"request_id":"req_0214b2b09a","trace_id":"tr_0214b2b09a","seq":1,"type":"data","data":"hi"}
+duplex {"request_id":"req_0214b2b09a","trace_id":"tr_0214b2b09a","result":{"echoed":1},"data_count":1,"effects":"none","type":"result"}
+sink got seq=1 3
+sink stop -> kind=cancelled code=consumer.stop
+read -> "hello"
+restricted -> permission.denied allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt
+export -> permission.denied allow_write create on ./audit/trace.json denied: host ceiling: no grant for allow_write ./audit/trace.json
+export -> {"request_id":"req_0195ed6d65","path":"./audit/trace.json","events":1,"bytes":649}
+export again -> conflict.already_exists
 ```
 
 ```text
   what happened, step by step
-  build ─▶ request demo.add ─▶ Completion 5
-        ─▶ request demo.countdown + DataSink ─▶ 3 × send(DataEvent) ─▶ Completion {count:3}
-        ─▶ open_session chat.echo ─▶ send 1 "hi", send 2 "there" ─▶ finish_input
-             └▶ read_events … ─▶ data "hi", data "there", result {echoed:2}, terminal
-        ─▶ io / generate_policy (pure bundle: no sites, no grants)
-        ─▶ request demo.add {} ─▶ Err(validation.required) → exit 2, HTTP 422
+  build(policy ∩ ceiling) ─▶ scope: stream demo.countdown ─▶ 3 × Data, Result {count:3}
+                           ─▶ scope: duplex chat.echo ─▶ send "hi" ✓, send 5 ✗ validation.input,
+                                                         finish_send ─▶ Data "hi", Result {echoed:1}
+                           ─▶ request + FirstOnly sink ─▶ stop after seq 1 ─▶ cancelled / consumer.stop
+                           ─▶ files.read ✓ ─▶ request_restricted(./data/other/**) ✗ request restriction
+                           ─▶ export_trace ✗ host ceiling (no allow_write ./audit/**)
+  rt2 (no ceiling)         ─▶ export_trace ✓ new file ─▶ again ✗ conflict.already_exists
 ```
+
+The demo [12-library/embedding.rs.txt](../demos/12-library/embedding.rs.txt) shows the same API with `Policy::from_file("policy.json")`, `rt.outputs`, `rt.io` and `rt.generate_policy`.
 
 ## Compatibility Notes
 
-The 0.1.0 library differs from the approved design sketch; the code is authoritative:
+The 0.1.0 library differs from the approved design sketch in these details; the code is authoritative:
 
 | Design sketch | 0.1.0 |
 |---|---|
-| `rt.scope(|scope| …)`, `scope.stream(…)`, `scope.duplex(…)` handles | Not provided. Use `request` + `DataSink` for streams and the session methods for duplex. |
-| `Policy::from_file` / `Policy::from_json` | `RuntimeBuilder::policy_file(path)` and `rivet::orchestrator::runtime::policy_from_json(bytes, base_dir)`. |
-| Host policy ceiling on the builder | Not provided; pass the narrowed `Policy` itself. |
-| Sink returning `Continue` / `Stop` | `DataSink::send` returns `Ok(())` or `Err(_)`; an error stops the request (`consumer_failed`). |
-| `rt.outputs("id") -> OutputSpec` | `rt.outputs(Some("id"), false) -> Vec<OutputReport>`. |
 | `.source(src)` | `.source(path, text, root)`. |
+| `rt.request("id", json!({…}), None)` | params are `rivet::domain::Value` (`Value::from_json(&json!({…}))`). |
+| Sink returning `Continue` / `Stop` | `DataSink::send` returns `Ok(())` to continue or `Err(RivetError::consumer_stop())` to stop (the request ends `cancelled` / `consumer.stop`); any other `Err` is `consumer_failed`. |
+| `rt.outputs("id") -> OutputSpec` | `rt.outputs(Some("id"), false) -> Vec<OutputReport>`. |
+| per-request restriction as a request option | `rt.request_restricted(id, params, restrict, sink)` or `Request.restrict` with `dispatch_request`. |
 
-Also: W3C `traceparent` is not propagated; the trace store is in-memory per `Runtime`.
+`Runtime::scope` (`stream`/`duplex`), `Policy::from_file`/`Policy::from_json`, `.ceiling(Policy)` and W3C trace context (`SessionOpenInput.trace`, `Runtime::new_request_traced`) are provided as designed. The trace store is in-memory per `Runtime` (no persistent trace store).
 
 ## Related Documents
 
@@ -339,3 +391,4 @@ Also: W3C `traceparent` is not propagated; the trace store is in-memory per `Run
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial library contract; example compiled and run against the crate at commit f40d4aa. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Runtime::scope` with `stream`/`duplex` handles, `Policy::from_file`/`from_json`, `.ceiling(Policy)`, `session_limits`, typed `DataSink` stop (`consumer.stop`), structured cancellation, `request_restricted`, `export_trace`, `graph`, `shutdown`, `SessionOpenInput.trace/restrict`, `ServeOptions.access_log`; new example compiled and run at 829ca43; compatibility table reduced to the remaining differences. |

@@ -5,8 +5,8 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
-authors: [Claude]
+document_revision: 4
+authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
@@ -24,6 +24,7 @@ superseded_by: null
 tags: [rivet, manual, index]
 confidentiality: internal
 review_cycle: on-release
+next_review_date: 2026-10-28
 ---
 
 # Rivet manuals index
@@ -54,7 +55,7 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
                          ┌──────────────────────────────────────────┐
                          │ MAN-0001  Rivet manual (root book)       │
                          │ purpose · what's new · concepts ·        │
-                         │ CATALOGUE · limitations · glossary       │
+                         │ CATALOGUE · KNOWN LIMITATIONS · glossary │
                          └───────────────┬──────────────────────────┘
           ┌──────────────┬───────────────┼───────────────┬───────────────┬──────────────┐
           ▼              ▼               ▼               ▼               ▼              ▼
@@ -76,11 +77,19 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
 | [MAN-2026-0007](man-2026-0007-embedding-library.md) | Embedding the library | Rust developers | active |
 | [MAN-2026-0008](man-2026-0008-protocols-and-connectors.md) | Protocols and connectors | integrators | active |
 
-All eight apply to Rivet **0.1.0** and were verified against `rivet 0.1.0-dev` (commit `f40d4aa`).
+All eight apply to Rivet **0.1.0** and were verified against `rivet 0.1.0-dev` (commit `f40d4aa`), then updated
+and re-verified for the post-P3 fix batch at commit `829ca43`.
 
 ## Recently added or updated
 
+- 2026-09-28: `perch install` now builds and installs globally with `bman add`.
+
+- 2026-09-28: MAN-2026-0002 now documents Perch build and install tasks.
 - 2026-09-28: the whole set created for PLAN-2026-0001 P4 (rows D-34 … D-41).
+- 2026-09-28: all eight volumes updated for the fix batch (commit `829ca43`): `else`, `with file open`, `check`
+  warnings, `graph`, `trace export`, `rivet.capabilities`, `restrict`, library scopes and ceiling, health/access
+  log/drain, `traceparent`, secret taint on every sink; MAN-2026-0001 now has a **Known Limitations** chapter that
+  lists exactly the current limitations (TASK-095 documentation part).
 
 ## Deprecated, superseded or archived
 
@@ -99,9 +108,11 @@ None.
 - Release document `REL-0.1.0` does not exist yet; "What's New" will link it once created (P5).
 - The demo folder READMEs are being re-verified for 0.1.0 (PLAN-2026-0001 TASK-067); until then the manual's
   examples are the verified record.
-- Findings recorded while writing the set (for the plan owner): no `else`/`finally`; secret values can be
-  returned or emitted; `with file open/watch` unavailable; `rivet.capabilities` absent; `io --check-policy`
-  targets the multicast group for `multicast_join` while the runtime checks the bind address.
+- The findings recorded while writing the first version (no `else`, secret values returned/emitted, `with file
+  open` unavailable, no `rivet.capabilities`, multicast manifest mismatch) are fixed in commit `829ca43`; the
+  remaining limitations are the [Known Limitations](man-2026-0001-rivet-manual.md#known-limitations) chapter.
+- The two defects found at `829ca43` (`rivet.trace.export` not dispatched; MCP `tools/list` missing two built-ins)
+  were fixed in commit `2a751ab` (INC-2026-0007) and the volumes were updated; no known defect is open.
 
 ## Related directories
 
@@ -113,4 +124,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | Recorded the fix-batch update of all eight volumes (commits 829ca43 and 2a751ab) and the Known Limitations chapter. Perch entries unchanged. |
+| 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
+| 2 | 2026-09-28 | Codex | MAN-2026-0002 now documents Perch build and install tasks. |
 | 1 | 2026-09-28 | Claude | Created the manuals index for the 0.1.0 manual set MAN-2026-0001 … 0008. |

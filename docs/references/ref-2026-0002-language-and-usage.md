@@ -2,22 +2,22 @@
 document_id: REF-2026-0002
 title: "Rivet language and usage reference — 159 proposed examples"
 document_type: reference
-status: draft
+status: active
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 7
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [language, execution, cli, http, mcp, library, policy]
 affected_versions:
-  from: not-applicable
-  to: proposed-v0.1
+  from: "0.1.0"
+  to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
-scope: Proposed Rivet behavior and design review; no implementation or release claim.
-reason: Record the project brief and requested changes as reviewable contracts and examples.
+scope: The 159 numbered usage examples of the approved Rivet design, each marked verified, verified with differences, Stage C or not implemented against the 0.1.0 build (TASK-066).
+reason: Record the project brief and requested changes as reviewable contracts and examples, and (TASK-066) state how each example behaves on the implemented 0.1.0 build.
 dependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]
 related_documents: ["PROP-2026-0001", "REF-2026-0001"]
 supersedes: null
@@ -30,7 +30,7 @@ next_review_date: 2026-10-27
 
 # Rivet language and usage reference — 159 proposed examples
 
-**Design reference, not an installed or tested runtime.** This document specifies proposed syntax for [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md). Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S159 block parses cleanly.
+**Design reference, verified against the 0.1.0 build.** This document specifies the syntax proposed in [PROP-2026-0001](../proposals/approved/prop-2026-0001-rivet-runtime.md); since revision 8 every numbered example carries a **0.1.0 status** line (TASK-066): *verified*, *verified with differences* (the note says exactly what 0.1.0 does instead), *Stage C — refused in 0.1.0*, or *not implemented in 0.1.0*. The [status summary](#verification-status) counts them. Where this reference and the manuals differ, the [manuals](../manuals/man-2026-0001-rivet-manual.md) describe the build. Stage labels are `A`, `B` or `C`, matching the proposal's delivery matrix: Stage B (including every UDP, OAuth 2.0, QUIC/HTTP3, gRPC and session feature) is required scope; Stage C items (named pipes/FIFO, file watching, mTLS TCP, interactive processes, custom codecs, reconnect) are later, optional adapters. Shell commands are intended invocation contracts. Rust blocks follow the proposal's single canonical API sketch. DSL snippets use Capy prefix-call form and define target grammar; the Capy spike gate is that every S01–S159 block parses cleanly.
 
 For complete files grouped by use case, see the [sample folders](../demos/README.md). The twelve bundles materialize selected examples below, with request bodies, local fixtures and per-folder READMEs; the numbered S01–S159 examples remain stable.
 
@@ -56,7 +56,7 @@ Where an example shows a `policy.json`, that file sits beside the entry `.rivet`
 
 ## Syntax summary
 
-The proposal's [syntax table](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are authoritative; this section restates them with an example per form.
+The proposal's [syntax table](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-1--rust-capy-syntax-and-the-compilation-boundary) and [error registry](../proposals/approved/prop-2026-0001-rivet-runtime.md#increment-2--requests-streams-and-errors) are the design; this section restates them with an example per form, annotated where 0.1.0 differs. The implemented grammar is described in [MAN-2026-0003](../manuals/man-2026-0003-language-guide.md) and the implemented error codes in [API-2026-0005](../api/api-2026-0005-error-registry.md).
 
 ```text
 operation users.get                         <- header: stable callable ID
@@ -103,10 +103,11 @@ end
 | `emit` | `emit EXPR` — one stream item; needs `emits` | `emit event.data.delta` |
 | `fail` | `fail "CODE" {DETAILS}` | `fail "users.not_found" {id: id}` |
 | `if` | `if COND` … [`else` …] `end` | `if response.status == 404` |
+| `else` | alone on its line at the `if`'s indentation, one per `if`, closed by the `if`'s `end`; no `else if` (nest `if COND … end` inside `else`) — `else COND` → `syntax.else_if`, orphan/second `else` → `syntax.else_without_if` | `else` |
 | `for` | `for NAME in ITER` … `end` | `for event in events` |
 | `while` | `while COND` … `end`; needs a finite deadline; `while true` only inside a scope/operation with a finite `timeout` | S20 |
 | `break` | `break` | exits the innermost loop and disposes its scope |
-| `try` | `try` … `catch error kind K` \| `catch error code "C"` … [`finally` …] `end` | `catch error code "http.status"` |
+| `try` | `try` … `catch error kind K` \| `catch error code "C"` … [`finally` …] `end` — `finally` is **not implemented in 0.1.0** (`syntax.unknown_statement`) | `catch error code "http.status"` |
 | `iterate` | `iterate max N` … `end` | `iterate max 3` |
 | `poll` | `poll every "D" timeout "D"` … `until COND` … `yield V` … `end` | S48 |
 | `map` | `map NAME in LIST limit N` … `yield V` … `end` | S47 |
@@ -114,6 +115,7 @@ end
 | `concurrent` / `task` | `concurrent limit N [timeout "D"] fail fast\|independent` … `task NAME` … `end` … `end` | S21 |
 | `scope` | `scope timeout "D"` … `end` | `scope timeout "20s"` |
 | `with` | `with RESOURCE TARGET [mode M] as NAME` NL options* NL body* `end` | `with tcp "127.0.0.1:9000" as conn` |
+| `with file open` | `with file open PATH mode read\|write\|append as NAME` NL [`chunk_size N`] NL body* `end` — read: `for chunk in NAME` yields bytes chunks (≤ `chunk_size`, default 65536, max 8 MiB); write/append: `NAME.write text\|bytes V`; `with file watch` is Stage C (`unsupported.stage_c`) | `with file open "./data/archive.bin" mode read as reader` (S41) |
 | `http` | `http METHOD URL` NL options* `end` | `response = http get "https://api.example.com/search"` |
 | `grpc` | `grpc CONNECTOR.Method` NL options* `end` | `response = grpc users.GetUser` |
 | `command` | `command BINARY` NL options* `end` | `result = command "/usr/bin/printf"` |
@@ -142,8 +144,8 @@ Option lines must precede the first body statement of their block; an option aft
 | `with connection.open\|accept uni\|bidi as NAME` | `framing …`, `timeout "D"` |
 | `grpc CONNECTOR.Method` / `with grpc … as NAME` | `message {…}`, `metadata K V`, `auth PROFILE account A`, `timeout "D"` |
 | `command BIN` / `with command BIN as NAME` | `args [...]`, `stdin json\|text\|bytes V`, `env {…}`, `timeout "D"`, `decode stdout\|stderr T`, `stream stdout T`, `interactive true` |
-| `with file open PATH mode M as NAME` | `chunk_size N` |
-| `with file watch PATH as NAME` | `debounce "D"` |
+| `with file open PATH mode read\|write\|append as NAME` | `chunk_size N` (an option line under the `with` line) |
+| `with file watch PATH as NAME` | `debounce "D"` — Stage C: refused with `unsupported.stage_c` in 0.1.0 |
 | `file update` / `file delete` / `file copy\|move` | `if_version V` / `missing ok` / `overwrite false` |
 | `connector NAME mcp` | `transport http URL` or `transport command BIN` (+ `args`/`env` … `end`), `auth PROFILE account "A"`, `schema PATH`, `expose tools\|resources\|prompts [...]`, `tls server_name\|ca_file\|cert_file\|key_file V` (http transport) |
 | `connector NAME grpc` | `endpoint URL`, `descriptor PATH`, `service NAME`, `tls server_name\|ca_file\|cert_file\|key_file V` |
@@ -604,16 +606,16 @@ Global `--file` selects a trusted bundle input. Policy comes only from a policy.
 | `outputs ID [--json]` | `rivet.outputs {id}` | Human table, or JSON Schema `{id,output,emits,receives,errors}` |
 | `outputs --all [--json]` | `rivet.outputs {all:true}` | Same, for every public operation |
 | `list --outputs` | `rivet.list {cursor?,limit?}` | Adds a one-line output summary column |
-| `check [--strict-docs]` | `rivet.check {strict_docs?}` | Diagnostics from loaded bundle; no execution |
+| `check [--strict-docs]` | `rivet.check {strict_docs?}` — **0.1.0: CLI only, no built-in** | Diagnostics from loaded bundle; no execution; warnings on stderr |
 | `io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation\|target\|capability] [--kind KIND] [--access VERB,…] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files]` | `rivet.io {ids?,all?,by?,kind?,access?,check_policy?,needs?}` | IoManifest: every site's target, access verbs and capability; exit 3 on denied/partial with `--check-policy`, 7 on unknowns with `--strict`; `--needs` lists files each operation needs; `--check-files` probes them (exit 4 missing, 3 not permitted) ([I/O manifest](#io-manifest-rivet-io)) |
 | `policy generate [ID ...\|--all] [--output PATH]` | `rivet.policy.generate {ids?,all?}` | Least-privilege policy.json draft on stdout (or a new file); review items on stderr, exit 7 if any; never overwrites (exit 4) |
-| `graph ID --json` | `rivet.graph {id}` | DAG/call/effect graph |
-| `policy explain ID --params JSON --json` | `rivet.policy.explain {id,params}` | Missing grants without issuing a permit |
+| `graph ID [--all] [--json]` | `rivet.graph {id}` — **0.1.0: CLI and `Runtime::graph` only, no built-in** | DAG/call/effect graph |
+| `policy explain ID --params JSON --json` | `rivet.policy.explain {id,params}` — **0.1.0: CLI only, no built-in** | Concrete targets evaluated without issuing a permit; exit 3 when denied |
 | `trace show REQUEST --json` | `rivet.trace.show {request_id}` | Authorized trace from current host store |
-| `trace export REQUEST --output PATH` | `rivet.trace.export {request_id,path}` | Brokered sanitized export |
-| `connectors sync NAME --output PATH` | `rivet.connectors.sync {name,path}` | Authorized discovery and candidate snapshot |
+| `trace export REQUEST --output PATH` | `rivet.trace.export {request_id,path}` (0.1.0 also accepts `output` for `path`) | Brokered sanitized export (new file only) |
+| `connectors sync NAME --output PATH` | `rivet.connectors.sync {name,path}` — **0.1.0: params `{name, output}`** | Authorized discovery and candidate snapshot |
 | `request rivet.capabilities --params '{}'` | `rivet.capabilities {}` | Build/platform support, no I/O |
-| `request rivet.cancel --params '{"request_id":"..."}'` | `rivet.cancel {request_id}` | Idempotent cancellation receipt |
+| `request rivet.cancel --params '{"request_id":"..."}'` | `rivet.cancel {request_id}` — **0.1.0: no such built-in**; cancel with Ctrl-C, `POST …/cancel`, a WS `cancel` frame, `rivet.sessions.cancel` or `Runtime::cancel` | Idempotent cancellation receipt |
 | `auth begin PROFILE --account ACCOUNT` | `rivet.auth.begin {profile,account}` | Expiring code/device challenge; no token result |
 | `auth complete --params JSON` or `--params-file PATH` | `rivet.auth.complete {transaction_id,callback?,wait?}` | Validated exchange/poll, then sanitized CredentialStatus |
 | `auth status PROFILE --account ACCOUNT` | `rivet.auth.status {profile,account}` | Status without refresh |
@@ -870,6 +872,8 @@ Missing or bad server credentials on a serve surface use 401; limits 429 (size 4
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation users.get
     param id integer required min 1
@@ -890,6 +894,8 @@ Expected behavior: For id=42, returns {"id":42,"name":"Ada"}; invalid IDs fail b
 
 Stage: **A**. Required authority: same effects as users.get.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet request users.get --params '{"id":42}'
 ```
@@ -902,6 +908,8 @@ Expected behavior: Completion JSON on stdout with result {"id":42,"name":"Ada"};
 
 Stage: **A**. Required authority: same effects as users.get; client-to-server transport is outside the invoked operation.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS http://127.0.0.1:8080/v1/request   -H 'Content-Type: application/json'   -d '{"id":"users.get","params":{"id":42}}'
 ```
@@ -913,6 +921,8 @@ Expected behavior: HTTP 200 Completion JSON with the same result as S02. Input/s
 ### S04 — Call from a Rust host
 
 Stage: **A**. Required authority: same effects as users.get.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The library takes `.source(path, text, root)`, params are `rivet::domain::Value` (`Value::from_json(&json!({…}))`) and results are read with `c.result.get("id")`; `Policy::from_file` and the host ceiling (`.ceiling(Policy)`) exist as sketched (API-2026-0004).
 
 ```rust
 let rt = Runtime::builder()
@@ -930,6 +940,8 @@ Expected behavior: Canonical proposed Rust API sketch. `Policy::from_file` reads
 ### S05 — Compose by ID
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443, allow_write=./out/**.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 pipeline users.snapshot
@@ -949,6 +961,8 @@ Expected behavior: Calls the same registry operation; exclusive creation prevent
 
 Stage: **A**. Required authority: none after trusted bundle load.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet describe users.get --json
 rivet --file app.rivet request rivet.describe --params '{"id":"users.get"}'
@@ -962,6 +976,8 @@ Expected behavior: Same descriptor as GET /v1/operations/users.get (alias unwrap
 ### S07 — GET with encoded query parameters
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 response = http get "https://api.example.com/search"
@@ -980,6 +996,8 @@ Expected behavior: Query encoder preserves the ampersand as data; payload is ret
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 response = http post "https://api.example.com/users"
     body json {name: "Ada", tags: ["developer", "reviewer"]}
@@ -995,6 +1013,8 @@ Expected behavior: Serializes values as JSON; quotes and newlines cannot escape 
 ### S09 — PUT and PATCH without hiding the HTTP method
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 replaced = http put "https://api.example.com/users/42"
@@ -1016,6 +1036,8 @@ Expected behavior: Sequential mutations. If PATCH fails after PUT, error.effects
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 response = http delete "https://api.example.com/users/42"
     accept status [204]
@@ -1031,6 +1053,8 @@ Expected behavior: Returns {status:204,bytes:0}; an empty body is a valid explic
 ### S11 — Form and XML bodies
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 form = http post "https://api.example.com/login"
@@ -1052,6 +1076,8 @@ Expected behavior: Form encoding and XML builder escape values. Production crede
 
 Stage: **A**. Required authority: allow_env=EXAMPLE_API_KEY, allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 secret API_KEY from env "EXAMPLE_API_KEY" for "https://api.example.com:443"
 response = http get "https://api.example.com/account"
@@ -1061,13 +1087,15 @@ end
 return response.body
 ```
 
-Expected behavior: Environment lookup is brokered; the secret is bound to the listed origin, so using it toward any other origin is denied (S140). Taint follows explicit flows through interpolation, so the value cannot be emitted/logged; taint is best-effort and does not track implicit flows such as `if API_KEY == x`. Missing variable -> not_found.secret.
+Expected behavior: Environment lookup is brokered; the secret is bound to the listed origin, so using it toward any other origin is denied (S140). Taint follows explicit flows through interpolation, so the value cannot be emitted/logged; taint is best-effort and does not track implicit flows such as `if API_KEY == x`. Missing variable -> `not_found.env` (exit 4).
 
 <a id="s13--multipart-upload-with-a-file"></a>
 
 ### S13 — Multipart upload with a file
 
 Stage: **A**. Required authority: allow_read=./data/**, allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 response = http post "https://api.example.com/upload"
@@ -1087,6 +1115,8 @@ Expected behavior: Reads the named file through the broker and uploads bounded c
 ### S14 — SSE with a final result
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation chat.reply
@@ -1115,6 +1145,8 @@ Expected behavior: SSE metadata is event.id/event.event/event.retry; decoded pay
 
 Stage: **A**. Required authority: allow_network=http://127.0.0.1:11434.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with http post "http://127.0.0.1:11434/api/generate" as chunks
     body json {model: "fixture", prompt: "Hello", stream: true}
@@ -1138,6 +1170,8 @@ Expected behavior: Each complete JSON line is a value. Malformed/oversized lines
 
 Stage: **A**. Required authority: allow_write=./out/**, allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** `with file open` modes are `read`, `write` and `append`: `mode create` fails `validation.file_mode`; use `mode write` (creates or truncates).
+
 ```rivet
 with file open "./out/audio.mp3" mode create as writer
     with http get "https://api.example.com/audio" as chunks
@@ -1158,6 +1192,8 @@ Expected behavior: Scope flushes/closes the writer; failure reports any partial 
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with http get "https://api.example.com/logs" as lines
     stream lines
@@ -1176,6 +1212,8 @@ Expected behavior: UTF-8 lines exclude line terminators; final unterminated line
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443; any redirected origin needs a separate grant.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 response = http get "https://api.example.com/download"
     redirect follow limit 2
@@ -1191,6 +1229,8 @@ Expected behavior: Each redirect target needs its own grant. Cross-origin creden
 ### S19 — Scoped WebSocket request/response
 
 Stage: **B**. Required authority: allow_network=wss://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 with websocket "wss://api.example.com/realtime" as socket
@@ -1208,6 +1248,8 @@ Expected behavior: Return waits for bounded scope cleanup; no socket.close call.
 ### S20 — WebSocket text deltas and terminal marker
 
 Stage: **B**. Required authority: allow_network=wss://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 text = ""
@@ -1234,6 +1276,8 @@ Expected behavior: `while true` is legal only because the enclosing scope has a 
 
 Stage: **B**. Required authority: allow_network=wss://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with websocket "wss://api.example.com/voice" as socket
     concurrent limit 2 timeout "20s" fail fast
@@ -1257,6 +1301,8 @@ Expected behavior: One send and one receive may run together; parent joins both 
 
 Stage: **B**. Required authority: allow_network=tcp://127.0.0.1:9000.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with tcp "127.0.0.1:9000" as conn
     framing newline max_frame 65536
@@ -1274,6 +1320,8 @@ Expected behavior: Framing appends/removes one newline. EOF before a complete fr
 
 Stage: **B**. Required authority: allow_network=tcp://127.0.0.1:9000.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with tcp "127.0.0.1:9000" as conn
     framing length32 endian big max_frame 1048576
@@ -1289,6 +1337,8 @@ Expected behavior: Unsigned 32-bit big-endian byte length; partial reads assembl
 ### S24 — Mutual TLS over TCP
 
 Stage: **C** (TCP TLS and mTLS are later, optional adapters; the manifest rows below are still defined now). Required authority: allow_network=tcp://render.example.com:7443, allow_read=./certs/ca.pem, allow_read=./certs/client.pem, allow_read=./certs/client.key (exact paths, as `policy generate` emits them).
+
+**0.1.0 status (commit 2a751ab): Stage C — refused in 0.1.0.** TCP/Unix `tls` fails `unsupported.tcp_tls` before any file read or dial; `rivet io` still lists the four rows.
 
 ```rivet
 with tcp "render.example.com:7443" as conn
@@ -1328,6 +1378,8 @@ Expected behavior: Each certificate file is its own explicit read site (`origin`
 
 Stage: **B**. Required authority: allow_unix=/tmp/render.sock.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with unix "/tmp/render.sock" as conn
     framing newline
@@ -1343,6 +1395,8 @@ Expected behavior: Same framing semantics as TCP; ordinary allow_read does not p
 ### S26 — HTTP over a Unix socket
 
 Stage: **B**. Required authority: allow_unix=/var/run/service.sock.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 response = http get "http://localhost/info"
@@ -1360,6 +1414,8 @@ Expected behavior: HTTP semantics over a Unix transport; requires Unix authority
 
 Stage: **B**. Required authority: allow_network=udp://127.0.0.1:7000.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with udp "127.0.0.1:7000" as socket
     max_datagram 8192
@@ -1375,6 +1431,8 @@ Expected behavior: One datagram per message; no reliability/order guarantee; ove
 ### S28 — Execute argv without a shell
 
 Stage: **A**. Required authority: allow_exec=/usr/bin/printf.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 result = command "/usr/bin/printf"
@@ -1393,6 +1451,8 @@ Expected behavior: The semicolon is data, not shell syntax. Tool-specific flags 
 
 Stage: **A**. Required authority: allow_exec=./bin/json-worker; enforced worker resources separately granted.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 result = command "./bin/json-worker"
     args ["--once"]
@@ -1410,6 +1470,8 @@ Expected behavior: Starts with empty env plus runtime-required controlled values
 ### S30 — Stream a subprocess stdout
 
 Stage: **A**. Required authority: allow_exec=./bin/log-worker; worker read grants if it reads logs.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 with command "./bin/log-worker" as process
@@ -1430,6 +1492,8 @@ Expected behavior: Cancellation terminates and reaps the owned process tree; bou
 
 Stage: **C**. Required authority: allow_exec=./bin/interactive-worker.
 
+**0.1.0 status (commit 2a751ab): Stage C — refused in 0.1.0.** `interactive true` fails `unsupported.interactive`.
+
 ```rivet
 with command "./bin/interactive-worker" as process
     interactive true
@@ -1449,6 +1513,8 @@ Expected behavior: Scoped stdio request/response. Scope closes stdin and reaps c
 
 Stage: **C**. Required authority: allow_pipe=/tmp/rivet-input.fifo.
 
+**0.1.0 status (commit 2a751ab): Stage C — refused in 0.1.0.** `with pipe` fails `unsupported.adapter`; `rivet.capabilities` lists `named_pipes` as Stage C.
+
 ```rivet
 with pipe "/tmp/rivet-input.fifo" mode read as channel
     framing newline
@@ -1464,6 +1530,8 @@ Expected behavior: Unix FIFO reader opens with deadline and reads one frame; req
 
 Stage: **A**. Required authority: allow_write=./out/**.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 file create "./out/config.json" json {enabled: true}
 return {created: true}
@@ -1477,6 +1545,8 @@ Expected behavior: Existing destination yields conflict.already_exists and remai
 
 Stage: **A**. Required authority: allow_read=./data/**.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 config = file read "./data/config.json" as json
 return config.enabled
@@ -1488,7 +1558,9 @@ Expected behavior: Missing path -> not_found; malformed JSON -> parse; read is b
 
 ### S35 — Update only an existing file
 
-Stage: **A**. Required authority: allow_write=./out/**.
+Stage: **A**. Required authority: allow_write=./out/** (update) and allow_read=./out/** (stat: `update` reads the current version first).
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 file update "./out/config.json" json {enabled: false}
@@ -1502,6 +1574,8 @@ Expected behavior: Atomic replacement in the same directory; missing target fail
 ### S36 — Conditional update with a version guard
 
 Stage: **A**. Required authority: allow_read=./out/**, allow_write=./out/**.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 info = file stat "./out/config.json"
@@ -1519,6 +1593,8 @@ Expected behavior: Conflict if observed version changed; unsupported.conditional
 
 Stage: **A**. Required authority: allow_write=./out/**.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 file write "./out/events.txt" text "started\n"
 file append "./out/events.txt" text "finished\n"
@@ -1532,6 +1608,8 @@ Expected behavior: write explicitly creates or replaces; append requires an exis
 ### S38 — Delete with an explicit missing policy
 
 Stage: **A**. Required authority: allow_delete=./out/**.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 file delete "./out/obsolete.json"
@@ -1548,6 +1626,8 @@ Expected behavior: Deletes one file or succeeds if already absent; directories a
 
 Stage: **A**. Required authority: allow_read=./data/**.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 entries = file list "./data"
 info = file stat "./data/config.json"
@@ -1561,6 +1641,8 @@ Expected behavior: Metadata/listing are observable reads and require read grants
 ### S40 — Copy and move with destination guards
 
 Stage: **A**. Required authority: allow_read=./data/**, allow_read=./out/**, allow_write=./out/**, allow_delete=./out/**.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** A cross-filesystem move is reported as the OS error (`file.io`, kind internal), not a dedicated `unsupported` code.
 
 ```rivet
 file copy "./data/input.txt" to "./out/copy.txt"
@@ -1580,6 +1662,8 @@ Expected behavior: No overwrite by default. Cross-filesystem atomic move fails u
 
 Stage: **A**. Required authority: allow_read=./data/**.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with file open "./data/archive.bin" mode read as reader
     chunk_size 65536
@@ -1598,6 +1682,8 @@ Expected behavior: At most configured bytes buffered; each chunk uses the bytes 
 
 Stage: **A**. Required authority: allow_write=./scratch/**, allow_read=./scratch/**, allow_write=./out/**.
 
+**0.1.0 status (commit 2a751ab): not implemented in 0.1.0.** `with file tempdir` fails `validation.file_scope` ("not a scoped form") and there is no `file publish` verb; use `file create` in a granted directory and `file copy`/`file move`.
+
 ```rivet
 with file tempdir "./scratch" as temp
     file create "${temp.path}/result.json" json {ok: true}
@@ -1613,6 +1699,8 @@ Expected behavior: Explicit publish copies into durable caller-selected destinat
 ### S43 — Watch changes in a scoped directory
 
 Stage: **C**. Required authority: allow_read=./data/**.
+
+**0.1.0 status (commit 2a751ab): Stage C — refused in 0.1.0.** `with file watch` fails `unsupported.stage_c` (exit 5).
 
 ```rivet
 with file watch "./data" as changes
@@ -1631,6 +1719,8 @@ Expected behavior: Deadline/cancellation disposes watcher. Overflow emits a resc
 ### S44 — Diamond DAG with a typed join
 
 Stage: **A**. Required authority: transitive effects of users.get and orders.list.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 dag limit 4 timeout "20s" fail fast
@@ -1651,6 +1741,8 @@ Expected behavior: user/orders run independently; summary starts only after both
 
 Stage: **A**. Required authority: allow_write=./out/**.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** The `after` edge orders the writes as shown, but the compile-time "same dynamic target without ordering" conflict (and `approved.overlaps`) is not implemented.
+
 ```rivet
 dag limit 2 fail fast
     node create = (request "files.create_record" {path: "./out/item.json"})
@@ -1666,6 +1758,8 @@ Expected behavior: Explicit dependency prevents write overlap. Same dynamic targ
 ### S46 — Keep independent DAG results after a failure
 
 Stage: **A**. Required authority: none.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 dag limit 2 fail independent
@@ -1684,6 +1778,8 @@ Expected behavior: Returns succeeded/failed/blocked. Each node value is `{status
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 results = map item in [1, 2, 3, 4] limit 2
     yield (request "users.get" {id: item})
@@ -1698,6 +1794,8 @@ Expected behavior: At most two in-flight calls; result order matches input order
 ### S48 — Poll a remote job to completion
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 result = poll every "1s" timeout "20s"
@@ -1721,6 +1819,8 @@ Expected behavior: `yield` inside poll supplies the terminal value only when unt
 
 Stage: **A**. Required authority: transitive effects of text.refine.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 answer = "draft"
 iterate max 3
@@ -1740,6 +1840,8 @@ Expected behavior: Runs at most three rounds. Reaching max stops normally here; 
 ### S50 — Bounded agent loop with an allow-list
 
 Stage: **A**. Required authority: union of agent.next, orders.list and users.get effects.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 messages = [{role: "user", content: "Find order 42"}]
@@ -1764,6 +1866,8 @@ Expected behavior: Dynamic operation must be in the explicit list; policy still 
 
 Stage: **A**. Required authority: transitive order/payment effects; mutations are not automatically retried.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 created = (request "orders.create" {item: "book"})
 try
@@ -1783,6 +1887,8 @@ Expected behavior: Compensation is separately authorized and can itself fail; or
 
 Stage: **B**. Required authority: schema read at explicit bundle assembly; network/MCP grants only at invocation.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 connector crm mcp
     transport http "https://mcp.example.com/mcp"
@@ -1800,6 +1906,8 @@ Expected behavior: Declaration reads a supplied schema snapshot during bundle lo
 ### S53 — Discover and freeze MCP schemas explicitly
 
 Stage: **B**. Required authority: network + logical discovery + snapshot write.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -1826,6 +1934,8 @@ Expected behavior: Negotiates and paginates tools/resources/prompts; writes cand
 
 Stage: **B**. Required authority: allow_network=https://mcp.example.com:443, allow_mcp=crm/tools/search.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 result = (request "crm.tools.search" {query: "Ada"})
 return result
@@ -1839,6 +1949,8 @@ Expected behavior: Preserves content and structuredContent in McpResult. A tool 
 
 Stage: **B**. Required authority: allow_network=https://mcp.example.com:443, allow_mcp=crm/resources/read.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 result = (request "crm.resources.read" {uri: "crm://contacts/schema"})
 return result.contents
@@ -1851,6 +1963,8 @@ Expected behavior: Validates negotiated resources capability and exposed URI. Bi
 ### S56 — Get a reusable MCP prompt
 
 Stage: **B**. Required authority: allow_network=https://mcp.example.com:443, allow_mcp=crm/prompts/get.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 result = (request "crm.prompts.get" {
@@ -1866,6 +1980,8 @@ Expected behavior: Prompt content is returned as data; it is never executed as p
 ### S57 — MCP over a scoped subprocess
 
 Stage: **B**. Required authority: allow_exec=/opt/rivet-fixtures/docs-mcp, allow_read=./data/**, allow_mcp=local_docs/tools/search.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 connector local_docs mcp
@@ -1885,6 +2001,8 @@ Expected behavior: stdio uses protocol-only stdout. Rivet refuses startup unless
 ### S58 — Expose the same registry through MCP stdio
 
 Stage: **B**. Required authority: inherited protocol descriptors are bootstrap; invocation effects still checked.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -1907,6 +2025,8 @@ Expected behavior: MCP initialize/tools/list/tools/call use inherited stdin/stdo
 
 Stage: **B**. Required authority: transitive CRM network and MCP grants.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation contacts.find
     param query text required
@@ -1924,6 +2044,8 @@ Expected behavior: contacts.find is callable from CLI, HTTP, library and Rivet M
 
 Stage: **B**. Required authority: same as contacts.find.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet request contacts.find --params '{"query":"Ada"}'
 ```
@@ -1936,6 +2058,8 @@ Expected behavior: Completion.result is the imported structured contact data; no
 
 Stage: **B**. Required authority: only fixture MCP transport grant; no extra capability minted.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet request fixture.mcp_sampling --params '{}'
 ```
@@ -1947,6 +2071,8 @@ Expected behavior: Fixture requests sampling; host has not enabled it. Result is
 ### S62 — Find every I/O site, including unused operations
 
 Stage: **A**. Required authority: none after explicit bundle load. Uses the [I/O manifest fixture bundle](#io-manifest-fixture-bundle); no policy.json yet.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file app.rivet io --all --transitive --format json
@@ -2025,6 +2151,8 @@ Expected behavior: exit 0. Every site carries `effect_id`, `operation_id`, kind,
 
 Stage: **A**. Required authority: none after explicit bundle load. Fixture bundle as S62.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet io users.snapshot --transitive
 rivet --file app.rivet graph users.snapshot --json
@@ -2058,6 +2186,8 @@ Expected behavior: exit 0. Transitive analysis follows the literal `(request "us
 
 Stage: **A**. Required authority: none beyond declared bootstrap. Fixture bundle as S62.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet io --all --kind network --include-bootstrap
 ```
@@ -2086,6 +2216,8 @@ Expected behavior: exit 0. `--kind network` keeps the three network sites (one d
 ### S65 — Fail inspection when completeness is unknown
 
 Stage: **A**. Required authority: none after explicit bundle load. Fixture bundle as S62.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file app.rivet io --all --transitive --strict
@@ -2123,6 +2255,8 @@ Expected behavior: the full manifest is still printed; `--strict` turns `complet
 
 Stage: **A**. Required authority: no grants (no policy.json beside `app.rivet`).
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```text
 project/
 ├── app.rivet
@@ -2141,6 +2275,8 @@ Expected behavior: users.get fails permission.denied; exit 3; no DNS/HTTP reques
 ### S67 — Write an explicitly broad policy
 
 Stage: **A**. Required authority: three intentionally broad grants.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -2168,6 +2304,8 @@ Expected behavior: Allows host-visible reads/writes/outbound network, subject to
 
 Stage: **A**. Required authority: specified selectors only.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 `policy.json` (beside `app.rivet`):
 
 ```json
@@ -2192,6 +2330,8 @@ Expected behavior: Targets resolve relative to the policy file's directory. Sibl
 ### S69 — Select an alternate policy file
 
 Stage: **A**. Required authority: only the grants in the selected file.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```text
 project/
@@ -2230,6 +2370,8 @@ Expected behavior: The first command uses ci.json only; `deny` overrides `grants
 
 Stage: **A**. Required authority: chat.reply effects; host sink side effects must be separately owned/authorized.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** A sink is a type implementing `DataSink` (`async fn send(&self, DataEvent) -> RivetResult<()>`); returning `Ok(())` continues. There is no `DataSink::from_fn` or `Continue`; params are `Value`.
+
 ```rust
 let sink = DataSink::from_fn(async move |event: DataEvent| {
     tx.send(event.data).await?;
@@ -2247,6 +2389,8 @@ Expected behavior: Canonical Rust sketch: the sink (`AsyncDataSink + Send + 'sta
 
 Stage: **A**. Required authority: chat.reply effects until cancellation.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** Stop by returning `Err(RivetError::consumer_stop())` from the sink: the request ends kind `cancelled`, code `consumer.stop` (as expected); there is no `Stop` value.
+
 ```rust
 let stop_first = DataSink::from_fn(async move |_event: DataEvent| Ok(Stop));
 let outcome = rt.request("chat.reply", json!({"prompt": "Hello"}), Some(stop_first)).await;
@@ -2260,6 +2404,8 @@ Expected behavior: One item is accepted, then child work cancels and cleanup is 
 ### S72 — Pull the stream in the host context
 
 Stage: **A**. Required authority: chat.reply effects; host consume routine outside DSL trust boundary.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** `rt.scope(|scope| async move { … })`, `scope.stream(id, Value)` and `next() -> RivetResult<Option<Envelope>>` exist as sketched; params are `Value`, and there is no `RivetError::missing_terminal()` (the stream yields its terminal `Result` then `None`).
 
 ```rust
 let reply = rt.scope(|scope| async move {
@@ -2281,6 +2427,8 @@ Expected behavior: Canonical Rust sketch: `next()` returns `Result<Option<Envelo
 ### S73 — Consume a child request stream in the DSL
 
 Stage: **A**. Required authority: transitive chat.reply effects.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 text = ""
@@ -2305,6 +2453,8 @@ Expected behavior: Typed terminal error raises RivetError in DSL iteration; brea
 
 Stage: **A**. Required authority: trace-store read if persistent; in-memory none.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet trace show req_01 --json
 ```
@@ -2317,6 +2467,8 @@ Expected behavior: Reads the runtime trace store selected by the host. Separate 
 
 Stage: **A**. Required authority: host trace-store read; no new operation effects.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS http://127.0.0.1:8080/v1/request   -H 'Content-Type: application/json'   -d '{"id":"rivet.trace.show","params":{"request_id":"req_01"}}'
 ```
@@ -2328,6 +2480,8 @@ Expected behavior: Authorized principal receives Completion with source-linked a
 ### S76 — Export a sanitized trace
 
 Stage: **A**. Required authority: allow_write=./audit/**; persistent source may additionally need read.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The local form reads only its own (empty) process store and answers `not_found.trace`; export from the serving process with `rivet --endpoint URL trace export REQ --output PATH` (built-in `rivet.trace.export {request_id, path}`) or `Runtime::export_trace`.
 
 `policy.json` (beside `app.rivet`):
 
@@ -2350,6 +2504,8 @@ Expected behavior: Writes only authorized trace data; absent local request yield
 
 Stage: **A**. Required authority: none after bootstrap.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 `policy.json` (beside `app.rivet`):
 
 ```json
@@ -2370,6 +2526,8 @@ Expected behavior: Returns missing network/write grants and originating effect s
 ### S78 — Retry a transient read and recover a missing item
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 try
@@ -2394,6 +2552,8 @@ Expected behavior: An upstream 404 is `http.status` with `details.status: 404` (
 
 Stage: **A**. Required authority: none for capabilities; shell refused before any process.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet request rivet.capabilities --params '{}'
 rivet --file app.rivet request fixture.shell --params '{}'
@@ -2406,6 +2566,8 @@ Expected behavior: Capabilities returns supported stages/platform backends; fixt
 ### S80 — Refuse sandboxed process execution without OS enforcement
 
 Stage: **A**. Required authority: allow_exec authorizes launch intent; it never exempts child I/O from policy.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -2428,6 +2590,8 @@ Expected behavior: On a host without an enabled tested worker backend: unsupport
 
 Stage: **B**. Required authority: allow_network=udp://127.0.0.1:7000.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation telemetry.status
     output json
@@ -2447,6 +2611,8 @@ Expected behavior: UDP fixture returns {"state":"ready"}. The operation has the 
 
 Stage: **B**. Required authority: allow_listen=udp://127.0.0.1:7001; allow_network for the actual permitted reply peer, e.g. udp://127.0.0.1:7002.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with udp bind "127.0.0.1:7001" as socket
     max_datagram 1024
@@ -2463,6 +2629,8 @@ Expected behavior: Receive preserves sender metadata. A packet from an unauthori
 ### S83 — UDP multicast with explicit bind and interface
 
 Stage: **B**. Required authority: allow_network=udp://239.0.0.1:5000, allow_listen=udp://0.0.0.0:5000.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 with udp multicast "239.0.0.1:5000" as socket
@@ -2481,6 +2649,8 @@ Expected behavior: Joins one group on the selected interface, returns sender/dat
 ### S84 — OAuth client credentials profile and request
 
 Stage: **B**. Required authority: allow_auth=crm_service/service/use, allow_credentials=crm_service/service, allow_env=CRM_CLIENT_SECRET, allow_network=https://auth.example.com:443, allow_network=https://api.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 auth crm_service oauth2
@@ -2513,6 +2683,8 @@ Expected behavior: First authorized use obtains a token; subsequent valid cache 
 
 Stage: **B**. Required authority: management/use/status allow_auth selectors as needed, allow_credentials=crm_user/ada and token-endpoint network; host separately owns callback/browser I/O.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 auth crm_user oauth2
     flow authorization_code
@@ -2537,6 +2709,8 @@ Expected behavior: Public-client fixture; callback belongs to the host applicati
 
 Stage: **B**. Required authority: allow_auth=crm_device/ada/manage, allow_credentials=crm_device/ada, allow_network=https://auth.example.com:443.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 auth crm_device oauth2
     flow device_code
@@ -2559,6 +2733,8 @@ Expected behavior: Suitable for a CLI without callback collection. Start and com
 
 Stage: **B**. Required authority: server principal has allow_auth=crm_user/ada/manage and allow_credentials=crm_user/ada; code begin itself performs no token HTTP call.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --endpoint http://127.0.0.1:8080 auth begin crm_user --account ada
 curl -sS http://127.0.0.1:8080/v1/request   -H 'Content-Type: application/json'   -d '{"id":"rivet.auth.begin","params":{"profile":"crm_user","account":"ada"}}'
@@ -2571,6 +2747,8 @@ Expected behavior: Each alternative starts a distinct transaction; use only one 
 ### S88 — Complete the callback without putting codes in argv
 
 Stage: **B**. Required authority: allow_auth=crm_user/ada/manage, allow_credentials=crm_user/ada, allow_network=https://auth.example.com:443; explicit params-file is invocation input.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --endpoint http://127.0.0.1:8080 auth complete --params-file ./callback.json
@@ -2585,6 +2763,8 @@ Expected behavior: Checks state/issuer/redirect/owner/TTL before exchange. Retur
 ### S89 — Complete device authorization with bounded polling
 
 Stage: **B**. Required authority: allow_auth=crm_device/ada/manage, allow_credentials=crm_device/ada, allow_network=https://auth.example.com:443.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --endpoint http://127.0.0.1:8080 auth begin crm_device --account ada
@@ -2601,6 +2781,8 @@ Expected behavior: Waits at least provider interval; slow_down increases interva
 
 Stage: **B**. Required authority: allow_auth=crm_user/ada/status for status; allow_auth=crm_user/ada/manage for disconnect; both require allow_credentials=crm_user/ada.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --endpoint http://127.0.0.1:8080 auth status crm_user --account ada
 rivet --endpoint http://127.0.0.1:8080 auth disconnect crm_user --account ada
@@ -2614,6 +2796,8 @@ Expected behavior: Status returns profile/account/state/scopes/expiry/generation
 
 Stage: **B**. Required authority: same grants as S84; no extra authority from embedding.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** Params are `Value` (`Value::from_json(&json!({}))`), not `json!` directly.
+
 ```rust
 let c: Completion = rt.request("contacts.list", json!({}), None).await?;
 let contacts = c.result;
@@ -2626,6 +2810,8 @@ Expected behavior: Proposed API sketch using S84. Host principal/policy selects 
 ### S92 — Use OAuth for an HTTP MCP connector
 
 Stage: **B**. Required authority: allow_auth=crm_user/ada/use, allow_credentials=crm_user/ada, allow_network for token and MCP origins, allow_mcp=crm/tools/search.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 connector crm mcp
@@ -2643,6 +2829,8 @@ Expected behavior: The profile must additionally list https://mcp.example.com:44
 ### S93 — Audit OAuth refresh and its policy requirements
 
 Stage: **B**. Required authority: listed grants intentionally omit token endpoint.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -2671,6 +2859,8 @@ Expected behavior: Inventory includes potential token acquisition/refresh, env l
 
 Stage: **B**. Required authority: allow_network=quic://engine.example.com:4433; custom certificate files need read grants.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation engine.status
     output json
@@ -2694,6 +2884,8 @@ Expected behavior: Fixture returns {"state":"ready"}. Certificate name and ALPN 
 ### S95 — Multiplex QUIC streams without sharing receive ownership
 
 Stage: **B**. Required authority: allow_network=quic://engine.example.com:4433.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 with quic "quic://engine.example.com:4433" as connection
@@ -2727,6 +2919,8 @@ Expected behavior: Distinct streams may run concurrently; a stream reset fails o
 
 Stage: **B**. Required authority: allow_network=quic://engine.example.com:4433.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with quic "quic://engine.example.com:4433" as connection
     alpn "rivet-eof/1"
@@ -2751,6 +2945,8 @@ Expected behavior: finish_send is a protocol half-close (FIN), not resource disp
 
 Stage: **B**. Required authority: allow_network=quic://engine.example.com:4433.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 with quic "quic://engine.example.com:4433" as connection
     alpn "rivet-telemetry/1"
@@ -2767,6 +2963,8 @@ Expected behavior: Peer must negotiate DATAGRAM or acquisition fails quic.datagr
 ### S98 — Reauthorize a QUIC address change before sending probes
 
 Stage: **B**. Required authority: allow_network=quic://engine.example.com:4433 only.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** `migration true` is refused up front with `unsupported.quic_migration` (exit 5); no per-path reauthorization or `permission.quic_path_denied` exists.
 
 ```rivet
 with quic "quic://engine.example.com:4433" as connection
@@ -2788,6 +2986,8 @@ Expected behavior: Test peer suggests port 4444; with only a 4433 grant, Rivet s
 
 Stage: **B**. Required authority: S84 grants; HTTPS-origin permit authorizes this adapter's same-origin QUIC/UDP, not arbitrary raw UDP.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation items.h3
     output json
@@ -2808,6 +3008,8 @@ Expected behavior: Fixture returns {"items":[],"version":3}. Strict H3 never sil
 
 Stage: **B**. Required authority: allow_network=https://api.example.com:443; both permitted transports appear in inventory.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 response = http get "https://api.example.com/items"
     version prefer [3, 2]
@@ -2823,6 +3025,8 @@ Expected behavior: If H3 negotiation fails before application data is sent, H2 i
 ### S101 — Inspect native QUIC versus HTTP/3 authority
 
 Stage: **B**. Required authority: exact QUIC grant in the invocation; no credentials needed for engine.status.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file app.rivet io engine.status --transitive --format json
@@ -2847,6 +3051,8 @@ Expected behavior: Inventory distinguishes native QUIC origin/ALPN/stream effect
 
 Stage: **B**. Required authority: none; run with no policy.json beside `app.rivet`. Denied invocations perform no external effects.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet request rivet.capabilities --params '{}'
 rivet --file app.rivet request telemetry.status --params '{}'
@@ -2860,6 +3066,8 @@ Expected behavior: Capabilities lists udp, udp_multicast, oauth2_client_credenti
 ### S103 — Define several documented operations in one file
 
 Stage: **A**. Required authority: none for these operation bodies; file loading is explicit host bootstrap. Save as `catalog.rivet`.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation demo.greet
@@ -2895,6 +3103,8 @@ Expected: three independently callable catalog entries from one source file. The
 
 Stage: **A**. Required authority: explicit source loading, then no application I/O; no policy.json beside `catalog.rivet` (deny-by-default is enough for pure operations).
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file catalog.rivet list --json
 rivet --file catalog.rivet describe demo.add --json
@@ -2911,6 +3121,8 @@ Expected Completion.result values: `5`, `"Hello, Ada!"`, `{"ready":true}`. Descr
 
 Stage: **A**. Required authority: host listener/bootstrap and authorized incoming principal. Load S103 on the fixture server.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS http://127.0.0.1:8080/v1/operations/demo.add
 curl -sS http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' \
@@ -2926,6 +3138,8 @@ Expected: GET returns the same descriptor as CLI describe. POST responses are HT
 ### S106 — Use the whole catalog as a Rust library
 
 Stage: **A**. Required authority: none for operations; host supplies source bytes and policy.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** `.source(path, text, root)`, `Value` params, and `rt.outputs(Some("demo.add"), false)?` returns `Vec<OutputReport>` (not `OutputSpec`).
 
 ```rust
 let rt = Runtime::builder()
@@ -2947,6 +3161,8 @@ Expected: one compilation, multiple calls, no CLI subprocess or listener. Canoni
 
 Stage: **B**. Required authority: explicit source loading and protocol stdin/stdout bootstrap; no application I/O for S103, so no policy.json is needed.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file catalog.rivet serve --stdio
 ```
@@ -2958,6 +3174,8 @@ Expected: the MCP client launches this process and performs initialization befor
 ### S108 — Discover described operations as MCP tools
 
 Stage: **B**. Required authority: initialized authorized MCP connection to S107 or S120.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```json
 {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
@@ -2973,20 +3191,16 @@ Expected `result.tools` contains this entry (alongside the other authorized entr
   "inputSchema":{
     "type":"object",
     "properties":{
-      "a":{"$ref":"#/$defs/integer","description":"First operand."},
-      "b":{"$ref":"#/$defs/integer","default":0,"description":"Second operand; defaults to zero."}
+      "a":{"type":"integer","description":"First operand."},
+      "b":{"type":"integer","description":"Second operand; defaults to zero.","default":0}
     },
     "required":["a"],
-    "additionalProperties":false,
-    "$defs":{"integer":{"oneOf":[
-      {"type":"integer","minimum":-9007199254740991,"maximum":9007199254740991},
-      {"type":"object","properties":{"$type":{"const":"integer"},"decimal":{"type":"string","pattern":"^-?(0|[1-9][0-9]*)$"}},"required":["$type","decimal"],"additionalProperties":false}
-    ]}}
+    "additionalProperties":false
   }
 }
 ```
 
-The displayed entry omits `outputSchema` for brevity; the actual tool's `outputSchema` is the Completion envelope whose `result` property is the declared output schema (`integer`, "Sum of a and b."), including the tagged large-integer variant. The dispatcher additionally enforces signed 64-bit bounds and canonical decimal encoding; JSON Schema alone cannot express that string-to-integer range check. The same rules apply on every surface.
+The displayed entry (the 0.1.0 form, as `rivet describe demo.add --json` and `tools/list` print it) omits `outputSchema` for brevity; the actual tool's `outputSchema` is the Completion envelope whose `result` property is the declared output schema (`{"type":"integer","description":"Sum of a and b."}`). The dispatcher additionally enforces signed 64-bit bounds and canonical decimal encoding; JSON Schema alone cannot express that string-to-integer range check. The same rules apply on every surface.
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"demo.add","arguments":{"a":2,"b":3}}}
@@ -2999,6 +3213,8 @@ Expected: `result.structuredContent` is Completion with `result:5`; `result.cont
 ### S109 — Reject duplicate IDs and keep helpers private
 
 Stage: **A**. Required authority: none after source loading.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation helper.normalize
@@ -3023,6 +3239,8 @@ Expected: `demo.echo` is public; helper is callable only inside the compiled bun
 ### S110 — Call unary gRPC with a pinned descriptor
 
 Stage: **B**. Required authority: approved descriptor input, network origin and method grant. Save this connector and dependent operations as `grpc.rivet`.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** GRPC descriptors are pinned by their hash at load; the `approved.snapshots` entry is accepted but not required (it is unused for gRPC).
 
 ```rivet
 connector users grpc
@@ -3069,6 +3287,8 @@ Expected Completion.result: `{"id":"42","name":"Ada"}` from the fixture. The ID 
 
 Stage: **B**. Required authority: S110 origin and `allow_grpc=users/example.Users/Watch`.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation users.watch
     name "Watch user changes"
@@ -3095,6 +3315,8 @@ Expected: ordered data events followed by terminal result only after OK trailers
 
 Stage: **B**. Required authority: S110 origin and `allow_grpc=users/example.Users/Upload`.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```rivet
 operation users.upload
     description "Upload a finite batch and return the accepted count."
@@ -3119,6 +3341,8 @@ Expected: fixture input `{"items":[{"text":"a"},{"text":"b"}]}` returns `{"count
 ### S113 — Declare bidirectional gRPC with live input
 
 Stage: **B**. Required authority: S110 origin and `allow_grpc=users/example.Users/Chat`.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation chat.exchange
@@ -3155,6 +3379,8 @@ Expected: send and receive progress independently without buffering the entire c
 
 Stage: **B**. Required authority: authorized principal and chat.exchange grants on a running fixture host. Use the real returned session_id in later calls; `sess_01` is illustrative.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' \
   -d '{"id":"rivet.sessions.open","params":{"id":"chat.exchange","params":{}}}'
@@ -3180,6 +3406,8 @@ Expected: each successful control call returns HTTP 200 Completion. The empty in
 ### S115 — Own a duplex request in a Rust scope
 
 Stage: **B**. Required authority: chat.exchange grants in the host policy. Canonical proposed Rust API sketch.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The split is `into_split()` (not `split()`), `finish_send()` is synchronous, `send` takes `Value`, and a `DuplexHandle` also offers `send`/`finish_send`/`next` directly.
 
 ```rust
 rt.scope(|scope| async move {
@@ -3208,6 +3436,8 @@ Expected: split handles remain scope-bound. Input is half-closed, outputs draine
 
 Stage: **B**. Required authority: initialized authorized MCP client plus chat.exchange grants.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```json
 {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"chat.exchange","arguments":{}}}
 ```
@@ -3227,6 +3457,8 @@ Expected: control tools return Completion containing SessionAck/SessionBatch; re
 ### S117 — Preserve late gRPC failures after partial output
 
 Stage: **B**. Required authority: Watch fixture grants. Configure fixture to emit one item and then gRPC UNAVAILABLE.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** As S110: the `approved.snapshots` entry for the descriptor is not required.
 
 `policy.json` (beside `grpc.rivet`):
 
@@ -3252,6 +3484,8 @@ Expected NDJSON: one data event, then one terminal error event with `error.code:
 ### S118 — Authorize gRPC with OAuth and inspect every effect
 
 Stage: **B**. Required authority: separate profile, credentials, token/resource origins and method grants. Adapt S84's `crm_service` profile to include `https://users.example.com:443` in resource_origins; do not assume an unrelated API token is valid here.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation users.secure_get
@@ -3295,6 +3529,8 @@ Expected inventory: descriptor bootstrap read, OAuth credential/secret source, p
 
 Stage: **A** for strict documentation; **B** for duplex. Required authority: declared source inputs; chat grants and explicitly selected stdin invocation capability.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file catalog.rivet check --strict-docs
 rivet --endpoint http://127.0.0.1:8080 request chat.exchange --params '{}' --input-jsonl - --stream <<'JSONL'
@@ -3310,6 +3546,8 @@ Expected: strict-docs rejects blank public operation/parameter/output descriptio
 ### S120 — Serve one catalog through HTTP and MCP together
 
 Stage: **B**. Required authority: explicit source and listener; no policy.json, so auth is `none` and the bind must be loopback.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** MCP needs `initialize` first: use the `MCP-Session-Id` it returns (`mcp_…`); an invented ID such as `demo-session` answers `404 not_found.mcp_session`.
 
 ```sh
 rivet --file catalog.rivet serve --listen 127.0.0.1:8080
@@ -3333,6 +3571,8 @@ Expected: REST Completion.result and MCP structuredContent.result both equal 5, 
 ### S121 — Declare a scalar output with a description
 
 Stage: **A**. Required authority: none. Append to `catalog.rivet` (S103).
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation demo.average
@@ -3366,6 +3606,8 @@ errors   —
 ### S122 — Declare a structured output with nested fields
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443. Save in `users.rivet`. The fixture's GET `/users/42/profile` returns `{"id":42,"name":"Ada","tags":["developer"],"address":{"city":"London"}}`.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** Integer fields are emitted as `{"type":"integer"}` (no `$ref`/`$defs` tagged large-integer variant).
 
 ```rivet
 operation users.profile
@@ -3422,6 +3664,8 @@ Expected: `required` is the default per field; objects are closed unless the blo
 ### S123 — Declare error codes and fail strict docs on an undeclared one
 
 Stage: **A**. Required authority: allow_network=https://api.example.com:443. Save at the top of `users.rivet`; the `users.get` here is this file's HTTP operation (S01's copy lives in `app.rivet`).
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The warning is printed as `warning: error[docs.undeclared_error]: … declares no error "users.locked" line` with a caret excerpt; exit codes as shown.
 
 ```rivet
 operation users.get
@@ -3481,6 +3725,8 @@ Expected: `error` lines sit in the header after `output`, one per code; they doc
 
 Stage: **A**. Required authority: none after source loading.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file users.rivet outputs users.get
 ```
@@ -3504,6 +3750,8 @@ Expected: exit 0. The table is built from the immutable RegistryEntry, the same 
 ### S125 — Export every declared output as JSON Schema
 
 Stage: **A**. Required authority: none after source loading.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** Integer schemas are `{"type":"integer"}` (no `$ref`/`$defs`); `emits`/`receives` carry their `description`.
 
 ```sh
 rivet --file users.rivet outputs users.get --json
@@ -3540,6 +3788,8 @@ Expected: `--all` covers `users.brief`, `users.get`, `users.profile` and `users.
 
 Stage: **A**. Required authority: running `rivet --file users.rivet serve` (S133) and an authorized principal.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS http://127.0.0.1:8080/v1/operations/users.get/outputs
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/v1/operations/helper.normalize/outputs
@@ -3552,6 +3802,8 @@ Expected: the first returns HTTP 200 with the same JSON as `rivet outputs users.
 ### S127 — Read declared outputs through MCP
 
 Stage: **B**. Required authority: initialized authorized MCP session to `/mcp` (S136) or `serve --stdio`.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The direct tool's `outputSchema` inlines the declared output schema as `result` (no `$ref`/`$defs`).
 
 ```json
 {"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"rivet.outputs","arguments":{"id":"users.get"}}}
@@ -3573,6 +3825,8 @@ Expected: `structuredContent` is a Completion whose `result` is the S125 JSON (o
 ### S128 — Reject a result that violates the declared output
 
 Stage: **A**. Required authority: users.get effects and allow_write=./out/**. Append to `users.rivet`.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** `details` is `{"violations":[{"path","expected","found"}…]}` (not `missing`/`unexpected`); kind, code, HTTP 500 / exit 5 and preserved effects as described.
 
 ```rivet
 operation users.brief
@@ -3603,6 +3857,8 @@ Expected: the dispatcher validates the final result against the declared output 
 ### S129 — Discover policy.json beside the entry file
 
 Stage: **A**. Required authority: allow_read=./fixtures/** (relative to `services/`).
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```text
 repo/                          <- current directory for every command below
@@ -3645,6 +3901,8 @@ Expected: the first call succeeds; `./fixtures/**` resolves from the policy file
 ### S130 — Block SSRF with deny rules and private ranges
 
 Stage: **A**. Required authority: allow_network for the two granted origins; the deny entry and private-range rule take precedence.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation links.fetch
@@ -3698,6 +3956,8 @@ Expected: call 1 succeeds. Call 2 is denied because `deny` overrides `grants` (e
 
 Stage: **B**. Required authority: listener bootstrap; operations in `catalog.rivet` are pure. Fixture tokens are `test` (ada) and `ci-token` (ci); only their SHA-256 hashes are stored.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 `policy.json` (beside `catalog.rivet`):
 
 ```json
@@ -3748,6 +4008,8 @@ Expected: ada gets 200 with result 5; no header gets 401; ci gets 403 for demo.a
 
 Stage: **B**. Required authority: none; the listener never opens.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file catalog.rivet serve --listen 0.0.0.0:8080
 # stderr: {"kind":"validation","code":"serve.auth_required",
@@ -3763,6 +4025,8 @@ Expected: with no policy.json (or with `"serve": {"auth": {"type": "none"}}`), a
 ### S133 — Serve every surface from one listener
 
 Stage: **B**. Required authority: explicit source and loopback listener; no policy.json (auth none, pure operations only). Append these operations to `catalog.rivet`:
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```rivet
 operation demo.count
@@ -3825,6 +4089,8 @@ Expected: REST returns HTTP 200 Completion with result 5; SSE streams two data e
 
 Stage: **B**. Required authority: the S133 server; same principal for every call.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 curl -sS -X POST http://127.0.0.1:8080/v1/requests -H 'Content-Type: application/json' \
   -d '{"id":"demo.count","params":{"n":2}}'
@@ -3855,6 +4121,8 @@ Expected: the routes are the HTTP projection of `rivet.sessions.open/read`; `aft
 ### S135 — Multiplex requests over one WebSocket
 
 Stage: **B**. Required authority: the S133 server. Any WebSocket client works; `websocat` is shown.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** Data frames also carry `request_id`/`trace_id`; the unknown-operation error frame is `{"kind":"not_found","code":"not_found.operation",…}`; refused input frames end the ref with the specific code (`conflict.input_sequence`, `validation.input`).
 
 ```sh
 websocat --protocol rivet.v1 ws://127.0.0.1:8080/v1/ws
@@ -3893,6 +4161,8 @@ Expected: frames for different refs interleave; each ref ends with exactly one t
 
 Stage: **B**. Required authority: the S133 server. After the proposal's initialize/initialized exchange, use the returned MCP session ID (`demo-session` is illustrative).
 
+**0.1.0 status (commit 2a751ab): verified with differences.** As S120: initialize first and use the returned `MCP-Session-Id`.
+
 ```sh
 curl -sS http://127.0.0.1:8080/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
@@ -3911,6 +4181,8 @@ Expected: `tools/list` returns one direct tool per public operation (`demo.add`,
 ### S137 — Disable surfaces in policy.json
 
 Stage: **B**. Required authority: listener bootstrap.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `catalog.rivet`):
 
@@ -3940,6 +4212,8 @@ Expected: both curls print `404` (poll and sse are disabled); `GET /v1/ws` is al
 ### S138 — Fail fast by default and report node statuses
 
 Stage: **A**. Required authority: users.get effects. The fixture makes users.get slower than fixture.fail.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The node list is not in the trace store: it is `details.nodes` (`id`, `status`, `started_at`, `ended_at`) on the fatal error, and node envelopes carry the timestamps; `trace show` lists broker decisions only.
 
 ```rivet
 operation report.build
@@ -3986,14 +4260,19 @@ Expected: no failure policy is written, so it is `fail fast`. orders fails; user
 
 ### S139 — Refuse to write through a hard link
 
-Stage: **A**. Required authority: allow_write=./out/**; nothing grants `./data/`.
+Stage: **A**. Required authority: allow_write=./out/** and allow_read stat on ./out/** (`update` stats first); nothing grants `./data/`.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
 ```json
 {
   "version": 1,
-  "grants": [{"capability": "allow_write", "targets": ["./out/**"]}]
+  "grants": [
+    {"capability": "allow_write", "targets": ["./out/**"]},
+    {"capability": "allow_read",  "targets": ["./out/**"], "access": ["stat"]}
+  ]
 }
 ```
 
@@ -4024,6 +4303,8 @@ Expected: `file.hardlink_refused` (kind permission, 403 / exit 3); neither path 
 ### S140 — Bind a secret to its destination
 
 Stage: **A**. Required authority: allow_env=EXAMPLE_API_KEY and network grants for both origins; the secret binding still refuses the second.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -4062,6 +4343,8 @@ Expected: permission.denied, exit 3, before connecting to mirror.example.com: th
 
 Stage: **A**. Required authority: none after explicit bundle load. [Fixture bundle](#io-manifest-fixture-bundle), public entries.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet io --by target
 ```
@@ -4089,6 +4372,8 @@ Expected: exit 0. One row per (target, capability): URLs group under their origi
 ### S142 — Group the manifest by capability
 
 Stage: **A**. Required authority: none after explicit bundle load. Fixture bundle as S141.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file app.rivet io --by capability
@@ -4123,6 +4408,8 @@ Expected: exit 0. The same sites as S141, grouped under capability headings in [
 
 Stage: **A**. Required authority: none after explicit bundle load. Fixture bundle as S141.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet io --all --kind file --access delete
 rivet --file app.rivet io --all --access create,update,append,delete --by target
@@ -4149,6 +4436,8 @@ Expected: exit 0 for both. The first command answers "what can delete anything?"
 ### S144 — Check the manifest against policy.json
 
 Stage: **A**. Required authority: none; policy.json is read, nothing runs. Fixture bundle as S141.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `app.rivet`):
 
@@ -4206,6 +4495,8 @@ Expected: exit 3 because a reachable site is `denied` (notes.delete: no `allow_d
 
 Stage: **A**. Required authority: none; stdout is redirected by the user's shell. Fixture bundle and policy.json as S144.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet io --by target --format markdown > io-review.md
 rivet --file app.rivet io --check-policy --format csv > io.csv
@@ -4246,6 +4537,8 @@ Expected: the first command exits 0. The second exits 3 exactly like S144, becau
 ### S146 — Allow creating notes but never overwriting them
 
 Stage: **A**. Required authority: exactly the two narrowed grants below. Fixture bundle as S141.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The denial reads `allow_write update on ./out/notes/a.json denied: grant allow_write ./out/notes/*.json access [create] does not include \`update\`` with `details {capability, access, target}` (no `effect_id`/`granted_access`).
 
 `policy.json` (beside `app.rivet`):
 
@@ -4295,6 +4588,8 @@ Expected: notes.create succeeds (`{"created":"a"}`, exit 0); notes.update passes
 
 Stage: **A**. Required authority: none (policy load fails first). Fixture bundle as S141.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 `policy.json` (beside `app.rivet`):
 
 ```json
@@ -4310,10 +4605,9 @@ rivet --file app.rivet io --check-policy
 ```
 
 ```json
-{"kind": "validation", "code": "policy.invalid",
- "message": "grants[0].access[1]: \"delete\" is not an access verb of allow_read",
- "details": {"path": "grants[0].access[1]", "verb": "delete", "capability": "allow_read",
-             "valid": ["read", "list", "stat", "watch"]}}
+{"request_id":"","trace_id":"","error":{"kind":"validation","code":"policy.invalid",
+ "message":"policy.json /grants/0/access/1: `delete` does not belong to allow_read (allowed: read, list, stat, watch)",
+ "retryable":false,"effects":"none","details":{"pointer":"/grants/0/access/1"}}}
 ```
 
 ```text
@@ -4328,6 +4622,8 @@ Expected: both commands print the ErrorEnvelope on stderr and exit 2; the bundle
 ### S148 — Generate a least-privilege policy draft
 
 Stage: **A**. Required authority: none; nothing runs. Fixture bundle as S141.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file app.rivet policy generate > policy.draft.json
@@ -4395,6 +4691,8 @@ Expected: one grant per (capability, target), `access` narrowed to exactly the v
 
 Stage: **A**. Required authority: CLI host file creation for `--output` (not an application effect). Fixture bundle as S141; `policy.json` from S144 already exists.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file app.rivet policy generate --output policy.json
 echo $?
@@ -4426,6 +4724,8 @@ Expected: the first run changes nothing and exits 4 (`conflict.exists`, 409 sema
 ### S150 — Read the manifest over HTTP
 
 Stage: **B**. Required authority: listener bootstrap. Fixture bundle as S141; `policy.json` = S144's `grants` plus this `serve` block (fixture tokens `test` → ada, `ci-token` → ci, as in S131):
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```json
 {
@@ -4480,6 +4780,8 @@ Expected: ci gets 200 with the file-only manifest (`complete` describes the filt
 
 Stage: **B**. Required authority: the S150 server and an initialized MCP session at `/mcp` per principal (session IDs illustrative).
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```json
 {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"rivet.io","arguments":{"by":"capability","kind":"network","check_policy":true}}}
 {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"rivet.policy.generate","arguments":{"all":true}}}
@@ -4512,6 +4814,8 @@ Expected: for ci, `rivet.io` returns the three network sites with decisions; `ri
 ### S152 — Build the manifest and a policy draft from a Rust host
 
 Stage: **A**. Required authority: none; neither call performs I/O. Fixture bundle and policy.json as S144.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** `rt.io(&IoQuery{…})` returns an `IoReport` whose `manifest` holds `targets`/`sites`; `IoQuery.by`/`kind` are strings (`"target"`, `"file"`), not enums; `.source(path, text, root)`.
 
 ```rust
 let rt = Runtime::builder()
@@ -4550,6 +4854,8 @@ Expected: the same IoManifest as S150 and the same draft as S148's second comman
 
 Stage: **A**. Required authority: users.snapshot's grants (S148 second draft) and trace-store read. Fixture bundle as S141; the fixture returns 404 for `/users/7`.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** There is no persistent trace store: run `trace show` / `io --trace` with `--endpoint` against the process that served the request (a local CLI process has an empty store).
+
 ```sh
 rivet --file app.rivet request users.snapshot --params '{"id":7}'     # fails: http.status 404, exit 5 → req_12
 rivet --file app.rivet trace show req_12 --json
@@ -4587,6 +4893,8 @@ Expected: the join is on `effect_id`, so each planned row shows how many attempt
 ### S154 — Trust a private CA for one HTTPS call
 
 Stage: **A**. Required authority: allow_read=./certs/ca.pem, allow_network=https://status.example.com:443. [TLS fixture bundle](#tls-fixture-bundle).
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `tls.rivet`):
 
@@ -4627,6 +4935,8 @@ Expected: the manifest lists the `tls ca_file` line as its own `allow_read` site
 ### S155 — List the files each operation needs before it runs
 
 Stage: **A**. Required authority: none; `--needs` is static and performs no I/O. TLS fixture bundle as S154.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 ```sh
 rivet --file tls.rivet io --needs
@@ -4676,6 +4986,8 @@ Expected: exit 0. One group per operation, ordered by operation ID, with each fi
 ### S156 — Check needed files on disk before running
 
 Stage: **A**. Required authority: the policy below. `--check-files` performs brokered metadata probes, so each needed path needs `allow_read` with `stat`. TLS fixture bundle as S154, with all four input files present.
+
+**0.1.0 status (commit 2a751ab): verified.**
 
 `policy.json` (beside `tls.rivet`):
 
@@ -4730,6 +5042,8 @@ Expected: exit 0. Each distinct path is probed once, even when several operation
 
 Stage: **A**. Required authority: S156's policy.json; `policies/read-only.json` = the S158 draft (`access: ["read"]`, no `stat`). TLS fixture bundle as S154.
 
+**0.1.0 status (commit 2a751ab): verified with differences.** The missing key is `not_found.file` ("./certs/client.key: no such file"), without the proposed `origin`/`phase`/`network_attempts` details; the `--check-files` results and exit codes are as shown.
+
 ```sh
 mv certs/client.key certs/client.key.bak
 rivet --file tls.rivet io render.status --check-files ; echo $?
@@ -4779,6 +5093,8 @@ Expected: the missing key is reported before anything runs (exit 4). The real re
 
 Stage: **A**. Required authority: none; nothing runs. TLS fixture bundle as S154.
 
+**0.1.0 status (commit 2a751ab): verified.**
+
 ```sh
 rivet --file tls.rivet policy generate > policies/read-only.json
 echo $?
@@ -4824,6 +5140,8 @@ Expected: exit 0. Option-derived file sites are granted as their exact paths wit
 ### S159 — Read an operation's needed files over HTTP and MCP
 
 Stage: **B**. Required authority: listener bootstrap; loopback principal `local` (a network principal needs `rivet.io` listed explicitly, as in S150). TLS fixture bundle and S156 policy.json.
+
+**0.1.0 status (commit 2a751ab): verified with differences.** The HTTP refusal is `422 validation.check_files_remote` ("refused remotely"), not an unknown-parameter error.
 
 ```sh
 rivet --file tls.rivet serve --listen 127.0.0.1:8080
@@ -4975,7 +5293,36 @@ Read and network grants required. HEAD has no body; no content auto-decoder may 
 
 ## Verification status
 
-Documentation-only review: 159 unique numbered samples, linked source requirements, and proposed effects/expected behavior per sample. **Runtime validation: not executed; Rivet is not implemented.** Revision 3 of this reference added S103–S120; revision 5 added S121–S140 and converted every block to Capy prefix calls, quoted durations and policy.json; revision 6 rewrites S62–S65 with concrete manifest output and adds S141–S153 (UQ-18), preserving all earlier sample identities; revision 7 adds option-derived file sites to S24, S141, S143 and S145 and adds S154–S159 (TASK-005). A script check for revision 7 confirmed gapless S01–S159 numbering, index/heading/anchor agreement and balanced code fences. The implementation gate is the Capy spike (every block parses cleanly), then extracting each block into positive/negative fixtures, supplying the declared dependencies and running the proposal's test matrix. Neither copied snippets nor this statement constitute passing tests.
+TASK-066 (PLAN-2026-0001) marked every example against `rivet 0.1.0-dev` at commit `2a751ab`:
+
+```text
+  159 numbered examples
+  ├── 126 verified                      the DSL block parses and lowers with the 0.1.0 grammar (T-29,
+  │                                          tests/conformance_samples.rs) and the behaviour it states is implemented
+  │                                          (conformance suites, the 0.1.0 manuals and API documents, scratch runs)
+  ├──  28 verified with differences     implemented; the example's CLI/Rust/JSON text differs from 0.1.0 —
+  │                                          the status line says how
+  ├──   4 Stage C — refused              typed `unsupported.*` error; `rivet.capabilities` lists them as Stage C
+  └──   1 not implemented               no 0.1.0 form; alternative named in the status line
+```
+
+| Status | Examples |
+|---|---|
+| verified | S01, S02, S03, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15, S17, S18, S19, S20, S21, S22, S23, S25, S26, S27, S28, S29, S30, S33, S34, S35, S36, S37, S38, S39, S41, S44, S46, S47, S48, S49, S50, S51, S52, S53, S54, S55, S56, S57, S58, S59, S60, S61, S62, S63, S64, S65, S66, S67, S68, S69, S73, S74, S75, S77, S78, S79, S80, S81, S82, S83, S84, S85, S86, S87, S88, S89, S90, S92, S93, S94, S95, S96, S97, S99, S100, S101, S102, S103, S104, S105, S107, S108, S109, S111, S112, S113, S114, S116, S118, S119, S121, S124, S126, S129, S130, S131, S132, S133, S134, S137, S139, S140, S141, S142, S143, S144, S145, S147, S148, S149, S150, S151, S154, S155, S156, S158 |
+| verified with differences | S04, S16, S40, S45, S70, S71, S72, S76, S91, S98, S106, S110, S115, S117, S120, S122, S123, S125, S127, S128, S135, S136, S138, S146, S152, S153, S157, S159 |
+| Stage C — refused in 0.1.0 | S24, S31, S32, S43 |
+| not implemented in 0.1.0 | S42 |
+
+"Verified" does not mean the illustrative hosts (`api.example.com`, `engine.example.com`, `mcp.example.com`, …) were
+contacted: network examples were checked against local fixtures, the conformance suites and the error codes the
+build produces. Revision 8 also corrected four examples to the implemented behaviour (D2): S12 names `not_found.env`
+for a missing variable, S35 and S139 list the `stat` access `update` needs, S147 shows the real `policy.invalid`
+envelope with `details.pointer`, and S108 shows the integer schema form `describe`/`tools/list` produce.
+
+History: revision 3 of this reference added S103–S120; revision 5 added S121–S140 and converted every block to Capy
+prefix calls, quoted durations and policy.json; revision 6 rewrote S62–S65 and added S141–S153 (UQ-18); revision 7
+added option-derived file sites and S154–S159 (TASK-005); revision 8 is the 0.1.0 verification above. Numbering
+S01–S159 is gapless and index, headings and anchors agree.
 
 ## Related Documents
 
@@ -4987,6 +5334,7 @@ Documentation-only review: 159 unique numbered samples, linked source requiremen
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-28 | Claude | TASK-066: every example marked with its 0.1.0 status (commit 2a751ab) and summary table; `else` and `with file open` rows in the syntax table, `finally`/`with file watch` marked; CLI mapping annotated where 0.1.0 differs; D2 corrections to S12 (`not_found.env`), S35/S139 (`stat` for `update`), S147 (`details.pointer`), S108 (integer schema form); status active. |
 | 7 | 2026-09-28 | Claude | TASK-005 (approved in ADR-0001): `tls server_name/ca_file/cert_file/key_file` options for http, websocket, quic and grpc/mcp connectors; file-valued options as I/O sites; `origin`/`phase`/`requires_existing`/`secret` fields; `--needs`/`--check-files` flags, error-registry row and `rivet.io {needs}`; TLS fixture bundle; S24 manifest rows (Stage C noted); ORIGIN/PHASE/NEEDS FILE columns in S141, S143, S145; new S154–S159; `auth cancel` in the CLI mapping (TASK-006). |
 | 6 | 2026-09-28 | Claude | UQ-18: added the access-verb vocabulary, optional `access` narrowing in the policy.json schema and an I/O manifest section with a line-numbered fixture bundle; rewrote S62–S65 to show concrete manifest output; added S141–S153 (`io --by target/capability`, deletion search, `--check-policy`, Markdown/CSV export, access narrowing, `policy.invalid`, `policy generate` and its overwrite refusal, HTTP/MCP with explicit principal listing, `rt.io`/`rt.generate_policy`, `io --trace`); added `rivet.io`/`rivet.policy.generate` to the CLI and built-in tool tables; `io` examples use `--format json`. |
 | 5 | 2026-09-28 | Claude | UQ-17: converted all DSL to Capy prefix calls and quoted durations; replaced `--sandbox` with policy.json and `serve --transport/--mcp` with one `rivet serve`/`serve --stdio`; added syntax summary, per-resource options, error registry, policy and serve sections; added S121–S140 (declared outputs, policy.json, serve auth and surfaces, DAG completion, hard links, bound secrets); applied review fixes E2–E16 (canonical Rust API, `users.grpc_get`, yield, exit 7, A/B stages). |

@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -65,6 +65,8 @@ modules they describe.
 ## Recently added or updated
 
 - 2026-09-28: created for PLAN-2026-0001 phase P4, verified against `0.1.0-dev` commit `f40d4aa`.
+- 2026-09-28: SYS-2026-0002 and SYS-2026-0007 revised (revision 2) for the post-P3 fix batch and re-verified at commit `829ca43`
+  (TASK-092); limitations now point to the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations).
 
 ## Deprecated, superseded or archived
 
@@ -81,3 +83,4 @@ relates to the rest of the system.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the index for PLAN-2026-0001 phase P4. |
+| 2 | 2026-09-28 | Claude | Recorded the fix-batch revision (commit 829ca43) of this folder's documents. |

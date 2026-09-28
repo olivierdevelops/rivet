@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,7 +15,8 @@ components: [policy, serve, connectors, auth]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 review_cycle: on-release
 confidentiality: internal
 scope: Every key, type, default and validation error of policy.json schema v1 as implemented by the Rivet loader, with discovery rules and verified examples.
@@ -34,7 +35,7 @@ tags: [rivet, system, policy, configuration, schema, reference, serve, auth]
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, serve, connectors, auth
-> **Last Verified Version:** 0.1.0-dev (commit f40d4aa)
+> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
 
 ## Summary
 
@@ -110,8 +111,21 @@ malformed selector, a non-positive limit or a bad `serve` block stops the progra
 - `--endpoint URL` refuses `--policy` and `--file`: `error[validation.usage]: --endpoint cannot be combined
   with --file or --policy: the server owns the bundle and its policy`, exit 2.
 - Library hosts: `Runtime::builder().file(p).policy_file(p)` (same rules as `--policy`),
-  `.policy(Policy)`, and `rivet::policy_from_json(bytes, base_dir)` (same parser, file name `<memory>`).
-  A builder with `.source(…)` and no policy uses deny-by-default.
+  `.policy(Policy)` with `Policy::from_file(path)` (targets relative to that file) or
+  `Policy::from_json(bytes)` (targets relative to the bundle root), and
+  `rivet::orchestrator::runtime::policy_from_json(bytes, base_dir)` (same parser, file name `<memory>`).
+  A builder with `.source(…)` and no policy uses deny-by-default. `.ceiling(Policy)` adds a **host ceiling**
+  in the same schema: every attempt must be allowed by both; limits take the smaller value.
+- **Per-request restriction.** A caller may send `restrict: {"grants": [...]}` (HTTP `/v1/request`, polling,
+  WebSocket request frames, MCP `tools/call`, `Runtime::request_restricted`). Its `grants` use exactly the
+  `grants[]` schema below and resolve against the same base directory; any other key is
+  `` policy.invalid: restrict accepts only `grants` (got `KEY`); it can narrow, never grant `` with
+  `details.pointer` `/restrict/KEY`, and grant errors are reported under `/restrict/grants/…`. The restriction
+  is intersected with the loaded policy (and the ceiling) for that request and its nested calls only.
+
+```text
+  effective(attempt) = policy.json ∩ ceiling (library) ∩ restrict₁ ∩ restrict₂ …      deny in any layer wins
+```
 - **Base directory.** Relative path selectors resolve against the directory of the policy file (shown as
   `base` by `rivet policy explain`), not against the working directory.
 
@@ -228,13 +242,19 @@ literally; `"*"` never counts. Resolved hostnames are re-checked the same way be
 |---|---|---|---|---|
 | (object) | object | — | — | `/limits: must be an object` |
 | other key | — | — | — | `` /limits/<key>: unknown key `<key>` (allowed: max_concurrent_requests, max_call_depth, max_buffered_bytes) `` |
-| `max_concurrent_requests` | positive integer | `64` | host semaphore for top-level requests; when full → `limit.concurrency` "limits.max_concurrent_requests (N) reached" (exit 5) | `/limits/max_concurrent_requests: must be a positive integer` |
-| `max_call_depth` | positive integer | `16` | nested `(request …)` depth → `limit.call_depth` (exit 5) | `/limits/max_call_depth: must be a positive integer` |
-| `max_buffered_bytes` | positive integer | `268435456` (256 MiB) | shown by `policy explain`; not enforced in this version | `/limits/max_buffered_bytes: must be a positive integer` |
+| `max_concurrent_requests` | positive integer ≤ 4294967295 | `64` | host semaphore for top-level requests; when full → `limit.concurrency` "limits.max_concurrent_requests (N) reached" (exit 5) | `/limits/max_concurrent_requests: must be a positive integer`; `… must be at most 4294967295` |
+| `max_call_depth` | positive integer ≤ 4294967295 | `16` | nested `(request …)` depth → `limit.call_depth` (exit 5) | `/limits/max_call_depth: must be a positive integer`; `… must be at most 4294967295` |
+| `max_buffered_bytes` | positive integer ≤ 9223372036854775807 | `268435456` (256 MiB) | host-wide budget for bytes retained by session/stream queues; a reservation beyond it → `limit.buffered_bytes` "limits.max_buffered_bytes (N) reached: M bytes are buffered host-wide" (exit 5) | `/limits/max_buffered_bytes: must be a positive integer`; `… must be at most 9223372036854775807` |
 
-`0`, negative numbers, fractions and strings are all rejected. `max_concurrent_requests` and
-`max_call_depth` are stored as 32-bit values: larger numbers are accepted but wrap (see
-[Known Limitations](#known-limitations)).
+`0`, negative numbers, fractions and strings are all rejected, and so is a value wider than the field it
+lands in — never truncated or wrapped (verified at `829ca43`):
+
+```text
+$ rivet --file app.rivet --policy big.json check      # {"version":1,"limits":{"max_concurrent_requests":4294967297}}
+error[policy.invalid]: policy.json /limits/max_concurrent_requests: must be at most 4294967295
+$ rivet --file app.rivet --policy big2.json check     # {"version":1,"limits":{"max_buffered_bytes":9223372036854775808}}
+error[policy.invalid]: policy.json /limits/max_buffered_bytes: must be at most 9223372036854775807
+```
 
 ### serve
 
@@ -569,19 +589,20 @@ only their SHA-256 belongs in `policy.json`.
 
 ## Known Limitations
 
-- `limits.max_buffered_bytes` is validated and displayed but not enforced in this version.
-- `approved.overlaps` is validated but not consumed in this version.
-- `max_concurrent_requests` and `max_call_depth` are truncated to 32 bits without an error:
-  `{"max_concurrent_requests": 4294967297}` loads and `policy explain` shows `limits   1 concurrent, …`.
-- `serve.auth` `mtls` validates but `rivet serve` refuses to start (`unsupported.serve_mtls`).
-- Bearer `tokens[]` entries and mTLS `principals[]` entries are not checked for unknown keys, and a
-  non-list mTLS `principals` is treated as empty.
-- Only the first validation error is reported.
-- The file is not reloaded while a process runs.
+From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.md#known-limitations):
+
+- `approved.overlaps` is validated but unused (nothing consumes it).
+- `serve.auth` `mtls` validates but `rivet serve` refuses to start (`unsupported.serve_mtls`, exit 5).
+- A `serve.principals` entry `"*"` also matches the `rivet.auth.*` built-ins (governed by `allow_auth`).
+
+Other current behaviour: bearer `tokens[]` entries and mTLS `principals[]` entries are not checked for unknown
+keys, and a non-list mTLS `principals` is treated as empty; only the first validation error is reported; the
+file is not reloaded while a process runs.
 
 ## Last Verified Version
 
-0.1.0-dev (commit f40d4aa), macOS, `target/debug/rivet`. Every message above was produced by that binary
+0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`; the limit-width, `restrict` and URL-segment rows were
+re-verified at `829ca43`. Every other message above was first produced by the `f40d4aa` binary
 (`rivet check`, `rivet policy explain`, `rivet io --check-policy`, `rivet request`, `rivet serve` on
 127.0.0.1:18437) against `docs/demos/*` and scratch bundles. Request IDs and hashes vary per run and file.
 
@@ -601,3 +622,4 @@ only their SHA-256 belongs in `policy.json`.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-22). |
+| 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): limit values wider than their field are rejected (B1), `max_buffered_bytes` enforced (`limit.buffered_bytes`), `restrict` and host ceiling layers, `Policy::from_file/from_json`; URL path-segment matching (2d581b8) kept; limitations reduced to the current ones. |

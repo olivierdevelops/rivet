@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,6 +24,7 @@ superseded_by: null
 tags: [rivet, security, index]
 confidentiality: internal
 review_cycle: on-release
+next_review_date: 2026-10-28
 ---
 
 # Rivet security documentation index
@@ -58,11 +59,13 @@ review_cycle: on-release
 
 | ID | Document | Covers |
 |---|---|---|
-| SEC-2026-0001 | [Policy and sandbox security model](sec-2026-0001-policy-and-sandbox-model.md) | threat model, guarantees G1–G9, non-guarantees, bootstrap I/O, SSRF/DNS rebinding, file confinement, sandbox per OS, secrets, OAuth, MCP trust boundary, serve auth, INC-2026-0001 |
+| SEC-2026-0001 | [Policy and sandbox security model](sec-2026-0001-policy-and-sandbox-model.md) | threat model, guarantees G1–G12 (incl. ceiling/restrict narrowing and secret taint), non-guarantees, bootstrap I/O, SSRF/DNS rebinding, file confinement, sandbox per OS, secrets, OAuth, MCP trust boundary, serve auth, INC-2026-0001 |
 
 ## Recently added or updated
 
 2026-09-28 — SEC-2026-0001 created for 0.1.0, verified against commit `f40d4aa`.
+
+2026-09-28 — SEC-2026-0001 revision 2 (commit `829ca43`): secret taint enforced on every sink, host ceiling and per-request `restrict`, URL path segments (INC-2026-0005), OAuth cache key and no-expiry rule, MCP drift check.
 
 ## Deprecated, superseded or archived
 
@@ -76,8 +79,9 @@ None.
 
 ## Unresolved work and open questions
 
-- Secret destination binding and taint tracking are designed but not enforced in 0.1.0.
-- Linux sandbox is gated until verified on kernel ≥ 6.12; Windows has no backend.
+- Secret taint covers explicit flows only (implicit flows are out of scope by design).
+- The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`).
+- Linux sandbox is gated until verified on kernel ≥ 6.12; Windows and other OSes are unsupported.
 - No TLS/mTLS listener; traces and sessions are in-memory only.
 
 ## Recommended reading order
@@ -89,3 +93,4 @@ None.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created the security index with SEC-2026-0001. |
+| 2 | 2026-09-28 | Claude | Recorded SEC-2026-0001 revision 2 (fix batch, commit 829ca43); open questions updated. |

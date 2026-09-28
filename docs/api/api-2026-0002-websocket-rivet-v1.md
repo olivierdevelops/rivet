@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, api, websocket, sessions, duplex]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet WebSocket API: subprotocol rivet.v1
@@ -47,8 +48,11 @@ last_verified_version: "0.1.0-dev (commit f40d4aa)"
    │ Authorization: Bearer …   (when bearer)        │── authenticate once (upgrade request)
    │◀───────────── 101 Switching Protocols ─────────│   sec-websocket-protocol: rivet.v1
    │                                                │
-   │ {"type":"request","ref":"c1","id":…}  ────────▶│── authorize id for the principal
+   │ {"type":"request","ref":"c1","id":…,           │
+   │  "restrict"?:{grants:[…]}}  ──────────────────▶│── authorize id for the principal
    │                                                │── open connection-owned session ── pump(c1)
+   │                                                │      └─ per-ref lane (16 frames) ─┐
+   │                                                │   lanes c1, c2 … merged into one ─┘ socket writer
    │◀──── {"type":"data","ref":"c1","seq":1,…} ─────│
    │ {"type":"input","ref":"c1","seq":1,"data":…} ─▶│   (duplex only)
    │ {"type":"finish_input","ref":"c1"} ──────────▶│
@@ -57,7 +61,7 @@ last_verified_version: "0.1.0-dev (commit f40d4aa)"
    │ close ────────────────────────────────────────▶│── cancel + join every in-flight ref
 ```
 
-Frames below were captured from `rivet serve --listen 127.0.0.1:18432` (commit `f40d4aa`) serving [docs/demos/01-catalog/app.rivet](../demos/01-catalog/app.rivet) plus a scratch duplex operation `chat.echo` (`receives text`, `emits text`, echoes every input item, returns `{echoed: N}`). IDs differ on every run.
+Frames below were captured from `rivet serve --listen 127.0.0.1:18432` (commit `f40d4aa`) serving [docs/demos/01-catalog/app.rivet](../demos/01-catalog/app.rivet) plus a scratch duplex operation `chat.echo` (`receives text`, `emits text`, echoes every input item, returns `{echoed: N}`); the refusal and `restrict` frames were re-captured on commit `829ca43` (`127.0.0.1:18904`, the same `chat.echo` plus a file-reading `demo.read`). IDs differ on every run.
 
 ## Audience and Stability
 
@@ -66,6 +70,7 @@ Integrators that need many concurrent or bidirectional requests over one connect
 ## Authentication
 
 - Authentication runs **once**, on the HTTP upgrade request, with the same rules as every other route ([API-2026-0001 §Authentication](api-2026-0001-http-rest-sse-polling.md#authentication)): auth `none` on loopback → principal `local`; bearer → `Authorization: Bearer TOKEN`. Failure answers the upgrade with the JSON ErrorEnvelope (401) instead of 101.
+- A valid W3C `traceparent` header on the upgrade request becomes the trace of every ref opened on that socket.
 - The client **must** offer `rivet.v1` in `Sec-WebSocket-Protocol`; otherwise the upgrade is answered `422 validation.subprotocol` (`"the WebSocket client must offer subprotocol rivet.v1"`).
 - **Each `request` frame** is authorized separately against `serve.principals` for the connection's principal (refused → `error` frame with `permission.denied`).
 - The `ws` surface must be enabled in `serve.surfaces`; otherwise `/v1/ws` is `404 not_found.route`.
@@ -74,13 +79,13 @@ Integrators that need many concurrent or bidirectional requests over one connect
 
 | Direction | `type` | Fields | Meaning |
 |---|---|---|---|
-| client → server | `request` | `ref`, `id`, `params?` | Start an operation on a new ref |
+| client → server | `request` | `ref`, `id`, `params?`, `restrict?` | Start an operation on a new ref; `restrict: {grants:[…]}` narrows this ref's authority (never widens) |
 | client → server | `input` | `ref`, `seq`, `data` | One input item for a duplex ref (`seq` starts at 1) |
 | client → server | `finish_input` | `ref` | Half-close the ref's input |
 | client → server | `cancel` | `ref` | Cancel the ref |
 | server → client | `data` | `ref`, `request_id`, `trace_id`, `seq`, `data` | One emitted item |
 | server → client | `result` | `ref`, `completion` | Terminal success; `completion` = Completion `{request_id, trace_id, result, data_count, effects}` |
-| server → client | `error` | `ref`, `error`, `request_id?`, `trace_id?` | Terminal failure of a ref, **or** a refusal of one client frame |
+| server → client | `error` | `ref`, `error`, `request_id?`, `trace_id?` | Terminal failure of a ref, a refused `input`/`finish_input` (terminal for that ref), **or** a refusal of a frame for a ref that is not in flight |
 
 ```text
   per-ref state machine (server side)
@@ -90,7 +95,9 @@ Integrators that need many concurrent or bidirectional requests over one connect
                         │  └───────────┘                         │
                         ├── finish_input ─▶ input closed ────────┤
                         ├── cancel ──────────────────────────────┤  error cancelled.session
-                        ├── refused input / finish ── cancels ───┤  error cancelled.session
+                        ├── refused input / finish ──────────────┤  error = the SPECIFIC refusal
+                        │     (sent first, then the session is   │  (conflict.input_sequence,
+                        │      cancelled; its own frame dropped) │   validation.input, conflict.input_closed)
                         └── socket closed ── cancel + join ──────┘  (no frame: socket gone)
 ```
 
@@ -100,6 +107,7 @@ Client frames are **JSON text** frames. Every frame needs a non-empty string `re
 
 ```json
 {"type":"request","ref":"c1","id":"demo.add","params":{"a":2,"b":3}}
+{"type":"request","ref":"r1","id":"demo.read","params":{"path":"data/a.txt"},"restrict":{"grants":[{"capability":"allow_read","targets":["./data/**"]}]}}
 {"type":"input","ref":"c3","seq":1,"data":"hi"}
 {"type":"finish_input","ref":"c3"}
 {"type":"cancel","ref":"c3"}
@@ -117,7 +125,10 @@ Rules:
 | `request` ref not already in flight | `conflict.ref` (409 semantics) |
 | ≤ 8 refs in flight per connection | 9th → `limit.ws_refs` (retryable) |
 | `input` / `finish_input` / `cancel` target an in-flight ref | `not_found.ref` |
-| `input.seq` = next expected (1, 2, …); identical retry of the last seq is accepted | otherwise the ref is **cancelled** (terminal `cancelled.session`) |
+| `input.seq` = next expected (1, 2, …); identical retry of the last seq is accepted | otherwise the ref ends with `conflict.input_sequence` (then its session is cancelled) |
+| `input.data` matches the operation's `receives` | otherwise the ref ends with `validation.input` (`details {seq, path, expected, found}`) |
+| no `input` after `finish_input` | otherwise the ref ends with `conflict.input_closed` |
+| `restrict` (optional) is `{grants:[…]}` | other keys / malformed grants → `policy.invalid` (`details.pointer` under `/restrict`) for that ref |
 
 ## Response Format
 
@@ -129,11 +140,17 @@ Server frames are JSON text. `data` frames carry the request's `request_id` / `t
 {"type":"error","ref":"e2","request_id":"req_05db0cb0b1","trace_id":"tr_05db0cb0b1","error":{"kind":"cancelled","code":"cancelled.session","message":"the session was cancelled","retryable":false,"effects":"none"}}
 ```
 
-**Flow control.** Each ref's session keeps a bounded event log (16 frames); a producer that outruns the socket blocks (backpressure) rather than buffering without bound. The per-ref pump reads with a 5 s bounded wait and forwards frames in `seq` order.
+**Flow control.** Each ref has its own outbound **lane of 16 frames**; the lanes are merged into the one socket writer. A slow consumer of one ref blocks only that ref's producer (backpressure), never the other refs. Each ref's session also keeps a bounded event log (16 frames), and its retained bytes count against the host budget `limits.max_buffered_bytes` (`limit.buffered_bytes`). The per-ref pump reads with a 5 s bounded wait and forwards frames in `seq` order.
+
+```text
+  ref c1 session ─▶ lane c1 [16] ─┐
+  ref c2 session ─▶ lane c2 [16] ─┼─▶ writer ─▶ socket        a full lane blocks only its own producer
+  ref c3 session ─▶ lane c3 [16] ─┘
+```
 
 ## Error Format
 
-The `error` object is the same RivetError used everywhere ([API-2026-0005](api-2026-0005-error-registry.md)): `kind`, `code`, `message`, `retryable`, `effects`, plus optional `operation_id`, `details`, `hint`, `source`. A refused frame never closes the socket; it gets an `error` frame for its `ref` (or `""` when no ref could be read). Frame-level errors for a ref that was never opened do **not** count as that ref's terminal frame.
+The `error` object is the same RivetError used everywhere ([API-2026-0005](api-2026-0005-error-registry.md)): `kind`, `code`, `message`, `retryable`, `effects`, plus optional `operation_id`, `details`, `hint`, `source`. A refused frame never closes the socket; it gets an `error` frame for its `ref` (or `""` when no ref could be read). Frame-level errors for a ref that was never opened do **not** count as that ref's terminal frame. A refused `input` or `finish_input` on an open ref **is** that ref's terminal frame and carries the specific code.
 
 ## Rate Limits
 
@@ -141,7 +158,10 @@ The `error` object is the same RivetError used everywhere ([API-2026-0005](api-2
 |---|---|---|
 | Refs in flight per connection | 8 | `limit.ws_refs` |
 | Sessions per principal (shared with polling / MCP / `rivet.sessions.*`) | 8 | `limit.sessions` |
+| Outbound lane per ref | 16 frames | backpressure (per ref) |
 | Event log per ref | 16 frames / 32 MiB | backpressure |
+| Bytes retained by all sessions of the host | `limits.max_buffered_bytes` (default 256 MiB) | `limit.buffered_bytes` |
+| Deadline per ref | the default request deadline (30 s); a `request` frame has no `deadline_ms` | `timeout.request` |
 | Top-level concurrent requests | `limits.max_concurrent_requests` (default 64) | `limit.concurrency` |
 
 ## Versioning and Deprecation
@@ -150,7 +170,7 @@ The subprotocol string is the version. `rivet.v1` is the only protocol in 0.1.0;
 
 ## Examples
 
-Captured session 1 — unary, streaming, duplex, duplicate ref, sequence gap:
+Captured session 1 — unary, streaming, duplex, duplicate ref:
 
 ```text
 -> {"type":"request","ref":"c1","id":"demo.add","params":{"a":2,"b":3}}
@@ -165,8 +185,24 @@ Captured session 1 — unary, streaming, duplex, duplicate ref, sequence gap:
 <- {"type":"data","ref":"c3","request_id":"req_03f21a2227","trace_id":"tr_03f21a2227","seq":1,"data":"hi"}
 -> {"type":"request","ref":"c3","id":"demo.add","params":{"a":1}}
 <- {"type":"error","ref":"c3","error":{"kind":"conflict","code":"conflict.ref","message":"ref `c3` is already in flight","retryable":false,"effects":"none"}}
--> {"type":"input","ref":"c3","seq":3,"data":"skip"}
-<- {"type":"error","ref":"c3","request_id":"req_03f21a2227","trace_id":"tr_03f21a2227","error":{"kind":"cancelled","code":"cancelled.session","message":"the session was cancelled","retryable":false,"effects":"none"}}
+```
+
+Captured session 1b (commit `829ca43`) — refused input frames end their ref with the specific code; `restrict` narrows one ref:
+
+```text
+-> {"type":"request","ref":"c1","id":"chat.echo","params":{}}
+-> {"type":"input","ref":"c1","seq":1,"data":"hi"}
+<- {"type":"data","ref":"c1","request_id":"req_01c6d564cd","trace_id":"tr_01c6d564cd","seq":1,"data":"hi"}
+-> {"type":"input","ref":"c1","seq":3,"data":"skip"}
+<- {"type":"error","ref":"c1","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
+-> {"type":"request","ref":"c2","id":"chat.echo","params":{}}
+-> {"type":"input","ref":"c2","seq":1,"data":5}
+<- {"type":"error","ref":"c2","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
+-> {"type":"request","ref":"c3","id":"chat.echo","params":{}}
+-> {"type":"finish_input","ref":"c3"}
+<- {"type":"result","ref":"c3","completion":{"request_id":"req_03c4611c47","trace_id":"tr_03c4611c47","result":{"echoed":0},"data_count":0,"effects":"none"}}
+-> {"type":"request","ref":"r1","id":"demo.read","params":{"path":"data/a.txt"},"restrict":{"grants":[{"capability":"allow_read","targets":["./data/other/**"]}]}}
+<- {"type":"error","ref":"r1","request_id":"req_0444eace94","trace_id":"tr_0444eace94","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on data/a.txt denied: request restriction: no grant for allow_read data/a.txt","retryable":false,"effects":"none","source":{"file":"app.rivet","line":73,"column":5,"end_line":73,"end_column":34},"operation_id":"demo.read","details":{"capability":"allow_read","access":"read","target":"data/a.txt"}}}
 ```
 
 Captured session 2 — finish, cancel, malformed frames, limits, close:
@@ -212,11 +248,11 @@ content-type: application/json
 
 ## Compatibility Notes
 
-**Close semantics.** Refs are connection-owned: when the socket closes (client close frame, network drop, or server shutdown) the server cancels every in-flight ref through the session driver, waits for each scope to clean up (handles close in reverse order), and then closes. There is no resume across sockets — use polling sessions ([API-2026-0001](api-2026-0001-http-rest-sse-polling.md#polling-sessions)) when a request must survive reconnects. The server does not use custom close codes in 0.1.0.
+**Close semantics.** Refs are connection-owned: when the socket closes (client close frame, network drop, or server shutdown on SIGINT/SIGTERM) the server fires each in-flight ref's cancellation token through the session driver, waits for each scope to clean up (handles close in reverse order within the 5 s grace), and then closes. There is no resume across sockets — use polling sessions ([API-2026-0001](api-2026-0001-http-rest-sse-polling.md#polling-sessions)) when a request must survive reconnects. The server does not use custom close codes in 0.1.0.
 
-**Refused input.** A refused `input` or `finish_input` (sequence gap, input already closed) cancels its ref so the ref still ends with exactly one terminal frame; that terminal frame is `cancelled.session`, and the specific refusal code (for example `conflict.input_sequence`) is not reported on WebSocket in 0.1.0. Polling reports the specific code.
+**Refused input.** A refused `input` or `finish_input` (sequence gap, an item that does not match `receives`, input already closed) sends that ref's terminal `error` frame with the specific code first and then cancels its session, so the ref still ends with exactly one terminal frame — the same codes polling reports.
 
-**Remote CLI.** `rivet --endpoint URL request ID --stream --input-jsonl -` uses this route: one `request` frame, one `input` frame per stdin line, `finish_input` at EOF (or `cancel` on Ctrl-C). `--timeout` is not applied over this duplex path in 0.1.0.
+**Remote CLI.** `rivet --endpoint URL request ID --stream --input-jsonl -` uses this route: one `request` frame, one `input` frame per stdin line, `finish_input` at EOF (or `cancel` on Ctrl-C). `--timeout` is not applied over this duplex path in 0.1.0 (a known limitation; the ref runs under the default 30 s request deadline).
 
 ## Related Documents
 
@@ -229,3 +265,4 @@ content-type: application/json
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial rivet.v1 contract with frames captured from `rivet serve` at commit f40d4aa. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43: per-ref 16-frame lanes, specific refusal frames (`conflict.input_sequence`, `validation.input`, `conflict.input_closed`), `receives` item validation, `restrict` on request frames, `traceparent` on the upgrade, host byte budget, drain on SIGTERM; frames re-captured. |

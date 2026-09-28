@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, api, mcp, json-rpc, tools]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet MCP server: tools over Streamable HTTP and stdio
@@ -52,13 +53,13 @@ Every public operation in a Rivet bundle is an MCP **tool** whose name is the op
   │                                   start receipt goes to stderr         │
   └───────────────────────────┬───────────────────────────────────────────┘
                               ▼
-            tools/list ─▶ direct tools (authorized public ops) + built-ins
+            tools/list ─▶ direct tools (authorized public ops) + built-ins the principal may call
             tools/call ─▶ unary op     : Completion         (isError false)
                           streaming op : SessionReceipt     (_meta rivet/delivery = session)
                           failure      : ErrorEnvelope      (isError true)
 ```
 
-Examples were captured from `rivet serve --listen 127.0.0.1:18431` and `rivet serve --stdio` (commit `f40d4aa`) on [docs/demos/01-catalog](../demos/01-catalog/app.rivet), using the request files in [requests/](../demos/01-catalog/requests/initialize.mcp.json). IDs vary per run.
+Examples were captured from `rivet serve --listen 127.0.0.1:18431` and `rivet serve --stdio` (commit `f40d4aa`) on [docs/demos/01-catalog](../demos/01-catalog/app.rivet), using the request files in [requests/](../demos/01-catalog/requests/initialize.mcp.json); the `tools/list` built-in listing and `rivet.capabilities` call were re-captured on commit `829ca43` (`127.0.0.1:18901`, a scratch bundle). IDs vary per run.
 
 ## Audience and Stability
 
@@ -95,7 +96,7 @@ Additional HTTP checks, in order:
 | `initialize` | `{protocolVersion:"2025-11-25", capabilities:{tools:{}}, serverInfo:{name:"rivet", version}}` |
 | `notifications/*` | no response (HTTP 202) |
 | `ping` | `{}` |
-| `tools/list` | `{tools:[…]}` — no pagination |
+| `tools/list` | `{tools:[…]}` — direct tools, then the built-ins the principal may call; no pagination |
 | `tools/call` | tool result (below) |
 | anything else | `-32601 method not found: METHOD` |
 
@@ -114,6 +115,8 @@ One per authorized public operation:
 
 ### Built-in tools listed beside them
 
+`tools/list` appends every built-in the calling principal is allowed to call (the same `serve.principals` decision as `tools/call`): the local principal sees all twenty below; a network principal sees the generic ones, the `rivet.auth.*` tools its patterns match, and a sensitive tool only when its ID is listed exactly.
+
 | Tool | Arguments | Purpose |
 |---|---|---|
 | `rivet.request` | `{id, params?}` | Generic dispatch: Completion (unary) or SessionReceipt (streaming) |
@@ -124,14 +127,28 @@ One per authorized public operation:
 | `rivet.sessions.send` | `{session_id, send_seq ≥ 1, data}` | One input item |
 | `rivet.sessions.finish_input` | `{session_id}` | Half-close input |
 | `rivet.sessions.read` | `{session_id, after_seq?, max_events?, wait_ms? ≤ 5000}` | Events after `after_seq` (acknowledges earlier ones) |
-| `rivet.sessions.cancel` | `{session_id}` | Cancel and await cleanup |
+| `rivet.sessions.cancel` | `{session_id}` | Cancel and await cleanup (a finished session reports its terminal state) |
+| `rivet.io` | `{ids?, all?, by?, kind?, access?, check_policy?, needs?, strict?, include_bootstrap?, trace?, format?, report?}` | I/O manifest (sensitive) |
+| `rivet.policy.generate` | `{ids?, all?}` | Least-privilege draft; never writes (sensitive) |
+| `rivet.trace.show` | `{request_id}` | This host's recorded decisions (sensitive) |
+| `rivet.trace.export` | `{request_id, path}` (`output` alias) | Write that trace to a new file through the broker (sensitive) |
+| `rivet.capabilities` | `{}` | What this build supports (any authenticated principal) |
+| `rivet.connectors.sync` | `{name, output}` | New candidate snapshot file (sensitive) |
+| `rivet.auth.begin` / `complete` / `status` / `disconnect` / `cancel` | profile / account / transaction parameters | OAuth account management |
 
-Built-in `outputSchema` is the Completion schema with an open `result`. The other built-ins (`rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.connectors.sync`, `rivet.auth.begin|complete|status|disconnect|cancel`) are **callable** by name with `tools/call` but are **not listed** in `tools/list`; the sensitive four need an exact `serve.principals` listing for a network principal.
+Built-in `outputSchema` is the Completion schema with an open `result`. Direct tools of operations that declare `emits`/`receives` carry the declared descriptions in those item schemas (since commit `2a751ab`).
 
 ## Request Format
 
 ```json
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"demo.add","arguments":{"a":2,"b":3}}}
+```
+
+An optional `restrict: {"grants": [...]}` beside `name` and `arguments` narrows the authority of this one call (and its nested calls) to the intersection with policy.json; it never widens, and a malformed value is an `isError` result with `policy.invalid`. A valid W3C `traceparent` header on the POST sets the call's trace, and the answer to a `tools/call` carries a `traceparent` header.
+
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"demo.read","arguments":{"path":"data/a.txt"},
+ "restrict":{"grants":[{"capability":"allow_read","targets":["./data/**"]}]}}}
 ```
 
 Bridge recursion state may be passed in `params._meta`: `{"rivet/hops": N, "rivet/chain": ["rivet:…", …]}`. Rivet carries it into nested MCP connector calls made while serving the tool; a call at 8 hops fails with `limit.mcp_hops`, and a call whose next hop is already in the chain fails with `limit.mcp_recursion` (both before any connector I/O).
@@ -243,10 +260,15 @@ HTTP/1.1 202 Accepted
 
 $ curl -s -X POST http://127.0.0.1:18431/mcp -H 'mcp-session-id: mcp_1b9c7c55f832a92a5' \
        -H 'mcp-protocol-version: 2025-11-25' -d @list.mcp.json
-# tool names, in order:
-demo.greet, demo.add, demo.health, demo.countdown,
+# tool names, in order (commit 2a751ab, scratch bundle on 127.0.0.1:18909, principal local — 20 built-ins):
+demo.sign, demo.count, demo.oops, demo.fanout, demo.copy, demo.read, chat.echo, demo.typed,
 rivet.request, rivet.list, rivet.describe, rivet.outputs,
-rivet.sessions.open, rivet.sessions.send, rivet.sessions.finish_input, rivet.sessions.read, rivet.sessions.cancel
+rivet.sessions.open, rivet.sessions.send, rivet.sessions.finish_input, rivet.sessions.read, rivet.sessions.cancel,
+rivet.io, rivet.policy.generate, rivet.trace.show, rivet.trace.export, rivet.capabilities, rivet.connectors.sync,
+rivet.auth.begin, rivet.auth.complete, rivet.auth.status, rivet.auth.disconnect, rivet.auth.cancel
+
+$ … -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"rivet.capabilities","arguments":{}}}'
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0605da8c0e\",…,\"result\":{\"version\":\"0.1.0-dev\",\"platform\":{\"os\":\"macos\",\"arch\":\"aarch64\"},\"stages\":{\"A\":\"supported\",\"B\":\"supported\",\"C\":\"unsupported\"},…"}],…,"isError":false}}
 ```
 
 The `demo.add` descriptor from that list:
@@ -285,7 +307,7 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protoc
 | Server → client stream | none (`GET` is 405) | none |
 | Other surfaces | share the listener | none mounted |
 
-MCP sessions are held in memory by the serving process; they do not survive a restart. Notifications from the client (`notifications/cancelled` included) are accepted and ignored in 0.1.0.
+MCP sessions are held in memory by the serving process; they do not survive a restart. Notifications from the client (`notifications/cancelled` included) are accepted and ignored in 0.1.0. The server does not offer resources, resource templates or prompts, and does not speak the legacy HTTP+SSE MCP transport.
 
 ## Related Documents
 
@@ -298,3 +320,4 @@ MCP sessions are held in memory by the serving process; they do not survive a re
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial MCP server contract with exchanges captured from `rivet serve` (HTTP and stdio) at commit f40d4aa. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `tools/list` lists every built-in the principal may call (20, including `rivet.trace.export` and `rivet.capabilities`); emits/receives descriptions; `restrict` on `tools/call`; `traceparent` in/out. |

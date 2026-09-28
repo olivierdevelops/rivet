@@ -5,8 +5,8 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
-authors: [Claude]
+document_revision: 4
+authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, server]
 audience: [developers, operators, new-users]
-scope: Build rivet from source with Cargo and run the first check, request, outputs, io and serve against the 01-catalog demo, with success and failure examples.
+scope: Build and install rivet from source with Perch or Cargo and run the first check, request, outputs, io and serve against the 01-catalog demo, with success and failure examples.
 reason: PLAN-2026-0001 row D-35 — installation manual and first-run journey for the implemented 0.1.0 build.
 related_documents: [MAN-2026-0001, MAN-2026-0003, MAN-2026-0004, MAN-2026-0005, MAN-2026-0006, DEMO-2026-0001, PLAN-2026-0001]
 supersedes: null
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, manual, installation, quickstart]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet installation and quickstart
@@ -67,6 +68,39 @@ an operation, read its declared output, inspect its I/O and serve it over HTTP. 
                         |
                         +-> compile error / linker "no space left" -> free disk (TRBL-2026-0003) -> retry
 ```
+
+### Perch build and installation
+
+The repository's [`commands.perch`](../../commands.perch) wraps the source-build commands. With Perch on
+`PATH`, run from the checkout root:
+
+```sh
+perch --help
+perch build             # cargo build --locked --release --bin rivet
+perch build_debug       # cargo build --locked --bin rivet
+perch install           # build release, then bman add "<absolute binary path>"
+rivet --version         # rivet 0.1.0-dev
+```
+
+The install task requires `bman` on `PATH`. It builds the optimized binary into this checkout's `target/`
+with `cargo build --locked --release --bin rivet --target-dir "<checkout>/target"`, then invokes
+`bman add "<checkout>/target/release/rivet"` (`rivet.exe` on Windows). The quoted absolute path works when
+the checkout path contains spaces. A failed build prevents installation; bman errors fail the task.
+
+Bman manages the global bin directory; run `bman help` to see its location and ensure that directory is on
+`PATH`. On the verified machine it is `/Users/oliverlaleau/Documents/bin`. If an older Rivet installation
+appears earlier on `PATH`, your shell will continue to select that copy. Other build tasks respect
+`CARGO_TARGET_DIR`; install explicitly selects the checkout's `target/`. The first build may fetch dependencies.
+
+```text
+perch install -> cargo build --release --target-dir <checkout>/target
+              -> bman add "<checkout>/target/release/rivet" -> bman's global bin directory
+```
+
+From outside the checkout, use `perch -f /path/to/rivet/commands.perch build`; tasks run from the command
+file's directory. `perch help_cli` builds and prints Rivet help. `perch main` lists tasks, while bare
+`perch` prints Perch's own usage. The [contributor guide](../onboarding/onb-2026-0001-contributor-setup.md#perch-development-commands)
+lists test, lint, documentation and architecture tasks.
 
 ### CLI Procedure
 
@@ -151,16 +185,21 @@ rivet check
 error[validation.usage]: --file PATH is required (the entry .rivet file)
 ```
 
-Exit code 2. Failure example — a syntax error (here an `if … else`, which 0.1.0 does not have) is reported with
-its line and a caret; exit code 2:
+Exit code 2. Failure example — a syntax error (here `else if`, which the language does not have: nest an `if`
+inside the `else` instead) is reported with its line, a caret and a hint; exit code 2 (captured at commit
+`829ca43`):
 
 ```text
-error[syntax.unknown_statement]: unknown statement `else`
-  --> app.rivet:22:5
+error[syntax.else_if]: `else` takes no condition; `else if COND` is not supported
+  --> bad.rivet:6:5
    |
- 22|     else
-   |     ^^^^
+  6|     if n > 0
+   |     ^^^^^^^^
+  = hint: put `else` alone on its line and nest `if COND … end` inside its body
 ```
+
+`check` may also print `warning: …` lines (an undeclared `fail` code, an unguarded DAG result) and still exit 0;
+see [MAN-2026-0004 §check](man-2026-0004-cli-reference.md#rivet-check).
 
 ### 2. List and call an operation
 
@@ -213,7 +252,7 @@ rivet outputs --file app.rivet demo.countdown
 demo.countdown — Count down
 output  object   Summary returned after the last item.
   count   integer  required  Number of items emitted.
-emits   integer
+emits   integer  One countdown value per item.
 receives —
 errors   —
 ```
@@ -278,7 +317,9 @@ rivet --endpoint http://127.0.0.1:18080 request demo.add --params '{"a":4,"b":5}
 {"request_id":"req_046718b54c","trace_id":"tr_046718b54c","result":9,"data_count":0,"effects":"none"}
 ```
 
-Stop the server with Ctrl-C in terminal A (exit code 0).
+While it runs, terminal A shows one JSON access-log line per request after the receipt, and
+`curl -s http://127.0.0.1:18080/v1/health` answers `{"status":"ok","catalog_version":"sha256:…"}`. Stop the
+server with Ctrl-C (or SIGTERM) in terminal A: it drains in-flight work and exits 0.
 
 Failure example — listening on a non-loopback address without authentication is refused before binding:
 
@@ -319,7 +360,7 @@ Exit code 2. Recovery: add bearer tokens to `policy.json` (MAN-2026-0006).
 ## Limitations
 
 - Build from source only; no packages. Windows builds are untested.
-- See the [root manual's limitations](man-2026-0001-rivet-manual.md#limitations).
+- See the [root manual's known limitations](man-2026-0001-rivet-manual.md#known-limitations).
 
 ## Version Applicability
 
@@ -339,4 +380,7 @@ Exit code 2. Recovery: add bearer tokens to `policy.json` (MAN-2026-0006).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: the syntax-error example now shows `syntax.else_if` (`if … else … end` exists), `check` warnings, access log, `/v1/health` and SIGTERM drain, the `emits` line shows its description; limitations link updated. Perch content unchanged. |
+| 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
+| 2 | 2026-09-28 | Codex | Added Perch release/debug build and Cargo installation workflows, root selection and command discovery. |
 | 1 | 2026-09-28 | Claude | Initial installation and quickstart for 0.1.0, verified against 0.1.0-dev commit f40d4aa. |

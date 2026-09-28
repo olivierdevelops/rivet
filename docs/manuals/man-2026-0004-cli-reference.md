@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,7 +24,8 @@ superseded_by: null
 tags: [rivet, manual, cli, reference, exit-codes]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit f40d4aa)"
+last_verified_version: "0.1.0-dev (commit 829ca43)"
+next_review_date: 2026-10-28
 ---
 
 # Rivet CLI reference
@@ -39,7 +40,9 @@ last_verified_version: "0.1.0-dev (commit f40d4aa)"
 ## Purpose
 
 The complete command-line contract of `rivet` 0.1.0. Every row was taken from `rivet … --help` of the build and
-every example was executed (from `docs/demos/NN-*/` unless stated). Part of the
+every example was executed (from `docs/demos/NN-*/` unless stated) at commit `f40d4aa`; the rows and examples of the
+fix batch (`graph`, `trace export`, `check` warnings, `policy explain --params`, the `--timeout` cap,
+`connectors sync` output check) were executed at commit `829ca43`. Part of the
 [Rivet manual](man-2026-0001-rivet-manual.md).
 
 ## Reading Order
@@ -63,7 +66,7 @@ Global options and exit codes first, then commands in the order `rivet --help` p
 | `--file FILE` | path; none | entry `.rivet` file; `policy.json` beside it is discovered | required for every local command (`validation.usage`, exit 2) |
 | `--policy POLICY` | path; discovered file | use this policy file instead | a path, never grant text; missing file → `policy.invalid` (exit 2) |
 | `--json` | flag | print JSON instead of tables | request results are always JSON |
-| `--endpoint URL` | URL | send `request`, `list`, `describe`, `outputs`, `io`, `trace`, `auth` to a running server | not with `--file`/`--policy`; `check`, `policy`, `serve` refused (exit 2) |
+| `--endpoint URL` | URL | send `request`, `list`, `describe`, `outputs`, `io`, `trace`, `auth` to a running server | not with `--file`/`--policy`; `check`, `graph`, `policy`, `serve` refused (exit 2) |
 | `--token-file FILE` | path | bearer token for `--endpoint` | never pass tokens in argv or env |
 | `-h`, `--help` / `-V`, `--version` | flag | help / `rivet 0.1.0-dev` | — |
 
@@ -77,12 +80,28 @@ tables' diagnostics (`io: complete=false …`, `policy generate: N grants …`) 
 |---|---|---|
 | 0 | success | — |
 | 2 | syntax, validation, usage or configuration error | `syntax.*`, `check.*`, `validation.*`, `policy.invalid`, `stream.*`, `serve.auth_required` |
-| 3 | permission or authentication | `permission.denied`, `file.hardlink_refused`, `auth.required`, `auth.invalid`; `io --check-policy` found a denied/unknown site; `io --check-files` found a file not permitted |
+| 3 | permission or authentication | `permission.denied`, `file.hardlink_refused`, `auth.required`, `auth.invalid`; `io --check-policy` found a denied/unknown site; `io --check-files` found a file not permitted; `policy explain ID --params …` found a denied concrete target |
 | 4 | not found or conflict | `not_found.*`, `conflict.*`; `io --check-files` found a missing file |
 | 5 | dependency, runtime, unsupported, output_invalid, limit | `http.status`, `dns.resolve`, `process.exit`, `unsupported.*`, `output.invalid`, `limit.*`, application `fail` codes |
 | 6 | timeout | `timeout.request`, `timeout.poll`, `timeout.scope` |
 | 7 | inspection incomplete | `io --strict` with dynamic sites; `policy generate` with review items |
 | 130 | cancelled | Ctrl-C during `request` (`cancelled.request`) |
+
+`check` **warnings** (`warning: …` on stderr) never change the exit code.
+
+```text
+  rivet <command>
+     │ compile ──── error ──► exit 2 (syntax.*, check.*)      warnings ──► stderr, continue
+     │ policy  ──── error ──► exit 2 (policy.invalid)
+     │ run / inspect
+     ├── ok ───────────────────────────────────────────────────────────► 0
+     ├── permission / auth / --check-policy / explain --params denied ─► 3
+     ├── not_found / conflict / --check-files missing ────────────────► 4
+     ├── dependency / runtime / limit / unsupported ──────────────────► 5
+     ├── timeout ─────────────────────────────────────────────────────► 6
+     ├── io --strict dynamic / policy generate review items ─────────► 7
+     └── Ctrl-C ──────────────────────────────────────────────────────► 130
+```
 
 Argument parsing errors (unknown subcommand, missing positional) are printed by the parser and exit 2.
 
@@ -96,7 +115,7 @@ Invoke one operation. `rivet request [OPTIONS] <ID>`
 |---|---|---|
 | `--params JSON` | `{}` | parameters as a JSON object |
 | `--stream` | off | print NDJSON envelopes (data items, then the result) |
-| `--timeout D` | `30s` | request deadline, `^[0-9]+(ms\|s\|m\|h)$` |
+| `--timeout D` | `30s` | request deadline, `^[0-9]+(ms\|s\|m\|h)$`, at most `10m` (600000 ms, the same host cap as HTTP `deadline_ms`) |
 | `--input-jsonl -` | none | stdin JSON Lines as live input for a `receives` operation; needs `--stream`; EOF = finish input |
 
 ```text
@@ -137,6 +156,7 @@ Failures:
 | `request --file app.rivet data.private` (11-sandbox) | `permission.denied` "… denied: deny allow_read ./data/private/**" | 3 |
 | `request --file app.rivet slow.wait --timeout 100ms` | `timeout.request` "exceeded its 100 ms deadline" | 6 |
 | `request … --timeout 1x` | `validation.usage` "--timeout 1x: use digits plus ms, s, m or h" | 2 |
+| `request … --timeout 20m` | `validation.usage` "--timeout 20m is 1200000 ms; the host cap is 600000 ms (10m)", `details {timeout_ms, max_ms}` | 2 |
 | `request … lang.echo_input --input-jsonl -` (no `--stream`) | `validation.usage` | 2 |
 | Ctrl-C while running | `cancelled.request` "the request was cancelled by its caller", `effects: "unknown"` | 130 |
 
@@ -187,11 +207,11 @@ errors   —
 `rivet outputs [ID] [--all] [--json]` — declared output, emits, receives and errors.
 
 ```text
-$ rivet outputs --file app.rivet demo.countdown
+$ rivet outputs --file app.rivet demo.countdown          # commit 2a751ab: emits/receives lines show their descriptions
 demo.countdown — Count down
 output  object   Summary returned after the last item.
   count   integer  required  Number of items emitted.
-emits   integer
+emits   integer  One countdown value per item.
 receives —
 errors   —
 ```
@@ -217,9 +237,88 @@ error[docs.description]: operation `a.b` has no description
 error[docs.output_description]: `a.b` output has no description
 ```
 
-Other failures (exit 2): `syntax.*`, `check.unknown_operation`, `check.call_cycle`, `registry.duplicate_id`,
-`policy.invalid`; exit 4 for a missing connector file (`not_found.mcp_snapshot`, `not_found.descriptor`); exit 2
-for an unapproved snapshot (`mcp.snapshot_unapproved`). Refused with `--endpoint` (exit 2).
+**Warnings.** Without any flag, `check` also reports two warnings on stderr and still exits 0: a `fail "CODE"`
+whose operation declares no `error "CODE"` line (`docs.undeclared_error`; with `--strict-docs` it becomes an error),
+and a `return` that reads `NODE.result` of a `fail independent` DAG node without an `if NODE.status …` guard
+(`check.unguarded_result`). Missing descriptions are reported only with `--strict-docs`. Captured on a scratch
+bundle (commit `829ca43`):
+
+```text
+$ rivet --file app.rivet check
+warning: error[docs.undeclared_error]: `demo.oops` can fail with `demo.undeclared` but declares no `error "demo.undeclared"` line
+  --> app.rivet:31:5
+   |
+ 31|     fail "demo.undeclared" {why: "demo"}
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+warning: error[check.unguarded_result]: `a.result` is null unless `a` succeeded; guard it with `if a.status == "succeeded"`
+  --> app.rivet:41:5
+   |
+ 41|     return a.result
+   |     ^^^^^^^^^^^^^^^
+ok: 6 operations, 0 connectors, 0 auth profiles                                            [exit 0]
+```
+
+**Unknown functions** fail at compile time with the closest built-in as a hint (the functions are `request`,
+`request.stream`, `length`, `base64.encode`, `base64.decode`, `text`, `keys`, `xml.element`):
+
+```text
+$ rivet --file bad2.rivet check                                                            [exit 2]
+error[check.unknown_function]: unknown function `lenght`
+  --> bad2.rivet:6:13
+   |
+  6|     return (lenght items)
+   |             ^^^^^^
+  = hint: did you mean `length`?
+```
+
+Other failures (exit 2): `syntax.*` (for example `syntax.else_if` for `else if COND`, `syntax.else_without_if` for
+an orphan `else`), `check.unknown_operation`, `check.call_cycle`, `registry.duplicate_id`, `policy.invalid`; exit 4
+for a missing connector file (`not_found.mcp_snapshot`, `not_found.descriptor`); exit 2 for an unapproved snapshot
+(`mcp.snapshot_unapproved`). Refused with `--endpoint` (exit 2).
+
+### rivet graph
+
+`rivet graph <ID> [--all] [--json]` — the **static call graph** of one operation, computed from the compiled
+bundle without running anything: literal `(request "id" …)` calls (expanded into the callee's own graph),
+connector calls, effect sites, `dag` nodes with their `after` edges, and both arms of every `if`/`else` (marked).
+`--all` allows a private operation. Local only (refused with `--endpoint`, exit 2).
+
+```text
+$ rivet --file app.rivet graph report.total                 # 05-dag
+report.total                            app.rivet:29
+└── dag                                 app.rivet:37
+    ├── node first                      app.rivet:38
+    │   └── call math.double            app.rivet:38
+    ├── node second                     app.rivet:39
+    │   └── call math.double            app.rivet:39
+    └── node total after first, second  app.rivet:40
+        └── call math.sum               app.rivet:40
+
+$ rivet --file app.rivet graph demo.sign                     # scratch bundle: if … else … end
+demo.sign          app.rivet:1
+├── if n > 0       app.rivet:6
+└── else           app.rivet:8
+    └── if n == 0  app.rivet:9
+
+$ rivet --file app.rivet graph demo.copy                     # an effect site
+demo.copy                         app.rivet:53
+└── file     read         {path}  app.rivet:59
+```
+
+`--json` prints `{operation_id, root, nodes:[{id, kind, label, source, condition, conditional, after}], edges:[{from,
+to, kind: contains|after}]}`; node kinds are `operation`, `call`, `connector`, `effect`, `branch`, `dag`, `node`,
+`cycle`:
+
+```text
+$ rivet --file app.rivet --json graph report.partial          # 05-dag (abridged)
+{"operation_id":"report.partial","root":"n0","nodes":[{"id":"n0","kind":"operation","label":"report.partial","source":"app.rivet:45",…},
+ {"id":"n6","kind":"node","label":"node blocked after bad","source":"app.rivet:56","condition":null,"conditional":false,"after":["bad"]},…],
+ "edges":[{"from":"n0","to":"n1","kind":"contains"},…,{"from":"n4","to":"n6","kind":"after"},…]}
+```
+
+Failures: `graph math.double` (private) → `not_found.operation` (exit 4; add `--all`); unknown ID →
+`not_found.operation` (exit 4); `--endpoint` → `validation.usage` "check, graph, policy and serve work on a local
+bundle (--file)…" (exit 2).
 
 ### rivet io
 
@@ -258,7 +357,15 @@ table, json, markdown or csv"; `--access frob` → "not an access verb". With `-
 ### rivet policy explain
 
 `rivet policy explain [ID] [--params JSON]` — the effective policy; with an ID, each of its sites and the
-decision.
+decision. With `--params`, the call's **param-dependent targets are filled in** from those params and evaluated:
+the TARGET column shows the concrete path/URL (`KNOWLEDGE exact`) and the command **exits 3 when any would be
+denied** (plus a `denied: …` line). Without `--params` a param-dependent site shows its template (`{path}`) and
+the exit code is 0.
+
+```text
+  policy explain ID                 policy explain ID --params '{"path":"app.rivet"}'
+  TARGET {path}  param_dependent    TARGET app.rivet  exact  DECISION denied   ──► exit 3
+```
 
 ```text
 $ rivet policy --file app.rivet explain notes.update       # 02-file-crud
@@ -273,6 +380,22 @@ grant    allow_delete ./out/**
 OPERATION     KIND  ACCESS  TARGET           KNOWLEDGE  SOURCE        DECISION
 notes.update  file  stat    ./out/note.json  exact      app.rivet:30  allowed
 notes.update  file  update  ./out/note.json  exact      app.rivet:30  allowed
+```
+
+With concrete params (scratch bundle, `demo.read` = `return file read path as text`, policy granting
+`allow_read ./data/**` — commit `829ca43`):
+
+```text
+$ rivet --file app.rivet policy explain demo.read --params '{"path":"data/a.txt"}'          [exit 0]
+…
+OPERATION  KIND  ACCESS  TARGET      KNOWLEDGE  SOURCE        DECISION
+demo.read  file  read    data/a.txt  exact      app.rivet:73  allowed
+
+$ rivet --file app.rivet policy explain demo.read --params '{"path":"app.rivet"}'           [exit 3]
+…
+OPERATION  KIND  ACCESS  TARGET     KNOWLEDGE  SOURCE        DECISION
+demo.read  file  read    app.rivet  exact      app.rivet:73  denied
+denied: demo.read#1 allow_read app.rivet (read)
 ```
 
 A `"*"` target is flagged: `grant    allow_network *   ⚠ broad: "*" allows every target`. Failure: an invalid
@@ -302,10 +425,19 @@ policy generate: 2 grants, 0 review items
 policies/generated.json" (exit 4). Dynamic sites become review items and exit 7 (08-udp:
 `review  telemetry.receive#2  network connect  udp://{message.peer} … not granted (dynamic target)`).
 
-### rivet trace show
+### rivet trace show and export
 
 `rivet trace show <REQUEST_ID>` — broker decisions and attempts of one request, each with its `effect_id`.
-Traces live in the memory of the process that ran the request, so use it with `--endpoint`:
+`rivet trace export <REQUEST_ID> --output PATH` — write that trace (already sanitized) as pretty JSON to a **new**
+bundle-relative file; the write is itself an effect (`allow_write` access `create` on PATH) and never overwrites
+(`conflict.already_exists`, exit 4). Traces live in the memory of the process that ran the request (no persistent
+trace store), so use `show` with `--endpoint`:
+
+```text
+  process that ran req_X ── trace store (memory) ──► trace show  (--endpoint → rivet.trace.show)   ✓
+                                                └──► trace export (Runtime::export_trace in that host) ✓
+  new local `rivet` process ── empty store ──► not_found.trace (exit 4)
+```
 
 ```text
 $ rivet --endpoint http://127.0.0.1:18411 trace show req_020a473102
@@ -315,6 +447,27 @@ $ rivet --endpoint http://127.0.0.1:18411 trace show req_020a473102
 Failure: a local `rivet trace --file app.rivet show req_…` → `not_found.trace` "no trace for request … in this
 host's trace store" (exit 4) — a new process has an empty store. Pure requests record no decisions, so they have
 no trace either.
+
+`trace export` (commit `829ca43`):
+
+```text
+$ rivet --file app.rivet trace export req_08460e9160 --output ./out/t2.json                      [exit 4]
+{"request_id":"","trace_id":"","error":{"kind":"not_found","code":"not_found.trace","message":"no trace for request `req_08460e9160` in this host's trace store","retryable":false,"effects":"none"}}
+
+```
+
+Use the remote form against the process that ran the request (commit `2a751ab`; the path is relative to that
+server's bundle and needs `allow_write` access `create` in its policy):
+
+```text
+$ rivet --endpoint http://127.0.0.1:18908 trace export req_01a505ce1d --output ./out/trace.json           [exit 0]
+{"request_id":"req_01a505ce1d","path":"./out/trace.json","events":1,"bytes":718}
+
+$ rivet --endpoint http://127.0.0.1:18908 trace export req_01a505ce1d --output ./out/trace.json           [exit 4]
+{"request_id":"req_03a2920b07","trace_id":"tr_03a2920b07","error":{"kind":"conflict","code":"conflict.already_exists","message":"./out/trace.json already exists","retryable":false,"effects":"none"}}
+```
+
+A library host calls `Runtime::export_trace(request_id, path)` ([MAN-2026-0007](man-2026-0007-embedding-library.md)).
 
 ### rivet auth
 
@@ -345,8 +498,18 @@ $ rivet connectors --file app.rivet sync peer --output ./schemas/peer.json
 wrote candidate snapshot ./schemas/peer.json (sha256:9173a4bb…); after review, approve it in policy.json: "approved": {"snapshots": ["sha256:9173a4bb…"]}
 ```
 
-Failures: output exists → `conflict.already_exists` (exit 4); unknown connector → `not_found.mcp_connector`
-(exit 4); no `allow_mcp` grant for `NAME/discover` → `permission.denied` (exit 3).
+Failures: output exists → `conflict.already_exists` (exit 4) — checked **before** anything contacts the server;
+unknown connector → `not_found.mcp_connector` (exit 4); no `allow_mcp` grant for `NAME/discover` →
+`permission.denied` (exit 3).
+
+```text
+$ rivet --file app.rivet connectors sync crm --output ./schemas/crm.json          # 06-mcp-bridge  [exit 4]
+{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.already_exists","message":"./schemas/crm.json already exists; connectors sync never overwrites a snapshot","retryable":false,"effects":"none","details":{"path":"./schemas/crm.json"}}}
+```
+
+After a snapshot is approved, the first call of each connector session compares the server's live `tools/list`
+with it; any exposed tool whose name or `inputSchema` changed fails `mcp.schema_drift` (exit 5) before the call is
+sent — run `connectors sync` again and review the new candidate.
 
 ### rivet serve
 
@@ -359,6 +522,10 @@ $ rivet serve --file app.rivet --listen 127.0.0.1:18401
 {"listen_addr":"127.0.0.1:18401","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e…","policy_hash":null}   (stderr)
 ```
 
+After the receipt, one JSON access-log line per request follows on stderr; `GET /v1/health` answers
+`{"status":"ok","catalog_version":…}`; SIGINT and SIGTERM drain (cancel in-flight requests and sessions, close
+their handles within 5 s) and exit 0 — see [MAN-2026-0006](man-2026-0006-serving-and-surfaces.md#health-access-log-and-shutdown).
+
 Failures: non-loopback without auth → `serve.auth_required` (exit 2); `--listen nothost` → `validation.usage`
 (exit 2); `serve.auth.type` `mtls` → `unsupported.serve_mtls` (exit 5); refused with `--endpoint` (exit 2).
 
@@ -366,15 +533,17 @@ Failures: non-loopback without auth → `serve.auth_required` (exit 2); `--liste
 
 | Command / Flag | Purpose and When to Use | Syntax / Type / Default | Inputs | Output / Exit Codes | Errors | Example | Since |
 |---|---|---|---|---|---|---|---|
-| `request` | run one operation | `request ID [--params JSON] [--stream] [--timeout D] [--input-jsonl -]` | bundle, params, stdin | Completion / NDJSON; 0,2–6,130 | validation, permission, not_found, timeout | `request demo.add --params '{"a":2}'` | 0.1.0 |
+| `request` | run one operation (also built-ins such as `rivet.capabilities`) | `request ID [--params JSON] [--stream] [--timeout D ≤ 10m] [--input-jsonl -]` | bundle, params, stdin | Completion / NDJSON; 0,2–6,130 | validation, permission, not_found, timeout | `request demo.add --params '{"a":2}'` | 0.1.0 |
 | `list` | catalog summary | `list [--outputs] [--json]` | bundle | table/JSON; 0,2 | compile errors | `list --outputs` | 0.1.0 |
 | `describe` | full descriptors | `describe [IDS…] [--json]` | bundle | table/JSON; 0,2,4 | not_found.operation | `describe demo.add` | 0.1.0 |
 | `outputs` | declared outputs | `outputs ID \| --all [--json]` | bundle | table/JSON Schema; 0,2,4 | validation.query | `outputs --all` | 0.1.0 |
-| `check` | compile only | `check [--strict-docs]` | bundle, policy | `ok: …`; 0,2,4 | syntax, docs | `check --strict-docs` | 0.1.0 |
+| `check` | compile only | `check [--strict-docs]` | bundle, policy | `ok: …` + stderr warnings; 0,2,4 | syntax, check.unknown_function, docs | `check --strict-docs` | 0.1.0 |
+| `graph` | static call graph | `graph ID [--all] [--json]` | bundle | tree/JSON; 0,2,4 | not_found.operation | `graph report.total` | 0.1.0 |
 | `io` | I/O manifest | `io [IDS…] [--all] [--by …] [--kind K] [--access V] [--format …] [--check-policy] [--strict] [--needs] [--check-files] [--include-bootstrap] [--trace REQ]` | bundle, policy, files (probe) | table/JSON/MD/CSV; 0,2,3,4,7 | validation.usage | `io --by target` | 0.1.0 |
-| `policy explain` | effective policy + decisions | `policy explain [ID] [--params JSON]` | bundle, policy | table; 0,2 | policy.invalid | `policy explain notes.update` | 0.1.0 |
+| `policy explain` | effective policy + decisions | `policy explain [ID] [--params JSON]` | bundle, policy | table; 0,2,3 | policy.invalid | `policy explain demo.read --params '{"path":"data/a.txt"}'` | 0.1.0 |
 | `policy generate` | least-privilege draft | `policy generate [IDS…] [--all] [--output PATH]` | manifest | JSON; 0,4,7 | conflict.exists | `policy generate --all --output p.json` | 0.1.0 |
 | `trace show` | decisions of one request | `trace show REQ` | server trace store | JSON; 0,4 | not_found.trace | `--endpoint URL trace show req_…` | 0.1.0 |
+| `trace export` | save one trace to a new file | `trace export REQ --output PATH` | trace store; `allow_write create` | receipt JSON; 0,3,4 | not_found.trace, conflict.already_exists | `--endpoint URL trace export req_… --output ./audit/t.json` | 0.1.0 |
 | `auth begin/complete/status/disconnect/cancel` | OAuth accounts | see above | profile, account, params file | JSON; 0,2,3,4 | validation.auth_flow, permission.denied | `auth status p --account a` | 0.1.0 |
 | `connectors sync` | MCP snapshot candidate | `connectors sync NAME --output PATH` | live MCP server | JSON + stderr hint; 0,3,4 | conflict.already_exists | `connectors sync peer --output ./schemas/peer.json` | 0.1.0 |
 | `serve` | all surfaces | `serve [--listen HOST:PORT] [--stdio]` | bundle, policy | stderr receipt; 0,2,5 | serve.auth_required, unsupported.serve_mtls | `serve --listen 127.0.0.1:8080` | 0.1.0 |
@@ -390,9 +559,13 @@ is either an `error[CODE]: message` line (compile/usage) or the JSON error envel
 
 ## Limitations
 
-- `trace show` without `--endpoint` never finds a trace (in-memory, per-process store).
-- `--timeout` is not applied over the WebSocket duplex path (MAN-2026-0006).
-- Windows is untested.
+The CLI-relevant rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.md#known-limitations):
+
+- No persistent trace store: `trace show`/`trace export` without `--endpoint` never find a trace (in-memory,
+  per-process store).
+- `--timeout` is not applied over the WebSocket duplex path (`--stream --input-jsonl -` with `--endpoint`).
+- Bundles are single files (no `import`).
+- Processes are sandboxed only on macOS; on Linux the sandbox is gated and Windows/other OSes are unsupported.
 
 ## Version Applicability
 
@@ -412,3 +585,4 @@ is either an `error[CODE]: message` line (compile/usage) or the JSON error envel
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial CLI reference for 0.1.0, every command executed against 0.1.0-dev commit f40d4aa. |
+| 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `rivet graph`, `rivet trace export` (remote form verified after the 2a751ab fix), emits/receives descriptions, `check` warnings and `check.unknown_function`, `policy explain --params` (exit 3), `--timeout` 10m cap, `connectors sync` output check before discovery and `mcp.schema_drift`, serve access log/health/drain, exit-code flow diagram; limitations aligned with MAN-2026-0001. |

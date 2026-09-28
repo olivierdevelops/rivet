@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -46,6 +46,7 @@ Known problems, diagnosis and fixes worth keeping (DOCUMENTATION §4.13, §26).
 ## Recently added or updated
 
 - 2026-09-28: created during PLAN-2026-0001 P3.
+- 2026-09-28: TRBL-2026-0002 revision 2 — the bare-section rule also explains why `else if` is refused (`syntax.else_if`).
 
 ## Deprecated, superseded or archived
 
@@ -60,3 +61,4 @@ None.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Created. |
+| 2 | 2026-09-28 | Claude | Recorded TRBL-2026-0002 revision 2. |
