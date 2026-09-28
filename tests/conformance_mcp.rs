@@ -133,7 +133,7 @@ fn stdio_grants(peer_dir: &Path) -> Json {
     ])
 }
 
-// vhco:test connectors.invoke_mcp -- stdio peer (rivet serve --stdio, sandboxed): sync writes a new snapshot, load fails until its sha256 is approved, then tool success, isError → mcp.tool_failed, and a snapshot tool the server lacks → protocol.mcp_error keeping JSON-RPC -32602
+// vhco:test connectors.invoke_mcp -- stdio peer (rivet serve --stdio, sandboxed): sync writes a new snapshot, load fails until its sha256 is approved, then tool success and isError → mcp.tool_failed
 #[tokio::test(flavor = "multi_thread")]
 async fn stdio_rivet_peer_sync_approve_call() {
     let peer = tempfile::tempdir().unwrap();
@@ -258,9 +258,12 @@ async fn schema_drift_fails_load_or_keeps_rpc_identity() {
     let rt = load(dir.path()).unwrap();
     match rt.request("peer.tools.ghost", Value::Null, None).await {
         Err(e) if sandbox_missing(&e) => {}
+        // G29: the live tools/list lacks `ghost` and serves a different demo.add
+        // inputSchema than the approved snapshot → drift, before the call is sent
+        // (the JSON-RPC error identity is covered by invoke_mcp's unit tests).
         Err(e) => {
-            assert_eq!(e.code, "protocol.mcp_error", "{e:?}");
-            assert_eq!(e.details.get("code"), Some(&Value::Int(-32602)));
+            assert_eq!(e.code, "mcp.schema_drift", "{e:?}");
+            assert!(e.message.contains("ghost"), "{}", e.message);
         }
         Ok(c) => panic!("ghost tool succeeded: {c:?}"),
     }
@@ -299,24 +302,34 @@ async fn schema_drift_fails_load_or_keeps_rpc_identity() {
 
 // ------------------------------------------------------------------ stdio: scripted fake
 
+// The fixture answers with the request's own id (pure sh, no external tools) and
+// serves `tools/list` from fixture/tools.json so the G29 drift check sees the
+// approved snapshot.
 const FAKE_SH: &str = r#"log="$1"
+dir="${0%/*}"
 while IFS= read -r line; do
+  rest="${line#*\"id\":}"
+  id="${rest%%[,\}]*}"
   case "$line" in
     *'"method":"initialize"'*)
       printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fake","version":"1"}}}' ;;
+    *'"method":"tools/list"'*)
+      tools=""
+      while IFS= read -r l; do tools="$tools$l"; done < "$dir/tools.json"
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":%s}}\n' "$id" "$tools" ;;
     *'"method":"tools/call"'*)
       case "$line" in
         *'"name":"sample"'*)
           printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":1,"progress":1}}'
           printf '%s\n' '{"jsonrpc":"2.0","id":"s1","method":"sampling/createMessage","params":{"messages":[],"maxTokens":1}}' ;;
         *'"name":"fail"'*)
-          printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"nope"}],"isError":true}}' ;;
+          printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"nope"}],"isError":true}}\n' "$id" ;;
         *'"name":"broken"'*)
-          printf '%s\n' '{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"internal","data":{"why":"fixture"}}}' ;;
+          printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32603,"message":"internal","data":{"why":"fixture"}}}\n' "$id" ;;
         *)
           printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"not data"}}'
           printf '%s\n' '{"jsonrpc":"2.0","id":"p1","method":"ping"}'
-          printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"},{"type":"image","data":"AAEC","mimeType":"image/png"}],"structuredContent":{"ok":true},"isError":false}}' ;;
+          printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"ok"},{"type":"image","data":"AAEC","mimeType":"image/png"}],"structuredContent":{"ok":true},"isError":false}}\n' "$id" ;;
       esac ;;
     *) printf '%s\n' "$line" >> "$log" ;;
   esac
@@ -335,6 +348,11 @@ fn fake_bundle(dir: &Path, tools: &[&str]) -> String {
     let text =
         serde_json::to_string(&json!({"protocolVersion": "2025-11-25", "tools": list})).unwrap();
     write(dir, "schemas/fake.json", &text);
+    write(
+        dir,
+        "fixture/tools.json",
+        &format!("{}\n", serde_json::to_string(&list).unwrap()),
+    );
     let names: Vec<String> = tools.iter().map(|t| format!("\"{t}\"")).collect();
     let sampling = if tools.contains(&"sample") {
         "\noperation fixture.mcp_sampling\n    output json\n    return (request \"fake.tools.sample\" {})\nend\n"
@@ -569,9 +587,11 @@ async fn bridge_recursion_is_bounded() {
         "\noperation step.s{steps}\n    output json\n    return {{done: true}}\nend\n"
     ));
     write(dir.path(), "app.rivet", &src);
-    let mut tools = vec![json!({"name": "loop.again", "inputSchema": {"type": "object"}})];
+    // The snapshot must match what this very server lists (G29 drift check).
+    let no_params = rivet::domain::outputs::params_schema(&[]);
+    let mut tools = vec![json!({"name": "loop.again", "inputSchema": no_params})];
     for i in 1..=steps {
-        tools.push(json!({"name": format!("step.s{i}"), "inputSchema": {"type": "object"}}));
+        tools.push(json!({"name": format!("step.s{i}"), "inputSchema": no_params}));
     }
     let snap =
         serde_json::to_string(&json!({"protocolVersion": "2025-11-25", "tools": tools})).unwrap();
@@ -801,10 +821,15 @@ async fn demo_06_readme_flows() {
     let methods: Vec<&str> = seen.iter().filter_map(|m| m["method"].as_str()).collect();
     assert_eq!(
         methods,
-        vec!["initialize", "notifications/initialized", "tools/call"]
+        vec![
+            "initialize",
+            "notifications/initialized",
+            "tools/list",
+            "tools/call"
+        ]
     );
-    assert_eq!(seen[2]["params"]["name"], json!("search"));
-    assert_eq!(seen[2]["params"]["_meta"]["rivet/hops"], json!(1));
+    assert_eq!(seen[3]["params"]["name"], json!("search"));
+    assert_eq!(seen[3]["params"]["_meta"]["rivet/hops"], json!(1));
 
     // Elicitation over SSE is declined like sampling.
     let e = rt
