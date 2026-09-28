@@ -4,8 +4,8 @@ title: "Rivet policy and sandbox security model"
 document_type: security
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,30 +16,30 @@ affected_versions:
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, operators, security-reviewers]
-scope: Threat model of Rivet 0.1.0 and what the policy broker, file confinement, network checks, process sandbox, secrets handling, OAuth, MCP connectors and serve authentication do and do not guarantee, with the bootstrap I/O list and the per-OS sandbox matrix.
+scope: Threat model of Rivet 0.1.0 and 0.2.0 and what the policy broker, file confinement, network checks, process sandbox, secrets handling, OAuth, MCP connectors and serve authentication do and do not guarantee, with the bootstrap I/O list, the per-OS sandbox matrix and the 0.2.0 additions (C ABI trust boundary, globals, file modules, Cargo features).
 reason: DOCUMENTATION.md §31 security-boundary impact for PLAN-2026-0001 row D-29; 0.1.0 introduces the effect broker, deny-by-default policy.json and network serving, and operators need an honest statement of guarantees and non-guarantees.
-related_documents: [PLAN-2026-0001, PROP-2026-0001, ADR-0003, INC-2026-0001, ARCH-2026-0001, API-2026-0001, API-2026-0003]
+related_documents: [PLAN-2026-0001, PLAN-2026-0002, PROP-2026-0001, PROP-2026-0002, API-2026-0007, SYS-2026-0010, ADR-0003, INC-2026-0001, ARCH-2026-0001, API-2026-0001, API-2026-0003]
 supersedes: null
 superseded_by: null
 tags: [rivet, security, policy, sandbox, ssrf, oauth, mcp, threat-model]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at e7ed8ed)"
+next_review_date: 2026-10-29
 ---
 
 # Rivet policy and sandbox security model
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, files, transports, datagrams, quic, grpc, connectors, auth, serve, mcp, audit
 
 ## Summary
 
-Rivet's trust boundary is the **effect broker**: every file, network, process, environment, credential, MCP and gRPC effect that a `.rivet` script attempts is authorized against `policy.json` **per actual attempt** before any I/O. Authority comes only from that file; when it is absent, every application effect is denied and pure operations still run. A library host may add a **ceiling** and any caller may send a per-request **`restrict`**; both can only narrow. Values declared with `secret … for ORIGIN` are **tainted** and may reach only their bound network origins. Network serving authenticates every request and applies one principal map to every surface. This document states what that buys, what it does not, and where 0.1.0 has known gaps.
+Rivet's trust boundary is the **effect broker**: every file, network, process, environment, credential, MCP and gRPC effect that a `.rivet` script attempts is authorized against `policy.json` **per actual attempt** before any I/O. Authority comes only from that file; when it is absent, every application effect is denied and pure operations still run. A library host may add a **ceiling** and any caller may send a per-request **`restrict`**; both can only narrow. Values declared with `secret … for ORIGIN` are **tainted** and may reach only their bound network origins. Network serving authenticates every request and applies one principal map to every surface. This document states what that buys, what it does not, and where the current release (0.2.0) has known gaps; the [0.2.0 additions](#020-additions) cover the C ABI, globals, modules and Cargo features.
 
 ```text
                           ┌───────────── trusted ─────────────┐
@@ -121,7 +121,7 @@ Out of scope for 0.1.0: a malicious local operator, side channels, resource exha
 
 - **Allowed effects are fully trusted in their content.** Rivet does not inspect what a granted HTTP endpoint returns or what a granted file contains, beyond size limits and declared output checks.
 - **Argument injection** into a granted binary is not prevented: argv stops shell injection, not tool-specific flags.
-- **Sandbox coverage is platform-dependent** (matrix below); on Linux (gated until verified on kernel ≥ 6.12) and Windows/other OSes (unsupported) 0.1.0 refuses to run processes when policy.json is present rather than run them unconfined.
+- **Sandbox coverage is platform-dependent** (matrix below): active on macOS; on Linux (gated until verified on kernel ≥ 6.12) Rivet refuses to run processes when policy.json is present (`unsupported.sandbox_backend`, exit 5 / HTTP 501) rather than run them unconfined. Rivet 0.2.0 supports macOS and Linux only; Windows is not supported (its known port failures are catalogued in INC-2026-0011).
 - **No TLS on the listener**: bearer tokens cross the network in clear unless a TLS-terminating proxy is in front.
 - **In-memory state only**: traces, sessions and `store memory` credentials vanish with the process; nothing is tamper-evident (no persistent trace store; `Runtime::export_trace` writes a copy through the broker on request).
 - **`*` principals reach `rivet.auth.*`**: a `serve.principals` entry `"*"` matches the OAuth management built-ins; their effect is then governed only by `allow_auth` grants.
@@ -185,10 +185,10 @@ Private ranges: RFC 1918, loopback, link-local (incl. `169.254.169.254`), CGNAT 
 ```text
 $ cat policy.json
 {"version":1,"grants":[{"capability":"allow_network","targets":["*"]}]}
-$ rivet --file app.rivet request probe.metadata --params '{}'          # http get "http://169.254.169.254/latest/meta-data/"
-{"request_id":"req_01c4030d3d","trace_id":"tr_01c4030d3d","error":{"kind":"permission","code":"permission.denied","message":"allow_network connect http://169.254.169.254:80/latest/meta-data/ denied: 169.254.169.254 is a private/loopback/link-local address; grant it literally (e.g. \"http://169.254.169.254:80/latest/meta-data/\") to allow it",…}}
+$ rivet --file app.rivet request probe.metadata --data '{}'          # http get "http://169.254.169.254/latest/meta-data/"  (0.2.0 capture)
+{"request_id":"req_01cc84e425","trace_id":"tr_01cc84e425","operation":"probe.metadata","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect http://169.254.169.254:80/latest/meta-data/ denied: 169.254.169.254 is a private/loopback/link-local address; grant it literally (e.g. \"http://169.254.169.254:80/latest/meta-data/\") to allow it","retryable":false,"source":{"file":"app.rivet","line":3,"column":5,"end_line":5,"end_column":8},"operation_id":"probe.metadata","details":{"capability":"allow_network","access":"connect","target":"http://169.254.169.254:80/latest/meta-data/"}},"effects":"none","data_count":0}
 exit 3
-$ rivet --file app.rivet request probe.udp --params '{}'               # with udp "10.0.0.5:53"
+$ rivet --file app.rivet request probe.udp --data '{}'               # with udp "10.0.0.5:53"  (0.1.0 capture, abridged)
 {…"code":"permission.denied","message":"allow_network connect udp://10.0.0.5:53 denied: 10.0.0.5 is a private/loopback/link-local address; grant it literally (e.g. \"udp://10.0.0.5:53\") to allow it",…}
 exit 3
 ```
@@ -201,11 +201,11 @@ File effects run through `files.apply_file_operation` (authorize every path the 
 
 A process effect always requires `allow_exec` on the exact binary path. **Whenever policy.json is present** the child must also run inside an OS sandbox built from the policy's read/write/delete/exec grants; if the grants cannot be represented or no backend exists, the spawn fails **before** any process starts.
 
-| Platform | Backend | 0.1.0 status | Child restrictions |
+| Platform | Backend | Status (0.1.0 and 0.2.0) | Child restrictions |
 |---|---|---|---|
 | macOS | Seatbelt via `/usr/bin/sandbox-exec`, static deny-default SBPL profile; paths passed as parameters (no profile injection) | **Active** | reads: granted paths + fixed system list (`/usr`, `/bin`, `/System`, `/Library/Apple`, `/private/var/db/timezone`, `/dev`); writes: granted paths; **no network (incl. loopback)**; no fork; signals only inside the sandbox |
 | Linux | Landlock ABI V6 (hard requirement) + seccomp deny-list, applied between fork and exec | **Built, gated** — refuses with `unsupported.sandbox_backend` until the conformance suite passes on kernel ≥ 6.12 | when enabled: Landlock fs/net/scope rules; seccomp denies AF_UNIX/INET/INET6/NETLINK/PACKET sockets, ptrace, bpf, io_uring, mount/unshare/setns, keyctl, module/kexec |
-| Windows, others | none | **Refuses** every sandboxed spawn: `unsupported.sandbox_backend` | — |
+| Windows, others | none | **Not supported** in 0.2.0 (removed from CI; INC-2026-0011). The code still refuses every sandboxed spawn with `unsupported.sandbox_backend` | — |
 
 ```text
   command "/usr/bin/curl" …
@@ -220,7 +220,7 @@ Captured on macOS (policy grants `allow_exec` on `/usr/bin/printf`, `/usr/bin/cu
 
 ```text
 proc.printf  args ["%s", "hello; echo this stays data"]
-{"request_id":"req_01698869d5","trace_id":"tr_01698869d5","result":"hello; echo this stays data","data_count":0,"effects":"committed"}
+{"request_id":"req_01cbe55cbd","trace_id":"tr_01cbe55cbd","operation":"proc.printf","type":"result","status":"ok","data":"hello; echo this stays data","error":null,"effects":"committed","data_count":0}
 
 proc.curl    args ["-sS","--max-time","2","http://127.0.0.1:9/"]     # exit 5
 {…"kind":"process","code":"process.exit","message":"`/usr/bin/curl` exited with status 1",…,
@@ -304,6 +304,53 @@ Hidden operations are indistinguishable from unknown ones on catalog routes and 
 
 Related incident: [INC-2026-0005](../incidents/resolved/inc-2026-0005-url-grant-path-prefix-match.md) (URL grant paths matched by raw prefix, `/users/42` covering `/users/420`) was fixed in commit `2d581b8`; see G12.
 
+## 0.2.0 additions
+
+### FFI trust boundary
+
+```text
+ ┌──────────── host process (C / Python / Go) = principal "local" ────────────┐
+ │  rivet_runtime_new({policy_file | policy_json, ceiling_json})               │
+ │        │ the ONLY grants: the policy in the options (or policy.json          │
+ │        │ discovered beside `file`); none → deny everything but pure ops      │
+ │        ▼                                                                    │
+ │  librivet ── catch_unwind ── handle table ── tracked strings ── Runtime     │
+ └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Guaranteed | Not guaranteed |
+|---|---|
+| A NULL, non-UTF-8 or freed/foreign argument is refused with `validation.ffi_argument` (never dereferenced beyond reading a NUL-terminated string) | Memory safety of the **host**: a host that writes past a returned buffer or frees it with `free()` corrupts its own heap |
+| Handles are opaque tokens looked up in a table: double free and use-after-free return `RIVET_ERROR` / an error envelope | Thread safety of a `RivetCall` used from two threads at once (one thread at a time is the contract) |
+| A Rust panic becomes an `internal.panic` envelope, never an unwind across the ABI | Protection from a malicious host: the host is the principal and can grant itself anything through its policy |
+| Only the 18 `rivet_*` symbols are exported | Windows builds (not produced or tested) |
+
+The host is the library principal, exactly as for the Rust library; the C ABI adds no authentication and no new
+capability.
+
+### Globals cannot hold secrets
+
+A `global` is evaluated at load from literals and pure built-ins only. `env`, `secret`, `request`, effects,
+params and locals are `check.global_not_constant`, so a secret can never be captured in a global and leak into
+every operation; secrets stay `secret NAME from env "V" for "ORIGIN"` inside the operation that uses them, with
+taint tracking unchanged.
+
+### File modules
+
+| Rule | Effect |
+|---|---|
+| Root confinement | `import` paths (and `rivet_load` / `Runtime::load` paths) must resolve inside the runtime root: `..` escapes and symlinks out are `permission.import_outside_root` (exit 3) |
+| Single policy | every module runs under the loader's policy only; a `policy.json` beside a module is ignored with `check.module_policy_ignored`, so a module cannot bring its own grants |
+| No URL imports | only local files; no network fetch at load |
+| Bounded | at most 256 files and depth 16 (`limit.imports`) |
+| Reviewable | imported files are bootstrap reads listed by `rivet io --include-bootstrap`; `rivet io` and `policy generate` cover every module |
+| Name-scoped grants | connector and auth profile names stay unique across the bundle (`check.import_collision`), so `allow_mcp NAME/…` and `allow_auth` grants cannot be captured by a module reusing a name |
+
+### Cargo features
+
+A build without an adapter refuses bundles that use it at load (`unsupported.feature`, exit 5 / HTTP 501); it never
+silently degrades (for example HTTP/3 without `quic` is refused, not downgraded).
+
 ## Example of a fixed defect: INC-2026-0001
 
 [INC-2026-0001](../incidents/resolved/inc-2026-0001-private-range-bypass-opaque-url-hosts.md) (S2, resolved before any release): with a `"*"` network grant, `udp://10.0.0.5:53`, `quic://[::1]:4433` and `tcp://…` were **allowed**, because the URL parser keeps hosts of non-special schemes as opaque text and the private-range predicate only recognized parsed IP hosts.
@@ -327,3 +374,4 @@ Fixed in commit `2c3d09b` with a regression test (`opaque_scheme_ip_literals_get
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial security model for 0.1.0, verified against commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: secret taint enforced on every sink (G11, captured refusals replace the leak capture), host ceiling and per-request restriction (G10), URL path segments (G12, INC-2026-0005), exact limit widths and buffered-bytes budget, OAuth cache key and no-expiry rule, MCP drift check / sync order / opaque effects / 401 behaviour, sensitive `rivet.trace.export`, `*` matching `rivet.auth.*`, access log and health. |
+| 3 | 2026-09-29 | Claude | 0.2.0 (D-37, D-48): FFI trust boundary, globals cannot hold secrets, file-module rules (root confinement, single policy, no URL imports), Cargo feature refusals; platform facts (macOS active, Linux gated, Windows not supported); examples re-captured as envelopes |

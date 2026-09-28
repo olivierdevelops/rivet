@@ -4,8 +4,8 @@ title: "Rivet language guide"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,39 +16,40 @@ affected_versions:
   to: null
 applicable_environments: [development, server, embedded]
 audience: [developers, integrators]
-scope: How to write .rivet bundles in 0.1.0 — operations, parameters, outputs, fields and errors, expressions, calls, control flow, try/catch, map/poll/iterate, dag, concurrent, with-blocks and resources, secrets, files, connectors and auth profiles — with verified success and failure examples.
-reason: PLAN-2026-0001 row D-36 — the language manual describes the implemented grammar (src/infra/rivet.capy and its lowering), not the proposal; REF-2026-0002 keeps the numbered examples.
-related_documents: [MAN-2026-0001, MAN-2026-0004, MAN-2026-0005, MAN-2026-0008, REF-2026-0002, SYS-2026-0001, SYS-2026-0002, DEMO-2026-0001, DEMO-2026-0002, DEMO-2026-0005]
+scope: How to write .rivet bundles in 0.2.0 — global constants, file modules (import), operations, parameters, outputs, fields and errors, expressions, calls, control flow, try/catch, map/poll/iterate, dag, concurrent, with-blocks and resources, secrets, files, connectors and auth profiles — with verified success and failure examples.
+reason: PLAN-2026-0001 row D-36 and PLAN-2026-0002 row D-22 — the language manual describes the implemented grammar (src/infra/rivet.capy and its lowering), not the proposal; REF-2026-0002 keeps the numbered examples.
+related_documents: [MAN-2026-0001, MAN-2026-0004, MAN-2026-0007, MAN-2026-0009, PLAN-2026-0002, INC-2026-0009, MAN-2026-0005, MAN-2026-0008, REF-2026-0002, SYS-2026-0001, SYS-2026-0002, DEMO-2026-0001, DEMO-2026-0002, DEMO-2026-0005]
 supersedes: null
 superseded_by: null
 tags: [rivet, manual, language, capy, dsl]
 confidentiality: internal
 review_cycle: on-release
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at e7ed8ed)"
+next_review_date: 2026-10-29
 ---
 
 # Rivet language guide
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, execution, files, sessions, connectors, auth, transports
 
 ## Purpose
 
-This volume teaches the `.rivet` language as implemented in 0.1.0. Each section says why you would use a form,
+This volume teaches the `.rivet` language as implemented in 0.2.0 (0.1.0 plus `global` constants, `import` of
+file modules and numeric list indexes such as `xs.0`). Each section says why you would use a form,
 shows a copy-pasteable example, what it returns, and the error you get when it is misused. The 159 numbered
 examples in [REF-2026-0002](../references/ref-2026-0002-language-and-usage.md) are the extended example set; all
-of them parse with the 0.1.0 grammar, but where REF-2026-0002 and this guide differ, this guide describes the
+of them parse with the 0.2.0 grammar, but where REF-2026-0002 and this guide differ, this guide describes the
 build.
 
 ## Reading Order
 
 ```text
- file layout ─► operations ─► parameters ─► outputs/emits/receives/errors ─► values/expressions
+ file layout ─► globals ─► modules (import) ─► operations ─► parameters ─► outputs/emits/receives/errors ─► values/expressions
       ─► calls ─► control flow ─► try/catch ─► map/poll/iterate ─► dag ─► concurrent/scope
       ─► with resources ─► files ─► secrets ─► connectors + auth profiles ─► errors reference
 ```
@@ -59,6 +60,8 @@ build.
 
 ```text
  app.rivet
+ ├── import "./users.rivet" as users [public]   (0..n, before any declaration)
+ ├── global NAME = EXPR                 (0..n constants, top level, in dependency order)
  ├── auth NAME oauth2 … end            (0..n OAuth profiles)       ─┐  declarations, any order
  ├── connector NAME mcp|grpc … end     (0..n connectors)            │
  └── operation ID … end / pipeline ID … end   (1..n operations)   ─┘
@@ -95,9 +98,10 @@ build.
 
 ## Task-Oriented Workflows
 
-All examples were compiled and run with `rivet 0.1.0-dev` (commit `f40d4aa`); the fix-batch forms (`else`,
-infix inside literals, `with file open`, `if_version`, secret taint, DAG timestamps, unknown functions) were run at
-commit `829ca43` from a scratch bundle. IDs and timestamps in outputs vary per run.
+Examples were first verified on `rivet 0.1.0-dev` (commits `f40d4aa`, `829ca43`); every request output below was
+re-captured on the 0.2.0 release candidate (`main` at `e7ed8ed`), so it shows the 0.2.0 envelope
+([API-2026-0006](../api/api-2026-0006-envelopes.md)). IDs and timestamps in outputs vary per run. Operation input
+is passed with `--data` (the 0.1.0 `--params` is a deprecated alias).
 
 ### Write an operation
 
@@ -114,19 +118,19 @@ end
 ```
 
 ```bash
-rivet request --file app.rivet demo.greet --params '{"person":"Ada"}'
+rivet request --file app.rivet demo.greet --data '{"person":"Ada"}'
 ```
 
 ```text
-{"request_id":"req_01fe6f6e2d","trace_id":"tr_01fe6f6e2d","result":"Hello, Ada!","data_count":0,"effects":"none"}
+{"request_id":"req_0100406015","trace_id":"tr_0100406015","operation":"demo.greet","type":"result","status":"ok","data":"Hello, Ada!","error":null,"effects":"none","data_count":0}
 ```
 
 `private true` hides an operation from `list`, `describe`, every surface and direct calls; other operations can
 still `(request …)` it (demo [05-dag](../demos/05-dag/README.md)):
 
 ```text
-$ rivet request --file app.rivet math.double --params '{"value":1}'        # private → [exit 4]
-{"…","error":{"kind":"not_found","code":"not_found.operation","message":"no operation `math.double`",…}}
+$ rivet request --file app.rivet math.double --data '{"value":1}'        # private → [exit 4], on stderr
+{"request_id":"req_01ff71ba15","trace_id":"tr_01ff71ba15","operation":"math.double","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `math.double`","retryable":false,"operation_id":"math.double"},"effects":"none","data_count":0}
 ```
 
 Compile-time failures (exit 2):
@@ -174,12 +178,12 @@ end
 
 | Call | Result / error | Exit |
 |---|---|---|
-| `--params '{}'` | `{"total":6,"count":4,"len":3}` | 0 |
-| `--params '{"n":2,"mode":"list"}'` | `[1,2]` | 0 |
-| `--params '{"n":20}'` | `validation.max` "parameter `n` must be ≤ 10" | 2 |
-| `--params '{"mode":"x"}'` | `validation.enum` "parameter `mode` must be one of [\"sum\",\"list\"]" | 2 |
-| `--params '{"zz":1}'` | `validation.unknown_field` with `details.known: ["n","mode"]` | 2 |
-| `--params '{"a":"x"}'` on an integer | `validation.type` | 2 |
+| `--data '{}'` | `{"total":6,"count":4,"len":3}` | 0 |
+| `--data '{"n":2,"mode":"list"}'` | `[1,2]` | 0 |
+| `--data '{"n":20}'` | `validation.max` "parameter `n` must be ≤ 10" | 2 |
+| `--data '{"mode":"x"}'` | `validation.enum` "parameter `mode` must be one of [\"sum\",\"list\"]" | 2 |
+| `--data '{"zz":1}'` | `validation.unknown_field` with `details.known: ["n","mode"]` | 2 |
+| `--data '{"a":"x"}'` on an integer | `validation.type` | 2 |
 | missing required | `validation.required` "missing required parameter `a`" | 2 |
 
 Unknown fields are always rejected; defaults are applied after the name check.
@@ -247,9 +251,9 @@ printf '{"a":1}\n"two"\n' | rivet request --file app.rivet lang.echo_input --str
 ```
 
 ```text
-{"request_id":"req_010049b3fd","trace_id":"tr_010049b3fd","seq":1,"type":"data","data":{"a":1}}
-{"request_id":"req_010049b3fd","trace_id":"tr_010049b3fd","seq":2,"type":"data","data":"two"}
-{"request_id":"req_010049b3fd","trace_id":"tr_010049b3fd","result":{"received":2},"data_count":2,"effects":"none","type":"result"}
+{"request_id":"req_01fe09c445","trace_id":"tr_01fe09c445","operation":"lang.echo_input","type":"data","seq":1,"data":{"a":1},"error":null}
+{"request_id":"req_01fe09c445","trace_id":"tr_01fe09c445","operation":"lang.echo_input","type":"data","seq":2,"data":"two","error":null}
+{"request_id":"req_01fe09c445","trace_id":"tr_01fe09c445","operation":"lang.echo_input","type":"result","seq":3,"status":"ok","data":{"received":2},"error":null,"effects":"none","data_count":2}
 ```
 
 ```text
@@ -269,7 +273,7 @@ printf '{"a":1}\n"two"\n' | rivet request --file app.rivet lang.echo_input --str
 | Form | Example | Notes |
 |---|---|---|
 | literals | `1`, `1.5`, `"x"`, `true`, `null`, `[1, 2]`, `{a: 1}` | object keys are bare identifiers |
-| paths | `response.body.items`, `obj.a` | missing key → `value.missing_key` (exit 2) |
+| paths | `response.body.items`, `obj.a`, list items by position `xs.0`, `m.rows.1.0`, `"${xs.0}"` | missing key or index out of range → `value.missing_key` (exit 2) |
 | operators | `+ - * / %`, `== != < <= > >=`, `and`, `or`, `not`, parentheses | integer `/` truncates (`7 / 2` → `3`); `+` joins strings and lists; `+=` appends |
 | interpolation | `"a=${obj.a}"` | dotted paths only |
 | helpers | `(length x)`, `(keys obj)`, `(text 42)`, `(base64.encode "hi")`, `(base64.decode "AAEC")`, `(xml.element name attrs content)` | pure, never perform I/O; with `(request …)` and `(request.stream …)` these are the **only** functions |
@@ -294,6 +298,30 @@ error[check.unknown_function]: unknown function `lenght`
 return {len: (length "héllo"), keys: (keys obj), t: (text 42), b64: (base64.encode "hi"), dotted: "a=${obj.a}"}
 → {"len":5,"keys":["a","b"],"t":"42","b64":"aGk=","dotted":"a=1"}
 ```
+
+List items are read by position with a numeric path segment (0-based), in expressions and in interpolation
+(fixed in 0.2.0 by INC-2026-0009; in 0.1.0 `xs.0` did not parse):
+
+```rivet
+operation lang.index
+    name "List index"
+    description "Read list items by position."
+    output json description "Items."
+    xs = [10, 20, 30]
+    m = {rows: [[1, 2], [3, 4]]}
+    return {first: xs.0, last: xs.2, cell: m.rows.1.0, text: "first=${xs.0}"}
+end
+```
+
+```text
+$ rivet request --file app.rivet lang.index
+{"request_id":"req_01fbcc286d","trace_id":"tr_01fbcc286d","operation":"lang.index","type":"result","status":"ok","data":{"first":10,"last":30,"cell":3,"text":"first=10"},"error":null,"effects":"none","data_count":0}
+# return xs.5 on a one-item list → [exit 2]
+{…"status":"error",…"error":{"kind":"validation","code":"value.missing_key","message":"index 5 is out of range for `xs`",…,"source":{"file":"oob.rivet","line":4,"column":12,"end_line":4,"end_column":16},…}}
+```
+
+A keyword statement whose value does not parse reports `syntax.expression` "the expression after `return` does
+not parse", with the hint "check its brackets, commas, quotes and object keys; list items are read with `xs.0`".
 
 Scoping: **assignments are operation-scoped** (a variable assigned inside `for`/`if` is visible after it);
 **loop variables, the `catch` variable `error`, `map` items and params are block-local**:
@@ -325,8 +353,8 @@ end
 ```
 
 ```text
---params '{"op":"a.c"}' → "c"                                                         [0]
---params '{"op":"a.d"}' → permission.denied "dynamic request to a.d is not in the `allow` list"  [3]
+--data '{"op":"a.c"}' → "c"                                                           [0]
+--data '{"op":"a.d"}' → permission.denied "dynamic request to a.d is not in the `allow` list"  [3]
 ```
 
 - Nested calls share the caller's deadline and `limits.max_call_depth` (default 16).
@@ -374,8 +402,8 @@ end
 ```
 
 ```text
---params '{"n":-3}' → {"request_id":"req_01d71955fd",…,"result":"negative",…}      [0]
---params '{"n":0}'  → {"request_id":"req_01d531049d",…,"result":"zero",…}          [0]
+--data '{"n":-3}' → {"request_id":"req_01fd1ae055",…,"status":"ok","data":"negative",…}      [0]
+--data '{"n":0}'  → {"request_id":"req_01fc245e15",…,"status":"ok","data":"zero",…}          [0]
 
  if n > 0 ──yes──► return "positive"
     │ no
@@ -733,12 +761,236 @@ become operations named `CONNECTOR.tools.NAME` (for example `(request "crm.tools
 methods are called with `grpc CONNECTOR.Method`. Loading fails until the connector's files exist and, for MCP,
 until the snapshot is approved — see MAN-2026-0008.
 
+### Globals
+
+Why: name a base URL, a page size or a list of retryable status codes once and reuse it in every operation of the
+file. A global is evaluated **once at load**, is read-only, and is resolved statically, so `rivet io` and
+`policy generate` see the real target. New in 0.2.0.
+
+```rivet
+global api        = "https://api.example.com"
+global users_url  = "${api}/users"
+global page_size  = 50
+global retry_on   = [429, 503]
+global headers    = {accept: "application/json"}
+
+operation users.all
+    output json
+    r = http get users_url
+        header "accept" headers.accept
+        decode json
+    end
+    return r.body
+end
+
+operation info.show
+    param page integer default 1
+    output json
+    return {url: "${users_url}?limit=${page_size}&page=${page}", first_retry: retry_on.0, accept: headers.accept}
+end
+```
+
+```text
+$ rivet --file app.rivet check
+ok: 3 operations, 0 connectors, 0 auth profiles
+$ rivet --file app.rivet request info.show --data '{"page":2}' --pretty
+{
+  "request_id": "req_01b96a1515",
+  "trace_id": "tr_01b96a1515",
+  "operation": "info.show",
+  "type": "result",
+  "status": "ok",
+  "data": {
+    "url": "https://api.example.com/users?limit=50&page=2",
+    "first_retry": 429,
+    "accept": "application/json"
+  },
+  "error": null,
+  "effects": "none",
+  "data_count": 0
+}
+$ rivet --file app.rivet io --by target
+TARGET                       ACCESS       CAPABILITY     ORIGIN    PHASE    NEEDS FILE  USED BY
+https://api.example.com:443  connect GET  allow_network  http get  connect  —           users.all, users.get
+```
+
+```text
+ load ─▶ parse ─▶ globals in declaration order ─▶ evaluate (pure) ─▶ one frozen scope per file
+                      │                              └─ env / secret / request / effect / param / local ─▶ check.global_not_constant
+                      └─ name used before its line ─▶ check.global_forward_ref
+ request ─▶ lookup order: locals ─▶ params ─▶ globals   (a global can never be shadowed or assigned)
+```
+
+Rules:
+
+| Rule | Detail |
+|---|---|
+| Where | top level only, before or between declarations; `global` inside an operation is `syntax.global` |
+| Allowed expressions | literals, lists, objects, operators, `${…}` interpolation of earlier globals, the pure built-ins `length`, `base64.*`, `text`, `keys`, `xml.element` |
+| Not allowed | `env`, `secret`, `request`, effects, params, locals → `check.global_not_constant` (a global can never hold a secret) |
+| Order | a global sees only earlier globals |
+| Scope | the file that declares it; every module has its own globals |
+| Manifest | a target made only of literals and globals is `exact`; a target that also uses a param stays `param_dependent`, with the global parts resolved (`https://api.example.com/users/{id}`) |
+| Evaluation errors | keep their own code at load, e.g. `global z = 1 / 0` → `value.division_by_zero` (exit 2) |
+
+Errors, captured with `rivet --file FILE check` (all exit 2):
+
+```text
+error[check.global_not_constant]: global `token` cannot read the environment; globals are fixed at load time
+  --> bad.rivet:1:16
+   |
+  1| global token = (env "API_TOKEN")
+   |                ^^^^^^^^^^^^^^^^^
+  = hint: declare `secret token from env "…" for "https://…"` inside the operation that uses it
+
+error[check.global_forward_ref]: global `a` reads `b`, which is not declared before it; globals see only earlier globals
+  --> fwd.rivet:1:12
+
+error[check.global_shadow]: parameter `api` reuses the name of a global; globals cannot be shadowed
+  --> sh.rivet:4:11
+  = hint: rename the parameter
+
+error[check.global_assign]: `n` is a global and globals are read-only
+  --> as.rivet:5:5
+  = hint: assign to a new local name instead
+
+error[check.global_duplicate]: global `a` is declared twice in dup.rivet
+  --> dup.rivet:2:8
+
+error[syntax.global]: expected `global NAME = EXPR`
+  --> syn.rivet:1:1
+```
+
+`check.global_shadow` also covers loop variables, `map` items, `with … as` names, DAG nodes, tasks and secrets.
+Demo: `docs/demos/14-globals/` (DEMO-2026-0016).
+
+### Modules (import)
+
+Why: split a large catalog across files, reuse a file of operations in several bundles, and keep helpers
+private to the file that owns them. New in 0.2.0.
+
+```rivet
+# users.rivet — a module: its IDs are short; the importer namespaces them
+global greeting = "Hello"
+
+operation get
+    description "One user by id."
+    param id integer required min 1 description "The user id."
+    output json description "The user."
+    return {id: id, name: "${greeting}, user ${id}"}
+end
+
+operation list
+    description "The first two users (calls inside a module use its own IDs)."
+    output json description "Two users."
+    return [(get {id: 1}), (request "get" {id: 2})]
+end
+```
+
+```rivet
+# lib/billing.rivet — imports resolve relative to the importing file
+import "../users.rivet" as people
+
+global rate = 0.2
+
+operation invoice
+    description "An invoice for one user."
+    param user integer required description "The user id."
+    output json description "The invoice."
+    who = (people.get {id: user})
+    return {user: who, amount: 100 * rate}
+end
+```
+
+```rivet
+# app.rivet — the entry bundle
+import "./users.rivet" as users                    # internal: callable here, not listed on surfaces
+import "./lib/billing.rivet" as billing public     # public: billing.* is on every surface
+
+operation report.user
+    description "A user and their invoice."
+    param id integer required
+    output json
+    u = (users.get {id: id})
+    inv = (billing.invoice {user: id})
+    return {user: u, invoice: inv}
+end
+```
+
+```text
+ app.rivet ──import──▶ users.rivet            (alias users,   internal)
+     └──────import──▶ lib/billing.rivet      (alias billing, public) ──import──▶ ../users.rivet (alias people)
+ resolve (relative to the importing file, inside the runtime root) ─▶ compile each file once
+ ─▶ one catalog: report.user · billing.invoice · users.get* · users.list*    (* internal)
+ ─▶ one policy: the entry bundle's (a policy.json beside a module is ignored, with a warning)
+```
+
+```text
+$ rivet --file app.rivet list
+ID               NAME             DESCRIPTION
+report.user      report.user      A user and their invoice.
+billing.invoice  billing.invoice  An invoice for one user.
+
+$ rivet --file app.rivet request billing.invoice --data '{"user":3}'
+{"request_id":"req_0103e29add","trace_id":"tr_0103e29add","operation":"billing.invoice","type":"result","status":"ok","data":{"user":{"id":3,"name":"Hello, user 3"},"amount":20.0},"error":null,"effects":"none","data_count":0}
+
+$ rivet --file app.rivet request users.get --data '{"id":3}'              # internal import → [exit 4]
+{…"operation":"users.get",…"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `users.get`",…}}
+
+$ rivet --file app.rivet io --include-bootstrap
+OPERATION        KIND  ACCESS  TARGET  KNOWLEDGE   SOURCE
+billing.invoice  (calls users.get — no I/O)        lib/billing.rivet:10
+report.user      (calls users.get — no I/O)        app.rivet:8
+report.user      (calls billing.invoice — no I/O)  app.rivet:9
+
+BOOTSTRAP (runtime-internal; listed, not governed by policy.json)
+KIND  ACCESS       TARGET
+file  read         ./app.rivet
+file  read         ./users.rivet
+file  read         ./lib/billing.rivet
+file  read         ./policy.json (when present)
+…
+```
+
+Rules:
+
+| Rule | Detail |
+|---|---|
+| Form | `import "PATH" as ALIAS [public]`, at the top of the file, before the first declaration |
+| PATH | a string literal relative to the importing file; must stay inside the runtime root (no `..` escape, no symlink escape) |
+| Addressing | a module's operations are `ALIAS.ID`; call them as `(ALIAS.ID {…})` or `(request "ALIAS.ID" {…})` |
+| Inside a module | the module's own short IDs (`(get {id: 1})`); built-in names win |
+| Visibility | an import is internal to the importer unless marked `public` (then listed on the CLI, HTTP, MCP, WebSocket, polling, library and FFI) |
+| Nesting | namespaces are transitive (`billing.people.get`); a file reached under two aliases compiles once (under the shallowest namespace) |
+| Private state | a module's globals, connectors and auth profiles stay inside it; connector and auth profile **names** are still unique across the bundle (`check.import_collision`) because the single policy grants them by name |
+| Policy | the loader's policy only; `rivet io`, `policy generate`, `policy explain` and `rivet graph` cover every file |
+| Limits | at most 256 files and depth 16 (`limit.imports`) |
+
+Import errors are reported by `rivet check` (and at load) at the `import` line:
+
+```text
+error[check.import_cycle]: import cycle: cyc.rivet → a.rivet → cyc.rivet                               [exit 2]
+error[not_found.import]: cannot read missing.rivet: No such file or directory (os error 2)             [exit 4]
+error[permission.import_outside_root]: import `../../outside.rivet` resolves outside the runtime root . [exit 3]
+error[check.import_duplicate]: alias `x` is imported twice in dupa.rivet                               [exit 2]
+error[syntax.import]: `import` must come before the first declaration of the file                     [exit 2]
+error[check.import_collision]: `u.get` from m1.rivet collides with the operation declared at col.rivet:3  [exit 2]
+warning[check.module_policy_ignored]: the policy.json beside sub/m.rivet is ignored: module `m` runs under the loader's policy
+  = hint: grant what the module needs in the entry bundle's policy.json (or the host policy)
+```
+
+Hosts can also load a file at run time as a module object: `rt.load("./users.rivet")` in Rust
+([MAN-2026-0007](man-2026-0007-embedding-library.md)), `rivet_load` in C and `rt.load(...)` in the Python example
+wrapper ([MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md#module-objects)). Demo: `docs/demos/17-modules/`
+(DEMO-2026-0019).
+
 ## Complete Language Reference
 
-Statement shapes (the 0.1.0 grammar, `src/infra/rivet.capy`):
+Statement shapes (the 0.2.0 grammar, `src/infra/rivet.capy`):
 
 | Keyword | Shape |
 |---|---|
+| top level | `import "PATH" as ALIAS [public]` (first), `global NAME = EXPR` |
 | declarations | `operation ID` / `pipeline ID` / `connector NAME mcp\|grpc` / `auth NAME oauth2` … `end` |
 | header | `name`, `description`, `private`, `param`, `output`, `emits`, `receives`, `error` |
 | assignment | `NAME = EXPR`, `NAME += EXPR`, `NAME = map …`, `NAME = poll …` |
@@ -748,20 +1000,25 @@ Statement shapes (the 0.1.0 grammar, `src/infra/rivet.capy`):
 | functions | `request`, `request.stream`, `length`, `base64.encode`, `base64.decode`, `text`, `keys`, `xml.element` — any other name is `check.unknown_function` |
 | options | `timeout`, `decode`, `body`, `header`, `query`, `accept`, `retry`, `redirect`, `version`, `tls`, `unix`, `stream`, `framing`, `max_frame`, `max_datagram`, `alpn`, `max_streams`, `migration`, `datagrams`, `message`, `metadata`, `args`, `stdin`, `env`, `cwd`, `bind`, `interface`, `missing`, `overwrite`, `if_version`, `chunk_size`, `limit`, `allow`, OAuth keys |
 
-Not in 0.1.0: `else if`, `finally`, `import`, `${expression}` interpolation, function-call syntax, unquoted
+Not in 0.2.0: `else if`, `finally`, URL imports, `${expression}` interpolation, function-call syntax, unquoted
 durations; Stage C forms (`with file watch`, `with pipe`, TCP/Unix `tls`, `reconnect`, `interactive true`).
 
 ## Errors and Recovery Reference
 
 | Error / Code | Surface | Cause | User-Visible Result | Recovery | Retry Safe | Related Feature |
 |---|---|---|---|---|---|---|
-| `syntax.e0001`, `syntax.unknown_statement` | compile | missing `end`, unknown keyword (`finally`, `import`) | caret at the line, exit 2 | fix the block | no | layout |
+| `syntax.e0001`, `syntax.unknown_statement` | compile | missing `end`, unknown keyword (`finally`) | caret at the line, exit 2 | fix the block | no | layout |
 | `syntax.else_if`, `syntax.else_without_if` | compile | `else if COND`, orphan or second `else` | caret + hint, exit 2 | nest `if … end` inside `else` | no | control flow |
 | `check.unknown_function` | compile | `(lenght x)` | hint "did you mean `length`?", exit 2 | use a built-in function | no | expressions |
 | `syntax.fcall_style` | compile | `length(x)` | hint "write (length arg …)", exit 2 | use prefix calls | no | expressions |
 | `syntax.interpolation` | compile | `"${1 + 1}"` | exit 2 | assign first, interpolate the name | no | expressions |
 | `syntax.header_order`, `syntax.option_after_body`, `syntax.option_misplaced` | compile | header/option in the wrong place | exit 2 | move the line | no | layout |
 | `check.unknown_operation`, `check.call_cycle`, `registry.duplicate_id` | compile | bad composition | exit 2 | fix IDs | no | calls |
+| `syntax.global`, `check.global_*` (5) | compile | malformed global, non-constant, forward reference, duplicate, shadow, assignment | caret + hint, exit 2 | see [Globals](#globals) | no | globals |
+| `syntax.import`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision` | compile | malformed/late import, cycle, reused alias, colliding ID | caret, exit 2 | see [Modules](#modules-import) | no | modules |
+| `not_found.import` / `permission.import_outside_root` / `limit.imports` | compile | missing file / escapes the root / > 256 files or depth > 16 | exit 4 / 3 / 5 | fix the path; flatten | no | modules |
+| `check.module_policy_ignored` (warning) | compile | a `policy.json` beside a module | warning, exit 0 | grant in the entry policy | — | modules |
+| `unsupported.feature` | load | the bundle uses gRPC, QUIC/HTTP/3 or OAuth in a build without that Cargo feature | exit 5 / 501 | rebuild with the feature ([MAN-2026-0008](man-2026-0008-protocols-and-connectors.md)) | no | features |
 | `validation.*` | request | bad params | 422 / exit 2 | fix params | no | params |
 | `value.missing_key` | request | reading an absent key or out-of-scope name | exit 2 | check the path/scope | no | expressions |
 | `stream.emits_undeclared`, `stream.input_required` | request | streaming misuse | exit 2 | declare `emits`; send input | no | streams |
@@ -776,7 +1033,7 @@ durations; Stage C forms (`with file watch`, `with pipe`, TCP/Unix `tls`, `recon
 
 The language rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.md#known-limitations):
 
-- No `import`: a bundle is one file.
+- Imports are local files under the runtime root only (no URL imports, no hot reload of imported files).
 - No `finally` (and no `else if`; nest an `if` inside `else`).
 - Stage C forms are refused at run time (`with file watch`, `with pipe`, TCP/Unix `tls`, `reconnect`,
   `interactive true`).
@@ -787,7 +1044,10 @@ Secret taint follows explicit flows only; implicit flows (for example `if SECRET
 
 | Feature / Interface | Introduced | Changed | Deprecated / Removed | Applicable Environment |
 |---|---|---|---|---|
-| Grammar and lowering described here | 0.1.0 | — | — | all |
+| Grammar and lowering described here | 0.1.0 | 0.2.0 | — | all |
+| `global NAME = EXPR` | 0.2.0 | — | — | all |
+| `import "PATH" as ALIAS [public]` | 0.2.0 | — | — | all |
+| Numeric list index paths (`xs.0`) | 0.2.0 (INC-2026-0009) | — | — | all |
 
 ## Related Documents
 
@@ -805,3 +1065,4 @@ Secret taint follows explicit flows only; implicit flows (for example `if SECRET
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial language guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `if … else … end` (`syntax.else_if`, `syntax.else_without_if`), infix inside objects/lists/arguments, `check.unknown_function`, DAG `started_at`/`ended_at` and `details.nodes`, `check.unguarded_result`, structured cancellation, `with file open` handles and `chunk_size`, `if_version` compare-and-replace, codec keywords, secret taint on every sink; limitations aligned with MAN-2026-0001. |
+| 3 | 2026-09-29 | Claude | 0.2.0 (D-22, D-46): Globals and Modules (import) chapters with real check/request/io output; numeric list index paths (INC-2026-0009); outputs re-captured as envelopes; --data replaces --params; reference, errors, limitations and version rows updated |

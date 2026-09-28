@@ -4,8 +4,8 @@ title: "Rivet manuals index"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 4
+last_updated: 2026-09-29
+document_revision: 5
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -24,14 +24,14 @@ superseded_by: null
 tags: [rivet, manual, index]
 confidentiality: internal
 review_cycle: on-release
-next_review_date: 2026-10-28
+next_review_date: 2026-10-29
 ---
 
 # Rivet manuals index
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, cli, policy, audit, serve, library, transports, connectors
@@ -54,14 +54,15 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
 ```text
                          ┌──────────────────────────────────────────┐
                          │ MAN-0001  Rivet manual (root book)       │
-                         │ purpose · what's new · concepts ·        │
+                         │ purpose · WHAT'S NEW 0.2.0 · concepts ·  │
                          │ CATALOGUE · KNOWN LIMITATIONS · glossary │
                          └───────────────┬──────────────────────────┘
-          ┌──────────────┬───────────────┼───────────────┬───────────────┬──────────────┐
-          ▼              ▼               ▼               ▼               ▼              ▼
-     MAN-0002       MAN-0003         MAN-0004        MAN-0005        MAN-0006       MAN-0007/0008
-     install +      language         CLI             policy.json +   serve +        library /
-     quickstart     guide            reference       I/O manifest    surfaces       protocols
+      ┌──────────┬──────────┬────────────┼────────────┬──────────┬──────────┬──────────┬──────────┐
+      ▼          ▼          ▼            ▼            ▼          ▼          ▼          ▼          ▼
+   MAN-0002   MAN-0003   MAN-0004     MAN-0005     MAN-0006   MAN-0007   MAN-0008   MAN-0009   MAN-0010
+   install +  language   CLI          policy.json  serve +    Rust       protocols  C ABI /    editors +
+   quickstart (globals,  reference    + I/O        surfaces   library    +          FFI        highlight
+              modules)   (--data…)    manifest     (envelopes)(facade)   features   (C/Py/Go)
 ```
 
 ## Active documents
@@ -76,11 +77,18 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
 | [MAN-2026-0006](man-2026-0006-serving-and-surfaces.md) | Serving and surfaces | operators, integrators | active |
 | [MAN-2026-0007](man-2026-0007-embedding-library.md) | Embedding the library | Rust developers | active |
 | [MAN-2026-0008](man-2026-0008-protocols-and-connectors.md) | Protocols and connectors | integrators | active |
+| [MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md) | Calling Rivet from C, Python and Go (librivet) | C/Python/Go developers | active |
+| [MAN-2026-0010](man-2026-0010-editor-support-and-highlighting.md) | Editor support and syntax highlighting | script authors, tool authors | active |
 
-All eight apply to Rivet **0.1.0** and were verified against `rivet 0.1.0-dev` (commit `f40d4aa`), then updated
-and re-verified for the post-P3 fix batch at commit `829ca43`.
+All ten apply to Rivet **0.2.0** and were verified against the 0.2.0 release candidate (`main` at `e7ed8ed`,
+2026-09-29). Clients of 0.1.0 read [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md) first.
 
 ## Recently added or updated
+
+- 2026-09-29: 0.2.0 — MAN-2026-0009 (C ABI and FFI) and MAN-2026-0010 (editors and highlighting) added; all eight
+  existing volumes updated (envelopes on every surface, `--data`/`--input`/`--pretty`, globals, modules, the
+  `rivet-runtime` facade and Cargo features, `unsupported.feature`, `rivet highlight`); MAN-2026-0001 gains
+  "What's New in 0.2.0" and the platform facts (macOS and Linux; Windows not supported).
 
 - 2026-09-28: `perch install` now builds and installs globally with `bman add`.
 
@@ -97,7 +105,7 @@ None.
 
 ## Important relationships
 
-- Implements PLAN-2026-0001 documentation rows D-34 … D-41; describes the build that implements
+- Implements PLAN-2026-0002 documentation rows D-13, D-14, D-20 … D-29 and D-46, and PLAN-2026-0001 rows D-34 … D-41; describes the build that implements
   [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md).
 - Each task section links a sample folder in [`docs/demos/`](../demos/README.md).
 - Wire contracts: [`docs/api/`](../api/api-2026-0001-http-rest-sse-polling.md); internals: [`docs/system/`](../system/index.md);
@@ -105,9 +113,9 @@ None.
 
 ## Unresolved work and open questions
 
-- Release document `REL-0.1.0` does not exist yet; "What's New" will link it once created (P5).
-- The demo folder READMEs are being re-verified for 0.1.0 (PLAN-2026-0001 TASK-067); until then the manual's
-  examples are the verified record.
+- Release document `REL-0.2.0` is written in P5; "What's New" links it once it exists.
+- The demo folders are being re-verified for 0.2.0 and demos 14–17 written (PLAN-2026-0002 TASK-075/076); the
+  manuals link them by path.
 - The findings recorded while writing the first version (no `else`, secret values returned/emitted, `with file
   open` unavailable, no `rivet.capabilities`, multicast manifest mismatch) are fixed in commit `829ca43`; the
   remaining limitations are the [Known Limitations](man-2026-0001-rivet-manual.md#known-limitations) chapter.
@@ -124,6 +132,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-29 | Claude | 0.2.0: MAN-2026-0009 and MAN-2026-0010 rows; reading-order diagram with ten volumes; status re-verified on the 0.2.0 release candidate |
 | 4 | 2026-09-28 | Claude | Recorded the fix-batch update of all eight volumes (commits 829ca43 and 2a751ab) and the Known Limitations chapter. Perch entries unchanged. |
 | 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
 | 2 | 2026-09-28 | Codex | MAN-2026-0002 now documents Perch build and install tasks. |
