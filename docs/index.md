@@ -49,6 +49,7 @@ docs/
 ├── runbooks/            RUN-2026-0001 · 0002
 ├── onboarding/          ONB-2026-0001
 ├── testing/             TEST-2026-0001 … 0033 (one per plan test row, latest recorded result)
+├── reports/             RPT-2026-0001 validation of PLAN-2026-0001
 ├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
 ├── proposals/           design proposals by lifecycle
 │   ├── approved/        PROP-2026-0001 Rivet runtime (approved, revision 8)
@@ -65,6 +66,7 @@ docs/
 - [Research](research/index.md)
 - [Incidents](incidents/index.md)
 - [Tests](testing/index.md)
+- [Reports](reports/index.md)
 - [Troubleshooting](troubleshooting/index.md)
 - [Proposals](proposals/index.md), then [approved proposals](proposals/approved/index.md)
 - [Plans](plans/index.md)
