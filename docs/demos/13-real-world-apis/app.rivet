@@ -1,0 +1,181 @@
+# Public/no-key APIs
+operation free.weather
+    name "Get a weather forecast"
+    description "Call Open-Meteo without an API key and return its JSON forecast."
+    param latitude number required description "WGS84 latitude."
+    param longitude number required description "WGS84 longitude."
+    output json description "Open-Meteo forecast response."
+    response = http get "https://api.open-meteo.com/v1/forecast"
+        query latitude latitude
+        query longitude longitude
+        query current "temperature_2m,wind_speed_10m"
+        query forecast_days 1
+        decode json
+    end
+    return response.body
+end
+
+operation free.post
+    name "Read a free test resource"
+    description "Read a JSONPlaceholder post, useful for testing ordinary REST calls."
+    param id integer default 1 min 1 max 100 description "Post ID."
+    output json description "The JSONPlaceholder post."
+    response = http get "https://jsonplaceholder.typicode.com/posts/${id}"
+        decode json
+    end
+    return response.body
+end
+
+operation free.github_repo
+    name "Inspect a public GitHub repository"
+    description "Read public repository metadata with an explicit User-Agent."
+    param owner text default "rust-lang" description "GitHub owner or organisation."
+    param repo text default "rust" description "Repository name."
+    output json description "GitHub repository metadata."
+    response = http get "https://api.github.com/repos/${owner}/${repo}"
+        header "Accept" "application/vnd.github+json"
+        header "User-Agent" "rivet-real-world-demo"
+        decode json
+    end
+    return response.body
+end
+
+# API-key AI provider: export OPENAI_API_KEY before calling this operation.
+operation ai.openai
+    name "Ask OpenAI Responses API"
+    description "Send one prompt to the OpenAI Responses API without returning the bearer secret."
+    param prompt text required description "User prompt."
+    output json description "OpenAI response object."
+    secret api_key from env "OPENAI_API_KEY" for "https://api.openai.com:443"
+    response = http post "https://api.openai.com/v1/responses"
+        header "Authorization" "Bearer ${api_key}"
+        header "Content-Type" "application/json"
+        body json {model: "gpt-5", input: prompt}
+        decode json
+    end
+    return response.body
+end
+
+operation ai.openai_stream
+    name "Stream OpenAI output over SSE"
+    description "Use the Responses API stream and emit each decoded event."
+    param prompt text required description "User prompt."
+    output json description "The final streamed response metadata."
+    emits json description "Decoded OpenAI response events."
+    secret api_key from env "OPENAI_API_KEY" for "https://api.openai.com:443"
+    final = null
+    with http post "https://api.openai.com/v1/responses" as events
+        header "Authorization" "Bearer ${api_key}"
+        header "Content-Type" "application/json"
+        body json {model: "gpt-5", input: prompt, stream: true}
+        stream sse
+        decode json
+        for event in events
+            emit event.data
+            final = event.data
+        end
+    end
+    return final
+end
+
+# Local OpenAI-compatible model server: start Ollama and pull a model first.
+operation ai.ollama
+    name "Ask a local Ollama model"
+    description "Call Ollama's local NDJSON chat endpoint; no cloud credential is needed."
+    param prompt text required description "User prompt."
+    output json description "The final Ollama message and done marker."
+    emits json description "Each streamed Ollama message chunk."
+    content = ""
+    with http post "http://127.0.0.1:11434/api/chat" as chunks
+        header "Content-Type" "application/json"
+        body json {model: "ministral-3:3b", messages: [{role: "user", content: prompt}], stream: true}
+        stream jsonl
+        decode json
+        for chunk in chunks
+            if chunk.done
+                return {model: chunk.model, message: {role: "assistant", content: content}, done: true, done_reason: chunk.done_reason}
+            end
+            emit chunk.message
+            content += chunk.message.content
+        end
+    end
+    return null
+end
+
+# Public WebSocket market feed. It is intentionally bounded to one message.
+operation market.binance_ticker
+    name "Read one Binance ticker event"
+    description "Connect to a public WebSocket market stream and return one BTC/USDT ticker event."
+    output json description "One Binance ticker event."
+    with websocket "wss://stream.binance.com:9443/ws/btcusdt@ticker" as socket
+        timeout "10s"
+        return socket.receive json
+    end
+end
+
+# The remaining operations show transports that normally require a user-owned
+# gateway or a reviewed service endpoint.
+operation transport.udp_gateway
+    name "Call a UDP gateway"
+    description "Send a JSON command to a local or private UDP gateway."
+    param host text default "127.0.0.1" description "Gateway host."
+    param port integer default 9000 description "Gateway port."
+    output json description "Gateway reply."
+    with udp "${host}:${port}" as socket
+        max_datagram 8192
+        timeout "2s"
+        socket.send json {command: "health"}
+        return socket.receive json
+    end
+end
+
+operation transport.quic_gateway
+    name "Call a QUIC service"
+    description "Open a bounded bidirectional QUIC stream to a user-owned service."
+    param endpoint text default "quic://127.0.0.1:4433" description "QUIC endpoint."
+    output json description "QUIC service reply."
+    with quic endpoint as connection
+        alpn "rivet-rpc/1"
+        max_streams 2
+        migration false
+        timeout "5s"
+        with connection.open bidi as stream
+            framing length32 endian big max_frame 1048576
+            stream.send json {command: "health"}
+            return stream.receive json
+        end
+    end
+end
+
+connector demo_grpc grpc
+    endpoint "https://users.example.com:443"
+    descriptor "../10-grpc/schemas/users.pb"
+    service "example.Users"
+end
+
+operation transport.grpc_health
+    name "Call a gRPC health service"
+    description "Invoke a unary gRPC method using a reviewed descriptor."
+    output json description "User service response."
+    response = grpc demo_grpc.GetUser
+        timeout "5s"
+        message {id: "42"}
+    end
+    return response.message
+end
+
+connector fetch_mcp mcp
+    transport command "/Users/oliverlaleau/.local/bin/uvx"
+        args ["mcp-server-fetch"]
+    end
+    schema "./schemas/fetch_mcp.json"
+    expose tools ["fetch"]
+end
+
+operation transport.mcp_fetch
+    name "Fetch a page through MCP"
+    description "Use the real mcp-server-fetch package as a command connector."
+    param url text required description "Public URL to fetch."
+    output json description "MCP tool result."
+    return (request "fetch_mcp.tools.fetch" {url: url})
+end

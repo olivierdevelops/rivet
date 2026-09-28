@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": [
+      "https://api.open-meteo.com:443",
+      "https://jsonplaceholder.typicode.com:443",
+      "https://api.github.com:443",
+      "https://api.openai.com:443",
+      "wss://stream.binance.com:9443",
+      "http://127.0.0.1:11434",
+      "udp://127.0.0.1:9000",
+      "quic://127.0.0.1:4433",
+      "https://users.example.com:443"
+    ]},
+    {"capability": "allow_env", "targets": ["OPENAI_API_KEY"]},
+    {"capability": "allow_grpc", "targets": ["demo_grpc/example.Users/GetUser"]},
+    {"capability": "allow_exec", "targets": ["/Users/oliverlaleau/.local/bin/uvx"]},
+    {"capability": "allow_mcp", "targets": ["fetch_mcp/tools/fetch"]}
+  ],
+  "network": {"deny_private_ranges": true},
+  "approved": {"snapshots": ["sha256:7f806a49de77464eb1650f1b172fba43e3651f7441edd518c42335c1c2eedcb8"]},
+  "serve": {
+    "surfaces": ["http", "sse", "poll", "ws", "mcp"],
+    "auth": {"type": "none"}
+  }
+}
