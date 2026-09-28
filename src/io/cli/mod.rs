@@ -197,8 +197,10 @@ pub enum PolicyCommand {
     /// Explain the effective policy (and, with an ID, what that operation needs).
     Explain {
         id: Option<String>,
-        #[arg(long, default_value = "{}")]
-        params: String,
+        /// Params of one concrete call: its param-dependent targets are filled and
+        /// evaluated; exit 3 when any would be denied.
+        #[arg(long)]
+        params: Option<String>,
     },
     /// Generate a least-privilege policy.json draft from the I/O manifest.
     Generate {
@@ -454,6 +456,7 @@ impl IoArgs {
             needs: self.needs,
             check_files: self.check_files,
             trace_request_id: self.trace.clone(),
+            params: None,
         }
     }
 }

@@ -139,6 +139,12 @@ pub fn inspect_effects(query: &IoQuery, ports: &AuditPorts) -> RivetResult<IoRep
     // vhco:todo check_policy -- when asked, evaluate every access verb of every site through PolicyEvaluator (effective policy; nothing performed): allowed when all verbs are granted; for param_dependent targets an arbitrary instance that is granted is allowed, otherwise partial when some grant selector instance falls inside the derived glob/origin and is itself allowed, else denied; bounded targets check every bound value; dynamic and opaque_native are unknown; record the policy file and sha256
     // vhco:step policy PolicyEvaluator.evaluate -- static evaluator: no decision log, no trace event
     let root = program.root.clone();
+    // vhco:step concrete params -- policy explain ID --params: each entry-operation site whose placeholders are all params present in the call's params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets
+    if let Some(params) = &query.params {
+        for s in sites.iter_mut().filter(|s| s.call_chain.len() == 1) {
+            fill_params(s, params);
+        }
+    }
     if query.check_policy {
         for s in &mut sites {
             s.decision = Some(site_decision(s, ports.policy, &root).to_string());
@@ -713,6 +719,82 @@ fn bootstrap_sites(
     pipe.call_chain = Vec::new();
     out.push(pipe);
     out
+}
+
+// ---------------------------------------------------------------- concrete params
+
+/// A scalar param as it lands in a target (text as is, numbers/bools printed).
+fn param_text(v: &crate::domain::Value) -> Option<String> {
+    use crate::domain::Value as V;
+    match v {
+        V::Text(s) => Some(s.clone()),
+        V::Int(i) => Some(i.to_string()),
+        V::Float(f) => Some(f.to_string()),
+        V::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// Percent-encode one URL component value the way the runtime's component-aware
+/// interpolation does (unreserved characters kept), so a param cannot add
+/// segments or change the authority.
+fn url_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Fill a site's `{param}` placeholders with one call's params. Sites with a
+/// placeholder that is not a declared param (dynamic expression) or a param the
+/// call does not supply are left as they are.
+fn fill_params(s: &mut EffectSite, params: &crate::domain::Value) {
+    let template = s.target.template.clone();
+    if template.is_empty() || !template.contains('{') {
+        return;
+    }
+    let mut out = String::new();
+    let mut rest = template.as_str();
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}') else {
+            return;
+        };
+        let name = &rest[open + 1..open + close];
+        if !s.target.params.iter().any(|p| p == name) {
+            return;
+        }
+        let Some(v) = params.get(name).and_then(param_text) else {
+            return;
+        };
+        out.push_str(&rest[..open]);
+        if s.kind == SiteKind::Network {
+            out.push_str(&url_component(&v));
+        } else {
+            out.push_str(&v);
+        }
+        rest = &rest[open + close + 1..];
+    }
+    out.push_str(rest);
+    s.expression = Some(template);
+    s.knowledge = Knowledge::Exact;
+    s.target.glob = None;
+    s.target.bound.clear();
+    s.target.params.clear();
+    if s.kind == SiteKind::Network
+        && let Ok(u) = url::Url::parse(&out)
+    {
+        s.target.host = u.host_str().map(str::to_string);
+        s.target.port = u.port_or_known_default();
+        s.target.path = Some(u.path().to_string());
+    } else if s.target.path.is_some() {
+        s.target.path = Some(out.clone());
+    }
+    s.target.template = out;
 }
 
 // ---------------------------------------------------------------- policy check

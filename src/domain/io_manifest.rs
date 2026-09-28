@@ -553,7 +553,7 @@ impl IoManifest {
     }
 }
 
-// vhco:domain IoQuery { ids: string[]; all: bool; transitive: bool; strict: bool; include_bootstrap: bool; by: string; kind?: string; access: string[]; format: string; check_policy: bool; needs: bool; check_files: bool; trace_request_id?: string }
+// vhco:domain IoQuery { ids: string[]; all: bool; transitive: bool; strict: bool; include_bootstrap: bool; by: string; kind?: string; access: string[]; format: string; check_policy: bool; needs: bool; check_files: bool; trace_request_id?: string; params?: Json }
 /// `rivet io` / `rivet.io` / `rt.io` query (the contract's `EffectQuery`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct IoQuery {
@@ -572,6 +572,10 @@ pub struct IoQuery {
     pub needs: bool,
     pub check_files: bool,
     pub trace_request_id: Option<String>,
+    /// `policy explain ID --params JSON`: the caller params of ONE call. When present,
+    /// every site of the selected entry operation whose template placeholders are all
+    /// params is filled with these values and evaluated as that exact target.
+    pub params: Option<crate::domain::Value>,
 }
 
 impl Default for IoQuery {
@@ -590,6 +594,7 @@ impl Default for IoQuery {
             needs: false,
             check_files: false,
             trace_request_id: None,
+            params: None,
         }
     }
 }

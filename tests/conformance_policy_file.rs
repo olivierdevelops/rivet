@@ -757,3 +757,73 @@ fn policy_explain_flags_star() {
         .collect();
     assert_eq!(caps, vec!["allow_read", "allow_write", "allow_network"]);
 }
+
+// vhco:test audit.inspect_effects -- G9 `policy explain ID --params JSON` fills param-dependent targets with that call's params, prints per-site decisions and exits 3 when any concrete target would be denied (0 when all are allowed; no --params keeps exit 0)
+#[test]
+fn policy_explain_params_evaluates_concrete_targets() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "app.rivet",
+        "operation users.get\n    param name text required\n    param id integer required\n    output json\n    local = file read \"./data/${name}.json\" as json\n    r = http get \"https://api.example.com/users/${id}\"\n        decode json\n    end\n    return r.body\nend\n",
+    );
+    write(
+        tmp.path(),
+        "policy.json",
+        r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/ada.json"]},{"capability":"allow_network","targets":["https://api.example.com:443/users/42"]}]}"#,
+    );
+    let explain = |params: Option<&str>| {
+        let mut args = vec![
+            "--file",
+            "app.rivet",
+            "--json",
+            "policy",
+            "explain",
+            "users.get",
+        ];
+        if let Some(p) = params {
+            args.extend(["--params", p]);
+        }
+        rivet(tmp.path(), &args)
+    };
+    let decisions = |o: &Out| -> Vec<(String, String)> {
+        let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();
+        j["sites"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| {
+                (
+                    s["target"].to_string(),
+                    s["decision"].as_str().unwrap_or("").to_string(),
+                )
+            })
+            .collect()
+    };
+    let ok = explain(Some(r#"{"name":"ada","id":42}"#));
+    assert_eq!(ok.code, 0, "{}\n{}", ok.stdout, ok.stderr);
+    let d = decisions(&ok);
+    assert!(d.iter().all(|(_, x)| x == "allowed"), "{d:?}");
+    assert!(
+        d.iter().any(|(t, _)| t.contains("./data/ada.json")),
+        "{d:?}"
+    );
+    assert!(d.iter().any(|(t, _)| t.contains("/users/42")), "{d:?}");
+
+    let bad = explain(Some(r#"{"name":"bob","id":42}"#));
+    assert_eq!(bad.code, 3, "{}\n{}", bad.stdout, bad.stderr);
+    let d = decisions(&bad);
+    assert!(
+        d.iter()
+            .any(|(t, x)| t.contains("./data/bob.json") && x == "denied"),
+        "{d:?}"
+    );
+    assert!(bad.stderr.contains("./data/bob.json"), "{}", bad.stderr);
+
+    // Another id is a different concrete URL: denied.
+    let steer = explain(Some(r#"{"name":"ada","id":7}"#));
+    assert_eq!(steer.code, 3, "{}", steer.stdout);
+
+    // Without --params the generic view is printed and the exit stays 0.
+    assert_eq!(explain(None).code, 0);
+}

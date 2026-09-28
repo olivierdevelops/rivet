@@ -346,13 +346,18 @@ async fn run(cli: Cli) -> i32 {
             0
         }
         Command::Policy {
-            command: PolicyCommand::Explain { id, .. },
+            command: PolicyCommand::Explain { id, params },
         } => {
+            let params = match params.as_deref().map(parse_params).transpose() {
+                Ok(p) => p,
+                Err(e) => return fail(&e, None, cli.json),
+            };
             let report = match id {
                 Some(id) => match runtime.io(&IoQuery {
                     ids: vec![id.clone()],
                     all: true,
                     check_policy: true,
+                    params: params.clone(),
                     format: if cli.json {
                         "json".into()
                     } else {
@@ -387,7 +392,32 @@ async fn run(cli: Cli) -> i32 {
                     let _ = write!(stdout, "\n{}", r.rendered);
                 }
             }
-            0
+            // G9: with --params the sites are that call's concrete targets; any denial
+            // means the call would be refused → exit 3 (permission).
+            let denied = report.as_ref().is_some_and(|r| {
+                r.manifest
+                    .sites
+                    .iter()
+                    .any(|s| s.decision.as_deref() == Some("denied"))
+            });
+            if params.is_some() && denied {
+                if let Some(r) = &report {
+                    for s in &r.manifest.sites {
+                        if s.decision.as_deref() == Some("denied") {
+                            eprintln!(
+                                "denied: {} {} {} ({})",
+                                s.effect_id,
+                                s.capability.as_str(),
+                                s.target.template,
+                                s.access_label()
+                            );
+                        }
+                    }
+                }
+                3
+            } else {
+                0
+            }
         }
         Command::Serve(args) => {
             match super::setup_serve::run_cli(runtime.clone(), &args.listen, args.stdio).await {
