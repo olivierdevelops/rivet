@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -67,11 +67,11 @@ next_review_date: 2026-10-29
 |---|---|---|
 | API-2026-0006 | [Response and input envelopes](api-2026-0006-envelopes.md) | The one output shape and one input shape of every surface; status/type values; error object; pretty; per-surface wrapping; deprecated `id`/`params`; schemas |
 | API-2026-0001 | [HTTP REST, SSE and polling](api-2026-0001-http-rest-sse-polling.md) | `/v1/request` (envelopes, `?pretty=true`, `Deprecation`, `restrict`, `traceparent`), `/v1/operations…`, `/v1/io`, `/v1/policy/generate`, `/v1/health`, SSE framing, `/v1/requests…` sessions, auth, access log, drain |
-| API-2026-0002 | [WebSocket rivet.v1](api-2026-0002-websocket-rivet-v1.md) | `/v1/ws` frames (`{type:"request",ref,operation,data}`, records with `ref`), refs, refusal records, limits, close semantics |
+| API-2026-0002 | [WebSocket rivet.v1](api-2026-0002-websocket-rivet-v1.md) | `/v1/ws` frames (`{type:"request",ref,operation,data,deadline_ms?}`, records with `ref`), refs, refusal records, limits, close semantics |
 | API-2026-0003 | [MCP server tools](api-2026-0003-mcp-server-tools.md) | `/mcp` and `serve --stdio`: initialize, tools/list (`outputSchema` = envelope), `structuredContent` envelopes, `rivet.request {operation,data}`, session delivery |
 | API-2026-0004 | [Rust library](api-2026-0004-rust-library.md) | `rivet-runtime` dependency and Cargo features, the facade, `Runtime::call`, `load`/`load_as`/`Module`, scopes, sessions, audit, highlight |
 | API-2026-0007 | [C ABI (librivet)](api-2026-0007-c-abi.md) | The 18 `rivet_*` functions, ownership, threading, handle lifecycles, error envelopes, link commands |
-| API-2026-0005 | [Error registry](api-2026-0005-error-registry.md) | 22 kinds → HTTP → exit → retryable; every emitted code (0.2.0 input, globals, modules, features, FFI codes); `check` warnings |
+| API-2026-0005 | [Error registry](api-2026-0005-error-registry.md) | 22 kinds → HTTP → exit → retryable; every emitted code with a table of the 19 codes added in 0.2.0 (input, globals, modules, features, FFI); `check` and deprecation warnings |
 
 ## Recently added or updated
 
@@ -80,6 +80,8 @@ next_review_date: 2026-10-29
 2026-09-28 (revision 2 of each) — updated for the post-P3 fix batch and re-verified against commit `829ca43`: `/v1/health`, `restrict`, `traceparent`, access log and SIGTERM drain; WebSocket lanes and specific refusal frames; MCP `tools/list` built-ins; library scopes, ceiling and `Policy` constructors; new error codes and `check` warnings.
 
 2026-09-29 (revision 3) — 0.2.0: API-2026-0006 (envelopes) and API-2026-0007 (C ABI) added; API-2026-0001…0005 re-captured on the 0.2.0 release candidate (envelopes on every surface, new error codes, facade). Migration from 0.1.0: [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md).
+
+2026-09-29 (API-2026-0001…0005 revision 3, index revision 4) — envelope sweep finished (TASK-070): every example re-captured from the 0.2.0-rc (source `6f9943f`, ports 18950–18958), the library example recompiled through the facade.
 
 ## Deprecated, superseded or archived
 
@@ -93,7 +95,9 @@ The 0.1.0 input keys `id`/`params` and the CLI flag `--params` are deprecated al
 
 ## Unresolved work and open questions
 
-- Limitations recorded in the documents (0.1.0, still current): no mTLS listener, no SSE resume, no pagination, `--timeout` not applied on the WebSocket duplex path, no MCP resources/resource templates or legacy HTTP+SSE transport, no persistent trace store. The full list is the [manual's limitations chapter](../manuals/man-2026-0001-rivet-manual.md#known-limitations).
+- Platforms: macOS and Linux; Windows is not supported in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
+- Deviations found by the 0.2.0 sweep (reported, not fixed here): a WebSocket ref ended by a refused input gets a terminal record without `seq` and with `data_count: 0`; library `record()` terminal records have no `seq`; a rejected input envelope answers `operation: null` even when it named one.
+- Limitations recorded in the documents: no mTLS listener, no SSE resume, no pagination, `--timeout` not applied on the WebSocket duplex path (the 0.2.0 server honours a frame's `deadline_ms`, but the remote CLI does not send it), no MCP resources/resource templates or legacy HTTP+SSE transport, no persistent trace store. The full list is the [manual's limitations chapter](../manuals/man-2026-0001-rivet-manual.md#known-limitations).
 - The `rivet.trace.export` dispatch defect and the missing MCP `tools/list` entries found at `829ca43` were fixed in commit `2a751ab` (INC-2026-0007).
 - Re-verify every captured example when the wire contracts change.
 
@@ -108,3 +112,4 @@ The 0.1.0 input keys `id`/`params` and the CLI flag `--params` are deprecated al
 | 1 | 2026-09-28 | Claude | Created the API index with API-2026-0001 to API-2026-0005. |
 | 2 | 2026-09-28 | Claude | Recorded the fix-batch updates of all five API documents (commits 829ca43 and 2a751ab); refreshed limitations. |
 | 3 | 2026-09-29 | Claude | 0.2.0: added API-2026-0006 and API-2026-0007 and the schemas; updated rows of API-2026-0001…0005 after the envelope sweep; diagram adds the C ABI. |
+| 4 | 2026-09-29 | Claude | Envelope sweep finished (TASK-070): rows for API-2026-0002 (`deadline_ms`) and API-2026-0005 (19 new codes, deprecation warnings); sweep deviations; platform note. |
