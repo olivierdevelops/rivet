@@ -2,15 +2,15 @@
 document_id: REL-0.1.0
 title: "Rivet 0.1.0 release notes"
 document_type: release
-status: draft
+status: completed
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 version: "0.1.0"
 git_tag: v0.1.0
-git_commit: recorded after tagging (TASK-079)
+git_commit: f69b5b911f174b0198adb89c8305c8cce268fc11
 release_date: 2026-09-28
 source_branch: main
 previous_version: null
@@ -31,7 +31,7 @@ tags: [rivet, release]
 
 # Release 0.1.0
 
-> **Status:** Draft
+> **Status:** Completed
 > **Created:** 2026-09-28
 > **Last Updated:** 2026-09-28
 > **Affected Versions:** 0.1.0
@@ -43,7 +43,7 @@ tags: [rivet, release]
 ```text
 Release Version:          0.1.0
 Git Tag:                  v0.1.0
-Git Commit:               recorded after tagging (TASK-079)
+Git Commit:               f69b5b911f174b0198adb89c8305c8cce268fc11
 Release Date:             2026-09-28
 Source Branch:            main
 Previous Version:         none (first release)
@@ -189,6 +189,7 @@ Nothing. The proposal's `--sandbox` CLI flag was never implemented; policy comes
 | [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) | PLAN-2026-0001 R1, PLAN-2026-0001 R26 | PARTIAL |
 | [TEST-2026-0031](../testing/test-2026-0031-documentation.md) | PLAN-2026-0001 R14 | PASS |
 | [TEST-2026-0032](../testing/test-2026-0032-traceability.md) | PLAN-2026-0001 R1, PLAN-2026-0001 R26 | PASS |
+| [TEST-2026-0033](../testing/test-2026-0033-release.md) | PLAN-2026-0001 R14 | PASS |
 
 ## Validation
 
@@ -310,6 +311,52 @@ See the manual's limitations chapter for the complete list.
 - Verify and ungate the Linux Landlock + seccomp backend on kernel ≥ 6.12 (ADR-0003).
 - Stage C adapters, `import`, `finally` and mTLS serve go in a future plan (PLAN-2026-0002).
 
+## Release Completion Gate (DOCUMENTATION §34)
+
+Walked item by item on 2026-09-28 against tag `v0.1.0` (commit `f69b5b911f174b0198adb89c8305c8cce268fc11`).
+
+| # | Condition | State | Evidence |
+|---|---|---|---|
+| 1 | An approved plan exists in plans/ | ✔ | PLAN-2026-0001 (approved) |
+| 2 | Proposal preserves the request and traces problems → goals → requirements | ✔ | PROP-2026-0001 (R1–R26), REF-2026-0001 |
+| 3 | Every user-facing requirement has a complete UC-NN | ✔ | PROP-2026-0001 UC-01…UC-22 |
+| 4 | Every change / file CRUD row maps to a requirement and forward to validation | ✔ | T-32 (TEST-2026-0032): no orphans |
+| 5 | Proposal records the standards index revision and passes applicable rules | ✔ | Standards baseline above (REF-2026-0009 rev 5) |
+| 6 | Implementation corresponds to the plan; deviations documented | ✔ | Plan Decisions/Deviations table; RPT-2026-0001 |
+| 7 | No unexplained open item in the live plan | ✔ | Only TASK-051/078/080/081 BLOCKED (no git remote) and TASK-082 waiting on them; all explained |
+| 8 | Unexpected bugs documented in incidents/ | ✔ | INC-2026-0001…0008, all resolved |
+| 9 | Significant technical problems in troubleshooting/ | ✔ | TRBL-2026-0001…0003 |
+| 10 | Tests completed and recorded in testing/ | ✔ | TEST-2026-0001…0033 |
+| 11 | Every test links its plan requirement | ✔ | `validated_plan_requirements` in every TEST document |
+| 12–14 | Measurable claims: baseline, execution, summary | N/A | No optimization or measurable claim was made (Measured Results) |
+| 15 | Validation report with a result per requirement | ✔ | RPT-2026-0001 (completed) |
+| 16 | Every PARTIAL/FAIL documented and referenced | ✔ | Validation, Known Issues above |
+| 17 | Release verification guide with one U-NN row per update | ✔ | DEMO-2026-0015, U-01…U-26 |
+| 18 | U-NN rows link requirement, action, expected result, evidence | ✔ | Released Updates table above |
+| 19 | Demo commands actually executed and verified | ✔ | TEST-2026-0030; smoke re-run of the tagged release binary |
+| 20 | Manual changes integrated into the correct chapters | ✔ | MAN-2026-0001…0008 |
+| 21 | Feature catalogue covers every supported addition | ✔ | MAN-2026-0001 feature catalogue |
+| 22 | Every CLI command, route, config item and error documented | ✔ | MAN-2026-0004, API-2026-0001…0005 |
+| 23–27 | README, system, architecture, API/CLI, manual impact recorded | ✔ | Documentation Impact table above (all UPDATED) |
+| 28 | Code and system documentation consistent | ✔ | TASK-092; `vhco sync` 0; `vhco docs check` 0 errors |
+| 29 | on-release documents reviewed | ✔ | TASK-091 (next_review_date 2026-10-28) |
+| 30 | Canonical project version updated | ✔ | Cargo.toml `0.1.0` |
+| 31 | All version references synchronized | ✔ | T-33, `scripts/check_version.py --tag` |
+| 32 | Final release state committed | ✔ | `f69b5b9 release: v0.1.0` |
+| 33 | Working tree clean | ✔ | At the release commit (T-33) |
+| 34 | Full release commit SHA recorded | ✔ | Release Identity above |
+| 35 | Tag created and matches the version | ✔ | annotated `v0.1.0` |
+| 36 | Tag resolves to the recorded commit | ✔ | `git rev-list -n 1 v0.1.0` = f69b5b9… |
+| 37 | Commit and tag pushed, when applicable | N/A | No remote is configured; push once one exists (TASK-078) |
+| 38 | Known issues and limitations documented | ✔ | Known Issues, Limitations above; MAN-2026-0001 |
+| 39 | Final release document in releases/ | ✔ | This document |
+| 40 | Version, tag and full commit hash present | ✔ | Front matter and Release Identity |
+| 41 | Requirement traceability, update verification, measured results | ✔ | User Requirements, Released Updates, Measured Results |
+| 42 | Six documentation-impact decisions recorded | ✔ | Documentation Impact |
+| 43 | All relevant artifacts linked | ✔ | Sections above |
+| 44 | Accurately represents the tagged source state | ✔ | Generated from the tagged tree; this finalizing commit changes documentation only |
+| 45 | Indexes regenerated | ✔ | docs/index.md, releases/, testing/, reports/, proposals/ |
+
 ## Related Documents
 
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
@@ -319,4 +366,5 @@ See the manual's limitations chapter for the complete list.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Finalized with tag v0.1.0 and commit f69b5b911f174b0198adb89c8305c8cce268fc11. |
 | 1 | 2026-09-28 | Claude | Drafted for the release commit (tag and commit recorded after tagging). |

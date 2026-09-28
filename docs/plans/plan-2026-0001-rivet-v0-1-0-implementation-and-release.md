@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 7
+document_revision: 8
 start_date: 2026-09-28
 target_date: null           # not estimated; scope is fixed (all Stage A+B required); maintainer may set a date
 authors: [Claude]
@@ -132,18 +132,18 @@ planned. Any Stage C example among S01–S159 stays documented as Stage C and is
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 4 | release commit, tag and gate walk (TASK-076/077/079/096) run next |
+| NOT STARTED | 0 | |
 | IN PROGRESS | 1 | TASK-082 plan closure waits on the blocked tasks |
 | BLOCKED | 4 | TASK-051 CI, TASK-078 push, TASK-080 publish, TASK-081 artifact verification: no git remote |
-| DONE | 87 | P1–P4 and the P5 preparation |
+| DONE | 91 | P1–P5 release |
 | FAILED | 0 | |
 | DEFERRED | 0 | Stage C is out of scope, not deferred inside this plan |
 
-- **Current phase:** P5 (release). P4 exited 2026-09-28: demos verified, documentation current, RPT-2026-0001 final (21 PASS, 5 PARTIAL, 0 FAIL).
-- **Next action:** release commit `release: v0.1.0`, annotated tag, verification, REL-0.1.0 finalization, §34 gate.
+- **Current phase:** P5 — **v0.1.0 released locally** (tag `v0.1.0` → `f69b5b9`, REL-0.1.0 completed, §34 gate walked).
+- **Next action (maintainer):** add a git remote, push `main` and `v0.1.0`, let CI run T-01/T-08/T-27 on Linux and Windows, publish artifacts, re-run DEMO-2026-0015 against them; then mark this plan `completed` (TASK-082).
 - **Blockers:** no git remote (TASK-051, 078, 080, 081). Linux sandbox T-08 needs a kernel ≥ 6.12 runner (ADR-0003).
 - **Last updated:** 2026-09-28.
-- **Release target:** v0.1.0.
+- **Release:** v0.1.0 (2026-09-28).
 
 ## Requirements and Use Cases
 
@@ -368,10 +368,10 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | TASK-073 | P5 | Maintainer approves the release candidate (validation report, demos, manuals) | all | — | Manual | P4 exit | M | DONE | Maintainer standing approval ("everything else is approved", 2026-09-28); RC = RPT-2026-0001 final, DEMO-2026-0015, manuals |
 | TASK-074 | P5 | Set the canonical version `0.1.0` in `Cargo.toml`; check every version reference (`rivet --version`, MCP `serverInfo.version`, API docs, manuals, DEMO-2026-0014, README) | release | `Cargo.toml`, `Cargo.lock` (UPDATE) | T-33 (version sync script step) | TASK-073 | I | DONE | Cargo.toml 0.1.0; scripts/check_version.py: --version, MCP serverInfo, rivet.capabilities all 0.1.0 |
 | TASK-075 | P5 | Draft the release document in the flat form: version, plan, standards baseline, requirements, Added/Changed/Fixed/Removed, U-NN verification, tests, validation, incidents, troubleshooting, demo, manual, system, the six impact decisions, source changes, known issues, limitations, follow-up (Stage C → PLAN-2026-0002) | R1–R26 | — | `docs/releases/rel-0.1.0-release-notes.md`, `docs/releases/index.md` (CREATE) | TASK-074 | I | DONE | docs/releases/rel-0.1.0-release-notes.md drafted in the release commit |
-| TASK-076 | P5 | Final release commit `release: v0.1.0`; record the full SHA | §32.2 | repository | `git rev-parse HEAD` | TASK-075 | I | NOT STARTED | |
-| TASK-077 | P5 | Annotated tag `v0.1.0`; verify `git rev-list -n 1 v0.1.0` == recorded SHA; `git describe --tags --exact-match HEAD` = `v0.1.0`; clean tree | §32.3–32.4 | repository | T-33 | TASK-076 | I | NOT STARTED | |
+| TASK-076 | P5 | Final release commit `release: v0.1.0`; record the full SHA | §32.2 | repository | `git rev-parse HEAD` | TASK-075 | I | DONE | Release commit f69b5b911f174b0198adb89c8305c8cce268fc11 "release: v0.1.0" |
+| TASK-077 | P5 | Annotated tag `v0.1.0`; verify `git rev-list -n 1 v0.1.0` == recorded SHA; `git describe --tags --exact-match HEAD` = `v0.1.0`; clean tree | §32.3–32.4 | repository | T-33 | TASK-076 | I | DONE | Annotated tag v0.1.0 → f69b5b9; describe --exact-match = v0.1.0; clean tree (TEST-2026-0033) |
 | TASK-078 | P5 | Push the commit and tag to the remote (if configured) | §32.3 | repository | remote shows the tag | TASK-077 | M | BLOCKED | No git remote configured; the maintainer must add one, then push main and v0.1.0 |
-| TASK-079 | P5 | Finalize REL-0.1.0 with tag, full SHA and release date; set status. The finalizing commit is a follow-up doc commit; the tag stays on the release commit | §33 | — | `docs/releases/rel-0.1.0-release-notes.md` (UPDATE) | TASK-077 | I | NOT STARTED | |
+| TASK-079 | P5 | Finalize REL-0.1.0 with tag, full SHA and release date; set status. The finalizing commit is a follow-up doc commit; the tag stays on the release commit | §33 | — | `docs/releases/rel-0.1.0-release-notes.md` (UPDATE) | TASK-077 | I | DONE | REL-0.1.0 completed with tag, full SHA, date; finalizing doc commit follows the tag |
 | TASK-080 | P5 | Rollout: publish the binary/crate artifacts (GitHub release assets; crates.io only if the maintainer chooses and G-LIC permits) | release | release artifacts | Manual: download and run `rivet --version` | TASK-078 | M | BLOCKED | Needs a remote/hosting target for release assets |
 | TASK-081 | P5 | Post-release verification: run DEMO-2026-0014 against the published artifact; record it in the demo's verification record | R1–R26 | — | T-30 on release artifacts | TASK-080 | I | BLOCKED | Needs a published artifact; DEMO-2026-0015 was run against the local release build |
 | TASK-082 | P5 | Mark this plan `completed`, the proposal `implemented`; move documents as the lifecycle requires; regenerate indexes | R14 | this plan, proposal, indexes | T-31 | TASK-081 | I | IN PROGRESS | PROP-2026-0001 implemented and moved to implemented/; plan stays open until TASK-078/080/081 unblock |
@@ -393,7 +393,7 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | TASK-093 | P3 | Secret-canary scan over every test log, trace export and error body (no token/secret/key contents) | R13, R16 | — | T-09, T-11 artifacts | TASK-047 | I | DONE | cargo test --nocapture (903 lines) scanned: 0 canary hits; in-suite canary assertions in T-08/T-09/T-11 |
 | TASK-094 | P3 | Stage C refusal check: Stage C syntax (FIFO, watch, mTLS TCP, custom codec, reconnect) fails with typed `unsupported.*`, never partially runs | R12 | — | part of T-05 | TASK-047 | I | DONE | mTLS TCP, interactive, FIFO, watch, reconnect → unsupported.* exit 5, effects none, 0 TCP connections |
 | TASK-095 | P5 | Record limitations and known issues (platform sandbox gaps, remote MCP opacity, no persistence/resume) in REL-0.1.0, MAN limitations chapter and docs/README | R11, R12 | — | as named | TASK-075 | I | DONE | MAN-2026-0001 Known Limitations chapter; REL-0.1.0 Limitations/Known Issues; docs/README.md risks |
-| TASK-096 | P5 | Walk the §34 Release Completion Gate item by item; attach evidence for each; the release is complete only when every box is checked | all | — | §34 checklist copied into REL-0.1.0 | TASK-082 | M | NOT STARTED | |
+| TASK-096 | P5 | Walk the §34 Release Completion Gate item by item; attach evidence for each; the release is complete only when every box is checked | all | — | §34 checklist copied into REL-0.1.0 | TASK-082 | M | DONE | §34 gate walked in REL-0.1.0: all items ✔ except N/A (measurable claims; push without a remote) |
 
 ## File and Artifact Checklist
 
@@ -496,10 +496,10 @@ document `docs/testing/test-2026-00NN-<slug>.md` (NN = the T number) holding its
 | T-27 | build / static | all / R1 | fmt, clippy `-D warnings`, `cargo deny`, release build on three OSes | CI or local | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo deny check && cargo build --release` | All green; Capy licence passes deny after G-LIC | PARTIAL (2026-09-28) | TEST-2026-0027 |
 | T-28 | architecture | all / R14 | VHCO structure and drift | — | `vhco validate . && vhco sync . && vhco check . && vhco spec .` | validate green; sync 0; check green | PASS (2026-09-28) | TEST-2026-0028 |
 | T-29 | regression / corpus | UC-01 / R2, R14 | Every Stage A/B example and demo parses; demo ops run on fixtures | `tests/conformance_samples.rs` | `cargo test conformance_samples` | 100% of in-scope samples pass; Stage C samples refuse | PASS (2026-09-28) | TEST-2026-0029 |
-| T-30 | manual / e2e | all UCs / R1–R26 | Execute the 12 sample READMEs and DEMO-2026-0014 step by step against the v0.1.0 build, then the release artifact | Manual: follow each README; compare expected output | Clean checkout at the release commit; fixtures running | Every step matches; verification records filled | NOT STARTED | TEST-2026-0030 |
+| T-30 | manual / e2e | all UCs / R1–R26 | Execute the 12 sample READMEs and DEMO-2026-0014 step by step against the v0.1.0 build, then the release artifact | Manual: follow each README; compare expected output | Clean checkout at the release commit; fixtures running | Every step matches; verification records filled | PARTIAL (2026-09-28) | TEST-2026-0030 |
 | T-31 | documentation | R14 | Front matter, IDs, links, anchors, fences, headers, revisions, index membership; ASCII visual presence in manuals/system/API | `scripts/check_docs.py` | `python3 scripts/check_docs.py` | 0 errors | PASS (2026-09-28) | TEST-2026-0031 |
-| T-32 | traceability | R1–R26 | Every R → task → file → test → doc → U-NN row; no orphan either way | Manual + script over this plan, RPT and REL | — | No orphans | NOT STARTED | TEST-2026-0032 |
-| T-33 | release | release | Version sync (`Cargo.toml` = `rivet --version` = MCP serverInfo = docs); tag = commit; clean tree | Manual per §32.4 | `git describe --tags --exact-match HEAD` | `v0.1.0`; SHAs equal | NOT STARTED | TEST-2026-0033 |
+| T-32 | traceability | R1–R26 | Every R → task → file → test → doc → U-NN row; no orphan either way | Manual + script over this plan, RPT and REL | — | No orphans | PASS (2026-09-28) | TEST-2026-0032 |
+| T-33 | release | release | Version sync (`Cargo.toml` = `rivet --version` = MCP serverInfo = docs); tag = commit; clean tree | Manual per §32.4 | `git describe --tags --exact-match HEAD` | `v0.1.0`; SHAs equal | PASS (2026-09-28) | TEST-2026-0033 |
 
 Categories with no dedicated test: **performance** — NOT APPLICABLE, the proposal makes no performance claim
 (resource bounds are covered by T-03/T-24). **UI** — NOT APPLICABLE, the proposal has no UI.
@@ -742,6 +742,7 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-28 | Claude | v0.1.0 released: release commit f69b5b9, tag v0.1.0 verified (T-33), REL-0.1.0 completed, §34 gate walked; remote-dependent tasks remain BLOCKED. |
 | 7 | 2026-09-28 | Claude | P4 complete: demos verified (DEMO-2026-0015), docs current, INC-2026-0006…0008 fixed, RPT-2026-0001 final; P5 preparation (version 0.1.0, REL draft, proposal implemented); remote-dependent tasks BLOCKED. |
 | 6 | 2026-09-28 | Claude | P3 complete: Fix-A…D merged (G1–G36, B1–B3), INC-2026-0005 fixed, contract re-reconciled, TEST documents and RPT-2026-0001 recorded, TASK-093/094 checks; P4 started. |
 | 5 | 2026-09-28 | Claude | P2 complete: all implementation tasks DONE; contract reconciled; vhco assure green; P3 started. |

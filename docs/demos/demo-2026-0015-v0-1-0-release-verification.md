@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -19,8 +19,8 @@ audience: [maintainers, reviewers, release-verifiers]
 scope: Executable verification procedure for every update released in Rivet 0.1.0 (U-01…U-26, one per requirement R1…R26), with success and failure examples per surface (CLI, HTTP/SSE, polling, WebSocket, MCP, library), cleanup and the verification record. It links the twelve sample folders instead of repeating them.
 reason: DOCUMENTATION.md §29 requires a release verification guide and demo for every release; PLAN-2026-0001 TASK-068 (D-12, T-30).
 release_version: "0.1.0"
-release_tag: TBD at P5
-release_commit: TBD at P5
+release_tag: v0.1.0
+release_commit: f69b5b911f174b0198adb89c8305c8cce268fc11
 dependencies: [PLAN-2026-0001, PROP-2026-0001]
 related_documents: [PLAN-2026-0001, PROP-2026-0001, RPT-2026-0001, DEMO-2026-0001, DEMO-2026-0002, DEMO-2026-0003, DEMO-2026-0004, DEMO-2026-0005, DEMO-2026-0006, DEMO-2026-0007, DEMO-2026-0008, DEMO-2026-0009, DEMO-2026-0010, DEMO-2026-0011, DEMO-2026-0012, DEMO-2026-0013, MAN-2026-0001, API-2026-0005]
 supersedes: null
@@ -44,8 +44,8 @@ verified_against: "0.1.0"
 ```text
   ┌──────────────────────────────────────────────────────────────────────┐
   │  RELEASE      Rivet 0.1.0                                            │
-  │  TAG          TBD at P5   (v0.1.0, created by TASK-080)              │
-  │  COMMIT       TBD at P5   (full SHA of the tagged release commit)    │
+  │  TAG          v0.1.0 (annotated)                                   │
+  │  COMMIT       f69b5b911f174b0198adb89c8305c8cce268fc11             │
   │  VERIFIED ON  0.1.0-dev at commit 829ca43, the release candidate     │
   │  PLAN         PLAN-2026-0001   PROPOSAL  PROP-2026-0001 rev 8        │
   └──────────────────────────────────────────────────────────────────────┘
@@ -287,11 +287,11 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) are remov
 | U-13 argv-only process, token never logged | Claude (TASK-068) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
 | U-14 `check_docs.py` 0 problems; `vhco docs check .` | Claude (coordinator) | 2026-09-28, after commit 2a751ab, macOS 26.4.1 arm64 | PASS (0 errors) |
 | Per-surface success and failure examples above | Claude (TASK-068) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| Release artifact (tag v0.1.0) | — | TBD at P5 (TASK-081) | NOT APPLICABLE until the tag exists |
+| Tagged release build (`v0.1.0`, local `target/release/rivet`): `--version`, quickstart, 11-sandbox check and io | Claude (P5) | 2026-09-28, tag v0.1.0 (f69b5b9), macOS 26.4.1 arm64 | PASS; a published artifact does not exist yet (TASK-080/081 blocked: no git remote) |
 
 ## Known Caveats
 
-- **Tag and commit.** The header's tag and commit are filled at P5; this record verifies the release candidate 829ca43 whose `--version` still reads `0.1.0-dev`.
+- **Tag and commit.** The steps were recorded on the release candidate 829ca43 (`--version` 0.1.0-dev). The tagged build `v0.1.0` (f69b5b9) prints `rivet 0.1.0` and passed the smoke re-run in the last verification row.
 - **Document ID.** The plan reserved DEMO-2026-0014 for this guide; that ID is used by the [13-real-world-apis](13-real-world-apis/README.md) cookbook, so this guide is DEMO-2026-0015.
 - **Platform coverage.** Only macOS arm64 was available. The Linux Landlock + seccomp process sandbox is built but gated and refuses until verified on kernel ≥ 6.12; Windows refuses with `unsupported.sandbox_backend`. Those rows need a Linux host.
 - **Defects found here.** Six defects found while running the demos were fixed before release ([INC-2026-0007](../incidents/resolved/inc-2026-0007-demo-verification-defects.md)); the affected READMEs (02, 03, 04, 05, 10) were re-run against commit 2a751ab.
@@ -308,4 +308,5 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) are remov
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | P5: tag v0.1.0 and commit f69b5b9 recorded; tagged-build smoke verification row. |
 | 1 | 2026-09-28 | Claude | TASK-068: created the 0.1.0 release verification guide: header with tag/commit placeholders, U-01…U-26 (one per R1…R26) with inciting UQ, command, expected result and recorded evidence, per-surface success and failure examples, cleanup and verification record at release candidate 829ca43. |
