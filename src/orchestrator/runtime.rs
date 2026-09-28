@@ -342,11 +342,15 @@ impl PolicyEvaluator for TracedEvaluator {
 #[async_trait]
 impl FileAccess for PolicedFiles {
     async fn apply(&self, op: FileOperation) -> RivetResult<Value> {
+        // The interpreter runs every file effect inside its effect scope, so
+        // the broker intent (trace + permission error) names the operation and
+        // the statement span (B2).
+        let scope = current_effect_scope().unwrap_or_default();
         apply_file_operation(
             FileRequest {
                 op,
-                operation_id: String::new(),
-                span: None,
+                operation_id: scope.operation_id,
+                span: scope.span,
                 effect_id: None,
             },
             self.evaluator.as_ref(),

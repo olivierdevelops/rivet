@@ -22,6 +22,9 @@ pub struct EffectScope {
     pub trace_id: String,
     pub operation_id: String,
     pub line: u32,
+    /// The effect statement's source span (file effects hand it to the broker
+    /// intent so traces and permission errors name the location).
+    pub span: Option<crate::domain::source::SourceSpan>,
 }
 
 tokio::task_local! {

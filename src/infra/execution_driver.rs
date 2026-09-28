@@ -932,6 +932,7 @@ impl<'a> Machine<'a> {
             trace_id: frame.request.trace_id.clone(),
             operation_id: self.op.id.clone(),
             line: span.start_line,
+            span: Some(span.clone()),
         }
     }
 
