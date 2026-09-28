@@ -1,7 +1,8 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy
 // vhco:trigger cli execution/request_operation = rivet request ID --params JSON
+// vhco:trigger cli execution/cancel_request = Ctrl-C during rivet request
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
@@ -142,7 +143,19 @@ async fn run(cli: Cli) -> i32 {
             } else {
                 None
             };
-            match runtime.dispatch_request(req, sink).await {
+            // Ctrl-C cancels the request through execution.cancel_request; the
+            // request then ends with one `cancelled` error (exit 130).
+            let request_id = req.request_id.clone();
+            let run = runtime.dispatch_request(req, sink);
+            tokio::pin!(run);
+            let outcome = tokio::select! {
+                r = &mut run => r,
+                _ = tokio::signal::ctrl_c() => {
+                    let _ = runtime.cancel(&request_id, crate::domain::contracts::Principal::local());
+                    run.await
+                }
+            };
+            match outcome {
                 Ok(c) => {
                     let line = if args.stream {
                         crate::domain::contracts::Envelope::Result(c).to_json()
