@@ -828,6 +828,22 @@ impl Runtime {
     /// the candidate snapshot (allow_write). Never overwrites an existing file,
     /// never changes this runtime's catalog. `output` is bundle-root relative.
     pub async fn sync_connector(&self, name: &str, output: &str) -> RivetResult<ConnectorSync> {
+        // G21: the snapshot is created exclusively, so an existing --output is refused
+        // BEFORE any discovery traffic reaches the server (the exclusive create below
+        // still guards the race where the path appears meanwhile).
+        let probe = FileOperation::new(crate::domain::files::FileVerb::Stat, output);
+        match ConfinedFiles::new(&self.bundle().root).apply(probe).await {
+            Ok(_) => {
+                return Err(RivetError::new(
+                    ErrorKind::Conflict,
+                    "conflict.already_exists",
+                    format!("{output} already exists; connectors sync never overwrites a snapshot"),
+                )
+                .with_details(Value::object([("path", Value::text(output))])));
+            }
+            Err(e) if e.code.starts_with("not_found") => {}
+            Err(e) => return Err(e),
+        }
         let input = McpRequest {
             connector: name.to_string(),
             method: "discover".into(),

@@ -1046,3 +1046,50 @@ async fn reqwest_like_post(addr: std::net::SocketAddr, msg: Json) -> Json {
     .await;
     post(addr, msg, sid.as_deref()).await.1
 }
+
+// vhco:test connectors.invoke_mcp -- G21: `connectors sync --output` refuses an existing path (conflict.already_exists) before any connection reaches the server
+#[tokio::test(flavor = "multi_thread")]
+async fn sync_refuses_existing_output_before_contacting_server() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let hits = Arc::new(Mutex::new(0u32));
+    let h = hits.clone();
+    tokio::spawn(async move {
+        while let Ok((_s, _)) = listener.accept().await {
+            *h.lock().unwrap() += 1;
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "app.rivet",
+        &format!(
+            "connector peer mcp\n    transport http \"http://{addr}/mcp\"\n    schema \"./schemas/peer.json\"\n    expose tools [\"demo.add\"]\nend\n"
+        ),
+    );
+    write(
+        dir.path(),
+        "policy.json",
+        &policy(
+            json!([
+                {"capability": "allow_network", "targets": [format!("http://{addr}")]},
+                {"capability": "allow_mcp", "targets": ["peer/discover"]},
+                {"capability": "allow_write", "targets": ["./schemas/**"]}
+            ]),
+            &[],
+        ),
+    );
+    write(dir.path(), "schemas/peer.json", "{\"keep\": true}");
+    let rt = load_discovery(dir.path());
+    let e = rt
+        .sync_connector("peer", "./schemas/peer.json")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "conflict.already_exists");
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(*hits.lock().unwrap(), 0, "the server was contacted");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("schemas/peer.json")).unwrap(),
+        "{\"keep\": true}"
+    );
+}
