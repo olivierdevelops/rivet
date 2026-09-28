@@ -1,0 +1,349 @@
+//! CLI surface: argument parsing and rendering only. Business logic lives in
+//! the shared dispatcher; `orchestrator::setup_cli` connects the two.
+
+use crate::domain::contracts::{Catalog, OutputReport, RegistryEntry};
+use crate::domain::outputs::{FieldSpec, ValueSpec};
+use crate::domain::policy::Policy;
+use clap::{Args, Parser, Subcommand};
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "rivet",
+    version,
+    about = "Run described .rivet operations over the CLI, HTTP, WebSocket, MCP and the Rust library"
+)]
+pub struct Cli {
+    /// Entry .rivet file (policy.json beside it is discovered automatically).
+    #[arg(long, global = true)]
+    pub file: Option<String>,
+    /// Use this policy file instead of the discovered policy.json (a path, never grants).
+    #[arg(long, global = true)]
+    pub policy: Option<String>,
+    /// Print JSON instead of tables.
+    #[arg(long, global = true)]
+    pub json: bool,
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Invoke one operation.
+    Request(RequestArgs),
+    /// List public operations.
+    List {
+        /// Add a one-line output summary column.
+        #[arg(long)]
+        outputs: bool,
+    },
+    /// Describe operations: params, output, errors, source.
+    Describe { ids: Vec<String> },
+    /// Show declared outputs, emits, receives and errors.
+    Outputs {
+        id: Option<String>,
+        #[arg(long)]
+        all: bool,
+    },
+    /// Compile and check the bundle without running anything.
+    Check {
+        /// Require descriptions on public operations, params, outputs and fields.
+        #[arg(long)]
+        strict_docs: bool,
+    },
+    /// Generate the I/O manifest (every I/O site, target and access verb).
+    Io(IoArgs),
+    /// Policy tools.
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommand,
+    },
+    /// Serve every surface (REST, SSE, polling, WebSocket, MCP) on one listener.
+    Serve(ServeArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct RequestArgs {
+    pub id: String,
+    /// Parameters as a JSON object.
+    #[arg(long, default_value = "{}")]
+    pub params: String,
+    /// Print NDJSON envelopes for streamed data.
+    #[arg(long)]
+    pub stream: bool,
+    /// Request deadline, e.g. "5s" (default 30s).
+    #[arg(long)]
+    pub timeout: Option<String>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct IoArgs {
+    pub ids: Vec<String>,
+    #[arg(long)]
+    pub all: bool,
+    #[arg(long)]
+    pub transitive: bool,
+    #[arg(long)]
+    pub include_bootstrap: bool,
+    #[arg(long, default_value = "operation")]
+    pub by: String,
+    #[arg(long)]
+    pub kind: Option<String>,
+    #[arg(long)]
+    pub access: Option<String>,
+    #[arg(long, default_value = "table")]
+    pub format: String,
+    #[arg(long)]
+    pub check_policy: bool,
+    #[arg(long)]
+    pub strict: bool,
+    #[arg(long)]
+    pub trace: Option<String>,
+    #[arg(long)]
+    pub needs: bool,
+    #[arg(long)]
+    pub check_files: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PolicyCommand {
+    /// Explain the effective policy (and, with an ID, what that operation needs).
+    Explain {
+        id: Option<String>,
+        #[arg(long, default_value = "{}")]
+        params: String,
+    },
+    /// Generate a least-privilege policy.json draft from the I/O manifest.
+    Generate {
+        ids: Vec<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ServeArgs {
+    /// Listen address (default 127.0.0.1:8080).
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    pub listen: String,
+    /// Serve MCP over stdio instead of a network listener.
+    #[arg(long)]
+    pub stdio: bool,
+}
+
+const DASH: &str = "—";
+
+fn pad(s: &str, w: usize) -> String {
+    let n = s.chars().count();
+    if n >= w {
+        format!("{s} ")
+    } else {
+        format!("{s}{}", " ".repeat(w - n))
+    }
+}
+
+/// `rivet list` table.
+pub fn render_list(catalog: &Catalog, outputs: bool) -> String {
+    let mut out = String::new();
+    let idw = catalog
+        .entries
+        .iter()
+        .map(|e| e.id.len())
+        .max()
+        .unwrap_or(2)
+        .max(2)
+        + 2;
+    let namew = catalog
+        .entries
+        .iter()
+        .map(|e| e.name.chars().count())
+        .max()
+        .unwrap_or(4)
+        .max(4)
+        + 2;
+    out.push_str(&pad("ID", idw));
+    out.push_str(&pad("NAME", namew));
+    if outputs {
+        out.push_str(&pad("OUTPUT", 12));
+    }
+    out.push_str("DESCRIPTION\n");
+    for e in &catalog.entries {
+        out.push_str(&pad(&e.id, idw));
+        out.push_str(&pad(&e.name, namew));
+        if outputs {
+            out.push_str(&pad(&e.output.spec.name(), 12));
+        }
+        out.push_str(e.description.as_deref().unwrap_or(DASH));
+        out.push('\n');
+    }
+    out
+}
+
+fn field_rows(fields: &[FieldSpec], indent: usize, out: &mut String) {
+    let w = fields.iter().map(|f| f.name.len()).max().unwrap_or(0) + 2;
+    for f in fields {
+        out.push_str(&" ".repeat(indent));
+        out.push_str(&pad(&f.name, w.max(8)));
+        out.push_str(&pad(&f.spec.name(), 9));
+        out.push_str(&pad(if f.required { "required" } else { "optional" }, 10));
+        out.push_str(f.description.as_deref().unwrap_or(""));
+        out.push('\n');
+        if let ValueSpec::Object { fields, .. } = &f.spec {
+            field_rows(fields, indent + 2, out);
+        }
+    }
+}
+
+fn spec_line(label: &str, spec: Option<&ValueSpec>, description: Option<&str>, out: &mut String) {
+    match spec {
+        None => out.push_str(&format!("{}{DASH}\n", pad(label, 9))),
+        Some(s) => {
+            out.push_str(
+                &format!(
+                    "{}{}{}\n",
+                    pad(label, 8),
+                    pad(&s.name(), 9),
+                    description.unwrap_or("")
+                )
+                .trim_end(),
+            );
+            out.push('\n');
+            if let ValueSpec::Object { fields, open } = s {
+                field_rows(fields, 2, out);
+                if *open {
+                    out.push_str("  (open: extra fields allowed)\n");
+                }
+            }
+            if let ValueSpec::List(inner) = s {
+                if let ValueSpec::Object { fields, .. } = inner.as_ref() {
+                    field_rows(fields, 2, out);
+                }
+            }
+        }
+    }
+}
+
+/// `rivet outputs ID` human table (REF-2026-0002 S124).
+pub fn render_outputs(reports: &[OutputReport]) -> String {
+    let mut out = String::new();
+    for (i, r) in reports.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(&format!("{} {DASH} {}\n", r.id, r.name));
+        spec_line(
+            "output",
+            Some(&r.output.spec),
+            r.output.description.as_deref(),
+            &mut out,
+        );
+        spec_line("emits", r.emits.as_ref(), None, &mut out);
+        spec_line("receives", r.receives.as_ref(), None, &mut out);
+        if r.errors.is_empty() {
+            out.push_str(&format!("{}{DASH}\n", pad("errors", 9)));
+        } else {
+            out.push_str("errors\n");
+            let w = r.errors.iter().map(|e| e.code.len()).max().unwrap_or(0) + 3;
+            for e in &r.errors {
+                out.push_str(&format!(
+                    "  {}{}\n",
+                    pad(&e.code, w),
+                    e.description.as_deref().unwrap_or("")
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// `rivet describe ID` text.
+pub fn render_describe(e: &RegistryEntry) -> String {
+    let mut out = format!("{} {DASH} {}\n", e.id, e.name);
+    if let Some(d) = &e.description {
+        out.push_str(&format!("{d}\n"));
+    }
+    out.push_str(&format!(
+        "source   {}:{}\n",
+        e.source.file, e.source.start_line
+    ));
+    out.push_str(&format!("delivery {}\n\nparams\n", e.delivery()));
+    if e.params.is_empty() {
+        out.push_str(&format!("  {DASH}\n"));
+    }
+    let w = e.params.iter().map(|p| p.name.len()).max().unwrap_or(0) + 3;
+    for p in &e.params {
+        let req = match (&p.default, p.required) {
+            (Some(d), _) => format!("default {}", d.to_json()),
+            (None, true) => "required".into(),
+            (None, false) => "optional".into(),
+        };
+        out.push_str(&format!(
+            "  {}{}{}{}\n",
+            pad(&p.name, w),
+            pad(&p.spec.name(), 9),
+            pad(&req, 12),
+            p.description.as_deref().unwrap_or("")
+        ));
+    }
+    out.push('\n');
+    out.push_str(
+        &render_outputs(&[OutputReport {
+            id: e.id.clone(),
+            name: e.name.clone(),
+            output: e.output.clone(),
+            emits: e.emits.clone(),
+            receives: e.receives.clone(),
+            errors: e.errors.clone(),
+        }])
+        .lines()
+        .skip(1)
+        .map(|l| format!("{l}\n"))
+        .collect::<String>(),
+    );
+    out
+}
+
+/// `rivet policy explain` summary.
+pub fn render_policy(p: &Policy) -> String {
+    let mut out = String::new();
+    match &p.file {
+        Some(f) if p.present => out.push_str(&format!("policy   {f} ({})\n", p.sha256.as_deref().unwrap_or(""))),
+        _ => out.push_str("policy   none — no policy.json: every new application effect is denied (pure operations still run)\n"),
+    }
+    out.push_str(&format!("base     {}\n", p.base_dir));
+    out.push_str(&format!(
+        "network  deny_private_ranges {}\n",
+        p.network.deny_private_ranges
+    ));
+    out.push_str(&format!(
+        "limits   {} concurrent, depth {}, {} buffered bytes\n",
+        p.limits.max_concurrent_requests, p.limits.max_call_depth, p.limits.max_buffered_bytes
+    ));
+    for (label, list) in [("grant", &p.grants), ("deny", &p.deny)] {
+        for g in list {
+            let access = g
+                .access
+                .as_ref()
+                .map(|v| {
+                    format!(
+                        " access [{}]",
+                        v.iter().map(|a| a.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                })
+                .unwrap_or_default();
+            let broad = if g.targets.iter().any(|t| t == "*") {
+                "   ⚠ broad: \"*\" allows every target"
+            } else {
+                ""
+            };
+            out.push_str(&format!(
+                "{}{} {}{access}{broad}\n",
+                pad(label, 9),
+                g.capability.as_str(),
+                g.targets.join(", ")
+            ));
+        }
+    }
+    out
+}

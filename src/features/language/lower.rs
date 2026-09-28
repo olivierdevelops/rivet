@@ -1479,3 +1479,113 @@ pub fn collect_calls(body: &[Stmt], out: &mut Vec<String>) {
         }
     }
 }
+
+/// `check --strict-docs` findings: every public operation, parameter, output
+/// and field needs a description, and every `fail` code must be declared.
+pub fn strict_doc_findings(program: &crate::domain::ir::CompiledProgram) -> Vec<RivetError> {
+    fn fields(spec: &ValueSpec, path: &str, op: &Operation, out: &mut Vec<RivetError>) {
+        if let ValueSpec::Object { fields, .. } = spec {
+            for f in fields {
+                let p = format!("{path}.{}", f.name);
+                if f.description.as_deref().unwrap_or("").trim().is_empty() {
+                    out.push(RivetError::syntax(
+                        "docs.field_description",
+                        format!("`{}` field `{p}` has no description", op.id),
+                        Some(op.span.clone()),
+                    ));
+                }
+                fields_rec(&f.spec, &p, op, out);
+            }
+        }
+    }
+    fn fields_rec(spec: &ValueSpec, path: &str, op: &Operation, out: &mut Vec<RivetError>) {
+        match spec {
+            ValueSpec::List(inner) => fields(inner, path, op, out),
+            other => fields(other, path, op, out),
+        }
+    }
+    fn fail_codes(body: &[Stmt], out: &mut Vec<(String, SourceSpan)>) {
+        for s in body {
+            match s {
+                Stmt::Fail { code, span, .. } => out.push((code.clone(), span.clone())),
+                Stmt::If {
+                    then, otherwise, ..
+                } => {
+                    fail_codes(then, out);
+                    fail_codes(otherwise, out);
+                }
+                Stmt::Try { body, handler, .. } => {
+                    fail_codes(body, out);
+                    fail_codes(handler, out);
+                }
+                Stmt::For { body, .. }
+                | Stmt::While { body, .. }
+                | Stmt::Iterate { body, .. }
+                | Stmt::Scope { body, .. }
+                | Stmt::With { body, .. } => fail_codes(body, out),
+                Stmt::Concurrent { tasks, .. } => {
+                    tasks.iter().for_each(|(_, b)| fail_codes(b, out))
+                }
+                Stmt::Assign {
+                    rhs: Rhs::Map { body, .. } | Rhs::Poll { body, .. },
+                    ..
+                } => fail_codes(body, out),
+                _ => {}
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for op in program.operations.iter().filter(|o| !o.private) {
+        if op.description.as_deref().unwrap_or("").trim().is_empty() {
+            out.push(RivetError::syntax(
+                "docs.description",
+                format!("operation `{}` has no description", op.id),
+                Some(op.span.clone()),
+            ));
+        }
+        for p in &op.params {
+            if p.description.as_deref().unwrap_or("").trim().is_empty() {
+                out.push(RivetError::syntax(
+                    "docs.param_description",
+                    format!("`{}` parameter `{}` has no description", op.id, p.name),
+                    Some(op.span.clone()),
+                ));
+            }
+        }
+        if op
+            .output
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .is_empty()
+        {
+            out.push(RivetError::syntax(
+                "docs.output_description",
+                format!("`{}` output has no description", op.id),
+                Some(op.span.clone()),
+            ));
+        }
+        fields_rec(&op.output.spec, "output", op, &mut out);
+        for (label, spec) in [("emits", &op.emits), ("receives", &op.receives)] {
+            if let Some(s) = spec {
+                fields_rec(s, label, op, &mut out);
+            }
+        }
+        let mut codes = Vec::new();
+        fail_codes(&op.body, &mut codes);
+        for (code, span) in codes {
+            if !op.errors.iter().any(|e| e.code == code) {
+                out.push(RivetError::syntax(
+                    "docs.undeclared_error",
+                    format!(
+                        "`{}` can fail with `{code}` but declares no `error \"{code}\"` line",
+                        op.id
+                    ),
+                    Some(span),
+                ));
+            }
+        }
+    }
+    out
+}

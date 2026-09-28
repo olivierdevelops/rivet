@@ -77,7 +77,7 @@ fn io_err(path: &str, e: std::io::Error) -> RivetError {
         K::NotFound => RivetError::not_found("not_found.file", format!("{path}: no such file")),
         K::AlreadyExists => RivetError::new(
             ErrorKind::Conflict,
-            "already_exists",
+            "conflict.already_exists",
             format!("{path} already exists"),
         ),
         K::PermissionDenied => RivetError::new(
@@ -397,7 +397,7 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
             if !op.overwrite && dir.symlink_metadata(&rt).is_ok() {
                 return Err(RivetError::new(
                     ErrorKind::Conflict,
-                    "already_exists",
+                    "conflict.already_exists",
                     format!("{to} already exists (overwrite false)"),
                 ));
             }
@@ -442,7 +442,10 @@ mod tests {
         let mut c = op(FileVerb::Create, "./out/a.json");
         c.content = Some(Value::object([("n", Value::Int(1))]));
         let created = files.apply(c.clone()).await.unwrap();
-        assert_eq!(files.apply(c).await.unwrap_err().code, "already_exists");
+        assert_eq!(
+            files.apply(c).await.unwrap_err().code,
+            "conflict.already_exists"
+        );
         let v = files
             .apply(op(FileVerb::Read, "./out/a.json"))
             .await
