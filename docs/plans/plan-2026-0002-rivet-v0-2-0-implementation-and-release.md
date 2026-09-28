@@ -4,8 +4,8 @@ title: "Rivet v0.2.0 implementation, validation and release"
 document_type: plan
 status: approved
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 6
+last_updated: 2026-09-29
+document_revision: 7
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -37,7 +37,7 @@ next_review_date: 2026-10-28
 
 > **Status:** Approved
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 → 0.2.0
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, execution, audit, serve, cli, http, ws, poll, mcp, library
@@ -126,17 +126,17 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 35 | P2c, P2d, P3–P5 |
+| NOT STARTED | 23 | P3–P5 |
 | IN PROGRESS | 0 | |
 | BLOCKED | 2 | TASK-095/096 now unblocked by the remote (origin added 2026-09-28); updated at P5 |
-| DONE | 36 | P1, P2a, P2b, P2f, P2e |
+| DONE | 48 | P1, P2a–P2f |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
-- **Current phase:** P1, P2a, P2b, P2f and P2e done (455 tests); P2c next, then P2d.
-- **Next action:** P2c package, facade and features (TASK-030…038); INC-2026-0009 is resolved (`93388c1`), no open incident.
+- **Current phase:** P1 and P2a–P2f done (476 tests, `vhco sync` 0); P3 next.
+- **Next action:** P3 full test and validation (TASK-060…064), including the first CI run of the `features` matrix, the header check and `conformance_ffi` on Linux (the Linux static `Libs.private` list is unverified); no open incident.
 - **Remote:** `origin` = https://github.com/olivierdevelops/rivet.git (added 2026-09-28); `main` and `v0.1.0` pushed; CI runs on push.
-- **Last updated:** 2026-09-28.
+- **Last updated:** 2026-09-29.
 - **Release target:** v0.2.0.
 
 ## Requirements and Use Cases
@@ -152,12 +152,12 @@ recommendations (ADR-0004).
 | R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | DONE (P2b; docs P4) |
 | R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | DONE (P2b; docs P4) |
 | R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | DONE (P2b; see the R9 deviation; docs P4) |
-| R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | NOT STARTED |
-| R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | NOT STARTED |
-| R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | NOT STARTED |
-| R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | NOT STARTED |
-| R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | NOT STARTED |
-| R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | NOT STARTED |
+| R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | DONE (P2c; docs P4) |
+| R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | DONE (P2c; docs P4) |
+| R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | DONE (P2c: packaging prepared; publication DEFERRED to G-PUB; docs P4) |
+| R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | DONE (P2d; docs P4) |
+| R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | DONE (P2d; docs P4) |
+| R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | DONE (P2d; docs P4) |
 | R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | DONE (P2e; docs P4) |
 | R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | DONE (P2e; FFI `rivet_highlight` in P2d; docs P4) |
 | R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
@@ -165,7 +165,7 @@ recommendations (ADR-0004).
 | R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | DONE (P2f; docs P4) |
 | R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | DONE (P2f; docs P4) |
 | R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | DONE (P2f; Module::stream/duplex take a Scope; docs P4) |
-| R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | NOT STARTED |
+| R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | DONE (P2d; docs P4) |
 | R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | DONE (P2f; docs P4) |
 
 ## Applicable Project Standards
@@ -220,8 +220,8 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 | P1 | Contract delta; experiments E1–E3; disk and tooling | This plan approved | Contract updated; RES-2026-0004 written; ADR-0005 recorded; ≥ 15 GiB free | — | DONE |
 | P2a | Envelopes, input, pretty (breaking) | P1 exit | T-01–T-05, T-15 green; all 0.1.0 suites updated and green | P1 | DONE |
 | P2b | Globals | P1 exit | T-06–T-08 green | P1 | DONE (`673994c`) |
-| P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | NOT STARTED |
-| P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
+| P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | DONE (`10c8130`; T-09, T-10 PASS; feature matrix builds) |
+| P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | DONE (`f9af92a`; T-11, T-12, T-19 PASS on macOS; Linux via CI) |
 | P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | DONE (`9ec2a39`, `0d6c2ea`; T-13, T-14 PASS) |
 | P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | DONE (`2942066`) |
 | P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
@@ -276,24 +276,24 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-030 | P2c | Workspace root; package `rivet-runtime`, `[lib] name = "rivet"`, `[[bin]] rivet` with `required-features = ["cli"]`; `workspace.package.version` shared with `rivet-ffi` | R10, R12 / C-07, C-09 | PF-10 | T-09 | TASK-009, P2a | I | NOT STARTED | |
-| TASK-031 | P2c | Facade in `src/lib.rs`: `Runtime`, `RuntimeBuilder`, `Policy`, `Value`, `InputEnvelope`, `ResponseEnvelope`, `Envelope`, `Error`, `DataSink`, `highlight`; internals `pub(crate)` or `#[doc(hidden)] pub mod internal`; tests use the facade or `internal` | R10 / C-07 | PF-09 | T-09 | TASK-030 | I | NOT STARTED | |
-| TASK-032 | P2c | Cargo features `serve`, `grpc`, `quic` (+ HTTP/3), `oauth`, `cli`; default = `serve,grpc,quic,oauth`; cfg-gated dependencies and adapter registration; `unsupported.feature` (5/501, `details.feature`); `rivet.capabilities.features` | R11 / C-08 | PF-10 | T-10 | TASK-030 | I | NOT STARTED | |
-| TASK-033 | P2c | `examples/embed.rs` (facade only); convert `docs/demos/12-library/embedding.rs.txt` into a compiled example (closes PLAN-2026-0001 D-13 note) | R10 | examples | T-09 | TASK-031 | I | NOT STARTED | |
-| TASK-034 | P2c | `commands.perch` build/install/tests pass `--features cli` (or `--all-features` where right); CI feature matrix; `scripts/check_version.py` reads the workspace version | R11 | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | `perch --check`; T-10 | TASK-032 | I | NOT STARTED | |
-| TASK-035 | P2c | crates.io readiness: package metadata (`keywords`, `categories`, `documentation`, `include`), `cargo package --list` clean. `cargo publish --dry-run` is expected to fail on the git dependency; record it | R12 | `Cargo.toml` | T-10 | TASK-030 | I | NOT STARTED | |
+| TASK-030 | P2c | Workspace root; package `rivet-runtime`, `[lib] name = "rivet"`, `[[bin]] rivet` with `required-features = ["cli"]`; `workspace.package.version` shared with `rivet-ffi` | R10, R12 / C-07, C-09 | PF-10 | T-09 | TASK-009, P2a | I | DONE | `10c8130`: `[workspace] members = [".", "ffi"]`, resolver 3; `[workspace.package]` holds version (0.1.0), edition, rust-version, license, repository, homepage; root package `rivet-runtime` with `[lib] name = "rivet"` and `[[bin]] rivet` `required-features = ["cli"]`; `ffi/` (`rivet-ffi`) inherits `version.workspace` |
+| TASK-031 | P2c | Facade in `src/lib.rs`: `Runtime`, `RuntimeBuilder`, `Policy`, `Value`, `InputEnvelope`, `ResponseEnvelope`, `Envelope`, `Error`, `DataSink`, `highlight`; internals `pub(crate)` or `#[doc(hidden)] pub mod internal`; tests use the facade or `internal` | R10 / C-07 | PF-09 | T-09 | TASK-030 | I | DONE | `10c8130`: facade in `src/lib.rs` — `Runtime`, `RuntimeBuilder`, `Module`, `Scope`, `StreamHandle`, `DuplexHandle`, `DuplexSender`, `Policy`, `Value`, `InputEnvelope`, `ResponseEnvelope`, `EnvelopeStatus`, `OutputFormat`, `RecordType`, `Envelope`, `Completion`, `DataEvent`, `DataSink`, `Error`, `ErrorKind`, `Result`, `highlight`, `build_features`, `ABI_VERSION`, `VERSION`, `types::{GraphQuery, Catalog, OutputReport, Principal, RegistryEntry, IoQuery, IoReport, PolicyDraft, ModuleSummary, SessionLimits, SourceSpan}`; the five buckets live under `#[doc(hidden)] pub mod internal` (`src/internal.rs`, see deviation); every test and example uses the facade or `rivet::internal::…`; `cargo doc` 0 warnings |
+| TASK-032 | P2c | Cargo features `serve`, `grpc`, `quic` (+ HTTP/3), `oauth`, `cli`; default = `serve,grpc,quic,oauth`; cfg-gated dependencies and adapter registration; `unsupported.feature` (5/501, `details.feature`); `rivet.capabilities.features` | R11 / C-08 | PF-10 | T-10 | TASK-030 | I | DONE | `10c8130`: features `serve` (axum), `grpc` (tonic, prost, prost-reflect, tower), `quic` (quinn, h3, h3-quinn), `oauth` (keyring-core + platform stores), `cli` (clap); default = serve, grpc, quic, oauth; cfg on the adapter modules and their registration; stand-ins in `infra/unsupported_features.rs` (HTTP/3, OAuth); `domain::capabilities::require_build_features` refuses at load (`unsupported.feature`, exit 5, HTTP 501, `details.feature`, span); `rivet serve` without `serve` exits 5; `rivet.capabilities` gains `build_features` and `abi_version`, and its protocol rows follow the build. `--no-default-features` and each single feature build with 0 warnings; unique normal deps 237 → 172 |
+| TASK-033 | P2c | `examples/embed.rs` (facade only); convert `docs/demos/12-library/embedding.rs.txt` into a compiled example (closes PLAN-2026-0001 D-13 note) | R10 | examples | T-09 | TASK-031 | I | DONE | `10c8130`: `examples/embed.rs` (facade only; `cargo run --example embed` prints the envelopes, a stream, outputs, the manifest and a draft); `examples/modules.rs` moved to the facade. `docs/demos/12-library/embedding.rs.txt` stays until D-61 (P4) points at the example |
+| TASK-034 | P2c | `commands.perch` build/install/tests pass `--features cli` (or `--all-features` where right); CI feature matrix; `scripts/check_version.py` reads the workspace version | R11 | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | `perch --check`; T-10 | TASK-032 | I | DONE | `10c8130`, `f9af92a`: `commands.perch` (`--features cli` for build/install/help, `--workspace --all-features` for check/tests/clippy, new `features`, `ffi`, `ffi_header`; `perch --check` clean); CI builds `--workspace --all-features`, adds the `features` matrix job (none, serve, grpc, quic, oauth, cli: build + `conformance_features`) and the cbindgen `--verify` step, every step through `scripts/ci_step.py`; `check_version.py` reads `[workspace.package]`, checks `version.workspace` in both manifests and librivet; `editors/vscode/package_vsix.py` reads the workspace version |
+| TASK-035 | P2c | crates.io readiness: package metadata (`keywords`, `categories`, `documentation`, `include`), `cargo package --list` clean. `cargo publish --dry-run` is expected to fail on the git dependency; record it | R12 | `Cargo.toml` | T-10 | TASK-030 | I | DONE | `10c8130`: `documentation`, `homepage`, `keywords`, `categories`, `include` (src, grammar, `editors/keywords.json`, examples); `cargo package --list` checked by `conformance_features` (no tests/, docs/, ffi/). `cargo publish --dry-run -p rivet-runtime` fails as expected: "all dependencies must have a version requirement specified when publishing. dependency `capy-core` does not specify a version" (G-PUB) |
 | TASK-038 | P2c | Publish Capy as `capy-lang` and `rivet-runtime` to crates.io | R12 | — | — | G-PUB | M | DEFERRED | ADR-0004: owner's decision, outside v0.2.0 |
 
 ### P2d — C ABI
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-040 | P2d | `src/orchestrator/setup_ffi.rs` (surface `ffi`): runtime handle (owns a tokio runtime), `request` (blocking), call handles (start/next/send/finish_input/cancel/free) over the session driver, `pretty`, `highlight` passthrough, `catch_unwind`, null/UTF-8/JSON guards, handle generation checks | R13–R15 / C-10 | PF-11 | T-11, T-12 | P2c | I | NOT STARTED | |
-| TASK-041 | P2d | `ffi/` crate: `crate-type = ["cdylib","staticlib"]`, lib name `rivet` (→ `librivet`), `#[no_mangle] extern "C"` shims only; `cbindgen.toml`; checked-in `include/rivet.h` (CI diff check); `rivet.pc.in` with `Libs.private` per OS | R13 | PF-12 | T-11 | TASK-040 | I | NOT STARTED | |
-| TASK-042 | P2d | Examples: `examples/c/demo.c` + `Makefile` (shared and static), `examples/python/demo.py` (ctypes); stream, input and cancel shown | R13, R15 | examples | T-11 | TASK-041 | I | NOT STARTED | |
-| TASK-043 | P2d | Tests: `ffi/tests/` (Rust calling the extern functions: null, bad UTF-8, bad JSON, panic probe, double free, free-while-running) and `tests/conformance_ffi.rs` driving the C example; ASan build on Linux when CI exists | R14 | tests | T-11, T-12 | TASK-041 | I | NOT STARTED | |
-| TASK-044 | P2d | `rivet.capabilities.abi_version`; `rivet_version()` equals the crate version (T-33) | R13 | PF-11 | T-11, T-33 | TASK-040 | I | NOT STARTED | |
-| TASK-045 | P2d | Module ABI (R23): `rivet_load`, `rivet_module_operations`, `rivet_module_call`, `rivet_module_call_start`, `rivet_module_free`; `examples/c/modules.c`; `examples/python/rivet.py` wrapper (module object with operation attributes) + `modules.py` | R23 / C-15 | PF-11, PF-12, PF-17 | T-19 | TASK-040, TASK-105 | I | NOT STARTED | |
+| TASK-040 | P2d | `src/orchestrator/setup_ffi.rs` (surface `ffi`): runtime handle (owns a tokio runtime), `request` (blocking), call handles (start/next/send/finish_input/cancel/free) over the session driver, `pretty`, `highlight` passthrough, `catch_unwind`, null/UTF-8/JSON guards, handle generation checks | R13–R15 / C-10 | PF-11 | T-11, T-12 | P2c | I | DONE | `f9af92a`: `src/orchestrator/setup_ffi.rs` (surface `ffi`, 12 calls and triggers): runtime handle owning a multi-thread tokio runtime; blocking `request` (serve.parse_input → `Runtime::call`); call handles = sessions of the shared session driver (`connection_owned`), `next(timeout)` long-polls in ≤ 5 s slices, `send` keeps the sequence, `cancel` = sessions.cancel_session + execution.cancel_request, `free` while running cancels and drains (5 s grace); `pretty` per input or runtime; `highlight` passthrough; `catch_unwind` on every entry (`internal.panic`), NULL/UTF-8/JSON guards (`validation.ffi_argument`), opaque tokens `(generation << 2) \| kind` never dereferenced, tracked strings; domain `FfiOptions` (`src/domain/ffi.rs`) |
+| TASK-041 | P2d | `ffi/` crate: `crate-type = ["cdylib","staticlib"]`, lib name `rivet` (→ `librivet`), `#[no_mangle] extern "C"` shims only; `cbindgen.toml`; checked-in `include/rivet.h` (CI diff check); `rivet.pc.in` with `Libs.private` per OS | R13 | PF-12 | T-11 | TASK-040 | I | DONE | `f9af92a`: `ffi/` — `crate-type = ["cdylib", "staticlib", "rlib"]` (rlib: deviation), lib `rivet`, 18 `#[unsafe(no_mangle)]` shims only; `build.rs` sets `@rpath/librivet.dylib` (soname on Linux); `cbindgen.toml` → checked-in `include/rivet.h` (CI `cbindgen --verify`, test `t11_header_matches_cbindgen`); `rivet.pc.in` + `render_pc.py` (Libs.private per OS; macOS without `-lSystem`); runtime features pass through |
+| TASK-042 | P2d | Examples: `examples/c/demo.c` + `Makefile` (shared and static), `examples/python/demo.py` (ctypes); stream, input and cancel shown | R13, R15 | examples | T-11 | TASK-041 | I | DONE | `f9af92a`: `examples/c/{demo.c, Makefile}` (shared with rpath, static with Libs.private; `TARGET=`/`OUT=`), `examples/python/{rivet.py, demo.py}`; request, pretty, invalid, stream, live input, timeout marker, cancel, highlight, double free shown; shared bundle `examples/ffi/app.rivet` |
+| TASK-043 | P2d | Tests: `ffi/tests/` (Rust calling the extern functions: null, bad UTF-8, bad JSON, panic probe, double free, free-while-running) and `tests/conformance_ffi.rs` driving the C example; ASan build on Linux when CI exists | R14 | tests | T-11, T-12 | TASK-041 | I | DONE | `f9af92a`: `ffi/tests/ffi_safety.rs` (8 tests: NULL/bad UTF-8 on every entry, bad JSON, panic probe = `block_on` inside a tokio worker, double free of runtime/call/module/string, wrong handle kind, free while running < 6 s, 8 threads on one runtime, module handles, versions) and `tests/conformance_ffi.rs` (7 tests: `nm` exports, C shared+static, C modules, Python demo and modules, header, pkg-config). ASan not run (no Linux host; CI job later) |
+| TASK-044 | P2d | `rivet.capabilities.abi_version`; `rivet_version()` equals the crate version (T-33) | R13 | PF-11 | T-11, T-33 | TASK-040 | I | DONE | `10c8130`, `f9af92a`: `rivet.capabilities.abi_version` = 1 (`domain::capabilities::ABI_VERSION`); `rivet_version()` = `CARGO_PKG_VERSION` (`versions_agree`; `check_version.py` loads librivet and compares both) |
+| TASK-045 | P2d | Module ABI (R23): `rivet_load`, `rivet_module_operations`, `rivet_module_call`, `rivet_module_call_start`, `rivet_module_free`; `examples/c/modules.c`; `examples/python/rivet.py` wrapper (module object with operation attributes) + `modules.py` | R23 / C-15 | PF-11, PF-12, PF-17 | T-19 | TASK-040, TASK-105 | I | DONE | `f9af92a`: `rivet_load` (→ `Runtime::load`/`load_as`, registry.load_module), `rivet_module_operations` (`[{id, operation, name, description, emits, receives}]`), `rivet_module_call`, `rivet_module_call_start`, `rivet_module_free` (the module stays loaded); `examples/c/modules.c`, `examples/python/rivet.py` (`Module.__getattr__` → operations) + `modules.py`; contract: ffi calls += `registry/load_module`, `rivet_load` trigger (hand edit) |
 
 ### P2e — Highlighting
 
@@ -373,15 +373,15 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-06 | production | `src/features/language/compile_globals.rs` | CREATE | Constant evaluation and check codes | R7, R8 / 021 | F-06 | DONE | T-06, T-07 |
 | PF-07 | production | `src/infra/execution_driver.rs` | UPDATE | Read-only global scope | R7 / 022 | F-07 | DONE | T-06 |
 | PF-08 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/generate_policy.rs` | UPDATE | Global substitution | R9 / 023 | F-08 | DONE | T-08 |
-| PF-09 | production | `src/lib.rs`, module visibility across `src/**` | UPDATE | Facade; internals hidden | R10 / 031 | F-09 | NOT STARTED | T-09 |
-| PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | NOT STARTED | T-10 |
-| PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic, including module handles (R23) | R13–R15, R23 / 040, 044, 045 | F-11, F-23 | NOT STARTED | T-11, T-12, T-19 |
-| PF-12 | production | `ffi/Cargo.toml`, `ffi/src/lib.rs`, `ffi/cbindgen.toml`, `ffi/include/rivet.h`, `ffi/rivet.pc.in` | CREATE | Shims, header, pkg-config | R13 / 041 | F-12 | NOT STARTED | T-11 |
+| PF-09 | production | `src/lib.rs`, module visibility across `src/**` | UPDATE | Facade; internals hidden | R10 / 031 | F-09 | DONE (`10c8130`; also `src/internal.rs`) | T-09 |
+| PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | DONE (`10c8130`; also `src/domain/capabilities.rs`, `src/domain/errors.rs`, `src/infra/unsupported_features.rs`, `src/infra/mod.rs`, `src/orchestrator/{builtins,setup_cli,setup_library}.rs`) | T-10 |
+| PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic, including module handles (R23) | R13–R15, R23 / 040, 044, 045 | F-11, F-23 | DONE (`f9af92a`; also `src/domain/ffi.rs`) | T-11, T-12, T-19 |
+| PF-12 | production | `ffi/Cargo.toml`, `ffi/src/lib.rs`, `ffi/cbindgen.toml`, `ffi/include/rivet.h`, `ffi/rivet.pc.in` | CREATE | Shims, header, pkg-config | R13 / 041 | F-12 | DONE (`f9af92a`; also `ffi/build.rs`, `ffi/render_pc.py`) | T-11 |
 | PF-13 | production | `src/features/language/highlight_source.rs`, `src/io/cli/**` (`highlight`) | CREATE / UPDATE | Tokenizer, renderers, command | R17 / 052 | F-13 | DONE (`0d6c2ea`; also `src/domain/highlight.rs`, `src/orchestrator/{setup_cli,setup_library,remote_cli}.rs`, `src/lib.rs`) | T-14 |
 | PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | DONE (`9ec2a39`; plus `editors/vscode/package_vsix.py`, `editors/vscode/syntaxes/rivet.tmLanguage.json` (generated copy)) | T-13 |
 | PF-15 | production | `vhco-contract.json` | UPDATE | Contract Delta | all / 004 | F-16 | DONE | T-28 |
-| PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | NOT STARTED | T-10, T-33 |
-| PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | IN PROGRESS (`examples/modules.rs` done in `2942066`; the rest P2c/P2d) | T-09, T-11, T-18, T-19 |
+| PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | IN PROGRESS (`10c8130`, `f9af92a`: `cli` feature, feature matrix, header verify, librivet version check; the vsix version check is P5 TASK-091) | T-10, T-33 |
+| PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | IN PROGRESS (`examples/modules.rs` `2942066`; `examples/embed.rs` `10c8130`; `examples/c/`, `examples/python/`, `examples/ffi/app.rivet` `f9af92a`; `docs/demos/12-library/embedding.rs` is P4 D-61) | T-09, T-11, T-18, T-19 |
 | PF-18 | agent guide | `AGENTS.md` (project facts) | UPDATE | Workspace, `ffi` surface, features | R18 / 080 | — | NOT STARTED | review |
 | PF-19 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `import` form, `ImportDecl` | R19 / 101 | F-19 | DONE | T-16 |
 | PF-20 | production | `src/features/language/resolve_imports.rs` (CREATE), `compile_program.rs`, `src/infra/source_loader.rs` (UPDATE) | CREATE / UPDATE | Resolution, namespacing, visibility, errors, bootstrap sites | R19–R21, R24 / 102, 103 | F-20 | DONE | T-16, T-17 |
@@ -394,8 +394,8 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 |---|---|---|---|---|---|---|---|
 | PF-T01 | test | `tests/conformance_envelope.rs` | CREATE | T-01–T-05, T-15 | R1–R6 / 010–018 | DONE | `cargo test` |
 | PF-T02 | test | `tests/conformance_globals.rs` | CREATE | T-06–T-08 | R7–R9 / 024 | DONE | `cargo test` |
-| PF-T03 | test | `tests/conformance_features.rs` + CI feature matrix | CREATE | T-10 | R11 / 032 | NOT STARTED | CI / local |
-| PF-T04 | test | `tests/conformance_ffi.rs`, `ffi/tests/*.rs` | CREATE | T-11, T-12 | R13–R15 / 043 | NOT STARTED | `cargo test --workspace` |
+| PF-T03 | test | `tests/conformance_features.rs` + CI feature matrix | CREATE | T-10 | R11 / 032 | DONE (`10c8130`; 3–7 tests depending on the features) | CI / local |
+| PF-T04 | test | `tests/conformance_ffi.rs`, `ffi/tests/*.rs` | CREATE | T-11, T-12 | R13–R15 / 043 | DONE (`f9af92a`; 7 + 8 tests) | `cargo test --workspace` |
 | PF-T05 | test | `tests/conformance_highlight.rs`, `editors/tests/` (tmgrammar snapshots) | CREATE | T-13, T-14 | R16, R17 / 053 | DONE (`editors/tests/check_grammar.py`, not tmgrammar snapshots; `tests/fixtures/highlight/`) | `cargo test --test conformance_highlight` (runs the Python checks) |
 | PF-T06 | test | every existing `tests/conformance_*.rs` + `tests/support/**` | UPDATE | Envelope/input assertions | R1 / 018 | DONE | T-34 |
 | PF-T07 | fixture | `docs/demos/**/requests/*`, `docs/demos/**/fixtures/*` | UPDATE | Input envelopes | R4 / 019 | DONE | T-30 |
@@ -428,17 +428,17 @@ TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST
 | T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | PASS (`conformance_globals`, 3 tests) | TEST-2026-0039 |
 | T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | PASS (`conformance_globals`, 7 tests) | TEST-2026-0040 |
 | T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | PASS (`conformance_globals`, 2 tests) | TEST-2026-0041 |
-| T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | NOT STARTED | TEST-2026-0042 |
-| T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | NOT STARTED | TEST-2026-0043 |
-| T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | NOT STARTED | TEST-2026-0044 |
-| T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | NOT STARTED | TEST-2026-0045 |
+| T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | PASS (`cargo run --example embed`: envelopes, stream, outputs, manifest, draft; facade only) | TEST-2026-0042 |
+| T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | PASS (local: `--no-default-features` and each single feature build with 0 warnings; `conformance_features` under all features (3), none (6), serve (6), grpc/quic/oauth (5), cli (7); `cargo package --list`; `vhco validate`/`sync` green on the workspace) | TEST-2026-0043 |
+| T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | PASS on macOS (`conformance_ffi` t11_*, 5 tests: 18 `rivet_*` exports only, install name `@rpath`, C shared + static, Python, header, pkg-config); Linux in CI | TEST-2026-0044 |
+| T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | PASS (`ffi/tests/ffi_safety.rs`, 8 tests; ASan not run) | TEST-2026-0045 |
 | T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | PASS (`conformance_highlight` t13_*, 3 tests: `check_keywords.py`, `check_grammar.py` over 107 samples, `package_vsix.py`; Node tools replaced, see deviation) | TEST-2026-0046 |
 | T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | PASS (`conformance_highlight` t14_*, 5 tests) | TEST-2026-0047 |
 | T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | PASS | TEST-2026-0048 |
 | T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | PASS (`conformance_modules`, 4 tests) | TEST-2026-0049 |
 | T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | PASS (`conformance_modules`, 7 tests) | TEST-2026-0050 |
 | T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | PASS (`conformance_modules`, 3 tests) | TEST-2026-0051 |
-| T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | NOT STARTED | TEST-2026-0052 |
+| T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | PASS on macOS (`conformance_ffi` t19_*, 2 tests: C shared + static, Python module attributes) | TEST-2026-0052 |
 | T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | PASS (`conformance_modules`, 2 tests) | TEST-2026-0053 |
 | T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | NOT STARTED | TEST-2026-0027 (re-recorded) |
 | T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | NOT STARTED | TEST-2026-0028 (re-recorded) |
@@ -641,6 +641,17 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-28 | Finding | TASK-052 | Capy keeps no node for the `end` of a flat option line's sub-block (`transport command …` ⏎ `args …` ⏎ `end` in demo 13): the highlighter's gap scan classifies uncovered `end` and `else` words; `rivet check` accepts the form as before (not a defect of this phase) | Highlight complete | — | T-14 corpus test |
 | 2026-09-28 | Finding | INC-2026-0009 | Resolved in `93388c1`: numeric path segments (`xs.0`, `m.rows.1.0`, `${xs.0}`, a global's `retry_on.0`) parse and evaluate; a keyword statement whose value fails is `syntax.expression` "the expression after `KEYWORD` does not parse" (never `assign_map`). 4 tests (3 `conformance_language` + 1 unit); moved to `docs/incidents/resolved/` (`6af5c27`). No v0.2.0 Known Issue needed; P4 should add a list-index example (REF/MAN) | Incident closed | P4 (MAN-2026-0003, REF-2026-0002) | `93388c1`, `6af5c27` |
 | 2026-09-28 | Finding | P2e | 455 tests pass (444 after INC-2026-0009 + 3 unit + 8 `conformance_highlight`); fmt, clippy `-D warnings`, `vhco validate`, `vhco check` green; `vhco sync` = 3 gaps, all P2c/P2d (`CapabilityReport`, `FfiOptions`, surface `ffi`) | P2e exit met | — | `9ec2a39`, `0d6c2ea` |
+| 2026-09-29 | Deviation | TASK-031 / R10 | Internals are `#[doc(hidden)] pub mod internal` in `src/internal.rs`, whose `#[path]` modules keep the five folders unchanged, and `pub(crate) use internal::{domain, …}` keeps every `crate::domain::…` path. `pub(crate)` modules alone cannot be re-exported to the tests (E0365), and an inline `mod internal { #[path = "../domain/mod.rs"] … }` resolves below a non-existent `src/internal/` | vhco validate/sync unaffected; `cargo package --list` ships `src/internal.rs` | — | `10c8130` |
+| 2026-09-29 | Finding | TASK-031 / MIG-2026-0001 | Breaking Rust API changes for the migration guide: the package is `rivet-runtime` (`rivet = { package = "rivet-runtime", … }`; `use rivet::…` unchanged); `rivet::{domain, features, infra, io, orchestrator}` moved to the hidden `rivet::internal::…` (e.g. `rivet::domain::Value` → `rivet::Value`, `rivet::domain::RivetError` → `rivet::Error`, `rivet::domain::policy::Policy` → `rivet::Policy`, `rivet::domain::envelope::InputEnvelope` → `rivet::InputEnvelope`, `rivet::domain::io_manifest::IoQuery` → `rivet::types::IoQuery`); the `rivet` binary needs `--features cli` (`cargo install rivet-runtime --features cli`); `BuildProbe` gains `build_features`, `abi_version`; `rivet.capabilities` data gains `build_features`, `abi_version`; `remote_cli::receives_of` moved to `setup_library` (re-exported) | P4 (D-09, D-26, D-43) | — | `10c8130` |
+| 2026-09-29 | Decision | TASK-032 / R11 | `unsupported.feature` is raised at load (before anything runs) for: a `grpc` connector or effect (`grpc`), a `quic` scope and any HTTP/3 request, including `version prefer [3, …]` (`quic`), and an `auth NAME oauth2` profile (`oauth`); every use is reported (first + suppressed, source order). `cli` does not imply `serve`: a CLI without `serve` keeps `rivet serve` and refuses it (exit 5). The protocol rows of `rivet.capabilities` and `serve.surfaces` follow the build. `rivet-ffi` passes the runtime features through (default = the runtime defaults) | Lean builds refuse instead of silently degrading | P4 (D-27, D-26) | T-10 |
+| 2026-09-29 | Finding | P2c | The P2c commit (`10c8130`) left `vhco sync` at 2 gaps, both owned by P2d and present since P1 (`FfiOptions`, surface `ffi`); `CapabilityReport` closed there. P2d (`f9af92a`) brings `sync` to 0 | Sync 3 → 2 → 0 | — | — |
+| 2026-09-29 | Finding | TASK-034 | `editors/vscode/package_vsix.py` read `[package].version` and failed on the workspace manifest (`t13_vsix…` red), as the P2e finding anticipated; it now reads `[workspace.package]` first. Not an incident: caught by the suite in the same change | — | — | `10c8130` |
+| 2026-09-29 | Finding | TASK-035 / R12 | `cargo publish --dry-run -p rivet-runtime` fails on the git dependency: "all dependencies must have a version requirement specified when publishing. dependency `capy-core` does not specify a version" (expected until G-PUB) | Git dependency remains the supported path | Maintainer (G-PUB) | TASK-038 |
+| 2026-09-29 | Decision | TASK-040 / R15 | A call handle is a session of the shared session driver opened `connection_owned` (not counted in the 8 sessions per principal); the 60 s idle lease still applies, so a call not read for 60 s is cancelled; `rivet_call_next(timeout)` long-polls in ≤ 5 s slices (negative = wait); `rivet_call_cancel` runs sessions.cancel_session and execution.cancel_request; records may be pretty (each is its own string, not NDJSON) | Documented FFI behaviour | P4 (MAN-2026-0009, API-2026-0007) | T-11 |
+| 2026-09-29 | Deviation | TASK-041 / R13, R14 | Compared with the proposal's illustrative prototypes: `crate-type` adds `rlib` (so `ffi/tests` call the exported functions); `rivet_runtime_free`, `rivet_call_cancel`, `rivet_call_free`, `rivet_module_free` and `rivet_string_free` return `RivetStatus` (void in the sketch) so a double free is observable (`RIVET_ERROR`); `rivet_call_start`/`rivet_module_call_start` never return NULL (a failed start yields its error record, then NULL); a NULL `data_json` means `{}`; `rivet_module_operations` returns `[{id, operation, name, description, emits, receives}]`; `rivet_highlight` json output ends with an error-envelope line after a syntax error | ABI 1 as shipped in `ffi/include/rivet.h` | P4 (API-2026-0007) | T-11, T-12 |
+| 2026-09-29 | Finding | TASK-042 | Static linking on macOS prints `ld: warning: object file … was built for newer 'macOS' version (26.4) than being linked (26.0)` for ring's assembly when librivet is built without `MACOSX_DEPLOYMENT_TARGET` (RES-2026-0004 E2); the link and the programs are correct. Release artifacts (P5) must build librivet and link C with one `MACOSX_DEPLOYMENT_TARGET` | Noise only | P5 (TASK-093) | examples/c/Makefile |
+| 2026-09-29 | Finding | TASK-043 | `cargo test` leaves the cdylib and staticlib in `target/<profile>/deps` (no uplift to `target/<profile>`); `conformance_ffi` looks there first and needs `cargo test --workspace` (TRBL-2026-0006). The Linux `Libs.private` list (`-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc`) and ASan are unverified locally (no Linux host): the first CI run checks the list | Linux static link verified by CI | P3 (TASK-060, TASK-064) | TRBL-2026-0006 |
+| 2026-09-29 | Finding | P2c, P2d | 476 tests pass (455 + 3 `conformance_features` + 1 `FfiOptions` unit + 2 `setup_ffi` unit + 8 `ffi_safety` + 7 `conformance_ffi`); fmt, clippy `--workspace --all-targets --all-features -D warnings`, feature matrix, `vhco validate`, `vhco check` green; `vhco sync` 0; check_docs 0 problems; `vhco docs check` 0 errors. Parallel uncommitted edits by another agent (STD-2026-0001, the contract `overview.summary`, README and docs indexes) were left unstaged; the contract was staged hunk by hunk | P2c and P2d exits met | — | `10c8130`, `f9af92a` |
 
 ## Rollout Strategy
 
@@ -689,12 +700,12 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | CODE + TESTS DONE (docs P4, release P5) |
 | R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | CODE + TESTS DONE (docs P4, release P5) |
 | R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | CODE + TESTS DONE (docs P4, release P5) |
-| R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | NOT STARTED |
-| R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | NOT STARTED |
-| R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | NOT STARTED |
-| R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | NOT STARTED |
-| R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | NOT STARTED |
-| R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | NOT STARTED |
+| R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | CODE + TESTS DONE (docs P4, release P5) |
+| R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | CODE + TESTS DONE (docs P4, release P5) |
+| R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | CODE DONE; publication DEFERRED (G-PUB) |
+| R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | CODE + TESTS DONE (docs P4, release P5) |
+| R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | CODE + TESTS DONE (docs P4, release P5) |
+| R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | CODE + TESTS DONE (docs P4, release P5) |
 | R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | CODE + TESTS DONE (P2e); docs P4 |
 | R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | CODE + TESTS DONE (P2e); docs P4 |
 | R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | NOT STARTED |
@@ -702,7 +713,7 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | CODE + TESTS DONE (docs P4, release P5) |
 | R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | CODE + TESTS DONE (docs P4, release P5) |
 | R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | CODE + TESTS DONE (docs P4, release P5) |
-| R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | NOT STARTED |
+| R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | CODE + TESTS DONE (docs P4, release P5) |
 | R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | CODE + TESTS DONE (docs P4, release P5) |
 
 ```text
@@ -724,6 +735,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | P2c and P2d done: TASK-030…035 (`10c8130`) and TASK-040…045 (`f9af92a`) DONE with evidence; phase rows P2c/P2d DONE; R10–R15, R23 code and tests done (R12 publication deferred to G-PUB); PF-09–PF-12, PF-T03, PF-T04 DONE, PF-16/PF-17 in progress; T-09–T-12, T-19 PASS (476 tests); findings and deviations recorded (internal module layout, breaking API list, feature refusal rules, ABI deviations, macOS deployment target, deps-dir libraries); TRBL-2026-0006; live status refreshed. |
 | 6 | 2026-09-28 | Claude | P2e done: TASK-050…053 DONE (`9ec2a39`, `0d6c2ea`); phase row P2e DONE; R16/R17 code and tests done; PF-13, PF-14, PF-T05, PF-G02 DONE; T-13, T-14 PASS (455 tests); INC-2026-0009 resolved (`93388c1`, `6af5c27`); deviations (Python `.vsix` packager and TextMate engine instead of Node tools; library trigger contract edit) and findings recorded; live status refreshed. |
 | 5 | 2026-09-28 | Claude | Live status refreshed after P2b/P2f; git remote added and main + v0.1.0 pushed. |
 | 4 | 2026-09-28 | Claude | P2b and P2f done: TASK-020…024 (`673994c`) and TASK-100…107 (`673994c`, `2942066`) DONE with evidence; phase rows P2b/P2f DONE; R7–R9, R19–R22, R24 code and tests done; PF-05–PF-08, PF-19–PF-22, PF-T02, PF-T09 DONE, PF-17 in progress; T-06–T-08, T-16–T-18, T-20 PASS (440 tests); findings and deviations recorded (contract refinements, R9 sample, snapshot semantics, Module stream signature, P2d hand-off, API changes, INC-2026-0009, TRBL-2026-0005). |
