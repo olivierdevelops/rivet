@@ -17,11 +17,17 @@ use serde_json::{Value as Json, json};
 /// Code for an unparseable JSON body (HTTP 400, not 422).
 pub const MALFORMED_JSON: &str = "validation.malformed_json";
 
+/// Host cap on a caller-requested `deadline_ms` (10 minutes).
+pub const MAX_REQUEST_DEADLINE_MS: u64 = 600_000;
+
 /// `{id, params}` of `POST /v1/request` and `POST /v1/requests`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RequestBody {
     pub id: String,
     pub params: Value,
+    /// Optional `deadline_ms` (the CLI `--timeout` in `--endpoint` mode), capped
+    /// by [`MAX_REQUEST_DEADLINE_MS`].
+    pub deadline_ms: Option<u64>,
 }
 
 /// Parse a JSON object body; malformed JSON is `validation.malformed_json` (400).
@@ -56,7 +62,15 @@ pub fn parse_request_body(bytes: &[u8]) -> Result<RequestBody, RivetError> {
         })?
         .to_string();
     let params = j.get("params").map(Value::from_json).unwrap_or(Value::Null);
-    Ok(RequestBody { id, params })
+    let deadline_ms = j
+        .get("deadline_ms")
+        .and_then(Json::as_u64)
+        .map(|d| d.clamp(1, MAX_REQUEST_DEADLINE_MS));
+    Ok(RequestBody {
+        id,
+        params,
+        deadline_ms,
+    })
 }
 
 /// Registry status, except malformed JSON which is 400.

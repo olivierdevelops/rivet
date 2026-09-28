@@ -12,15 +12,15 @@
 // vhco:api cli auth/complete_authorization rivet auth complete --params-file PATH [--timeout D] -- finish a transaction; connected CredentialStatus, or {"state":"pending"} when the deadline came first (transaction kept)
 // vhco:request { "transaction_id": "string", "callback": "{code, state, redirect_uri, issuer?}?", "wait": "bool" }
 // vhco:response { "profile": "string", "account": "string", "state": "connected|pending", "scopes": "string[]", "expires_at": "RFC 3339", "generation": "int" }
-// vhco:trigger cli execution/request_operation = rivet request ID --params JSON
+// vhco:trigger cli execution/request_operation = rivet request ID --params JSON [--stream] [--input-jsonl - --stream] | rivet --endpoint URL [--token-file PATH] request ID …
 // vhco:trigger cli execution/cancel_request = Ctrl-C during rivet request
-// vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
+// vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID | rivet --endpoint URL list | describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
-// vhco:trigger cli audit/read_trace = rivet trace show REQ
+// vhco:trigger cli audit/read_trace = rivet trace show REQ | rivet --endpoint URL trace show REQ (rivet.trace.show)
 // vhco:trigger cli policy/generate_policy = rivet policy generate [ID ...|--all] [--output PATH]
 // vhco:trigger cli connectors/invoke_mcp = rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON
 // vhco:api cli connectors/invoke_mcp rivet connectors sync NAME --output PATH -- authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists
@@ -65,7 +65,7 @@ pub fn main() -> i32 {
     rt.block_on(run(cli))
 }
 
-fn fail(e: &RivetError, source: Option<&str>, json: bool) -> i32 {
+pub(super) fn fail(e: &RivetError, source: Option<&str>, json: bool) -> i32 {
     if json {
         let env = error_envelope(
             e.request_id.as_deref().unwrap_or(""),
@@ -107,7 +107,7 @@ fn load(cli: &Cli) -> Result<Runtime, (RivetError, Option<String>)> {
     b.build().map_err(|e| (e, source))
 }
 
-fn parse_params(text: &str) -> Result<Value, RivetError> {
+pub(super) fn parse_params(text: &str) -> Result<Value, RivetError> {
     serde_json::from_str::<serde_json::Value>(text)
         .map(|j| Value::from_json(&j))
         .map_err(|e| {
@@ -118,7 +118,61 @@ fn parse_params(text: &str) -> Result<Value, RivetError> {
         })
 }
 
+/// `--token-file PATH`: the server bearer token (trimmed); never echoed.
+fn read_token(path: &str) -> Result<String, RivetError> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        RivetError::validation(
+            "validation.usage",
+            format!("--token-file {path}: {}", e.kind()),
+        )
+    })?;
+    let token = text.trim().to_string();
+    if token.is_empty() || token.contains(['\r', '\n']) {
+        return Err(RivetError::validation(
+            "validation.usage",
+            format!("--token-file {path} must hold exactly one token line"),
+        ));
+    }
+    Ok(token)
+}
+
+/// `--endpoint URL`: a thin client of a running `rivet serve`
+/// (host bootstrap I/O through the remote_client adapter).
+async fn run_endpoint(cli: &Cli, url: &str) -> i32 {
+    if cli.file.is_some() || cli.policy.is_some() {
+        return fail(
+            &RivetError::validation(
+                "validation.usage",
+                "--endpoint cannot be combined with --file or --policy: the server owns the bundle and its policy",
+            ),
+            None,
+            cli.json,
+        );
+    }
+    let token = match cli.token_file.as_deref().map(read_token).transpose() {
+        Ok(t) => t,
+        Err(e) => return fail(&e, None, cli.json),
+    };
+    match crate::infra::remote_client::RemoteClient::new(url, token) {
+        Ok(client) => super::remote_cli::run_remote(cli, &client).await,
+        Err(e) => fail(&e, None, cli.json),
+    }
+}
+
 async fn run(cli: Cli) -> i32 {
+    if let Some(url) = cli.endpoint.clone() {
+        return run_endpoint(&cli, &url).await;
+    }
+    if cli.token_file.is_some() {
+        return fail(
+            &RivetError::validation(
+                "validation.usage",
+                "--token-file authenticates to a server and needs --endpoint URL",
+            ),
+            None,
+            cli.json,
+        );
+    }
     let runtime = match load(&cli) {
         Ok(r) => r,
         Err((e, src)) => {
@@ -156,6 +210,20 @@ async fn run(cli: Cli) -> i32 {
                         );
                     }
                 }
+            }
+            match super::remote_cli::check_input_flags(args) {
+                Ok(true) => {
+                    return match run_duplex(&runtime, req).await {
+                        Ok(c) => {
+                            let line = crate::domain::contracts::Envelope::Result(c).to_json();
+                            let _ = writeln!(stdout, "{line}");
+                            0
+                        }
+                        Err(e) => fail(&e, None, true),
+                    };
+                }
+                Ok(false) => {}
+                Err(e) => return fail(&e, None, true),
             }
             let sink: Option<std::sync::Arc<dyn crate::domain::ports::DataSink>> = if args.stream {
                 Some(std::sync::Arc::new(NdjsonSink))
@@ -405,6 +473,52 @@ async fn run(cli: Cli) -> i32 {
     }
 }
 
+/// `request ID --input-jsonl - --stream` on a local bundle: the stdin feeder
+/// enqueues validated items into the session input (`Runtime::dispatch_session`
+/// attaches it as `incoming`) while data envelopes drain to stdout. EOF closes
+/// the input; a malformed line or Ctrl-C cancels the request through
+/// execution.cancel_request (a malformed line then reports its validation error).
+async fn run_duplex(
+    runtime: &Runtime,
+    req: crate::domain::contracts::Request,
+) -> Result<crate::domain::contracts::Completion, RivetError> {
+    use super::remote_cli::{INPUT_QUEUE, feed_stdin_jsonl, receives_of};
+    let entry = runtime
+        .describe(std::slice::from_ref(&req.operation_id))?
+        .entries
+        .remove(0);
+    let receives = receives_of(&entry)?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Value>(INPUT_QUEUE);
+    let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives));
+    let request_id = req.request_id.clone();
+    let principal = req.principal.clone();
+    let run = runtime.dispatch_session(req, std::sync::Arc::new(NdjsonSink), rx);
+    tokio::pin!(run);
+    tokio::pin!(feeder);
+    let mut feeding = true;
+    let mut input_error: Option<RivetError> = None;
+    let outcome = loop {
+        tokio::select! {
+            r = &mut run => break r,
+            f = &mut feeder, if feeding => {
+                feeding = false;
+                if let Ok(Err(e)) = f {
+                    input_error = Some(e);
+                    let _ = runtime.cancel(&request_id, principal.clone());
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                let _ = runtime.cancel(&request_id, principal.clone());
+            }
+        }
+    };
+    feeder.abort();
+    match input_error {
+        Some(e) => Err(e),
+        None => outcome,
+    }
+}
+
 /// A cwd-relative output path as a bundle-root-relative `./path` (files are
 /// confined to the bundle root); a path outside the bundle is refused.
 fn root_relative(output: &str, root: &str) -> Result<String, RivetError> {
@@ -438,7 +552,7 @@ fn root_relative(output: &str, root: &str) -> Result<String, RivetError> {
 }
 
 /// Map `rivet auth …` onto the `rivet.auth.*` built-in (ID, params, --timeout).
-fn auth_request(
+pub(super) fn auth_request(
     command: &AuthCommand,
 ) -> Result<(&'static str, Value, Option<String>), RivetError> {
     let pa = |profile: &str, account: &str| {
@@ -499,7 +613,7 @@ fn auth_request(
 }
 
 /// `--stream`: each data item becomes one NDJSON envelope line on stdout.
-struct NdjsonSink;
+pub(super) struct NdjsonSink;
 
 #[async_trait::async_trait]
 impl crate::domain::ports::DataSink for NdjsonSink {

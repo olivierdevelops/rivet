@@ -184,9 +184,15 @@ async fn pump(
         let mut done = false;
         for ev in &batch.events {
             let frame = match &ev.envelope {
-                Envelope::Data(d) => WsFrame::data(&r, ev.seq, d.data.clone()),
+                Envelope::Data(d) => WsFrame::data(&r, ev.seq, d.data.clone())
+                    .for_request(&d.request_id, &d.trace_id),
                 Envelope::Result(c) => WsFrame::result(&r, c.clone()),
-                Envelope::Error { error, .. } => WsFrame::error(&r, (**error).clone()),
+                Envelope::Error {
+                    error,
+                    request_id,
+                    trace_id,
+                    ..
+                } => WsFrame::error(&r, (**error).clone()).for_request(request_id, trace_id),
             };
             done |= frame.is_terminal();
             if out.send(frame).await.is_err() {

@@ -23,6 +23,13 @@ pub struct Cli {
     /// Print JSON instead of tables.
     #[arg(long, global = true)]
     pub json: bool,
+    /// Send request/list/describe/outputs/io/trace/auth to a running `rivet serve`
+    /// at this URL instead of loading a bundle (cannot be combined with --file).
+    #[arg(long, global = true)]
+    pub endpoint: Option<String>,
+    /// With --endpoint: read the server bearer token from this file (never argv or env).
+    #[arg(long, global = true)]
+    pub token_file: Option<String>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -143,6 +150,10 @@ pub struct RequestArgs {
     /// Request deadline, e.g. "5s" (default 30s).
     #[arg(long)]
     pub timeout: Option<String>,
+    /// Live input for an operation that `receives`: `-` reads JSON Lines from
+    /// stdin while NDJSON output drains (EOF = finish_input); needs --stream.
+    #[arg(long)]
+    pub input_jsonl: Option<String>,
 }
 
 #[derive(Args, Debug, Default, Clone)]
