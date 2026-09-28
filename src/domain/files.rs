@@ -1,5 +1,6 @@
 //! File CRUD request/result data (R5).
 
+use super::source::SourceSpan;
 use super::value::Value;
 
 // vhco:domain FileVerb { read | list | stat | create | update | write | append | delete | copy | move }
@@ -98,4 +99,60 @@ impl FileOperation {
             overwrite: false,
         }
     }
+}
+
+// vhco:domain FileStreamMode { read | write | append }
+/// Mode of a scoped `with file open PATH mode M as NAME` handle (G35).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileStreamMode {
+    /// `for chunk in NAME` yields bytes chunks of at most `chunk_size`.
+    Read,
+    /// Create or truncate; `NAME.write bytes|text V`.
+    Write,
+    /// Existing file only (like `file append`, S37); `NAME.write …` appends.
+    Append,
+}
+
+impl FileStreamMode {
+    pub fn parse(s: &str) -> Option<FileStreamMode> {
+        Some(match s {
+            "read" => FileStreamMode::Read,
+            "write" => FileStreamMode::Write,
+            "append" => FileStreamMode::Append,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FileStreamMode::Read => "read",
+            FileStreamMode::Write => "write",
+            FileStreamMode::Append => "append",
+        }
+    }
+}
+
+/// Default and upper bound of `chunk_size` (PROP-2026-0001 8 MiB frame limit).
+pub const DEFAULT_CHUNK_SIZE: u64 = 64 * 1024;
+pub const MAX_CHUNK_SIZE: u64 = 8 * 1024 * 1024;
+
+// vhco:domain FileStreamRequest { path: string; mode: string; chunk_size?: int; operation_id: string; span?: SourceSpan }
+/// The evaluated head/options of `with file open …` before validation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileStreamRequest {
+    pub path: String,
+    /// As written (`read`, `write`, `append`); validated by the use case.
+    pub mode: String,
+    pub chunk_size: Option<i64>,
+    pub operation_id: String,
+    pub span: Option<SourceSpan>,
+}
+
+// vhco:domain FileStreamPlan { path: string; mode: FileStreamMode; chunk_size: int }
+/// A validated, authorized handle plan the confined adapter opens.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FileStreamPlan {
+    pub path: String,
+    pub mode: FileStreamMode,
+    pub chunk_size: u64,
 }

@@ -5,6 +5,7 @@ pub mod codec;
 pub mod effect_args;
 pub mod execution_driver;
 pub mod file_access;
+pub mod file_stream;
 pub mod grpc_adapter;
 pub mod h3_client;
 pub mod http_adapter;

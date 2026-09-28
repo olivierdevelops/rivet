@@ -1,35 +1,87 @@
-// PROPOSED API SKETCH, not a compilable crate or a runtime implementation.
-// It follows the canonical Rust sketch in the revision 5 change spec (E11) line for line.
-// The host supplies the async executor (Tokio), serde_json::json! and the source bytes.
-// No public Rust crate/API exists yet. include_str! is relative to the eventual source file.
+// Rivet library embedding: a complete host program against the `rivet` crate on main.
+// Save as src/main.rs (or examples/embedding.rs) with app.rivet next to it, add
+// `rivet`, `tokio` (rt-multi-thread, macros) and `serde_json` as dependencies, and run it
+// from this demo directory so `policy.json` resolves. It is compiled and run as a
+// scratch `cargo run --example` to check that it matches the real API.
 //
-//   policy.json ──Policy::from_file──┐
-//   app.rivet  ──.source(src)────────┼──> Runtime::builder().build()
-//                                    │        │
-//                  rt.request ───────┘        ├──> Completion        (unary)
-//                  rt.scope / scope.stream ───├──> Envelope stream   (emits)
-//                  rt.outputs ────────────────└──> OutputSpec        (declared outputs)
+//   policy.json ──Policy::from_file─────────┐
+//   host limits ──Policy::from_json─.ceiling─┤   (a deny in either wins; limits narrow)
+//   app.rivet  ──.source(path, src, root)────┼──> Runtime::builder().build()
+//                                            │        │
+//                  rt.request ───────────────┘        ├──> Completion         (unary)
+//                  rt.scope(|scope| …) scope.stream ──├──> Envelope stream    (emits)
+//                                      scope.duplex ──├──> send / finish_send / next (receives)
+//                  rt.outputs ────────────────────────├──> OutputReport       (declared outputs)
+//                  rt.io / rt.generate_policy ────────└──> I/O manifest / least-privilege draft
 
-let src = include_str!("app.rivet");
+use rivet::Runtime;
+use rivet::domain::Value;
+use rivet::domain::contracts::{Completion, Envelope};
+use rivet::domain::io_manifest::IoQuery;
+use rivet::domain::policy::Policy;
+use rivet::domain::RivetResult;
 
-let rt = Runtime::builder().source(src).policy(Policy::from_file("policy.json")?).build()?;
-let c: Completion = rt.request("demo.add", json!({"a":2,"b":3}), None).await?;
-assert_eq!(c.result, json!(5));
+#[tokio::main]
+async fn main() -> RivetResult<()> {
+    let src = include_str!("app.rivet");
 
-rt.scope(|scope| async move {
-    let mut s = scope.stream("events.count", json!({})).await?;   // or scope.duplex(...)
-    while let Some(item) = s.next().await? { /* Result<Option<Envelope>> */ }
+    // policy.json is loaded strictly (schema v1); the host ceiling can only narrow it.
+    let ceiling = Policy::from_json(br#"{"version":1,"limits":{"max_concurrent_requests":8}}"#)?;
+    let rt = Runtime::builder()
+        .source("app.rivet", src, ".")
+        .policy(Policy::from_file("policy.json")?)
+        .ceiling(ceiling)
+        .build()?;
+
+    // Unary: params and results are rivet::domain::Value (Value::from_json / to_json).
+    let c: Completion = rt
+        .request(
+            "demo.add",
+            Value::from_json(&serde_json::json!({"a": 2, "b": 3})),
+            None,
+        )
+        .await?;
+    assert_eq!(c.result, Value::Int(5));
+
+    // Server stream owned by a scope: unfinished requests are cancelled and joined
+    // when the body returns. next() is Result<Option<Envelope>>.
+    let items = rt
+        .scope(|scope| async move {
+            let params = Value::from_json(&serde_json::json!({}));
+            let mut s = scope.stream("events.count", params).await?;
+            let mut items = Vec::new();
+            while let Some(env) = s.next().await? {
+                match env {
+                    Envelope::Data(d) => items.push(d.data),           // 1, 2, 3
+                    Envelope::Result(done) => assert_eq!(done.data_count, 3), // {"count": 3}
+                    Envelope::Error { error, .. } => return Err(*error),
+                }
+            }
+            // scope.duplex("ID", params) works the same for an operation that
+            // `receives`: d.send(v).await?, d.finish_send(), d.next().await?.
+            Ok(items)
+        })
+        .await?;
+    assert_eq!(items, vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+
+    // Declared outputs (the same report as `rivet outputs demo.add --json`).
+    let spec = &rt.outputs(Some("demo.add"), false)?[0];
+    println!("{}", spec.to_json()); // output integer "Sum of a and b."; emits/receives null; errors []
+
+    // The generated I/O manifest and a least-privilege policy draft (nothing runs).
+    let io = rt.io(&IoQuery {
+        ids: vec!["demo.add".into()],
+        format: "json".into(),
+        ..IoQuery::default()
+    })?;
+    println!("{}", io.manifest.to_json()); // pure operations: no sites
+    let draft = rt.generate_policy(&["events.count"])?;
+    println!("{}", draft.policy_json()); // {"version":1,"grants":[],"network":{…}}
     Ok(())
-}).await?;
+}
 
-let spec: OutputSpec = rt.outputs("demo.add")?;
-// spec.output  -> integer, description "Sum of a and b."
-// spec.emits   -> None;  spec.receives -> None;  spec.errors -> []
-
-// Notes (E11):
-// - next() returns Result<Option<Envelope>>; data items for events.count are 1, 2, 3, and the
-//   stream ends after the terminal result envelope {"count": 3}.
-// - Closures are `async move` (Rust 2024 async closures).
-// - Sinks passed to request must be Send + 'static; this sketch passes None (unary call).
-// - The runtime owns and joins cleanup when a request future is dropped.
-// - Nested requests carry parent_request_id; W3C traceparent is accepted/emitted on HTTP surfaces.
+// Notes:
+// - A DataSink passed to request(ID, params, Some(sink)) receives each emitted item;
+//   returning RivetError::consumer_stop() ends the request `cancelled`, not failed.
+// - Dropping a request future runs its cleanup; rt.scope joins everything it started.
+// - Runtime is Clone + Send + Sync; share it across tasks instead of rebuilding it.

@@ -7,6 +7,14 @@ use crate::domain::{RivetError, RivetResult, Value};
 
 pub const BACKEND: &str = "none";
 
+/// Advertised state for `rivet.capabilities`.
+pub fn status() -> (crate::domain::capabilities::SandboxStatus, &'static str) {
+    (
+        crate::domain::capabilities::SandboxStatus::Unsupported,
+        "no process sandbox backend exists for this platform; sandboxed spawns are refused",
+    )
+}
+
 pub fn command(
     _spec: &SandboxSpec,
     _program: &str,

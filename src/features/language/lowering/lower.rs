@@ -925,7 +925,11 @@ impl Lowerer {
             "if" => Some(Stmt::If {
                 cond: self.expr(n, "cond")?,
                 then: self.lower_children(n, ctx.inner()),
-                otherwise: Vec::new(),
+                // `if COND … else … end`: the grammar's `else` block section
+                otherwise: match n.section("else") {
+                    Some(kids) => self.lower_block(&kids.iter().collect::<Vec<_>>(), ctx.inner()),
+                    None => Vec::new(),
+                },
                 span,
             }),
             "while" => Some(Stmt::While {

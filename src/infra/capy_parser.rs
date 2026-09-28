@@ -376,6 +376,22 @@ fn convert_node(n: &Json, file: &SourceFile) -> SyntaxNode {
         .get("closer")
         .filter(|c| !c.is_null())
         .map(|c| Box::new(convert_node(c, file)));
+    let sections = n
+        .get("sections")
+        .and_then(Json::as_object)
+        .map(|m| {
+            m.iter()
+                .map(|(name, block)| {
+                    let stmts = block
+                        .get("stmts")
+                        .and_then(Json::as_array)
+                        .map(|a| a.iter().map(|s| convert_node(s, file)).collect())
+                        .unwrap_or_default();
+                    (name.clone(), stmts)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     SyntaxNode {
         func: n
             .get("func")
@@ -386,6 +402,7 @@ fn convert_node(n: &Json, file: &SourceFile) -> SyntaxNode {
         captures,
         body,
         closer,
+        sections,
     }
 }
 
@@ -427,6 +444,29 @@ fn convert_diagnostic(d: &Json, file: &SourceFile, keywords: &[String]) -> Synta
             span,
             help: Some(
                 "check the value's brackets, commas and object keys, e.g. {n: n - 1, tags: [\"a\"]}"
+                    .into(),
+            ),
+        };
+    }
+    if message.contains("section \"else\" must be alone on its line") {
+        return SyntaxDiagnostic {
+            code: "syntax.else_if".into(),
+            message: "`else` takes no condition; `else if COND` is not supported".into(),
+            span,
+            help: Some(
+                "put `else` alone on its line and nest `if COND … end` inside its body".into(),
+            ),
+        };
+    }
+    // `else` is only a section of `if COND … else … end` (G34); anywhere else
+    // (orphan, second `else`, `else if …`) it is a pairing error.
+    if capy_code == "E0001" && span.start_col as usize == first_col && first_word == "else" {
+        return SyntaxDiagnostic {
+            code: "syntax.else_without_if".into(),
+            message: "`else` must follow the body of an `if` at the same indentation (one `else` per `if`, closed by the `if`'s `end`)".into(),
+            span,
+            help: Some(
+                "write `if COND` … `else` … `end`; for else-if, nest an `if COND … end` inside the `else` body"
                     .into(),
             ),
         };

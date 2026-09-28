@@ -169,7 +169,7 @@ end
 function if
     arg literal "if"
     arg capture cond any
-    block_closer end
+    block_sections else closer end
 end
 
 function while

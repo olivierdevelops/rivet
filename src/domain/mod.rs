@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod call_graph;
+pub mod capabilities;
 pub mod contracts;
 pub mod dag;
 pub mod effect_checks;

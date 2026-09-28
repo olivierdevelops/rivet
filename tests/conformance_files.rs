@@ -726,3 +726,218 @@ async fn atomic_replace_never_leaves_temp_files() {
         vec!["a.json", "b.txt", "dir", "dir/keep.txt"]
     );
 }
+
+// vhco:test files.open_file_stream -- G35: `with file open P mode read as h` + `chunk_size N` yields bytes chunks of at most N whose concatenation is the file; the scope closes the handle
+#[tokio::test]
+async fn scoped_read_yields_bounded_byte_chunks() {
+    let b = bundle();
+    std::fs::write(b.path().join("data/lines.txt"), "alpha\nbeta\ngamma\n").unwrap();
+    let v = run(
+        b.path(),
+        "parts = []\nwith file open \"./data/lines.txt\" mode read as reader\n    chunk_size 4\n    for chunk in reader\n        parts += chunk\n    end\nend\nreturn parts",
+    )
+    .await
+    .unwrap();
+    let Value::List(parts) = v else {
+        panic!("{v:?}")
+    };
+    let mut all = Vec::new();
+    for p in &parts {
+        let Value::Bytes(bytes) = p else {
+            panic!("chunk is not bytes: {p:?}")
+        };
+        assert!(!bytes.is_empty() && bytes.len() <= 4);
+        all.extend_from_slice(bytes);
+    }
+    assert_eq!(parts.len(), 5);
+    assert_eq!(all, b"alpha\nbeta\ngamma\n");
+
+    // Default chunk size (64 KiB): one chunk; an empty file yields none.
+    std::fs::write(b.path().join("data/empty.txt"), "").unwrap();
+    let v = run(
+        b.path(),
+        "n = 0\nwith file open \"./data/empty.txt\" mode read as r\n    for c in r\n        n = n + 1\n    end\nend\nreturn n",
+    )
+    .await
+    .unwrap();
+    assert_eq!(v, Value::Int(0));
+}
+
+// vhco:test files.open_file_stream -- G35: demo 04 `files.chunks` runs under its own policy.json (temp copy) and its emitted chunks concatenate to data/lines.txt; the manifest shows one allow_read read site
+#[tokio::test]
+async fn demo_04_files_chunks_runs() {
+    let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/demos/04-streaming");
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("data")).unwrap();
+    for f in ["app.rivet", "policy.json", "data/lines.txt"] {
+        std::fs::copy(demo.join(f), tmp.path().join(f)).unwrap();
+    }
+    let root = tmp.path().to_str().unwrap();
+    let rt = Runtime::builder()
+        .file(tmp.path().join("app.rivet").to_str().unwrap())
+        .policy(
+            policy_from_json(
+                &std::fs::read(tmp.path().join("policy.json")).unwrap(),
+                root,
+            )
+            .unwrap(),
+        )
+        .build()
+        .expect("demo 04 loads");
+    let got = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    struct Collect(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    #[async_trait::async_trait]
+    impl rivet::domain::ports::DataSink for Collect {
+        async fn send(
+            &self,
+            item: rivet::domain::contracts::DataEvent,
+        ) -> rivet::domain::RivetResult<()> {
+            if let Value::Bytes(b) = item.data {
+                self.0.lock().unwrap().extend_from_slice(&b);
+            }
+            Ok(())
+        }
+    }
+    let c = rt
+        .request(
+            "files.chunks",
+            Value::Null,
+            Some(std::sync::Arc::new(Collect(got.clone()))),
+        )
+        .await
+        .expect("files.chunks runs");
+    assert_eq!(c.result, Value::Null);
+    assert!(c.data_count >= 1);
+    assert_eq!(
+        *got.lock().unwrap(),
+        std::fs::read(tmp.path().join("data/lines.txt")).unwrap()
+    );
+}
+
+// vhco:test files.open_file_stream -- G35: write mode creates/truncates and needs allow_write create+update, append needs an existing file and allow_write append; reads need allow_read read — a denial opens nothing
+#[tokio::test]
+async fn scoped_write_and_append_are_authorized_per_mode() {
+    let b = bundle();
+    std::fs::write(b.path().join("data/two.bin"), "two\n").unwrap();
+    let v = run(
+        b.path(),
+        "raw = file read \"./data/two.bin\" as bytes\nwith file open \"./out/log.txt\" mode write as out\n    out.write text \"one\\n\"\n    r = out.write bytes raw\nend\nreturn r",
+    )
+    .await
+    .unwrap();
+    assert_eq!(v.get("total"), Some(&Value::Int(8)), "{v:?}");
+    assert_eq!(read(b.path().join("out/log.txt")), "one\ntwo\n");
+
+    // write truncates an existing file.
+    run(
+        b.path(),
+        "with file open \"./out/log.txt\" mode write as out\n    out.write text \"fresh\\n\"\nend\nreturn null",
+    )
+    .await
+    .unwrap();
+    assert_eq!(read(b.path().join("out/log.txt")), "fresh\n");
+
+    // append adds to an existing file and never creates one.
+    run(
+        b.path(),
+        "with file open \"./out/log.txt\" mode append as out\n    r = out.write text \"more\\n\"\nend\nreturn null",
+    )
+    .await
+    .unwrap();
+    assert_eq!(read(b.path().join("out/log.txt")), "fresh\nmore\n");
+    let e = run(
+        b.path(),
+        "with file open \"./out/missing.txt\" mode append as out\n    out.write text \"x\"\nend\nreturn null",
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code(&e), ("not_found.file", 4));
+    assert!(!b.path().join("out/missing.txt").exists());
+
+    // Grants per mode: create without update denies write mode; read-only denies append.
+    let create_only = r#"{"version":1,"grants":[
+        {"capability":"allow_write","targets":["./out/**"],"access":["create"]}]}"#;
+    let e = run_with(
+        b.path(),
+        "with file open \"./out/new.txt\" mode write as out\n    out.write text \"x\"\nend\nreturn null",
+        Some(create_only),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code(&e), ("permission.denied", 3));
+    assert_eq!(e.details.get("access"), Some(&Value::text("update")));
+    assert!(!b.path().join("out/new.txt").exists());
+    let e = run_with(
+        b.path(),
+        "with file open \"./out/log.txt\" mode append as out\n    out.write text \"x\"\nend\nreturn null",
+        Some(r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./out/**"]}]}"#),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code(&e), ("permission.denied", 3));
+    std::fs::write(b.path().join("data/a.txt"), "a").unwrap();
+    let e = run_with(
+        b.path(),
+        "with file open \"./data/a.txt\" mode read as r\n    for c in r\n        x = c\n    end\nend\nreturn null",
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code(&e), ("permission.denied", 3));
+    assert_eq!(read(b.path().join("out/log.txt")), "fresh\nmore\n");
+}
+
+// vhco:test files.open_file_stream -- G35: handles are confined (escapes and symlinks refused), mode misuse is typed, and `with file watch` is unsupported.stage_c
+#[tokio::test]
+async fn scoped_file_handles_are_confined_and_typed() {
+    let b = bundle();
+    std::fs::write(b.path().join("data/a.txt"), "secret").unwrap();
+    let e = run(
+        b.path(),
+        "with file open \"../outside.txt\" mode read as r\n    for c in r\n        x = c\n    end\nend\nreturn null",
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.kind, ErrorKind::Permission);
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(b.path().join("data/a.txt"), b.path().join("out/link.txt"))
+            .unwrap();
+        let e = run(
+            b.path(),
+            "with file open \"./out/link.txt\" mode read as r\n    for c in r\n        x = c\n    end\nend\nreturn null",
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Permission, "{e:?}");
+        let e = run(
+            b.path(),
+            "with file open \"./out/link.txt\" mode write as w\n    w.write text \"x\"\nend\nreturn null",
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Permission, "{e:?}");
+        assert_eq!(read(b.path().join("data/a.txt")), "secret");
+    }
+    let e = run(
+        b.path(),
+        "with file open \"./data/a.txt\" mode read as r\n    r.write text \"x\"\nend\nreturn null",
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.code, "unsupported.method");
+    let e = run(
+        b.path(),
+        "with file open \"./data/a.txt\" mode read as r\n    chunk_size 0\n    x = 1\nend\nreturn null",
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.code, "limit.chunk_size");
+    let e = run(
+        b.path(),
+        "with file watch \"./data\" as w\n    x = 1\nend\nreturn null",
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(code(&e), ("unsupported.stage_c", 5));
+}

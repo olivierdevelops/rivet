@@ -552,6 +552,7 @@ impl Runtime {
             Some(Arc::clone(&credentials)),
         );
         register_transports(&mut interp, &bundle.root);
+        super::file_streams::register(&mut interp, &bundle.root);
         // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
         // call modes fail the load before anything dials.
         let grpc = Arc::new(GrpcTransport::load(&program, &bundle.root)?);

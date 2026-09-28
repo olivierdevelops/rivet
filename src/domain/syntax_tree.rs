@@ -17,7 +17,7 @@ pub struct Capture {
     pub sub: Vec<SyntaxNode>,
 }
 
-// vhco:domain SyntaxNode { func: string; span: SourceSpan; captures: map<string, Capture>; body?: SyntaxNode[]; closer?: SyntaxNode }
+// vhco:domain SyntaxNode { func: string; span: SourceSpan; captures: map<string, Capture>; body?: SyntaxNode[]; closer?: SyntaxNode; sections: map<string, SyntaxNode[]> }
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct SyntaxNode {
     pub func: String,
@@ -25,6 +25,8 @@ pub struct SyntaxNode {
     pub captures: Vec<(String, Capture)>,
     pub body: Option<Vec<SyntaxNode>>,
     pub closer: Option<Box<SyntaxNode>>,
+    /// Named block sections (`if … else … end`): section keyword → its body.
+    pub sections: Vec<(String, Vec<SyntaxNode>)>,
 }
 
 impl SyntaxNode {
@@ -50,6 +52,14 @@ impl SyntaxNode {
 
     pub fn children(&self) -> &[SyntaxNode] {
         self.body.as_deref().unwrap_or(&[])
+    }
+
+    /// Body of a named block section (`else`), when present.
+    pub fn section(&self, name: &str) -> Option<&[SyntaxNode]> {
+        self.sections
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, b)| b.as_slice())
     }
 }
 
