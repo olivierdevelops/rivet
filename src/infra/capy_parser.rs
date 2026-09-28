@@ -82,8 +82,10 @@ impl Parser for CapyParser {
         // so `{n: n - 1}` fails there although Rivet's own expression parser
         // accepts it. Retry with those elements masked (same length, so every
         // span still slices the ORIGINAL text that lowering re-parses).
+        // INC-2026-0009: Capy lexes `.0` in `xs.0` as a number, so a numeric
+        // path segment is masked to `_` (same length) on the retry as well.
         if has_diagnostics(&json_text) {
-            let masked = mask_infix_elements(&file.text);
+            let masked = mask_infix_elements(&mask_numeric_segments(&file.text));
             if masked != file.text {
                 let retry = ast_json::to_json(&self.library.parse(&masked));
                 if !has_diagnostics(&retry) {
@@ -312,6 +314,62 @@ fn mask_infix_elements(text: &str) -> String {
     String::from_utf8(out).unwrap_or_else(|_| text.to_string())
 }
 
+/// Replace the leading digit of every numeric path segment (`xs.0`,
+/// `resp.items.12.id`) with `_`, outside strings and comments, so Capy sees an
+/// identifier path of the SAME byte length (`xs._`, `resp.items._2.id`); spans
+/// still slice the original text, which Rivet's expression parser lowers
+/// (INC-2026-0009). Runs that start with a digit (`1.5`) are numbers and stay.
+///
+/// ```text
+///   return {x: xs.0, y: 1.5}   ─▶   return {x: xs._, y: 1.5}
+/// ```
+fn mask_numeric_segments(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        match c {
+            b'"' | b'\'' | b'`' => {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j] != c {
+                    if bytes[j] == b'\\' {
+                        j += 1;
+                    } else if bytes[j] == b'\n' && c != b'`' {
+                        break;
+                    }
+                    j += 1;
+                }
+                i = j + 1;
+            }
+            b'#' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            _ if c.is_ascii_alphanumeric() || c == b'_' => {
+                let ident = c.is_ascii_alphabetic() || c == b'_';
+                let mut j = i;
+                while j < bytes.len()
+                    && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' || bytes[j] == b'.')
+                {
+                    if ident
+                        && bytes[j] == b'.'
+                        && j > i
+                        && bytes.get(j + 1).is_some_and(u8::is_ascii_digit)
+                    {
+                        out[j + 1] = b'_';
+                    }
+                    j += 1;
+                }
+                i = j;
+            }
+            _ => i += 1,
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_string())
+}
+
 fn span_of(v: Option<&Json>, file: &str) -> Option<SourceSpan> {
     let v = v?;
     if v.is_null() {
@@ -444,6 +502,35 @@ fn convert_diagnostic(d: &Json, file: &SourceFile, keywords: &[String]) -> Synta
             span,
             help: Some(
                 "check the value's brackets, commas and object keys, e.g. {n: n - 1, tags: [\"a\"]}"
+                    .into(),
+            ),
+        };
+    }
+    // INC-2026-0009: when a keyword statement's value does not parse, Capy
+    // reports the last alternative it tried (`… in `assign_map``), an internal
+    // grammar name. Point at the statement's expression instead.
+    let internal = [
+        "assign",
+        "assign_map",
+        "assign_poll",
+        "assign_block",
+        "append_assign",
+        "member_call",
+        "call_stmt",
+    ];
+    if capy_code == "E0001"
+        && span.start_col as usize == first_col
+        && keywords.contains(&first_word)
+        && internal
+            .iter()
+            .any(|f| message.ends_with(&format!("in `{f}`")))
+    {
+        return SyntaxDiagnostic {
+            code: "syntax.expression".into(),
+            message: format!("the expression after `{first_word}` does not parse"),
+            span,
+            help: Some(
+                "check its brackets, commas, quotes and object keys; list items are read with `xs.0`"
                     .into(),
             ),
         };
@@ -686,6 +773,22 @@ mod tests {
         let masked = mask_infix_elements(src);
         assert_eq!(masked.len(), src.len());
         assert_eq!(masked, "x = {a: \"   \", b: \"a - b\", c: -1, d: [\" \"]}");
+    }
+
+    // vhco:test language.compile_program -- INC-2026-0009: numeric path segments are masked to `_` (same length) outside strings, comments and number literals
+    #[test]
+    fn numeric_segments_are_masked_with_the_same_length() {
+        let src = "return {a: xs.0, b: m.rows.12.id, c: 1.5, d: \"xs.0\"} # xs.1";
+        let masked = mask_numeric_segments(src);
+        assert_eq!(masked.len(), src.len());
+        assert_eq!(
+            masked,
+            "return {a: xs._, b: m.rows._2.id, c: 1.5, d: \"xs.0\"} # xs.1"
+        );
+        let tree = parse("operation x\n    output json\n    xs = [1]\n    return xs.0\nend\n");
+        assert!(tree.is_clean(), "{:?}", tree.diagnostics);
+        let ret = &tree.nodes[0].children()[2];
+        assert_eq!(ret.text("value"), "xs.0", "spans slice the original text");
     }
 
     #[test]

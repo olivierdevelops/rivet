@@ -125,6 +125,24 @@ fn lex(text: &str, map: &SpanMap) -> RivetResult<Vec<Token>> {
             continue;
         }
         let start = i;
+        // INC-2026-0009: right after `.` (`xs.0.1`) digits are one index
+        // segment, never a float or a `_`-separated number.
+        if c.is_ascii_digit()
+            && matches!(out.last(), Some(Token { tok: Tok::Dot, end, .. }) if *end == i)
+        {
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            let n = text[start..i]
+                .parse()
+                .map_err(|_| err(map, "syntax.number", "index out of 64-bit range", start, i))?;
+            out.push(Token {
+                tok: Tok::Int(n),
+                start,
+                end: i,
+            });
+            continue;
+        }
         if c.is_ascii_digit() {
             while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'_') {
                 i += 1;
@@ -366,14 +384,16 @@ fn lex_string(
                 ));
             }
             let path: Vec<String> = inner.trim().split('.').map(str::to_string).collect();
+            // Names, or list indexes after the first segment (`${xs.0}`, INC-2026-0009).
             let valid = !path.is_empty()
-                && path.iter().all(|seg| {
-                    !seg.is_empty()
-                        && seg
-                            .chars()
-                            .next()
-                            .is_some_and(|c| c.is_alphabetic() || c == '_')
-                        && seg.chars().all(|c| c.is_alphanumeric() || c == '_')
+                && path.iter().enumerate().all(|(k, seg)| {
+                    (k > 0 && !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_digit()))
+                        || !seg.is_empty()
+                            && seg
+                                .chars()
+                                .next()
+                                .is_some_and(|c| c.is_alphabetic() || c == '_')
+                            && seg.chars().all(|c| c.is_alphanumeric() || c == '_')
                 });
             if !valid {
                 return Err(err(
@@ -518,15 +538,15 @@ impl<'a> P<'a> {
             }) => segs.push(w),
             _ => return self.fail("expected a name"),
         }
+        // Segments are names (`resp.body`) or list indexes (`xs.0`, INC-2026-0009).
         while matches!(self.peek(), Some(Tok::Dot))
-            && matches!(self.peek_at(1), Some(Tok::Ident(_)))
+            && matches!(self.peek_at(1), Some(Tok::Ident(_) | Tok::Int(_)))
         {
             self.pos += 1;
-            if let Some(Token {
-                tok: Tok::Ident(w), ..
-            }) = self.bump()
-            {
-                segs.push(w);
+            match self.bump().map(|t| t.tok) {
+                Some(Tok::Ident(w)) => segs.push(w),
+                Some(Tok::Int(n)) => segs.push(n.to_string()),
+                _ => {}
             }
         }
         Ok((segs, start, self.prev_end()))
