@@ -5,10 +5,11 @@ use crate::domain::{RivetError, RivetResult};
 /// recorded traces) or write host files (`connectors sync`): a network
 /// principal needs them listed explicitly; `*` / `demo.*` style patterns never
 /// match them.
-pub const SENSITIVE_IDS: [&str; 4] = [
+pub const SENSITIVE_IDS: [&str; 5] = [
     "rivet.io",
     "rivet.policy.generate",
     "rivet.trace.show",
+    "rivet.trace.export",
     "rivet.connectors.sync",
 ];
 

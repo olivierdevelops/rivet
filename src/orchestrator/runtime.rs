@@ -1028,9 +1028,52 @@ impl Runtime {
         read_trace(&TraceQuery::new(request_id), self.inner.trace.as_ref())
     }
 
+    /// `rivet trace export REQ --output PATH` / `rivet.trace.export`: write this host's
+    /// (already sanitized) trace of one request as JSON to a NEW file. Trace export is
+    /// application I/O (proposal Increment 5): the write goes through the broker as
+    /// `allow_write create PATH` and an existing path is `conflict.already_exists`
+    /// (never overwritten). An unknown request is `not_found` before anything is written.
+    pub async fn export_trace(&self, request_id: &str, path: &str) -> RivetResult<TraceExport> {
+        let trace = self.trace(request_id)?;
+        let body = serde_json::to_vec_pretty(&trace.to_json())
+            .map_err(|e| RivetError::internal(format!("trace export: {e}")))?;
+        let bytes = body.len();
+        let mut op = FileOperation::new(crate::domain::files::FileVerb::Create, path);
+        op.codec = Some(crate::domain::files::Codec::Bytes);
+        op.content = Some(Value::Bytes(body));
+        op.overwrite = false;
+        self.inner.files.apply(op).await?;
+        Ok(TraceExport {
+            request_id: request_id.to_string(),
+            path: path.to_string(),
+            events: trace.events.len(),
+            bytes,
+        })
+    }
+
     /// The raw trace store (for hosts that export or inspect it).
     pub fn trace_store(&self) -> Arc<dyn TraceStore> {
         self.inner.trace.clone()
+    }
+}
+
+/// Receipt of `rivet trace export`: where the trace went and how much was written.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TraceExport {
+    pub request_id: String,
+    pub path: String,
+    pub events: usize,
+    pub bytes: usize,
+}
+
+impl TraceExport {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "request_id": self.request_id,
+            "path": self.path,
+            "events": self.events,
+            "bytes": self.bytes,
+        })
     }
 }
 

@@ -136,6 +136,12 @@ pub enum AuthCommand {
 pub enum TraceCommand {
     /// Show one request's broker decisions and attempts (each with its effect_id).
     Show { request_id: String },
+    /// Write one request's trace as JSON to a NEW file (needs allow_write on PATH; never overwrites).
+    Export {
+        request_id: String,
+        #[arg(long)]
+        output: String,
+    },
 }
 
 #[derive(Args, Debug)]

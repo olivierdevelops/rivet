@@ -9,7 +9,7 @@
 //!  request ID --input-jsonl - --stream
 //!       stdin JSONL ─validate─▶ input frames ─▶ GET /v1/ws ─▶ data frames ─▶ NDJSON stdout
 //!       EOF ─▶ finish_input · malformed line / Ctrl-C ─▶ cancel
-//!  auth … / trace show REQ / connectors sync ─▶ POST /v1/request rivet.auth.* / rivet.trace.show / rivet.connectors.sync
+//!  auth … / trace show|export REQ / connectors sync ─▶ POST /v1/request rivet.auth.* / rivet.trace.show|export / rivet.connectors.sync
 //!  list / describe / outputs ────▶ GET /v1/operations[/{id}[/outputs]] (rivet.list / rivet.outputs for --outputs / --all)
 //!  io [flags] [--trace REQ] ─────▶ GET /v1/io?…&format=F  (rendered IoReport; exit code from the server)
 //! ```
@@ -241,6 +241,22 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
             client,
             "rivet.trace.show",
             json!({"request_id": request_id}),
+            None,
+        )
+        .await
+        {
+            Ok(t) => {
+                let _ = writeln!(stdout, "{t}");
+                0
+            }
+            Err(e) => fail(&e, None, true),
+        },
+        Command::Trace {
+            command: TraceCommand::Export { request_id, output },
+        } => match builtin(
+            client,
+            "rivet.trace.export",
+            json!({"request_id": request_id, "path": output}),
             None,
         )
         .await

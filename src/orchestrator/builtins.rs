@@ -39,11 +39,12 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 18] = [
+pub const BUILTIN_IDS: [&str; 19] = [
     "rivet.request",
     "rivet.io",
     "rivet.policy.generate",
     "rivet.trace.show",
+    "rivet.trace.export",
     "rivet.connectors.sync",
     "rivet.list",
     "rivet.describe",

@@ -221,3 +221,76 @@ async fn trace_records_denials_with_effect_ids() {
         .collect();
     assert!(ids.contains(&"data.snapshot#1".to_string()));
 }
+
+// vhco:test audit.read_trace -- G5: trace export writes the request's trace JSON to a new file only with allow_write on the path, refuses to overwrite, reports unknown requests as not_found, and works from the CLI command too
+#[tokio::test]
+async fn trace_export_needs_write_grant_and_never_overwrites() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(
+        d.path().join("app.rivet"),
+        "operation t.read\n    output json\n    return file read \"./data/a.json\" as json\nend\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(d.path().join("data")).unwrap();
+    std::fs::create_dir_all(d.path().join("audit")).unwrap();
+    std::fs::write(d.path().join("data/a.json"), "{\"n\":1}").unwrap();
+    let load = |policy: &str| {
+        std::fs::write(d.path().join("policy.json"), policy).unwrap();
+        Runtime::builder()
+            .file(&d.path().join("app.rivet").to_string_lossy())
+            .build()
+            .unwrap()
+    };
+    // Without a write grant the export is denied and nothing is written.
+    let rt =
+        load(r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"]}]}"#);
+    let c = rt.request("t.read", Value::Null, None).await.unwrap();
+    let e = rt
+        .export_trace(&c.request_id, "./audit/t.json")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "permission.denied");
+    assert!(!d.path().join("audit/t.json").exists());
+
+    let rt = load(
+        r#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"]},{"capability":"allow_write","targets":["./audit/**"]}]}"#,
+    );
+    let c = rt.request("t.read", Value::Null, None).await.unwrap();
+    let receipt = rt
+        .export_trace(&c.request_id, "./audit/t.json")
+        .await
+        .unwrap();
+    assert!(receipt.events >= 1);
+    let written: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(d.path().join("audit/t.json")).unwrap()).unwrap();
+    assert_eq!(written, rt.trace(&c.request_id).unwrap().to_json());
+    // Never overwrites.
+    let e = rt
+        .export_trace(&c.request_id, "./audit/t.json")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "conflict.already_exists");
+    // Unknown request: not_found, nothing written.
+    let e = rt
+        .export_trace("req_missing", "./audit/missing.json")
+        .await
+        .unwrap_err();
+    assert!(e.code.starts_with("not_found"), "{}", e.code);
+    assert!(!d.path().join("audit/missing.json").exists());
+
+    // CLI: a fresh process has no recorded request → not_found (exit 4).
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
+        .args([
+            "--file",
+            &d.path().join("app.rivet").to_string_lossy(),
+            "trace",
+            "export",
+            "req_missing",
+            "--output",
+            &d.path().join("audit/cli.json").to_string_lossy(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(4));
+    assert!(!d.path().join("audit/cli.json").exists());
+}
