@@ -1,0 +1,43 @@
+# PLAN-2026-0001 TASK-051: T-27 (build/static), T-29 (samples) and T-31 (docs) on three OSes.
+# T-08's Linux sandbox gate needs a runner with kernel >= 6.12 (ADR-0003); until one is
+# configured, sandboxed exec on Linux refuses with unsupported.sandbox_backend by design.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+          components: rustfmt, clippy
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: build (release)
+        run: cargo build --release
+      - name: tests (T-01…T-29 suites)
+        run: cargo test --all-targets
+      - name: docs (T-31)
+        run: python3 scripts/check_docs.py
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
