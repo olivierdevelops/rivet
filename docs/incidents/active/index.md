@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -37,10 +37,18 @@ Incidents in the `active` lifecycle state. See the [incidents index](../index.md
 
 ## Active documents
 
-None.
+| Incident | Severity | Summary |
+|---|---|---|
+| [INC-2026-0009](inc-2026-0009-numeric-index-paths-do-not-parse.md) | S4 | Numeric index paths (`xs.0`) do not parse; the message names `assign_map` |
+
+```text
+ INC-2026-0009 ──▶ fix (expr.rs path + Capy capture) ──▶ resolved/
+               └──▶ or listed under v0.2.0 Known Issues (P5)
+```
 
 ## Recently added or updated
 
+- 2026-09-28: INC-2026-0009 added (PLAN-2026-0002 P2b).
 - 2026-09-28: created during PLAN-2026-0001 P3.
 
 ## Deprecated, superseded or archived
@@ -55,4 +63,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | INC-2026-0009. |
 | 1 | 2026-09-28 | Claude | Created. |

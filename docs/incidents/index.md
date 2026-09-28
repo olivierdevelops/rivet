@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -47,15 +47,17 @@ Unexpected defects, regressions and abnormal behaviour (DOCUMENTATION §4.19, §
 | [INC-2026-0006](resolved/inc-2026-0006-codec-keyword-variable-collision.md) | S3 | resolved | Codec keywords replaced by same-named variables at run time |
 | [INC-2026-0007](resolved/inc-2026-0007-demo-verification-defects.md) | S3 | resolved | Six defects found by release demo verification |
 | [INC-2026-0008](resolved/inc-2026-0008-documentation-verification-defects.md) | S3 | resolved | Seven defects found by documentation verification |
+| [INC-2026-0009](active/inc-2026-0009-numeric-index-paths-do-not-parse.md) | S4 | active | Numeric index paths (`xs.0`) do not parse; misleading `assign_map` message |
 
 ```text
- active/        none open
+ active/        INC-2026-0009 (found in PLAN-2026-0002 P2b, open: fix or v0.2.0 known issue)
  resolved/      INC-2026-0001 … 0008 (found and fixed during P2/P3, never released)
  postmortems/   none
 ```
 
 ## Recently added or updated
 
+- 2026-09-28: INC-2026-0009 recorded (PLAN-2026-0002 P2b).
 - 2026-09-28: created during PLAN-2026-0001 P3.
 
 ## Deprecated, superseded or archived
@@ -70,4 +72,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | INC-2026-0009 (active). |
 | 1 | 2026-09-28 | Claude | Created. |

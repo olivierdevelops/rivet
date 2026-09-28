@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -150,9 +150,9 @@ recommendations (ADR-0004).
 | R4 / UC-01 | UQ-06: one input shape | `InputEnvelope::parse` shared by every surface; `--data`, `--input` | T-02 | P2a | DONE (P2a; FFI part in P2d) |
 | R5 / UC-09 | Compatibility for 0.1.0 clients | `id`/`params` aliases in 0.2.x with deprecation signals; mixed keys refused | T-15 | P2a | DONE (P2a) |
 | R6 / UC-03 | UQ-04: readable JSON | `--pretty`, `?pretty=true`, `to_json_pretty`, FFI `pretty`; refused on NDJSON/SSE | T-05 | P2a | DONE (P2a; FFI part in P2d) |
-| R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | NOT STARTED |
-| R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | NOT STARTED |
-| R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | NOT STARTED |
+| R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | DONE (P2b; docs P4) |
+| R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | DONE (P2b; docs P4) |
+| R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | DONE (P2b; see the R9 deviation; docs P4) |
 | R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | NOT STARTED |
 | R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | NOT STARTED |
 | R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | NOT STARTED |
@@ -162,12 +162,12 @@ recommendations (ADR-0004).
 | R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | NOT STARTED |
 | R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | NOT STARTED |
 | R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
-| R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | NOT STARTED |
-| R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | NOT STARTED |
-| R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | NOT STARTED |
-| R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | NOT STARTED |
+| R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | DONE (P2f; docs P4) |
+| R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | DONE (P2f; docs P4) |
+| R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | DONE (P2f; docs P4) |
+| R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | DONE (P2f; Module::stream/duplex take a Scope; docs P4) |
 | R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | NOT STARTED |
-| R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | NOT STARTED |
+| R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | DONE (P2f; docs P4) |
 
 ## Applicable Project Standards
 
@@ -220,11 +220,11 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 |---|---|---|---|---|---|
 | P1 | Contract delta; experiments E1–E3; disk and tooling | This plan approved | Contract updated; RES-2026-0004 written; ADR-0005 recorded; ≥ 15 GiB free | — | DONE |
 | P2a | Envelopes, input, pretty (breaking) | P1 exit | T-01–T-05, T-15 green; all 0.1.0 suites updated and green | P1 | DONE |
-| P2b | Globals | P1 exit | T-06–T-08 green | P1 | NOT STARTED |
+| P2b | Globals | P1 exit | T-06–T-08 green | P1 | DONE (`673994c`) |
 | P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | NOT STARTED |
 | P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
 | P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | NOT STARTED |
-| P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | NOT STARTED |
+| P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | DONE (`2942066`) |
 | P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
 | P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
 | P5 | Version, release commit, tag, REL | P4 exit | §34 gate walked; T-33 | P4 | NOT STARTED |
@@ -267,11 +267,11 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-020 | P2b | Grammar: top-level `global NAME = EXPR` in `rivet.capy`; lowering to `GlobalDecl` (`domain/ir.rs`) | R7 / C-05 | PF-05 | T-06 | TASK-004 | I | NOT STARTED | |
-| TASK-021 | P2b | Use case `features/language/compile_globals.rs`: constant evaluation in declaration order (literals, lists, objects, arithmetic, comparison, interpolation, pure built-ins over earlier globals); codes `syntax.global`, `check.global_not_constant`, `check.global_forward_ref`, `check.global_duplicate` | R7, R8 | PF-06 | T-06, T-07 | TASK-020 | I | NOT STARTED | |
-| TASK-022 | P2b | Frame lookup: locals → params → globals; `check.global_shadow` (param, local, loop variable, binding, `as NAME`) and `check.global_assign` at compile time | R7, R8 | PF-07 | T-06, T-07 | TASK-021 | I | NOT STARTED | |
-| TASK-023 | P2b | Effect analysis and call graph substitute globals; targets built only from literals and globals are `exact`; `policy generate` emits exact grants | R9 / C-06 | PF-08 | T-08 | TASK-021 | I | NOT STARTED | |
-| TASK-024 | P2b | `tests/conformance_globals.rs` (T-06–T-08), including concurrent requests reading the same values | R7–R9 | tests | T-06–T-08 | TASK-022, 023 | I | NOT STARTED | |
+| TASK-020 | P2b | Grammar: top-level `global NAME = EXPR` in `rivet.capy`; lowering to `GlobalDecl` (`domain/ir.rs`) | R7 / C-05 | PF-05 | T-06 | TASK-004 | I | DONE | `673994c`: `rivet.capy` top-level `global` (tail capture); `Lowerer::global_decl` splits NAME/EXPR (`syntax.global` at the line or the bad name; an effect head is `check.global_not_constant`); `GlobalDecl{name, expr, span, expr_span}` in `domain/ir.rs` |
+| TASK-021 | P2b | Use case `features/language/compile_globals.rs`: constant evaluation in declaration order (literals, lists, objects, arithmetic, comparison, interpolation, pure built-ins over earlier globals); codes `syntax.global`, `check.global_not_constant`, `check.global_forward_ref`, `check.global_duplicate` | R7, R8 | PF-06 | T-06, T-07 | TASK-020 | I | DONE | `673994c`: `features/language/compile_globals.rs` — one `GlobalScope` per file, declaration order, folded by `domain/const_eval.rs` (shared with the interpreter: `binary`, pure built-ins); duplicate at the second name, forward ref at the reference, not-constant at the expression (UC-04 sample: `bad.rivet:1:16`); called from `compile_program` |
+| TASK-022 | P2b | Frame lookup: locals → params → globals; `check.global_shadow` (param, local, loop variable, binding, `as NAME`) and `check.global_assign` at compile time | R7, R8 | PF-07 | T-06, T-07 | TASK-021 | I | DONE | `673994c`: `Frame::get` → locals, params, then the operation file's frozen globals (`Interpreter.globals`, `Arc` per file); `check.global_shadow` for a param (name span), loop variable, map item, `with … as`, dag node, task, secret; `check.global_assign` for `=` and `+=` |
+| TASK-023 | P2b | Effect analysis and call graph substitute globals; targets built only from literals and globals are `exact`; `policy generate` emits exact grants | R9 / C-06 | PF-08 | T-08 | TASK-021 | I | DONE | `673994c`: `effect_sites` resolves globals in templates (component-aware for URLs, like `assemble_url`) and folds whole constant expressions; literal+global targets are `exact`, a param keeps `param_dependent` with the host resolved; `(request G)` with a global ID is a static call edge; `policy generate` grants exactly (T-08) |
+| TASK-024 | P2b | `tests/conformance_globals.rs` (T-06–T-08), including concurrent requests reading the same values | R7–R9 | tests | T-06–T-08 | TASK-022, 023 | I | DONE | `673994c`: `tests/conformance_globals.rs` — 12 tests (T-06 values everywhere, 32 concurrent requests equal; T-07 every code with line/column/end column and exit 2, CLI render; T-08 manifest + library/CLI generate) |
 
 ### P2c — Package, facade and features
 
@@ -309,14 +309,14 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-100 | P2f | Contract delta for modules: domain `ImportDecl`, `ModuleRef`, `ModuleSummary`, `CatalogSnapshot`; use cases `language.resolve_imports`, `registry.load_module`; library/ffi triggers `load`/`rivet_load` | R19–R24 / C-14, C-15 | `vhco-contract.json` | `vhco sync .` | TASK-004 | I | NOT STARTED | |
-| TASK-101 | P2f | Grammar: top-level `import "PATH" as ALIAS [public]` before declarations; lowering to `ImportDecl`; `syntax.import` | R19 / C-14 | PF-19 | T-16, T-17 | TASK-100 | I | NOT STARTED | |
-| TASK-102 | P2f | Use case `features/language/resolve_imports.rs` over the source-loader port: path relative to the importing file, confined to the runtime root (no `..`, no symlinks), canonical dedup (compile once), cycle detection with the path, limits (256 files, depth 16), alias uniqueness, namespacing `ALIAS.ID` (transitive), visibility (internal vs `public`), collisions, per-module globals/connectors/auth, bootstrap sites for each file, warning `check.module_policy_ignored` | R19–R21, R24 | PF-20 | T-16, T-17, T-20 | TASK-101, P2b | I | NOT STARTED | |
-| TASK-103 | P2f | Calls: `(ALIAS.ID {…})` and `(request "ALIAS.ID" …)` resolve to the namespaced operation; calls inside a module use its own IDs; `check.unknown_function` knows imported names | R20 | PF-20 | T-16 | TASK-102 | I | NOT STARTED | |
-| TASK-104 | P2f | Manifest, call graph, `policy explain`, `policy generate` and `io --include-bootstrap` cover modules with module spans (`users.rivet:12`) and namespaced IDs; replaces the `(+ imports)` placeholder (INC-2026-0008 known issue) | R24 / C-14 | PF-21 | T-20 | TASK-102 | I | NOT STARTED | |
-| TASK-105 | P2f | Host API: `Runtime::load(path)`, `load_as(path, alias)` → `Module` (`alias`, `operations`, `describe`, `outputs`, `call`, `stream`, `duplex`); `Runtime::builder().root(dir)` without an entry file; `features/registry/load_module.rs`; immutable catalog snapshot swap (`Arc`), with in-flight requests keeping theirs; loaded modules public under their alias | R22 / C-15 | PF-22 | T-18 | TASK-102, TASK-015 | I | NOT STARTED | |
-| TASK-106 | P2f | `examples/modules.rs` (Rust host loading two files) | R22 | PF-17 | T-18 | TASK-105 | I | NOT STARTED | |
-| TASK-107 | P2f | `tests/conformance_modules.rs` (T-16, T-17, T-18, T-20), including concurrent `load` during requests | R19–R24 | PF-T09 | T-16–T-18, T-20 | TASK-102–105 | I | NOT STARTED | |
+| TASK-100 | P2f | Contract delta for modules: domain `ImportDecl`, `ModuleRef`, `ModuleSummary`, `CatalogSnapshot`; use cases `language.resolve_imports`, `registry.load_module`; library/ffi triggers `load`/`rivet_load` | R19–R24 / C-14, C-15 | `vhco-contract.json` | `vhco sync .` | TASK-004 | I | DONE | `673994c` (hand-edited with P2b): domain `ImportDecl`, `ModuleRef`, `ModuleLoad`, `ModuleSummary`, `CatalogSnapshot`; `SourceBundle.modules`, `CompiledProgram.{globals, global_scopes, modules}`, `Operation.{module, param_spans}`; use cases `language.resolve_imports` (Parser, SourceLoader) and `registry.load_module` (CatalogStore) with todos, failures and flows; cli/library `calls`; library trigger `Runtime::load(PATH) \| Runtime::load_as(PATH, ALIAS)`. Refined in `2942066` (port parameter types only, flow step order; TRBL-2026-0005). The ffi `rivet_load` trigger is left to P2d |
+| TASK-101 | P2f | Grammar: top-level `import "PATH" as ALIAS [public]` before declarations; lowering to `ImportDecl`; `syntax.import` | R19 / C-14 | PF-19 | T-16, T-17 | TASK-100 | I | DONE | `673994c`/`2942066`: `rivet.capy` `import` (tail capture); `Lowerer::imports` checks shape `import "PATH" as ALIAS [public]`, relative PATH, identifier alias (`rivet` reserved) and placement before any other top-level line (`syntax.import` at the import line; inside an operation at the statement) |
+| TASK-102 | P2f | Use case `features/language/resolve_imports.rs` over the source-loader port: path relative to the importing file, confined to the runtime root (no `..`, no symlinks), canonical dedup (compile once), cycle detection with the path, limits (256 files, depth 16), alias uniqueness, namespacing `ALIAS.ID` (transitive), visibility (internal vs `public`), collisions, per-module globals/connectors/auth, bootstrap sites for each file, warning `check.module_policy_ignored` | R19–R21, R24 | PF-20 | T-16, T-17, T-20 | TASK-101, P2b | I | DONE | `2942066`: `features/language/resolve_imports.rs` — breadth-first from the roots (entry "" + host-loaded modules), path relative to the importing file and lexically inside the root (`permission.import_outside_root`, exit 3), `SourceLoader.read_module` refuses symlinks and missing files (`not_found.import`, exit 4), shallowest import names a file and it compiles once, `check.import_duplicate`, `check.import_cycle` with the path, `limit.imports` (256 files, depth 16, exit 5), public iff an all-`public` chain, `policy_ignored` → warning `check.module_policy_ignored`; namespacing in `lowering/modules.rs` (`ALIAS.ID`, transitive), `check.import_collision` |
+| TASK-103 | P2f | Calls: `(ALIAS.ID {…})` and `(request "ALIAS.ID" …)` resolve to the namespaced operation; calls inside a module use its own IDs; `check.unknown_function` knows imported names | R20 | PF-20 | T-16 | TASK-102 | I | DONE | `2942066`: `namespace_modules` resolves every literal `(request "id")` and call-by-ID `(ID {…})` / `(ALIAS.ID {…})` in its own file's scope (own IDs, import aliases, own connectors, `rivet.*`) and rewrites it to `(request "canonical")`; unresolvable module calls and another module's `private true` op → `check.unknown_operation`; the expression parser accepts the file's own IDs and `ALIAS.…` (`CallScope`) |
+| TASK-104 | P2f | Manifest, call graph, `policy explain`, `policy generate` and `io --include-bootstrap` cover modules with module spans (`users.rivet:12`) and namespaced IDs; replaces the `(+ imports)` placeholder (INC-2026-0008 known issue) | R24 / C-14 | PF-21 | T-20 | TASK-102 | I | DONE | `2942066`: `io --include-bootstrap` lists `./app.rivet` and each module file (the `(+ imports)` placeholder is gone); sites, graph, `policy explain`/`generate` carry module spans (`lib/data.rivet:3`) and namespaced IDs (T-20) |
+| TASK-105 | P2f | Host API: `Runtime::load(path)`, `load_as(path, alias)` → `Module` (`alias`, `operations`, `describe`, `outputs`, `call`, `stream`, `duplex`); `Runtime::builder().root(dir)` without an entry file; `features/registry/load_module.rs`; immutable catalog snapshot swap (`Arc`), with in-flight requests keeping theirs; loaded modules public under their alias | R22 / C-15 | PF-22 | T-18 | TASK-102, TASK-015 | I | DONE | `2942066`: `Runtime` holds `RwLock<Arc<Snapshot>>` (catalog + registry + interpreter + MCP/OAuth/gRPC adapters); a request and its nested calls stay on their snapshot; `Runtime::builder().root(dir)`; `features/registry/load_module.rs` over the `CatalogStore` port (`RuntimeCatalog`: resolve + compile, publish = Arc swap, loads serialized); `Runtime::load/load_as` → `rivet::Module` (`alias`, `file`, `warnings`, `operations`, `describe`, `outputs`, `call`, `stream(&Scope,…)`, `duplex(&Scope,…)`); loaded modules public under their alias |
+| TASK-106 | P2f | `examples/modules.rs` (Rust host loading two files) | R22 | PF-17 | T-18 | TASK-105 | I | DONE | `2942066`: `examples/modules.rs` + `examples/modules/{users.rivet, lib/billing.rivet}` — `cargo run --example modules` loads two files (billing imports users: compiled once), prints envelopes named `users.get` / `billing.invoice`, and shows the duplicate-alias refusal |
+| TASK-107 | P2f | `tests/conformance_modules.rs` (T-16, T-17, T-18, T-20), including concurrent `load` during requests | R19–R24 | PF-T09 | T-16–T-18, T-20 | TASK-102–105 | I | DONE | `2942066`: `tests/conformance_modules.rs` — 16 tests: T-16 (compile once, transitive namespaces, visibility, calls, per-module globals, module-scoped connectors), T-17 (every code with file/line/column and exit; symlink; cycle path; both limits), T-18 (root-only runtime, load/load_as, Module API, streams, 6 concurrent loads during 24 running requests, in-flight snapshot kept), T-20 (loader policy only, warning, io/graph/explain/generate) |
 
 ### P3 — Tests and validation
 
@@ -370,10 +370,10 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-02 | production | `src/domain/contracts.rs`, `src/domain/errors.rs` | UPDATE | Serialize through PF-01; new error codes | R1, R4–R6 / 010, 017 | F-02 | DONE | T-01 |
 | PF-03 | production | `src/orchestrator/setup_{cli,http,ws,poll,mcp,library,serve}.rs`, `src/io/{cli,http,ws,mcp,library}/**`, `src/orchestrator/builtins.rs` | UPDATE | Input parsing, output writing, flags, pretty, Deprecation | R1, R3–R6 / 011–015 | F-03, F-04 | DONE | T-01–T-05 |
 | PF-04 | production | `src/orchestrator/remote_cli.rs`, `src/infra/remote_client.rs` | UPDATE | Decode 0.2 envelopes; version hint | R1 / 016 | F-04 | DONE | T-02 |
-| PF-05 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `global` form and `GlobalDecl` | R7 / 020 | F-05, F-06 | NOT STARTED | T-06 |
-| PF-06 | production | `src/features/language/compile_globals.rs` | CREATE | Constant evaluation and check codes | R7, R8 / 021 | F-06 | NOT STARTED | T-06, T-07 |
-| PF-07 | production | `src/infra/execution_driver.rs` | UPDATE | Read-only global scope | R7 / 022 | F-07 | NOT STARTED | T-06 |
-| PF-08 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/generate_policy.rs` | UPDATE | Global substitution | R9 / 023 | F-08 | NOT STARTED | T-08 |
+| PF-05 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `global` form and `GlobalDecl` | R7 / 020 | F-05, F-06 | DONE | T-06 |
+| PF-06 | production | `src/features/language/compile_globals.rs` | CREATE | Constant evaluation and check codes | R7, R8 / 021 | F-06 | DONE | T-06, T-07 |
+| PF-07 | production | `src/infra/execution_driver.rs` | UPDATE | Read-only global scope | R7 / 022 | F-07 | DONE | T-06 |
+| PF-08 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/generate_policy.rs` | UPDATE | Global substitution | R9 / 023 | F-08 | DONE | T-08 |
 | PF-09 | production | `src/lib.rs`, module visibility across `src/**` | UPDATE | Facade; internals hidden | R10 / 031 | F-09 | NOT STARTED | T-09 |
 | PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | NOT STARTED | T-10 |
 | PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic, including module handles (R23) | R13–R15, R23 / 040, 044, 045 | F-11, F-23 | NOT STARTED | T-11, T-12, T-19 |
@@ -382,26 +382,26 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | NOT STARTED | T-13 |
 | PF-15 | production | `vhco-contract.json` | UPDATE | Contract Delta | all / 004 | F-16 | DONE | T-28 |
 | PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | NOT STARTED | T-10, T-33 |
-| PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | NOT STARTED | T-09, T-11, T-18, T-19 |
+| PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | IN PROGRESS (`examples/modules.rs` done in `2942066`; the rest P2c/P2d) | T-09, T-11, T-18, T-19 |
 | PF-18 | agent guide | `AGENTS.md` (project facts) | UPDATE | Workspace, `ffi` surface, features | R18 / 080 | — | NOT STARTED | review |
-| PF-19 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `import` form, `ImportDecl` | R19 / 101 | F-19 | NOT STARTED | T-16 |
-| PF-20 | production | `src/features/language/resolve_imports.rs` (CREATE), `compile_program.rs`, `src/infra/source_loader.rs` (UPDATE) | CREATE / UPDATE | Resolution, namespacing, visibility, errors, bootstrap sites | R19–R21, R24 / 102, 103 | F-20 | NOT STARTED | T-16, T-17 |
-| PF-21 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/*` | UPDATE | Module spans and namespaced IDs | R24 / 104 | F-21 | NOT STARTED | T-20 |
-| PF-22 | production | `src/features/registry/load_module.rs` (CREATE), `src/orchestrator/runtime.rs`, facade `Module` | CREATE / UPDATE | load/load_as, snapshot swap, builder without an entry file | R22 / 105 | F-22 | NOT STARTED | T-18 |
+| PF-19 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `import` form, `ImportDecl` | R19 / 101 | F-19 | DONE | T-16 |
+| PF-20 | production | `src/features/language/resolve_imports.rs` (CREATE), `compile_program.rs`, `src/infra/source_loader.rs` (UPDATE) | CREATE / UPDATE | Resolution, namespacing, visibility, errors, bootstrap sites | R19–R21, R24 / 102, 103 | F-20 | DONE | T-16, T-17 |
+| PF-21 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/*` | UPDATE | Module spans and namespaced IDs | R24 / 104 | F-21 | DONE | T-20 |
+| PF-22 | production | `src/features/registry/load_module.rs` (CREATE), `src/orchestrator/runtime.rs`, facade `Module` | CREATE / UPDATE | load/load_as, snapshot swap, builder without an entry file | R22 / 105 | F-22 | DONE | T-18 |
 
 ### Tests and fixtures
 
 | ID | Category | Exact path | CRUD | Planned edit | Req / tasks | Status | Verification |
 |---|---|---|---|---|---|---|---|
 | PF-T01 | test | `tests/conformance_envelope.rs` | CREATE | T-01–T-05, T-15 | R1–R6 / 010–018 | DONE | `cargo test` |
-| PF-T02 | test | `tests/conformance_globals.rs` | CREATE | T-06–T-08 | R7–R9 / 024 | NOT STARTED | `cargo test` |
+| PF-T02 | test | `tests/conformance_globals.rs` | CREATE | T-06–T-08 | R7–R9 / 024 | DONE | `cargo test` |
 | PF-T03 | test | `tests/conformance_features.rs` + CI feature matrix | CREATE | T-10 | R11 / 032 | NOT STARTED | CI / local |
 | PF-T04 | test | `tests/conformance_ffi.rs`, `ffi/tests/*.rs` | CREATE | T-11, T-12 | R13–R15 / 043 | NOT STARTED | `cargo test --workspace` |
 | PF-T05 | test | `tests/conformance_highlight.rs`, `editors/tests/` (tmgrammar snapshots) | CREATE | T-13, T-14 | R16, R17 / 053 | NOT STARTED | `cargo test`, `npx vscode-tmgrammar-test` |
 | PF-T06 | test | every existing `tests/conformance_*.rs` + `tests/support/**` | UPDATE | Envelope/input assertions | R1 / 018 | DONE | T-34 |
 | PF-T07 | fixture | `docs/demos/**/requests/*`, `docs/demos/**/fixtures/*` | UPDATE | Input envelopes | R4 / 019 | DONE | T-30 |
 | PF-T08 | schema | `docs/api/schemas/response.schema.json`, `input.schema.json`, `stream-record.schema.json` | CREATE | JSON Schemas used by T-01 | R1, R4 / 010 | DONE | T-01 |
-| PF-T09 | test | `tests/conformance_modules.rs` (+ module fixtures under a temp dir) | CREATE | T-16–T-18, T-20 | R19–R24 / 107 | NOT STARTED | `cargo test` |
+| PF-T09 | test | `tests/conformance_modules.rs` (+ module fixtures under a temp dir) | CREATE | T-16–T-18, T-20 | R19–R24 / 107 | DONE | `cargo test` |
 
 ### Generated and release artifacts
 
@@ -426,9 +426,9 @@ TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST
 | T-03 | integration | UC-01 / R3 | Built-ins, GET routes and `--json` outputs enveloped | same | same | Schema valid | PASS | TEST-2026-0036 |
 | T-04 | integration | UC-02 / R1 | Stream records then exactly one result; consumer stop → cancelled | same | same | Sequence and statuses | PASS | TEST-2026-0037 |
 | T-05 | integration | UC-03 / R6 | Pretty goldens; pretty + stream refused | same | same | Indent 2; validation.usage / 400 | PASS | TEST-2026-0038 |
-| T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | NOT STARTED | TEST-2026-0039 |
-| T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | NOT STARTED | TEST-2026-0040 |
-| T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | NOT STARTED | TEST-2026-0041 |
+| T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | PASS (`conformance_globals`, 3 tests) | TEST-2026-0039 |
+| T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | PASS (`conformance_globals`, 7 tests) | TEST-2026-0040 |
+| T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | PASS (`conformance_globals`, 2 tests) | TEST-2026-0041 |
 | T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | NOT STARTED | TEST-2026-0042 |
 | T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | NOT STARTED | TEST-2026-0043 |
 | T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | NOT STARTED | TEST-2026-0044 |
@@ -436,11 +436,11 @@ TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST
 | T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | NOT STARTED | TEST-2026-0046 |
 | T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | NOT STARTED | TEST-2026-0047 |
 | T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | PASS | TEST-2026-0048 |
-| T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | NOT STARTED | TEST-2026-0049 |
-| T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | NOT STARTED | TEST-2026-0050 |
-| T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | NOT STARTED | TEST-2026-0051 |
+| T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | PASS (`conformance_modules`, 4 tests) | TEST-2026-0049 |
+| T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | PASS (`conformance_modules`, 7 tests) | TEST-2026-0050 |
+| T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | PASS (`conformance_modules`, 3 tests) | TEST-2026-0051 |
 | T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | NOT STARTED | TEST-2026-0052 |
-| T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | NOT STARTED | TEST-2026-0053 |
+| T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | PASS (`conformance_modules`, 2 tests) | TEST-2026-0053 |
 | T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | NOT STARTED | TEST-2026-0027 (re-recorded) |
 | T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | NOT STARTED | TEST-2026-0028 (re-recorded) |
 | T-29 | corpus | R7, R16 | REF-2026-0002 and demo sources parse (with `global`) | `tests/conformance_samples.rs` | `cargo test --test conformance_samples` | All parse | NOT STARTED | TEST-2026-0029 (re-recorded) |
@@ -622,6 +622,19 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-28 | Decision | TASK-015 | The script-level `completion` property of a request stream keeps its 0.1.0 object shape (language API, not wire output) | No language change | — | — |
 | 2026-09-28 | Finding | T-34 | Suites that passed unchanged (dag, files, http3, language, library, outputs, policy_generate, quic, resources, samples, streams, syntax, udp) assert through the Rust library types, not wire JSON; their wire paths are covered by conformance_envelope | Checked, not a gap | — | T-34 |
 | 2026-09-28 | Finding | TASK-018 | No unexpected defect in existing code was found during P1/P2a; no incident recorded | — | — | D-05 |
+| 2026-09-28 | Deviation | TASK-021 / R7 | Contract refined by hand: `GlobalScope` gains `file` (one frozen scope per file, so each module has its own globals, R20) and `language.compile_globals` returns `GlobalScope[]`; `GlobalDecl` gains `expr_span`; `Operation` gains `module` and `param_spans` (exact `check.global_shadow` span of a param) | Contract and code agree; `vhco sync` has no P2b gap | — | `vhco-contract.json`, `673994c` |
+| 2026-09-28 | Deviation | TASK-023 / R9 | The UC-04 sample shows `https://api.example.com/users/{id}` as `exact`. The build keeps the 0.1.0 rule that a param placeholder makes a target `param_dependent`; globals are resolved into the template (host and path known, grantable), and a target built **only** from literals and globals is `exact` | Proposal sample differs; P4 docs show the real output | P4 (D-24, D-33) | T-08 |
+| 2026-09-28 | Decision | TASK-021, TASK-022 / R8 | A global may use literals, lists, objects, operators, `${…}` and the pure built-ins (`length`, `base64.*`, `text`, `keys`, `xml.element`); `env`, `secret`, `request`, effects, params and locals are `check.global_not_constant` (a global can never hold a secret — TASK-064 input). A constant that fails to evaluate keeps its own code (`value.type`, `value.division_by_zero`, exit 2). `NAME = …`/`NAME += …` is `check.global_assign`; params, loop variables, map items, `with … as`, dag nodes, tasks and secrets are `check.global_shadow`, each at the statement's own span | Deterministic diagnostics | P4 (D-22, D-44) | T-07 |
+| 2026-09-28 | Decision | TASK-102, TASK-103 / R20 | A file reached under two aliases compiles once under the shallowest (breadth-first) namespace; other aliases point at it (`ImportDecl.target`). Calls by operation ID `(ID {…})` work in every file (its own IDs) and are rewritten to `(request "ID" …)`; built-in names win. Dynamic `(request var …)` targets are catalog IDs (namespaced) | Compile once; one call model | P4 (D-22) | T-16 |
+| 2026-09-28 | Decision | TASK-102 / R20, R24 | Connector and auth profile references are file-scoped (a module's connectors and profiles stay inside it), but their **names stay bundle-unique** (`check.import_collision` across files) because the loader's single policy grants them by name (`allow_mcp NAME/…`, `allow_auth`); MCP import IDs of a module connector are not prefixed, and those of an internal module are unlisted | One policy namespace | P4 (D-33, D-37) | T-16 |
+| 2026-09-28 | Decision | TASK-105 / R22 | Snapshot semantics: a request **and its nested calls** stay on the catalog snapshot it started with (a dynamic nested call to a module loaded meanwhile is `not_found.operation`, tested); loads are serialized; the OAuth adapter is reused across a load when the auth profiles are unchanged, otherwise rebuilt (pending authorizations of the replaced adapter are lost); session receipts report the catalog they opened on | Documented behaviour | P4 (D-26, D-43) | T-18 |
+| 2026-09-28 | Deviation | TASK-105 / R22 | `Module::stream` and `Module::duplex` take the owning `&Scope` (`module.stream(&scope, id, data)`), like `Scope::stream`, because 0.1.0 streams are scope-owned (structured concurrency); the proposal wrote `stream(id, data)`. `operations()`/`describe()` report short IDs (`get`); envelopes carry the namespaced `operation` (`users.get`) | API differs from the sketch | P4 (D-26, D-43) | T-18 |
+| 2026-09-28 | Decision | TASK-102 / R21 | `limit.imports` keeps the kind registry row (exit 5, HTTP 429, retryable like every `limit.*` code). All new codes are registered in `domain::errors::LANGUAGE_CODES` with a unit test of their rows | Consistent registry | P4 (D-44) | unit test |
+| 2026-09-28 | Finding | TASK-104 | The INC-2026-0008 known issue (`./app.rivet (+ imports)`) is resolved: bootstrap rows list the entry and each module file. `tests/conformance_io_manifest.rs` was updated for the new row; demos 01, 08 and 11 READMEs still show the old placeholder | P4 sweep must update them | P4 (D-47…) | T-20 |
+| 2026-09-28 | Finding | TASK-101, TASK-105 | Public API changes for P2c/MIG-2026-0001: `SourceBundle` gains `modules` (three existing test literals updated); `Runtime::bundle()` returns an owned `SourceBundle` (was `&SourceBundle`); `setup_library::session_host` takes `Arc<dyn Registry>`; new `Runtime::{load, load_as, catalog}`, `RuntimeBuilder::root`, `rivet::Module` | Facade (P2c) and migration guide must list them | P2c (TASK-031), P4 (D-09) | — |
+| 2026-09-28 | Finding | TASK-045 (P2d) | `rivet_load(rt, path, alias_or_null, &module, &err)` should call `Runtime::load` / `Runtime::load_as` (→ `registry.load_module`) and wrap the returned `rivet::Module`; `rivet_module_operations` = `Module::operations()` (short IDs + descriptions), `rivet_module_call` = `Module::call`, `rivet_module_call_start` = a scope-owned `Module::stream`/`duplex`. P2d must add `registry/load_module` to the `ffi` surface `calls` and the `rivet_load` flow trigger in the contract (not added here, to keep sync free of P2f gaps) | Hand-off | P2d | TRBL-2026-0005 |
+| 2026-09-28 | Finding | TASK-063 | INC-2026-0009 (active, S4): numeric index paths (`xs.0`) do not parse and the message names `assign_map` — pre-existing in 0.1.0, found by the globals tests, not fixed (fix or v0.2.0 Known Issue). TRBL-2026-0005: contract entries written ahead of code must use port parameter types only, flow steps in source order, and add triggered actions to the surface `calls` | Recorded | P3/P5 | INC-2026-0009, TRBL-2026-0005 |
+| 2026-09-28 | Finding | P2b, P2f | 440 tests pass (409 + 2 unit + 12 `conformance_globals` + 1 unit + 16 `conformance_modules`); fmt, clippy `-D warnings`, `vhco validate`, `vhco check` green; `vhco sync` = 8 gaps, all P2c/P2d/P2e (`CapabilityReport`, `FfiOptions`, `HighlightFormat`, `HighlightToken`, flow/use case `language.highlight_source`, cli calls `language/highlight_source`, surface `ffi`) | P2b and P2f exits met | — | `673994c`, `2942066` |
 
 ## Rollout Strategy
 
@@ -667,9 +680,9 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R4 / UC-01 | 010–015, 019 | PF-01, PF-03, PF-T07 | T-02 | D-10, D-23, D-40–D-42, D-50, D-59 | U-04 | CODE + TESTS DONE (docs P4, release P5) |
 | R5 / UC-09 | 010–012, 014 | PF-01, PF-03 | T-15 | D-09, D-44 | U-05 | CODE + TESTS DONE (docs P4, release P5) |
 | R6 / UC-03 | 010–012 | PF-01, PF-03 | T-05 | D-10, D-23, D-25 | U-06 | CODE + TESTS DONE (docs P4, release P5) |
-| R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | NOT STARTED |
-| R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | NOT STARTED |
-| R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | NOT STARTED |
+| R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | CODE + TESTS DONE (docs P4, release P5) |
+| R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | CODE + TESTS DONE (docs P4, release P5) |
+| R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | CODE + TESTS DONE (docs P4, release P5) |
 | R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | NOT STARTED |
 | R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | NOT STARTED |
 | R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | NOT STARTED |
@@ -679,12 +692,12 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | NOT STARTED |
 | R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | NOT STARTED |
 | R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | NOT STARTED |
-| R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | NOT STARTED |
-| R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | NOT STARTED |
-| R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | NOT STARTED |
-| R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | NOT STARTED |
+| R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | CODE + TESTS DONE (docs P4, release P5) |
+| R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | CODE + TESTS DONE (docs P4, release P5) |
+| R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | CODE + TESTS DONE (docs P4, release P5) |
+| R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | CODE + TESTS DONE (docs P4, release P5) |
 | R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | NOT STARTED |
-| R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | NOT STARTED |
+| R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | CODE + TESTS DONE (docs P4, release P5) |
 
 ```text
  R-n ──► TASK-0xx ──► PF-xx ──► T-nn (TEST-2026-00nn) ──► D-xx (docs/demo) ──► U-nn (DEMO-2026-0020) ──► REL-0.2.0
@@ -705,6 +718,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | P2b and P2f done: TASK-020…024 (`673994c`) and TASK-100…107 (`673994c`, `2942066`) DONE with evidence; phase rows P2b/P2f DONE; R7–R9, R19–R22, R24 code and tests done; PF-05–PF-08, PF-19–PF-22, PF-T02, PF-T09 DONE, PF-17 in progress; T-06–T-08, T-16–T-18, T-20 PASS (440 tests); findings and deviations recorded (contract refinements, R9 sample, snapshot semantics, Module stream signature, P2d hand-off, API changes, INC-2026-0009, TRBL-2026-0005). |
 | 3 | 2026-09-28 | Claude | P1 and P2a done: TASK-004…TASK-019 DONE with evidence (commits `ef8e053`, `3e4560f`, `c3b5565`, `f7d2907`), phase rows P1/P2a DONE, R1–R6 code and tests done, T-01–T-05/T-15/T-34 PASS (409 tests), PF-01–PF-04/PF-15/PF-T01/PF-T06–PF-T08 and D-03/D-04/D-06/D-11 DONE; findings and deviations recorded (vhco sync gaps for later phases, polling bodies, SSE event names, MCP isError, Node.js absent). |
 | 2 | 2026-09-28 | Claude | Scope amendment (PROP-2026-0002 rev 3, ADR-0004 rev 2): P2f file modules (TASK-100–107), TASK-045 module ABI, R19–R24, T-16–T-20 (TEST-2026-0049…0053), demo 17-modules (DEMO-2026-0019), release guide → DEMO-2026-0020, documentation rows updated (D-12, D-13, D-15, D-20, D-22–D-24, D-26, D-31, D-33, D-37, D-43–D-45, D-64, D-71, D-72). |
 | 1 | 2026-09-28 | Claude | Created from approved PROP-2026-0002 (ADR-0004): P1–P5, 65 tasks, file/test checklists, and a complete documentation checklist D-01…D-70 including the 62-file envelope sweep. |
