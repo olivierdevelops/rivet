@@ -8,6 +8,8 @@ pub mod ir;
 pub mod outputs;
 pub mod policy;
 pub mod ports;
+pub mod serve;
+pub mod sessions;
 pub mod source;
 pub mod syntax_tree;
 pub mod value;

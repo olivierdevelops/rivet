@@ -221,6 +221,9 @@ pub struct Interpreter {
     policy: Arc<dyn PolicyEvaluator>,
     dispatcher: OnceLock<Arc<dyn Dispatcher>>,
     adapters: HashMap<String, Arc<dyn EffectAdapter>>,
+    /// Live input feeds for runs of operations that declare `receives`, keyed
+    /// by request ID; `drive` takes the feed and exposes it as `incoming`.
+    inputs: std::sync::Mutex<HashMap<String, tokio::sync::mpsc::Receiver<Value>>>,
 }
 
 impl Interpreter {
@@ -235,6 +238,23 @@ impl Interpreter {
             policy,
             dispatcher: OnceLock::new(),
             adapters: HashMap::new(),
+            inputs: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Attach the live input feed for one request (sessions, WebSocket refs).
+    /// The run of an operation that declares `receives` iterates it as `incoming`;
+    /// the feed ends when every sender is dropped (finish_input).
+    pub fn attach_input(&self, request_id: &str, feed: tokio::sync::mpsc::Receiver<Value>) {
+        if let Ok(mut m) = self.inputs.lock() {
+            m.insert(request_id.to_string(), feed);
+        }
+    }
+
+    /// Drop a feed that was never taken (the request failed before driving).
+    pub fn detach_input(&self, request_id: &str) {
+        if let Ok(mut m) = self.inputs.lock() {
+            m.remove(request_id);
         }
     }
 
@@ -274,6 +294,27 @@ impl ExecutionDriver for Interpreter {
             sink,
         });
         let mut frame = Frame::new(&plan.request, Arc::clone(&run));
+        let feed = self
+            .inputs
+            .lock()
+            .ok()
+            .and_then(|mut m| m.remove(&plan.request.request_id));
+        if op.receives.is_some() {
+            let Some(rx) = feed else {
+                return Err(RivetError::validation(
+                    "stream.input_required",
+                    format!(
+                        "`{}` receives live input; open a session (sessions.open, polling, WebSocket) to feed `incoming`",
+                        op.id
+                    ),
+                ));
+            };
+            let handle: Box<dyn ResourceHandle> = Box::new(IncomingHandle { rx });
+            frame.handles.push((
+                "incoming".to_string(),
+                Arc::new(tokio::sync::Mutex::new(Some(handle))),
+            ));
+        }
         if let Value::Object(pairs) = &plan.params {
             for (k, v) in pairs {
                 frame.define(k, v.clone());
@@ -2000,5 +2041,17 @@ impl ResourceHandle for RequestStreamHandle {
             let _ = task.await;
         }
         Ok(())
+    }
+}
+
+/// `for message in incoming`: the run's live input feed (read-only iterable).
+struct IncomingHandle {
+    rx: tokio::sync::mpsc::Receiver<Value>,
+}
+
+#[async_trait]
+impl ResourceHandle for IncomingHandle {
+    async fn next(&mut self, _ctx: &EffectCtx) -> RivetResult<Option<Value>> {
+        Ok(self.rx.recv().await)
     }
 }

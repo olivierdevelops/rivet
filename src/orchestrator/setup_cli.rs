@@ -1,11 +1,12 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve
 // vhco:trigger cli execution/request_operation = rivet request ID --params JSON
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
 // vhco:trigger cli policy/load_policy = rivet policy explain
+// vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:api cli execution/request_operation rivet request ID --params JSON -- invoke one operation; stdout is the Completion JSON, errors are an ErrorEnvelope on stderr with the registry exit code
 // vhco:request { "id": "string — operation ID", "params": "JSON object" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
@@ -243,11 +244,16 @@ async fn run(cli: Cli) -> i32 {
             }
             0
         }
+        Command::Serve(args) => {
+            match super::setup_serve::run_cli(runtime.clone(), &args.listen, args.stdio).await {
+                Ok(code) => code,
+                Err(e) => fail(&e, None, true),
+            }
+        }
         Command::Io(_)
         | Command::Policy {
             command: PolicyCommand::Generate { .. },
-        }
-        | Command::Serve(_) => fail(
+        } => fail(
             &RivetError::unsupported(
                 "unsupported.command",
                 "this command is not available in this development build yet",

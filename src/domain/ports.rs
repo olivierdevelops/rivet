@@ -101,3 +101,58 @@ pub trait FileAccess: Send + Sync {
 pub trait SourceLoader: Send + Sync {
     fn load(&self, entry: &str) -> RivetResult<SourceBundle>;
 }
+
+/// Live sessions: principal-owned request lifetimes with sequenced input and a
+/// bounded replayable event log (sessions feature, polling, WebSocket, MCP).
+#[async_trait]
+pub trait SessionDriver: Send + Sync {
+    async fn open(
+        &self,
+        input: super::sessions::SessionOpenInput,
+    ) -> RivetResult<super::sessions::SessionReceipt>;
+    async fn send(
+        &self,
+        input: super::sessions::SessionSendInput,
+    ) -> RivetResult<super::sessions::SessionAck>;
+    async fn finish_input(
+        &self,
+        input: super::sessions::SessionRef,
+    ) -> RivetResult<super::sessions::SessionAck>;
+    async fn read(
+        &self,
+        input: super::sessions::SessionReadInput,
+    ) -> RivetResult<super::sessions::SessionBatch>;
+    async fn cancel(
+        &self,
+        input: super::sessions::SessionRef,
+    ) -> RivetResult<super::sessions::CancelReceipt>;
+    /// Host limits the use cases clamp against.
+    fn limits(&self) -> super::sessions::SessionLimits;
+}
+
+/// Library-host authentication callback (replaces the policy-driven serve.auth).
+pub trait Authenticator: Send + Sync {
+    fn authenticate(
+        &self,
+        input: &super::serve::AuthnInput,
+    ) -> RivetResult<super::contracts::Principal>;
+}
+
+/// The single serve listener: bind once, then mount each enabled surface.
+#[async_trait]
+pub trait ServeListener: Send {
+    async fn bind(
+        &mut self,
+        config: super::serve::ServeConfig,
+    ) -> RivetResult<super::serve::ListenerHandle>;
+    async fn mount(
+        &mut self,
+        mount: super::serve::SurfaceMount,
+    ) -> RivetResult<super::serve::MountReceipt>;
+}
+
+/// Outbound side of one WebSocket connection.
+#[async_trait]
+pub trait WsConnection: Send + Sync {
+    async fn send(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
+}

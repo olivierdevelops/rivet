@@ -10,8 +10,10 @@ use crate::domain::files::FileOperation;
 use crate::domain::ir::CompiledProgram;
 use crate::domain::policy::{EffectIntent, Permit, Policy};
 use crate::domain::ports::{
-    DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SourceLoader,
+    DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SessionDriver,
+    SourceLoader,
 };
+use crate::domain::serve::OperationAccess;
 use crate::domain::source::SourceBundle;
 use crate::domain::{RivetError, RivetResult, Value};
 use crate::features::execution::request_operation::request_operation;
@@ -21,12 +23,14 @@ use crate::features::policy::authorize_effect::authorize_effect;
 use crate::features::policy::load_policy::{load_policy, parse_policy};
 use crate::features::registry::describe_operations::describe_operations;
 use crate::features::registry::inspect_outputs::{OutputQuery, inspect_outputs};
+use crate::features::serve::authorize_operation::require_operation;
 use crate::infra::capy_parser::CapyParser;
 use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_file_reader::DiskPolicyReader;
 use crate::infra::registry::ProgramRegistry;
+use crate::infra::session_driver::SessionHost;
 use crate::infra::source_loader::DiskSourceLoader;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -133,6 +137,8 @@ struct Inner {
     broker: Arc<PolicyBroker>,
     concurrency: Arc<Semaphore>,
     counter: AtomicU64,
+    /// Live sessions (polling, WebSocket refs, `rivet.sessions.*`, library).
+    sessions: Arc<SessionHost>,
 }
 
 /// A loaded, compiled bundle ready to serve requests from every surface.
@@ -210,16 +216,28 @@ impl Runtime {
         let evaluator: Arc<dyn PolicyEvaluator> = broker.clone();
         let driver = Arc::new(Interpreter::new(Arc::clone(&program), files, evaluator));
         let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)));
-        let inner = Arc::new(Inner {
-            bundle,
-            program,
-            registry,
-            driver,
-            broker,
-            concurrency: Arc::new(Semaphore::new(
-                policy.limits.max_concurrent_requests as usize,
-            )),
-            counter: AtomicU64::new(0),
+        let catalog_version = program.source_hash.clone();
+        let inner = Arc::new_cyclic(|weak: &std::sync::Weak<Inner>| {
+            let w = weak.clone();
+            let upgrade: Arc<super::setup_library::UpgradeFn> =
+                Arc::new(move || w.upgrade().map(|inner| Runtime { inner }));
+            let sessions = Arc::new(super::setup_library::session_host(
+                upgrade,
+                registry.clone(),
+                catalog_version,
+            ));
+            Inner {
+                bundle,
+                program,
+                registry,
+                driver,
+                broker,
+                concurrency: Arc::new(Semaphore::new(
+                    policy.limits.max_concurrent_requests as usize,
+                )),
+                counter: AtomicU64::new(0),
+                sessions,
+            }
         });
         inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
             runtime: Arc::downgrade(&inner),
@@ -290,6 +308,23 @@ impl Runtime {
         sink: Option<Arc<dyn DataSink>>,
     ) -> RivetResult<Completion> {
         let limits = self.policy().limits.clone();
+        if req.depth == 0 {
+            // One principal model on every surface (serve.principals); the CLI and
+            // library principal `local` is always allowed.
+            require_operation(&OperationAccess {
+                principal: req.principal.clone(),
+                operation_id: req.operation_id.clone(),
+                serve: self.policy().serve.clone(),
+            })
+            .map_err(|mut e| {
+                e.request_id = Some(req.request_id.clone());
+                e.trace_id = Some(req.trace_id.clone());
+                e
+            })?;
+        }
+        if req.operation_id.starts_with("rivet.") {
+            return super::builtins::dispatch_builtin(self, req, sink).await;
+        }
         // Host-wide budget shared by nested calls and DAG nodes; nested calls run
         // inside their parent's permit, so only top-level requests acquire one.
         let _permit = if req.depth == 0 {
@@ -346,6 +381,43 @@ impl Runtime {
 
     pub fn registry(&self) -> Arc<dyn Registry> {
         self.inner.registry.clone()
+    }
+
+    /// Catalog version pinned by sessions (`sha256:` of the bundle sources).
+    pub fn catalog_version(&self) -> String {
+        self.inner.program.source_hash.clone()
+    }
+
+    /// The live-session driver shared by polling, WebSocket, MCP and the library.
+    pub fn sessions(&self) -> Arc<dyn SessionDriver> {
+        self.inner.sessions.clone()
+    }
+
+    /// `request(ID, PARAMS)` as an authenticated principal (serve surfaces).
+    pub async fn request_as(
+        &self,
+        principal: Principal,
+        operation_id: &str,
+        params: Value,
+        sink: Option<Arc<dyn DataSink>>,
+    ) -> RivetResult<Completion> {
+        let req = self.new_request(operation_id, params, principal);
+        self.dispatch_request(req, sink).await
+    }
+
+    /// Run one session request: attach its live input feed (for `receives`
+    /// operations, iterated as `incoming`), then use the shared dispatcher.
+    pub async fn dispatch_session(
+        &self,
+        req: Request,
+        sink: Arc<dyn DataSink>,
+        input: tokio::sync::mpsc::Receiver<Value>,
+    ) -> RivetResult<Completion> {
+        let request_id = req.request_id.clone();
+        self.inner.driver.attach_input(&request_id, input);
+        let out = self.dispatch_request(req, Some(sink)).await;
+        self.inner.driver.detach_input(&request_id);
+        out
     }
 }
 
