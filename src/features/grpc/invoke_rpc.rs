@@ -1,4 +1,7 @@
-use super::ports::{GrpcCall, GrpcDriver, GrpcReceiver, GrpcSender, PolicyEvaluator};
+use super::ports::{
+    CredentialProvider, GrpcCall, GrpcDriver, GrpcReceiver, GrpcSender, PolicyEvaluator,
+};
+use crate::domain::auth::{AuthContext, CredentialInput};
 use crate::domain::errors::ErrorKind;
 use crate::domain::grpc::{
     GrpcCatalog, GrpcDial, GrpcEvent, GrpcMetadataValue, GrpcMethodInfo, GrpcPlan, GrpcResult,
@@ -12,7 +15,7 @@ use async_trait::async_trait;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// vhco:usecase grpc.invoke_rpc(input: GrpcPlan) -> GrpcCall needs GrpcDriver, PolicyEvaluator
+// vhco:usecase grpc.invoke_rpc(input: GrpcPlan) -> GrpcCall needs GrpcDriver, PolicyEvaluator, CredentialProvider
 // vhco:label Invoke rpc
 // vhco:about Checks one evaluated grpc form against the pinned descriptor catalog (method, mode, message, metadata), authorizes allow_grpc CONNECTOR/Service/Method plus allow_network on the endpoint origin (and every TLS file read) before any I/O, refuses private resolved addresses, dials the checked address through GrpcDriver and returns a scope-owned call that enforces cardinality and maps the final gRPC status.
 // vhco:example input={connector:"users", method:"GetUser", usage:"one_shot", message:{id:"42"}} => { "message": {"id": "42", "name": "Ada"}, "status": "OK" }
@@ -20,9 +23,10 @@ pub async fn invoke_rpc(
     plan: GrpcPlan,
     policy: &dyn PolicyEvaluator,
     driver: &dyn GrpcDriver,
+    credentials: Option<&dyn CredentialProvider>,
 ) -> RivetResult<Box<dyn GrpcCall>> {
     let span = plan.span.clone();
-    // vhco:todo validate_method -- resolve CONNECTOR.Method in the pinned catalog (unknown → grpc.unknown_method); one-shot `grpc` needs a unary method and `with grpc` a streaming one (grpc.mode); a `message` option on a client/bidi-streaming method is grpc.mode; metadata keys must be lowercase [0-9a-z-_.], never grpc-*/reserved HTTP/2 keys, binary values only on `-bin` keys and ASCII values printable (grpc.metadata); `auth PROFILE account A` is unsupported.auth until OAuth exists; then authorize allow_grpc call Logical(connector/Service/Method), allow_network connect Url(scheme://host:port) and allow_read read for each tls ca/cert/key file, all before any I/O
+    // vhco:todo validate_method -- resolve CONNECTOR.Method in the pinned catalog (unknown → grpc.unknown_method); one-shot `grpc` needs a unary method and `with grpc` a streaming one (grpc.mode); a `message` option on a client/bidi-streaming method is grpc.mode; metadata keys must be lowercase [0-9a-z-_.], never grpc-*/reserved HTTP/2 keys, binary values only on `-bin` keys and ASCII values printable (grpc.metadata); then authorize allow_grpc call Logical(connector/Service/Method), allow_network connect Url(scheme://host:port) and allow_read read for each tls ca/cert/key file, all before any I/O
     // vhco:step lookup driver.catalog -- connector + method from the descriptor catalog (never reflection)
     let catalog = driver.catalog();
     let connector = catalog.connector(&plan.connector).ok_or_else(|| {
@@ -50,11 +54,13 @@ pub async fn invoke_rpc(
         .map_err(|e| e.with_span(span.clone()))?;
     // vhco:step metadata check_metadata -- reject reserved and malformed metadata
     check_metadata(&plan.metadata, plan.auth.is_some()).map_err(|e| e.with_span(span.clone()))?;
-    // vhco:error auth_unsupported -- `auth PROFILE account A` on a grpc call => unsupported.auth returns before any effect
-    if let Some((profile, _)) = &plan.auth {
+    // vhco:error auth_unsupported -- `auth PROFILE account A` on a host without a credential provider => unsupported.auth returns before any effect
+    if let (Some((profile, _)), None) = (&plan.auth, credentials) {
         return Err(RivetError::unsupported(
             "unsupported.auth",
-            format!("OAuth profile `{profile}` cannot be attached yet: auth profiles are not available in this build"),
+            format!(
+                "OAuth profile `{profile}` cannot be attached: this host has no credential provider"
+            ),
         )
         .with_span(span));
     }
@@ -143,6 +149,32 @@ pub async fn invoke_rpc(
             .with_span(span.clone())
         }));
     }
+    // vhco:step auth credentials.acquire -- after the method, origin and TLS permits: an origin-bound lease (allow_auth use, allow_credentials, token endpoint) becomes `authorization: Bearer` metadata; the endpoint origin must be one of the profile's resource_origins
+    let mut metadata = plan.metadata.clone();
+    if let (Some((profile, account)), Some(provider)) = (&plan.auth, credentials) {
+        let lease = provider
+            .acquire(
+                CredentialInput {
+                    profile: profile.clone(),
+                    account: account.clone(),
+                    origin: endpoint.origin(),
+                    audience: None,
+                    scopes: Vec::new(),
+                    context: AuthContext {
+                        principal: plan.principal.clone(),
+                        operation_id: plan.operation_id.clone(),
+                        deadline_ms: plan.deadline_ms,
+                    },
+                },
+                policy,
+            )
+            .await
+            .map_err(|e| e.with_span(span.clone()))?;
+        metadata.push((
+            "authorization".into(),
+            GrpcMetadataValue::Ascii(format!("Bearer {}", lease.handle.expose())),
+        ));
+    }
     let timeout_ms = plan
         .timeout_ms
         .map_or(plan.deadline_ms, |t| t.min(plan.deadline_ms))
@@ -154,7 +186,7 @@ pub async fn invoke_rpc(
             endpoint: endpoint.origin(),
             addresses,
             tls: connector.tls.clone(),
-            metadata: plan.metadata.clone(),
+            metadata,
             timeout_ms,
         })
         .await

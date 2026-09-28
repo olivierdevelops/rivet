@@ -8,6 +8,7 @@ pub mod file_access;
 pub mod grpc_adapter;
 pub mod http_adapter;
 pub mod net_tls;
+pub mod oauth_adapter;
 pub mod policy_broker;
 pub mod policy_draft_writer;
 pub mod policy_file_reader;

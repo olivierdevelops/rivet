@@ -65,6 +65,47 @@ pub enum Command {
         #[command(subcommand)]
         command: TraceCommand,
     },
+    /// OAuth account management (rivet.auth.* built-ins); tokens are never printed.
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthCommand {
+    /// Start an authorization_code or device_code transaction; prints the challenge.
+    Begin {
+        profile: String,
+        #[arg(long)]
+        account: String,
+    },
+    /// Complete a transaction. Pass callback codes with --params-file, never argv.
+    Complete {
+        /// {"transaction_id": ..., "callback": {...}} or {"transaction_id": ..., "wait": true}.
+        #[arg(long)]
+        params: Option<String>,
+        /// Read the same JSON object from a file (keeps codes out of argv and history).
+        #[arg(long)]
+        params_file: Option<String>,
+        /// Request deadline, e.g. "2m"; a device poll still pending then returns {"state":"pending"}.
+        #[arg(long)]
+        timeout: Option<String>,
+    },
+    /// Sanitized credential status (never refreshes).
+    Status {
+        profile: String,
+        #[arg(long)]
+        account: String,
+    },
+    /// Forget local credentials (local_only; no provider revocation).
+    Disconnect {
+        profile: String,
+        #[arg(long)]
+        account: String,
+    },
+    /// Cancel an open authorization transaction.
+    Cancel { transaction_id: String },
 }
 
 #[derive(Subcommand, Debug)]

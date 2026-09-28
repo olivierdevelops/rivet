@@ -9,7 +9,12 @@
 //!  GET /mcp ─▶ 405        DELETE /mcp ─▶ 204 (unknown session 404)
 //! ```
 
-// vhco:surface mcp kind mcp calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authenticate_principal, serve/authorize_operation
+// vhco:surface mcp kind mcp calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authenticate_principal, serve/authorize_operation, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:trigger mcp auth/begin_authorization = tools/call {name: "rivet.auth.begin"}
+// vhco:trigger mcp auth/complete_authorization = tools/call {name: "rivet.auth.complete"}
+// vhco:trigger mcp auth/credential_status = tools/call {name: "rivet.auth.status"}
+// vhco:trigger mcp auth/disconnect_account = tools/call {name: "rivet.auth.disconnect"}
+// vhco:trigger mcp auth/cancel_authorization = tools/call {name: "rivet.auth.cancel"}
 // vhco:trigger mcp execution/request_operation = tools/call {name: ID} | tools/call {name: "rivet.request"}
 // vhco:trigger mcp registry/describe_operations = tools/list | tools/call {name: "rivet.list"|"rivet.describe"}
 // vhco:trigger mcp registry/inspect_outputs = tools/call {name: "rivet.outputs"}

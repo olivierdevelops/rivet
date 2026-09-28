@@ -1,5 +1,6 @@
 //! Domain: the shared vocabulary. Imports nothing internal.
 
+pub mod auth;
 pub mod contracts;
 pub mod effect_checks;
 pub mod errors;

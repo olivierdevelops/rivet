@@ -5,3 +5,5 @@ pub use crate::domain::ports::GrpcDriver;
 pub use crate::domain::ports::{GrpcCall, GrpcReceiver, GrpcSender};
 // vhco:port PolicyEvaluator { evaluate(EffectIntent) -> Permit }
 pub use crate::domain::ports::PolicyEvaluator;
+// vhco:port CredentialProvider { acquire(CredentialInput) -> CredentialLease }
+pub use crate::domain::ports::CredentialProvider;

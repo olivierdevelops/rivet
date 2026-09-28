@@ -256,3 +256,58 @@ pub trait ServeListener: Send {
 pub trait WsConnection: Send + Sync {
     async fn send(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
 }
+
+/// OAuth authorization transactions and account state (auth feature). The
+/// use cases authorize allow_auth/allow_credentials first; the driver checks
+/// transaction ownership, performs the brokered token-endpoint exchanges
+/// (every attempt through `evaluator`) and never returns token material.
+#[async_trait]
+pub trait OAuthSessionDriver: Send + Sync {
+    /// The validated profile named `name`, if the bundle declares one.
+    fn profile(&self, name: &str) -> Option<super::auth::OAuthProfile>;
+    /// A transaction as seen by `principal`; `None` when unknown or owned by another principal.
+    fn transaction(
+        &self,
+        transaction_id: &str,
+        principal: &super::contracts::Principal,
+    ) -> Option<super::auth::AuthTransactionInfo>;
+    async fn begin(
+        &self,
+        input: super::auth::AuthBeginInput,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> RivetResult<super::auth::AuthChallenge>;
+    async fn complete(
+        &self,
+        input: super::auth::AuthCompleteInput,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> RivetResult<super::auth::CredentialStatus>;
+    async fn status(
+        &self,
+        input: super::auth::CredentialStatusInput,
+    ) -> RivetResult<super::auth::CredentialStatus>;
+    async fn disconnect(
+        &self,
+        input: super::auth::DisconnectInput,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> RivetResult<super::auth::DisconnectReceipt>;
+    async fn cancel(
+        &self,
+        input: super::auth::AuthCancelInput,
+    ) -> RivetResult<super::auth::AuthCancelReceipt>;
+}
+
+/// Source of opaque bearer leases for transport adapters (HTTP, gRPC). The
+/// OAuth adapter implements the raw provider; the orchestrator wraps it in
+/// the `auth.acquire_credential` use case so adapters only ever see an
+/// authorized, origin-bound lease.
+#[async_trait]
+pub trait CredentialProvider: Send + Sync {
+    fn profile(&self, name: &str) -> Option<super::auth::OAuthProfile>;
+    async fn acquire(
+        &self,
+        input: super::auth::CredentialInput,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> RivetResult<super::auth::CredentialLease>;
+    /// Drop a lease the resource rejected (401) so the next use reacquires.
+    fn invalidate(&self, lease: &super::auth::CredentialLease);
+}

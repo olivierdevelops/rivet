@@ -868,6 +868,7 @@ pub fn plan_from_form(
         timeout_ms: None,
         deadline_ms: ctx.remaining().as_millis().max(1) as u64,
         auth: None,
+        principal: ctx.request.principal.clone(),
         operation_id: ctx.operation_id.clone(),
         span: Some(ctx.span.clone()),
     };

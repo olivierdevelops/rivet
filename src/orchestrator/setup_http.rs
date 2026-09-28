@@ -7,7 +7,12 @@
 //!  GET /v1/operations[/{id}[/outputs]]   ─▶ catalog filtered by the principal's authorization
 //! ```
 
-// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session
+// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:trigger http auth/begin_authorization = POST /v1/request {"id":"rivet.auth.begin"}
+// vhco:trigger http auth/complete_authorization = POST /v1/request {"id":"rivet.auth.complete"}
+// vhco:trigger http auth/credential_status = POST /v1/request {"id":"rivet.auth.status"}
+// vhco:trigger http auth/disconnect_account = POST /v1/request {"id":"rivet.auth.disconnect"}
+// vhco:trigger http auth/cancel_authorization = POST /v1/request {"id":"rivet.auth.cancel"}
 // vhco:trigger http execution/request_operation = POST /v1/request
 // vhco:trigger http registry/describe_operations = GET /v1/operations | GET /v1/operations/{id}
 // vhco:trigger http registry/inspect_outputs = GET /v1/operations/{id}/outputs

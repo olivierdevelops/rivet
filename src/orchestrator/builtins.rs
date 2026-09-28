@@ -6,15 +6,26 @@
 //!  rivet.list / describe / outputs ─▶ registry use cases, filtered by serve.authorize_operation
 //!  rivet.request {id, params}       ─▶ unary: nested dispatch │ streaming: sessions.open receipt
 //!  rivet.sessions.*                 ─▶ sessions use cases ─▶ SessionHost
+//!  rivet.auth.begin / complete / status / disconnect / cancel
+//!                                   ─▶ auth use cases ─▶ OAuthAdapter (traced broker evaluator)
 //! ```
 
 use super::runtime::Runtime;
+use crate::domain::auth::{
+    AuthBeginInput, AuthCancelInput, AuthCompleteInput, AuthContext, CredentialStatusInput,
+    DisconnectInput, SecretCallback, SecretString,
+};
 use crate::domain::contracts::{Completion, Request};
 use crate::domain::errors::EffectsStatus;
 use crate::domain::ports::DataSink;
 use crate::domain::serve::OperationAccess;
 use crate::domain::sessions::{SessionOpenInput, SessionReadInput, SessionRef, SessionSendInput};
 use crate::domain::{RivetError, RivetResult, Value};
+use crate::features::auth::begin_authorization::begin_authorization;
+use crate::features::auth::cancel_authorization::cancel_authorization;
+use crate::features::auth::complete_authorization::complete_authorization;
+use crate::features::auth::credential_status::credential_status;
+use crate::features::auth::disconnect_account::disconnect_account;
 use crate::features::serve::authorize_operation::{authorize_operation, require_operation};
 use crate::features::sessions::cancel_session::cancel_session;
 use crate::features::sessions::finish_input::finish_input;
@@ -26,7 +37,7 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 9] = [
+pub const BUILTIN_IDS: [&str; 14] = [
     "rivet.request",
     "rivet.list",
     "rivet.describe",
@@ -36,7 +47,52 @@ pub const BUILTIN_IDS: [&str; 9] = [
     "rivet.sessions.finish_input",
     "rivet.sessions.read",
     "rivet.sessions.cancel",
+    "rivet.auth.begin",
+    "rivet.auth.complete",
+    "rivet.auth.status",
+    "rivet.auth.disconnect",
+    "rivet.auth.cancel",
 ];
+
+/// `callback: {code, state, redirect_uri, issuer?, error?}` → SecretCallback.
+/// Values never appear in the validation messages.
+fn callback(params: &Value) -> RivetResult<Option<SecretCallback>> {
+    let cb = match params.get("callback") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(v @ Value::Object(_)) => v,
+        Some(_) => {
+            return Err(RivetError::validation(
+                "validation.auth_callback",
+                "`callback` must be an object {code, state, redirect_uri, issuer?}",
+            ));
+        }
+    };
+    let field = |k: &str| cb.get(k).and_then(Value::as_str).map(str::to_string);
+    let error = field("error");
+    let (code, state) = match (field("code"), field("state"), &error) {
+        (Some(c), Some(s), _) => (c, s),
+        (None, Some(s), Some(_)) => (String::new(), s),
+        _ => {
+            return Err(RivetError::validation(
+                "validation.auth_callback",
+                "`callback` needs string `code` and `state` (or `error` and `state`)",
+            ));
+        }
+    };
+    let redirect_uri = field("redirect_uri").ok_or_else(|| {
+        RivetError::validation(
+            "validation.auth_callback",
+            "`callback.redirect_uri` is required (exact redirect binding)",
+        )
+    })?;
+    Ok(Some(SecretCallback {
+        code: SecretString::new(code),
+        state: SecretString::new(state),
+        redirect_uri,
+        issuer: field("issuer").or_else(|| field("iss")),
+        error,
+    }))
+}
 
 /// Whether `principal` may see/call `id` (hidden IDs look like unknown ones).
 pub fn visible(rt: &Runtime, principal: &crate::domain::contracts::Principal, id: &str) -> bool {
@@ -111,6 +167,11 @@ async fn dispatch_builtin_inner(
     };
     let p = &req.params;
     let who = req.principal.clone();
+    let auth_ctx = || AuthContext {
+        principal: req.principal.clone(),
+        operation_id: req.operation_id.clone(),
+        deadline_ms: req.deadline_ms,
+    };
     let out: RivetResult<Completion> = async {
         match req.operation_id.as_str() {
             "rivet.list" => {
@@ -268,6 +329,71 @@ async fn dispatch_builtin_inner(
                 )
                 .await?;
                 Ok(done(c.to_json()))
+            }
+            "rivet.auth.begin" => {
+                let c = begin_authorization(
+                    AuthBeginInput {
+                        profile: text(p, "profile")?,
+                        account: text(p, "account")?,
+                        context: auth_ctx(),
+                    },
+                    rt.evaluator().as_ref(),
+                    rt.oauth().as_ref(),
+                )
+                .await?;
+                Ok(done(c.to_json()))
+            }
+            "rivet.auth.complete" => {
+                let s = complete_authorization(
+                    AuthCompleteInput {
+                        transaction_id: text(p, "transaction_id")?,
+                        callback: callback(p)?,
+                        wait: p.get("wait").and_then(Value::as_bool).unwrap_or(false),
+                        context: auth_ctx(),
+                    },
+                    rt.evaluator().as_ref(),
+                    rt.oauth().as_ref(),
+                )
+                .await?;
+                Ok(done(s.to_json()))
+            }
+            "rivet.auth.status" => {
+                let s = credential_status(
+                    CredentialStatusInput {
+                        profile: text(p, "profile")?,
+                        account: text(p, "account")?,
+                        context: auth_ctx(),
+                    },
+                    rt.evaluator().as_ref(),
+                    rt.oauth().as_ref(),
+                )
+                .await?;
+                Ok(done(s.to_json()))
+            }
+            "rivet.auth.disconnect" => {
+                let r = disconnect_account(
+                    DisconnectInput {
+                        profile: text(p, "profile")?,
+                        account: text(p, "account")?,
+                        context: auth_ctx(),
+                    },
+                    rt.evaluator().as_ref(),
+                    rt.oauth().as_ref(),
+                )
+                .await?;
+                Ok(done(r.to_json()))
+            }
+            "rivet.auth.cancel" => {
+                let r = cancel_authorization(
+                    AuthCancelInput {
+                        transaction_id: text(p, "transaction_id")?,
+                        context: auth_ctx(),
+                    },
+                    rt.evaluator().as_ref(),
+                    rt.oauth().as_ref(),
+                )
+                .await?;
+                Ok(done(r.to_json()))
             }
             other => Err(hidden(other)),
         }

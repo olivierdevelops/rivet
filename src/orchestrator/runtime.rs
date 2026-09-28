@@ -2,6 +2,7 @@
 //! policy, wires every use case to its adapters and exposes the single
 //! dispatcher used by the CLI, HTTP, MCP, WebSocket, polling and the library.
 
+use crate::domain::auth::{CredentialInput, CredentialLease, OAuthProfile};
 use crate::domain::contracts::{
     Catalog, CatalogQuery, Completion, DEFAULT_DEADLINE_MS, OutputReport, Principal, Request,
 };
@@ -15,6 +16,7 @@ use crate::domain::policy::{AccessVerb, Capability, Decision};
 use crate::domain::policy::{EffectIntent, Permit, Policy};
 use crate::domain::ports::GrpcDriver;
 use crate::domain::ports::TraceStore;
+use crate::domain::ports::{CredentialProvider, OAuthSessionDriver};
 use crate::domain::ports::{
     DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SessionDriver,
     SourceLoader,
@@ -25,6 +27,7 @@ use crate::domain::{RivetError, RivetResult, Value};
 use crate::features::audit::effect_sites::analyze_program;
 use crate::features::audit::inspect_effects::{AuditPorts, inspect_effects};
 use crate::features::audit::read_trace::read_trace;
+use crate::features::auth::acquire_credential::acquire_credential;
 use crate::features::datagrams::exchange_datagrams::exchange_datagrams;
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
@@ -41,6 +44,7 @@ use crate::infra::capy_parser::CapyParser;
 use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
 use crate::infra::grpc_adapter::{GrpcEffects, GrpcTransport, InvokeFn};
+use crate::infra::oauth_adapter::OAuthAdapter;
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_draft_writer::ExclusiveDraftWriter;
 use crate::infra::policy_file_reader::DiskPolicyReader;
@@ -160,6 +164,36 @@ struct Inner {
     counter: AtomicU64,
     /// Live sessions (polling, WebSocket refs, `rivet.sessions.*`, library).
     sessions: Arc<SessionHost>,
+    /// OAuth transactions, account state and the credential store (`rivet.auth.*`).
+    oauth: Arc<OAuthAdapter>,
+    /// The traced broker evaluator every adapter and built-in authorizes through.
+    evaluator: Arc<dyn PolicyEvaluator>,
+}
+
+/// CredentialProvider seen by transport adapters: every lease runs the
+/// `auth.acquire_credential` use case (origin binding, allow_auth use,
+/// allow_credentials) before the OAuth adapter touches a store or endpoint.
+struct AuthorizedCredentials {
+    raw: Arc<OAuthAdapter>,
+}
+
+#[async_trait]
+impl CredentialProvider for AuthorizedCredentials {
+    fn profile(&self, name: &str) -> Option<OAuthProfile> {
+        CredentialProvider::profile(self.raw.as_ref(), name)
+    }
+
+    async fn acquire(
+        &self,
+        input: CredentialInput,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> RivetResult<CredentialLease> {
+        acquire_credential(input, evaluator, self.raw.as_ref()).await
+    }
+
+    fn invalidate(&self, lease: &CredentialLease) {
+        self.raw.invalidate(lease);
+    }
 }
 
 /// A loaded, compiled bundle ready to serve requests from every surface.
@@ -375,16 +409,38 @@ impl Runtime {
             evaluator: Arc::clone(&evaluator),
             raw: ConfinedFiles::new(&bundle.root),
         });
-        let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
-        crate::orchestrator::transports::register(&mut interp, files, &bundle.root);
+        let mut interp = Interpreter::new(
+            Arc::clone(&program),
+            Arc::clone(&files),
+            Arc::clone(&evaluator),
+        );
+        // OAuth (WS-F): profiles are validated at load; the adapter reaches token
+        // endpoints only through the brokered exchange_http use case.
+        let oauth = Arc::new(OAuthAdapter::load(
+            &program,
+            crate::orchestrator::transports::exchange_http_fn(),
+        )?);
+        let credentials: Arc<dyn CredentialProvider> = Arc::new(AuthorizedCredentials {
+            raw: Arc::clone(&oauth),
+        });
+        crate::orchestrator::transports::register(
+            &mut interp,
+            files,
+            &bundle.root,
+            Some(Arc::clone(&credentials)),
+        );
         register_transports(&mut interp, &bundle.root);
         // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
         // call modes fail the load before anything dials.
         let grpc = Arc::new(GrpcTransport::load(&program, &bundle.root)?);
         check_grpc_program(&program, grpc.catalog())?;
+        let grpc_credentials = Arc::clone(&credentials);
         let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
             let driver = Arc::clone(&grpc);
-            Box::pin(async move { invoke_rpc(plan, policy.as_ref(), driver.as_ref()).await })
+            let creds = Arc::clone(&grpc_credentials);
+            Box::pin(async move {
+                invoke_rpc(plan, policy.as_ref(), driver.as_ref(), Some(creds.as_ref())).await
+            })
         });
         interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
         let driver = Arc::new(interp);
@@ -411,6 +467,8 @@ impl Runtime {
                 )),
                 counter: AtomicU64::new(0),
                 sessions,
+                oauth,
+                evaluator,
             }
         });
         inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
@@ -560,6 +618,16 @@ impl Runtime {
     /// Catalog version pinned by sessions (`sha256:` of the bundle sources).
     pub fn catalog_version(&self) -> String {
         self.inner.program.source_hash.clone()
+    }
+
+    /// The OAuth session driver behind `rivet.auth.*`.
+    pub fn oauth(&self) -> Arc<dyn OAuthSessionDriver> {
+        self.inner.oauth.clone()
+    }
+
+    /// The broker evaluator (traced) used by adapters and built-ins.
+    pub fn evaluator(&self) -> Arc<dyn PolicyEvaluator> {
+        Arc::clone(&self.inner.evaluator)
     }
 
     /// The live-session driver shared by polling, WebSocket, MCP and the library.
