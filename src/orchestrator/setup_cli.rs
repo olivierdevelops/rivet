@@ -489,20 +489,20 @@ async fn run_duplex(
         .remove(0);
     let receives = receives_of(&entry)?;
     let (tx, rx) = tokio::sync::mpsc::channel::<Value>(INPUT_QUEUE);
-    let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives));
+    let (failed_tx, mut failed_rx) = tokio::sync::oneshot::channel::<RivetError>();
+    let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives, failed_tx));
     let request_id = req.request_id.clone();
     let principal = req.principal.clone();
     let run = runtime.dispatch_session(req, std::sync::Arc::new(NdjsonSink), rx);
     tokio::pin!(run);
-    tokio::pin!(feeder);
-    let mut feeding = true;
+    let mut watching = true;
     let mut input_error: Option<RivetError> = None;
     let outcome = loop {
         tokio::select! {
             r = &mut run => break r,
-            f = &mut feeder, if feeding => {
-                feeding = false;
-                if let Ok(Err(e)) = f {
+            e = &mut failed_rx, if watching => {
+                watching = false;
+                if let Ok(e) = e {
                     input_error = Some(e);
                     let _ = runtime.cancel(&request_id, principal.clone());
                 }
@@ -513,7 +513,7 @@ async fn run_duplex(
         }
     };
     feeder.abort();
-    match input_error {
+    match input_error.or_else(|| failed_rx.try_recv().ok()) {
         Some(e) => Err(e),
         None => outcome,
     }

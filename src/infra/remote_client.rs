@@ -62,8 +62,7 @@ fn io_err(msg: impl Into<String>) -> RivetError {
 impl RemoteClient {
     /// Parse `--endpoint URL` (http or https, no userinfo, query or fragment).
     pub fn new(url: &str, token: Option<String>) -> RivetResult<RemoteClient> {
-        let u = url::Url::parse(url)
-            .map_err(|e| endpoint_err(format!("--endpoint {url}: {e}")))?;
+        let u = url::Url::parse(url).map_err(|e| endpoint_err(format!("--endpoint {url}: {e}")))?;
         let tls = match u.scheme() {
             "http" => false,
             "https" => true,
@@ -270,16 +269,17 @@ struct SseBuffer {
 
 impl SseBuffer {
     fn push(&mut self, chunk: &[u8]) -> Vec<(String, String)> {
-        self.buf.extend_from_slice(chunk);
+        // Work on bytes: a chunk may end inside a multi-byte character, so only
+        // a complete event (ending in a blank line) is decoded as UTF-8.
+        self.buf
+            .extend(chunk.iter().copied().filter(|b| *b != b'\r'));
         let mut events = Vec::new();
         loop {
-            let text = String::from_utf8_lossy(&self.buf).replace("\r\n", "\n");
-            let Some(end) = text.find("\n\n") else {
+            let Some(end) = self.buf.windows(2).position(|w| w == b"\n\n") else {
                 break;
             };
-            let raw = text[..end].to_string();
-            let rest = text[end + 2..].as_bytes().to_vec();
-            self.buf = rest;
+            let raw = String::from_utf8_lossy(&self.buf[..end]).into_owned();
+            self.buf.drain(..end + 2);
             let (mut event, mut data) = ("message".to_string(), String::new());
             for line in raw.lines() {
                 if let Some(v) = line.strip_prefix("event:") {
@@ -415,9 +415,11 @@ impl RemoteEndpoint for RemoteClient {
         const REF: &str = "cli";
         let send = |j: Json| Message::Text(j.to_string().into());
         let ws_err = |e: tokio_tungstenite::tungstenite::Error| io_err(format!("WebSocket: {e}"));
-        tx.send(send(json!({"type": "request", "ref": REF, "id": call.id, "params": call.params.to_json()})))
-            .await
-            .map_err(ws_err)?;
+        tx.send(send(
+            json!({"type": "request", "ref": REF, "id": call.id, "params": call.params.to_json()}),
+        ))
+        .await
+        .map_err(ws_err)?;
         let mut seq = 0u64;
         let mut input_open = true;
         let mut cancel_open = true;

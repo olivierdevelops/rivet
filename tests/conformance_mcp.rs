@@ -30,6 +30,8 @@ use serde_json::{Value as Json, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+mod oauth_support;
+
 const RIVET: &str = env!("CARGO_BIN_EXE_rivet");
 
 fn canon(p: &Path) -> String {
@@ -828,4 +830,216 @@ async fn demo_06_readme_flows() {
         .unwrap_err();
     assert_eq!((e.code.as_str(), e.exit_code()), ("permission.denied", 3));
     assert!(fake.seen.lock().unwrap().is_empty());
+}
+
+// ------------------------------------------------------------------ OAuth on an MCP connector (S92)
+
+const MCP_SECRET_VAR: &str = "RIVET_T06_MCP_CLIENT_SECRET";
+
+/// An MCP endpoint that answers only requests bearing a fake-issued token
+/// (`Bearer CANARY-AT-n`); `whoami` reports whether one arrived.
+async fn protected_mcp(headers: HeaderMap, body: Bytes) -> Response {
+    let authed = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("Bearer CANARY-AT-"));
+    if !authed {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let msg: Json = serde_json::from_slice(&body).unwrap();
+    let id = msg["id"].clone();
+    match msg["method"].as_str().unwrap_or("") {
+        "initialize" => axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "protected", "version": "1"}}}))
+        .into_response(),
+        "tools/list" => axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": {"tools": [
+            {"name": "whoami", "description": "Who called", "inputSchema": {"type": "object", "properties": {"verbose": {"type": "boolean", "description": "More detail."}}}}]}}))
+        .into_response(),
+        "tools/call" => axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": {
+            "content": [{"type": "text", "text": "bearer"}],
+            "structuredContent": {"bearer": true}, "isError": false}}))
+        .into_response(),
+        _ if id.is_null() => StatusCode::ACCEPTED.into_response(),
+        _ => axum::Json(json!({"jsonrpc": "2.0", "id": id, "result": {}})).into_response(),
+    }
+}
+
+// vhco:test connectors.invoke_mcp -- `auth PROFILE account A` on an http MCP connector: an origin-bound client_credentials lease is attached as a bearer (never returned), imported tools appear in list/describe/outputs and MCP tools/list with their snapshot inputSchema, rivet.connectors.sync runs for the local principal, and stdio + auth fails at load
+#[tokio::test(flavor = "multi_thread")]
+async fn http_connector_oauth_and_catalog() {
+    // SAFETY: set once for this test binary before any runtime reads the environment.
+    unsafe { std::env::set_var(MCP_SECRET_VAR, oauth_support::CLIENT_SECRET) };
+    let oauth = oauth_support::Fake::start().await;
+    let app = Router::new().route(
+        "/mcp",
+        post(protected_mcp).delete(|| async { StatusCode::NO_CONTENT }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    let origin = format!("http://{addr}");
+    let a = oauth.auth_origin();
+    let dir = tempfile::tempdir().unwrap();
+    let snapshot = r#"{"format": "rivet.mcp.snapshot/1", "protocolVersion": "2025-11-25", "tools": [{"name": "whoami", "description": "Who called", "inputSchema": {"type": "object", "properties": {"verbose": {"type": "boolean", "description": "More detail."}}}}]}"#;
+    write(dir.path(), "schemas/crm.json", snapshot);
+    let hash = snapshot_hash(snapshot.as_bytes());
+    write(
+        dir.path(),
+        "app.rivet",
+        &format!(
+            "auth crm_service oauth2\n    flow client_credentials\n    issuer \"{a}\"\n    token_url \"{a}/token\"\n    client_id \"rivet-service\"\n    client_secret env \"{MCP_SECRET_VAR}\"\n    client_auth basic\n    scopes [\"contacts.read\"]\n    resource_origins [\"{origin}\"]\n    store memory\nend\n\nconnector crm mcp\n    transport http \"{origin}/mcp\"\n    schema \"./schemas/crm.json\"\n    auth crm_service account \"service\"\n    expose tools [\"whoami\"]\nend\n"
+        ),
+    );
+    let grants = json!([
+        {"capability": "allow_network", "targets": [origin, a]},
+        {"capability": "allow_mcp", "targets": ["crm/tools/whoami", "crm/discover"]},
+        {"capability": "allow_auth", "targets": ["crm_service/service/use"]},
+        {"capability": "allow_credentials", "targets": ["crm_service/service"]},
+        {"capability": "allow_env", "targets": [MCP_SECRET_VAR]},
+        {"capability": "allow_write", "targets": ["./schemas/**"]}
+    ]);
+    write(
+        dir.path(),
+        "policy.json",
+        &policy(grants.clone(), std::slice::from_ref(&hash)),
+    );
+    let rt = load(dir.path()).unwrap();
+    let c = rt
+        .request("crm.tools.whoami", Value::Null, None)
+        .await
+        .unwrap();
+    let text = c.to_json().to_string();
+    assert_eq!(c.to_json()["result"]["structuredContent"]["bearer"], true);
+    assert!(!text.contains("CANARY"), "{text}");
+    // A second call reuses the cached lease (one token grant).
+    rt.request("crm.tools.whoami", Value::Null, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        oauth.with(|s| s
+            .grants
+            .iter()
+            .filter(|g| g.as_str() == "client_credentials")
+            .count()),
+        1
+    );
+
+    // The import is a catalog entry with its snapshot schema on every listing.
+    let ids: Vec<String> = rt
+        .list()
+        .unwrap()
+        .entries
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    assert!(ids.contains(&"crm.tools.whoami".to_string()), "{ids:?}");
+    let d = rt.describe(&["crm.tools.whoami".into()]).unwrap().entries[0].describe_json();
+    assert_eq!(
+        d["input"]["properties"]["verbose"]["description"],
+        "More detail."
+    );
+    assert_eq!(d["name"], "whoami");
+    let o = rt.outputs(Some("crm.tools.whoami"), false).unwrap()[0].to_json();
+    assert_eq!(o["output"]["required"], json!(["content", "isError"]));
+    let server = serve_on(rt.clone(), "127.0.0.1:0").await;
+    let mcp = reqwest_like_post(
+        server.addr.unwrap(),
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+    )
+    .await;
+    let tool = mcp["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "crm.tools.whoami")
+        .cloned()
+        .expect("imported tool listed");
+    assert_eq!(
+        tool["inputSchema"]["properties"]["verbose"]["type"],
+        "boolean"
+    );
+    server.shutdown().await;
+
+    // rivet.connectors.sync mirrors `rivet connectors sync` (local principal).
+    let c = rt
+        .request(
+            "rivet.connectors.sync",
+            Value::from_json(&json!({"name": "crm", "output": "./schemas/crm.next.json"})),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        c.result
+            .get("sha256")
+            .and_then(Value::as_str)
+            .unwrap()
+            .starts_with("sha256:")
+    );
+    assert!(dir.path().join("schemas/crm.next.json").exists());
+
+    // stdio transport + auth is refused at load.
+    let source = std::fs::read_to_string(dir.path().join("app.rivet")).unwrap();
+    let profile = source
+        .split("connector crm mcp")
+        .next()
+        .unwrap()
+        .to_string();
+    write(
+        dir.path(),
+        "app.rivet",
+        &format!(
+            "{profile}connector crm mcp\n    transport command \"/bin/cat\"\n    schema \"./schemas/crm.json\"\n    auth crm_service account \"service\"\n    expose tools [\"whoami\"]\nend\n"
+        ),
+    );
+    let e = load(dir.path()).err().unwrap();
+    assert_eq!((e.code.as_str(), e.exit_code()), ("mcp.auth_transport", 2));
+}
+
+/// One JSON-RPC POST to a serve's /mcp (initialize first for a session).
+async fn reqwest_like_post(addr: std::net::SocketAddr, msg: Json) -> Json {
+    use http_body_util::{BodyExt, Full};
+    use hyper_util::rt::TokioIo;
+    async fn post(
+        addr: std::net::SocketAddr,
+        body: Json,
+        session: Option<&str>,
+    ) -> (Option<String>, Json) {
+        let io = TokioIo::new(tokio::net::TcpStream::connect(addr).await.unwrap());
+        let (mut s, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
+        tokio::spawn(conn);
+        let mut b = hyper::Request::post("/mcp")
+            .header("host", addr.to_string())
+            .header("content-type", "application/json")
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", "2025-11-25");
+        if let Some(sid) = session {
+            b = b.header("mcp-session-id", sid);
+        }
+        let resp = s
+            .send_request(
+                b.body(Full::new(axum::body::Bytes::from(body.to_string())))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let sid = resp
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        (sid, serde_json::from_slice(&bytes).unwrap_or(Json::Null))
+    }
+    let (sid, _) = post(
+        addr,
+        json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}),
+        None,
+    )
+    .await;
+    post(addr, msg, sid.as_deref()).await.1
 }

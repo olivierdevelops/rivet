@@ -77,11 +77,25 @@ pub fn receives_of(entry: &RegistryEntry) -> RivetResult<ValueSpec> {
 /// Read JSON Lines from stdin and enqueue each item as it arrives (the
 /// bounded channel applies backpressure; nothing is buffered up front).
 /// Blank lines are skipped; EOF drops the sender (finish_input). A line that
-/// is not JSON or does not match `receives` is `validation.input` — the
-/// caller then cancels the request. Line content is never echoed.
+/// is not JSON or does not match `receives` is `validation.input`: it is sent
+/// on `failed` while the input stays open (so the run cannot finish
+/// normally first), and the caller cancels the request. Line content is never
+/// echoed.
 pub async fn feed_stdin_jsonl(
     tx: tokio::sync::mpsc::Sender<Value>,
     receives: ValueSpec,
+    failed: tokio::sync::oneshot::Sender<RivetError>,
+) {
+    if let Err(e) = read_stdin_jsonl(&tx, &receives).await {
+        let _ = failed.send(e);
+        // Keep `tx` (the input) open until the caller cancels and aborts us.
+        std::future::pending::<()>().await;
+    }
+}
+
+async fn read_stdin_jsonl(
+    tx: &tokio::sync::mpsc::Sender<Value>,
+    receives: &ValueSpec,
 ) -> RivetResult<()> {
     let mut lines = tokio::io::BufReader::new(tokio::io::stdin()).lines();
     let mut n = 0u64;
@@ -183,7 +197,14 @@ async fn builtin(
             params: Value::from_json(&params),
             deadline_ms,
         })
-        .await?;
+        .await
+        .map_err(|mut e| {
+            // The CLI command, not the built-in it maps to, is what the user ran.
+            if e.operation_id.as_deref() == Some(id) {
+                e.operation_id = None;
+            }
+            e
+        })?;
     Ok(c.result.to_json())
 }
 
@@ -264,20 +285,19 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
             }
             Err(e) => fail(&e, None, cli.json),
         },
-        Command::Outputs { id, all } => match outputs(cli.json, id.as_deref(), *all, client).await
-        {
-            Ok(text) => {
-                let _ = write!(stdout, "{text}");
-                0
+        Command::Outputs { id, all } => {
+            match outputs(cli.json, id.as_deref(), *all, client).await {
+                Ok(text) => {
+                    let _ = write!(stdout, "{text}");
+                    0
+                }
+                Err(e) => fail(&e, None, cli.json),
             }
-            Err(e) => fail(&e, None, cli.json),
-        },
+        }
         Command::Io(args) => {
             let q = args.to_query(cli.json);
-            let mut pairs: Vec<(&str, String)> = vec![
-                ("by", q.by.clone()),
-                ("format", q.format.clone()),
-            ];
+            let mut pairs: Vec<(&str, String)> =
+                vec![("by", q.by.clone()), ("format", q.format.clone())];
             if !q.ids.is_empty() {
                 pairs.push(("ids", q.ids.join(",")));
             }
@@ -378,25 +398,30 @@ async fn request(args: &RequestArgs, client: &dyn RemoteEndpoint) -> i32 {
 
 /// `--input-jsonl - --stream` over `/v1/ws`: the stdin feeder and the frame
 /// reader run concurrently; a malformed line or Ctrl-C sends `cancel`.
-async fn duplex(call: RemoteCall, client: &dyn RemoteEndpoint) -> RivetResult<crate::domain::contracts::Completion> {
-    let described = client.get(&format!("/v1/operations/{}", seg(&call.id))).await?;
+async fn duplex(
+    call: RemoteCall,
+    client: &dyn RemoteEndpoint,
+) -> RivetResult<crate::domain::contracts::Completion> {
+    let described = client
+        .get(&format!("/v1/operations/{}", seg(&call.id)))
+        .await?;
     let receives = receives_of(&entry_of(&described)?)?;
     let (tx, rx) = tokio::sync::mpsc::channel::<Value>(INPUT_QUEUE);
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     let mut cancel_tx = Some(cancel_tx);
-    let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives));
+    let (failed_tx, mut failed_rx) = tokio::sync::oneshot::channel::<RivetError>();
+    let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives, failed_tx));
     let sink: Arc<dyn DataSink> = Arc::new(NdjsonSink);
     let run = client.duplex(call, rx, cancel_rx, sink);
     tokio::pin!(run);
-    tokio::pin!(feeder);
-    let mut feeding = true;
+    let mut watching = true;
     let mut input_error: Option<RivetError> = None;
     let outcome = loop {
         tokio::select! {
             r = &mut run => break r,
-            f = &mut feeder, if feeding => {
-                feeding = false;
-                if let Ok(Err(e)) = f {
+            e = &mut failed_rx, if watching => {
+                watching = false;
+                if let Ok(e) = e {
                     input_error = Some(e);
                     if let Some(c) = cancel_tx.take() {
                         let _ = c.send(());
@@ -411,13 +436,17 @@ async fn duplex(call: RemoteCall, client: &dyn RemoteEndpoint) -> RivetResult<cr
         }
     };
     feeder.abort();
-    match input_error {
+    match input_error.or_else(|| failed_rx.try_recv().ok()) {
         Some(e) => Err(e),
         None => outcome,
     }
 }
 
-async fn list(json_out: bool, with_outputs: bool, client: &dyn RemoteEndpoint) -> RivetResult<String> {
+async fn list(
+    json_out: bool,
+    with_outputs: bool,
+    client: &dyn RemoteEndpoint,
+) -> RivetResult<String> {
     if json_out {
         return Ok(format!("{}\n", client.get("/v1/operations").await?));
     }
@@ -435,9 +464,17 @@ async fn list(json_out: bool, with_outputs: bool, client: &dyn RemoteEndpoint) -
     Ok(render_list(&Catalog { entries }, with_outputs))
 }
 
-async fn describe(json_out: bool, ids: &[String], client: &dyn RemoteEndpoint) -> RivetResult<String> {
+async fn describe(
+    json_out: bool,
+    ids: &[String],
+    client: &dyn RemoteEndpoint,
+) -> RivetResult<String> {
     let order = ids_in_order(client).await?;
-    let wanted: Vec<String> = if ids.is_empty() { order.clone() } else { ids.to_vec() };
+    let wanted: Vec<String> = if ids.is_empty() {
+        order.clone()
+    } else {
+        ids.to_vec()
+    };
     let mut found: Vec<(String, Json)> = Vec::new();
     for id in &wanted {
         let j = client.get(&format!("/v1/operations/{}", seg(id))).await?;
@@ -478,7 +515,11 @@ async fn outputs(
     }
     if json_out {
         let j = match id {
-            Some(id) => client.get(&format!("/v1/operations/{}/outputs", seg(id))).await?,
+            Some(id) => {
+                client
+                    .get(&format!("/v1/operations/{}/outputs", seg(id)))
+                    .await?
+            }
             None => builtin(client, "rivet.outputs", json!({"all": true}), None).await?,
         };
         return Ok(format!("{j}\n"));
