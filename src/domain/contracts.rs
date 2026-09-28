@@ -23,7 +23,7 @@ impl Principal {
     }
 }
 
-// vhco:domain Request { request_id: string; trace_id: string; operation_id: string; params: Value; principal: Principal; parent_request_id?: string; depth: int; deadline_ms: int; include_private: bool }
+// vhco:domain Request { request_id: string; trace_id: string; operation_id: string; params: Value; principal: Principal; parent_request_id?: string; depth: int; deadline_ms: int; include_private: bool; restrict?: Value }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Request {
     pub request_id: String,
@@ -36,6 +36,11 @@ pub struct Request {
     pub deadline_ms: u64,
     /// In-bundle calls may reach private helpers; external surfaces never set this.
     pub include_private: bool,
+    /// Per-request restriction `{grants:[…]}` (policy.json grant format) sent by an
+    /// HTTP/MCP/WebSocket caller or a library host. It is intersected with the
+    /// effective policy for this request (and its nested calls) only: it can
+    /// narrow, never widen (proposal Increments 5 and 16).
+    pub restrict: Option<Value>,
 }
 
 /// Default request deadline (PROP-2026-0001 defaults).

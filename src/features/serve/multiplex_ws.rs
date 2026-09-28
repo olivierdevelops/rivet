@@ -69,6 +69,7 @@ pub async fn multiplex_ws(
                         principal: input.principal.clone(),
                         connection_owned: true,
                         deadline_ms: None,
+                        restrict: frame.restrict.clone(),
                     })
                     .await?;
                 Ok(receipt.session_id)

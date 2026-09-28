@@ -80,6 +80,7 @@ async fn open(
                 PollAction::Open {
                     id: b.id,
                     params: b.params,
+                    restrict: b.restrict,
                 },
             )
             .await

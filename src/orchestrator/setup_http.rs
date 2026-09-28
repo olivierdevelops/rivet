@@ -28,7 +28,7 @@
 // vhco:trigger http sessions/read_events = POST /v1/request {"id":"rivet.sessions.read"}
 // vhco:trigger http sessions/cancel_session = POST /v1/request {"id":"rivet.sessions.cancel"}
 // vhco:api http execution/request_operation POST /v1/request -- invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream
-// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000" }
+// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000", "restrict": "{grants:[{capability, targets, access?}]}? — narrows this request's authority, never widens" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
 // vhco:api http audit/inspect_effects GET /v1/io -- the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
 // vhco:request { "query": "by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv" }
@@ -199,6 +199,8 @@ async fn request(
     if let Some(ms) = body.deadline_ms {
         req.deadline_ms = ms;
     }
+    // G31: `restrict` narrows this request only (validated in dispatch_request).
+    req.restrict = body.restrict;
     if !sse {
         return match st.runtime.dispatch_request(req, None).await {
             Ok(c) => json_response(200, c.to_json()),

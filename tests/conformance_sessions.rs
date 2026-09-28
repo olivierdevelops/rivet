@@ -18,6 +18,7 @@ fn open(id: &str, who: &Principal) -> SessionOpenInput {
         principal: who.clone(),
         connection_owned: false,
         deadline_ms: None,
+        restrict: None,
     }
 }
 

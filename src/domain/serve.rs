@@ -196,7 +196,7 @@ impl WsFrameType {
     }
 }
 
-// vhco:domain WsFrame { type: WsFrameType; ref: string; id?: string; params?: Value; seq?: int; data?: Value; completion?: Completion; error?: RivetError; request_id?: string; trace_id?: string }
+// vhco:domain WsFrame { type: WsFrameType; ref: string; id?: string; params?: Value; seq?: int; data?: Value; completion?: Completion; error?: RivetError; request_id?: string; trace_id?: string; restrict?: Value }
 /// One JSON text frame on `/v1/ws` (client or server direction).
 #[derive(Clone, Debug, PartialEq)]
 pub struct WsFrame {
@@ -212,6 +212,8 @@ pub struct WsFrame {
     /// frame carries them inside its Completion).
     pub request_id: Option<String>,
     pub trace_id: Option<String>,
+    /// Request frames only: per-request restriction `{grants:[…]}` (narrows, never widens).
+    pub restrict: Option<Value>,
 }
 
 impl WsFrame {
@@ -227,6 +229,7 @@ impl WsFrame {
             error: None,
             request_id: None,
             trace_id: None,
+            restrict: None,
         }
     }
 
@@ -330,6 +333,7 @@ pub enum PollAction {
     Open {
         id: String,
         params: Value,
+        restrict: Option<Value>,
     },
     Events {
         session_id: String,

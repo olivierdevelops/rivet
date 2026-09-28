@@ -86,6 +86,7 @@ pub fn session_host(
             depth: 0,
             deadline_ms: 1,
             include_private: false,
+            restrict: None,
         },
     });
     let validate: Arc<ValidateFn> = Arc::new(validate_params);

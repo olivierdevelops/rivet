@@ -28,6 +28,8 @@ pub struct RequestBody {
     /// Optional `deadline_ms` (the CLI `--timeout` in `--endpoint` mode), capped
     /// by [`MAX_REQUEST_DEADLINE_MS`].
     pub deadline_ms: Option<u64>,
+    /// Optional per-request restriction `{grants:[…]}`; validated by the runtime.
+    pub restrict: Option<Value>,
 }
 
 /// Parse a JSON object body; malformed JSON is `validation.malformed_json` (400).
@@ -66,10 +68,12 @@ pub fn parse_request_body(bytes: &[u8]) -> Result<RequestBody, RivetError> {
         .get("deadline_ms")
         .and_then(Json::as_u64)
         .map(|d| d.clamp(1, MAX_REQUEST_DEADLINE_MS));
+    let restrict = j.get("restrict").map(Value::from_json);
     Ok(RequestBody {
         id,
         params,
         deadline_ms,
+        restrict,
     })
 }
 

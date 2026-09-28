@@ -15,7 +15,11 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
     let result: Result<(u16, serde_json::Value), RivetError> = match input.action {
         // vhco:todo open -- POST /v1/requests {id, params}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event
         // vhco:error denied -- the principal may not call the operation => permission.denied (403) body
-        PollAction::Open { id, params } => {
+        PollAction::Open {
+            id,
+            params,
+            restrict,
+        } => {
             // vhco:step authorize require_operation -- serve.principals decision for the requested ID
             match require_operation(&OperationAccess {
                 principal: principal.clone(),
@@ -31,6 +35,7 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
                         principal: principal.clone(),
                         connection_owned: false,
                         deadline_ms: None,
+                        restrict,
                     })
                     .await
                     .map(|mut r| {

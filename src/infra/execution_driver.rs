@@ -1169,6 +1169,7 @@ impl<'a> Machine<'a> {
                 .as_millis()
                 .max(1) as u64,
             include_private: true,
+            restrict: frame.request.restrict.clone(),
         };
         let (tx, rx) = tokio::sync::mpsc::channel::<Value>(16);
         let sink: Arc<dyn DataSink> = Arc::new(ChannelSink { tx });
@@ -1818,6 +1819,7 @@ impl<'a> Machine<'a> {
                         .as_millis()
                         .max(1) as u64,
                     include_private: true,
+                    restrict: frame.request.restrict.clone(),
                 };
                 let completion = match dispatcher.dispatch(child, None).await {
                     Ok(c) => c,

@@ -664,6 +664,190 @@ async fn private_range_end_to_end() {
     assert_eq!(v.result.get("name"), Some(&Value::text("Ada")));
 }
 
+const RESTRICT_APP: &str = "operation t.a\n    output text\n    return file read \"./data/a.txt\" as text\nend\n\noperation t.b\n    output text\n    return file read \"./data/b.txt\" as text\nend\n\noperation t.nested_b\n    output text\n    return (request \"t.b\" {})\nend\n\noperation t.secret\n    output text\n    return file read \"./secret.txt\" as text\nend\n";
+
+fn restrict_rt(tmp: &tempfile::TempDir) -> Runtime {
+    let root = tmp.path().to_str().unwrap();
+    std::fs::create_dir_all(tmp.path().join("data")).unwrap();
+    std::fs::write(tmp.path().join("data/a.txt"), "A").unwrap();
+    std::fs::write(tmp.path().join("data/b.txt"), "B").unwrap();
+    std::fs::write(tmp.path().join("secret.txt"), "S").unwrap();
+    Runtime::builder()
+        .source("app.rivet", RESTRICT_APP, root)
+        .policy(
+            policy_from_json(
+                br#"{"version":1,"grants":[{"capability":"allow_read","targets":["./data/**"]}]}"#,
+                root,
+            )
+            .unwrap(),
+        )
+        .build()
+        .unwrap()
+}
+
+// vhco:test policy.authorize_effect -- G31 library request option: `restrict {grants}` narrows one request (and its nested calls) to the intersection with policy.json, a restriction naming ungranted targets never widens, other requests are unaffected, and a malformed restriction is policy.invalid with a /restrict pointer
+#[tokio::test]
+async fn request_restriction_narrows_never_widens_library() {
+    let tmp = tempfile::tempdir().unwrap();
+    let rt = restrict_rt(&tmp);
+    let only_a = json!({"grants": [{"capability": "allow_read", "targets": ["./data/a.txt"]}]});
+    let only_a = Value::from_json(&only_a);
+    let c = rt
+        .request_restricted("t.a", Value::Null, only_a.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(c.result, Value::text("A"));
+    for id in ["t.b", "t.nested_b"] {
+        let e = rt
+            .request_restricted(id, Value::Null, only_a.clone(), None)
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, "permission.denied", "{id}: {e:?}");
+        assert!(e.message.contains("request restriction"), "{}", e.message);
+    }
+    // Unrestricted requests keep the full policy.
+    assert_eq!(
+        rt.request("t.b", Value::Null, None).await.unwrap().result,
+        Value::text("B")
+    );
+    // A restriction that "grants" more than policy.json does not widen.
+    let wide =
+        Value::from_json(&json!({"grants": [{"capability": "allow_read", "targets": ["*"]}]}));
+    let e = rt
+        .request_restricted("t.secret", Value::Null, wide.clone(), None)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "permission.denied");
+    // An empty restriction denies every effect.
+    let none = Value::from_json(&json!({"grants": []}));
+    assert_eq!(
+        rt.request_restricted("t.a", Value::Null, none, None)
+            .await
+            .unwrap_err()
+            .code,
+        "permission.denied"
+    );
+    // Malformed restrictions are rejected before anything runs.
+    for (bad, pointer) in [
+        (json!({"grants": [], "deny": []}), "/restrict/deny"),
+        (
+            json!({"grants": [{"capability": "allow_everything", "targets": ["*"]}]}),
+            "/restrict/grants/0/capability",
+        ),
+    ] {
+        let e = rt
+            .request_restricted("t.a", Value::Null, Value::from_json(&bad), None)
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, "policy.invalid", "{bad}");
+        assert_eq!(
+            e.details.get("pointer").and_then(|v| v.as_str()),
+            Some(pointer),
+            "{bad}"
+        );
+    }
+}
+
+// vhco:test policy.authorize_effect -- G31 surfaces: `restrict` on POST /v1/request, MCP tools/call and a WebSocket request frame narrows that call only (403 / isError / error frame), and a widening restriction stays denied
+#[tokio::test]
+async fn request_restriction_on_http_mcp_ws() {
+    let tmp = tempfile::tempdir().unwrap();
+    let rt = restrict_rt(&tmp);
+    let handle = start(
+        rt.clone(),
+        ServeOptions {
+            listen: Some("127.0.0.1:0".into()),
+            ..ServeOptions::default()
+        },
+    )
+    .await
+    .unwrap();
+    let addr = handle.addr.unwrap();
+    let only_a = json!({"grants": [{"capability": "allow_read", "targets": ["./data/a.txt"]}]});
+    let wide = json!({"grants": [{"capability": "allow_read", "targets": ["*"]}]});
+
+    // HTTP
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"id": "t.a", "params": {}, "restrict": only_a}),
+        &[],
+    )
+    .await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"id": "t.b", "params": {}, "restrict": only_a}),
+        &[],
+    )
+    .await;
+    assert_eq!(r.status, 403, "{}", r.text);
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"id": "t.secret", "params": {}, "restrict": wide}),
+        &[],
+    )
+    .await;
+    assert_eq!(r.status, 403, "{}", r.text);
+    let r = serve_support::post(addr, "/v1/request", json!({"id": "t.b", "params": {}}), &[]).await;
+    assert_eq!(r.status, 200, "{}", r.text);
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"id": "t.a", "params": {}, "restrict": {"grants": "x"}}),
+        &[],
+    )
+    .await;
+    assert_eq!(r.json()["error"]["code"], "policy.invalid", "{}", r.text);
+
+    // MCP tools/call
+    let sid = serve_support::mcp_init(addr, &[]).await;
+    let call = |name: &str, restrict: &Json| {
+        json!({"jsonrpc":"2.0","id":7,"method":"tools/call",
+               "params":{"name": name, "arguments": {}, "restrict": restrict}})
+    };
+    let ok = serve_support::mcp_raw(addr, &sid, &[], call("t.a", &only_a))
+        .await
+        .json();
+    assert_eq!(ok["result"]["isError"], json!(false), "{ok}");
+    let denied = serve_support::mcp_raw(addr, &sid, &[], call("t.b", &only_a))
+        .await
+        .json();
+    assert_eq!(denied["result"]["isError"], json!(true), "{denied}");
+    assert!(denied.to_string().contains("permission.denied"), "{denied}");
+    let widened = serve_support::mcp_raw(addr, &sid, &[], call("t.secret", &wide))
+        .await
+        .json();
+    assert_eq!(widened["result"]["isError"], json!(true), "{widened}");
+
+    // WebSocket request frames
+    let mut ws = serve_support::ws_connect(addr, &[]).await.unwrap();
+    serve_support::ws_send(
+        &mut ws,
+        json!({"type": "request", "ref": "r1", "id": "t.a", "params": {}, "restrict": only_a}),
+    )
+    .await;
+    serve_support::ws_send(
+        &mut ws,
+        json!({"type": "request", "ref": "r2", "id": "t.b", "params": {}, "restrict": only_a}),
+    )
+    .await;
+    let frames = serve_support::ws_until_terminal(&mut ws, &["r1", "r2"]).await;
+    let terminal = |r: &str| {
+        frames
+            .iter()
+            .find(|f| f["ref"] == r && (f["type"] == "result" || f["type"] == "error"))
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(terminal("r1")["type"], "result", "{frames:?}");
+    let r2 = terminal("r2");
+    assert_eq!(r2["type"], "error", "{frames:?}");
+    assert!(r2.to_string().contains("permission.denied"), "{r2}");
+}
+
 // vhco:test policy.authorize_effect -- per-request data cannot widen authority: policy/grant fields in /v1/request bodies and MCP arguments are ignored and the call stays denied
 #[tokio::test]
 async fn per_request_restriction_cannot_widen() {

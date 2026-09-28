@@ -254,6 +254,7 @@ impl SessionDriver for SessionHost {
             }
         }
         let mut req = (self.mint)(&entry.id, input.params.clone(), input.principal.clone());
+        req.restrict = input.restrict.clone();
         if let Some(d) = input.deadline_ms {
             req.deadline_ms = d;
         }

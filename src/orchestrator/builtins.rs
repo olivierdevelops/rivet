@@ -343,6 +343,7 @@ async fn dispatch_builtin_inner(
                             principal: who.clone(),
                             connection_owned: false,
                             deadline_ms: None,
+                            restrict: req.restrict.clone(),
                         },
                         rt.sessions().as_ref(),
                     )
@@ -372,6 +373,7 @@ async fn dispatch_builtin_inner(
                         principal: who.clone(),
                         connection_owned: false,
                         deadline_ms: None,
+                        restrict: req.restrict.clone(),
                     },
                     rt.sessions().as_ref(),
                 )
