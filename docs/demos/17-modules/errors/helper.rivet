@@ -1,0 +1,7 @@
+# A tiny module imported by the failing examples in this folder.
+operation get
+    description "Return the id it was given."
+    param id integer required description "The id."
+    output json description "The id."
+    return {id: id}
+end

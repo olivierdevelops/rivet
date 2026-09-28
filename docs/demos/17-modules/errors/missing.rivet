@@ -1,0 +1,8 @@
+# not_found.import: the imported file does not exist.
+import "./nowhere.rivet" as gone
+
+operation top
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end

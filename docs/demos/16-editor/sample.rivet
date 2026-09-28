@@ -1,0 +1,19 @@
+# sample.rivet: one small file that uses all twelve token classes.
+import "./users.rivet" as users public   # highlight never opens imports
+global api = "https://api.example.com"   # base URL
+global retry_on = [429, 503]
+
+operation users.page
+    name "List a page of users"
+    description "Read one page; the URL is built from a global."
+    param limit integer default 20 min 1 description "Page size."
+    output json description "The page returned by the API."
+    r = http get "${api}/users?limit=${limit}"
+        timeout "5s"
+        decode json
+    end
+    if r.status == 200 and limit > 0
+        return r.body
+    end
+    return (users.get {id: 1})
+end

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_read", "targets": ["./anything.json"]}
+  ]
+}

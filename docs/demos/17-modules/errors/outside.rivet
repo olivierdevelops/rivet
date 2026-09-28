@@ -1,0 +1,8 @@
+# permission.import_outside_root: the path leaves the runtime root (this folder).
+import "../users.rivet" as users
+
+operation top
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end

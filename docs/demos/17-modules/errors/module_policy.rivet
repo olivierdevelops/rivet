@@ -1,0 +1,8 @@
+# check.module_policy_ignored (a warning): sub/m.rivet has a policy.json beside it.
+import "./sub/m.rivet" as m
+
+operation top
+    description "Loads with a warning; calls the module."
+    output json description "The module's answer."
+    return (m.ping {})
+end

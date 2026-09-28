@@ -1,0 +1,9 @@
+# syntax.import: every import must come before the first declaration.
+global greeting = "Hello"
+import "./helper.rivet" as h
+
+operation top
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end

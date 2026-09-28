@@ -1,0 +1,6 @@
+# A module in its own folder, with a policy.json beside it that the loader ignores.
+operation ping
+    description "Return pong."
+    output json description "The word pong."
+    return {pong: true}
+end

@@ -1,0 +1,23 @@
+# app.rivet: the entry bundle. Two imports:
+#   users   internal  callable from this file, never listed on a surface
+#   billing public    billing.* is listed on every surface (CLI, HTTP, MCP, WS, polling, library, FFI)
+import "./users.rivet" as users
+import "./billing.rivet" as billing public
+
+operation report.user
+    name "User report"
+    description "A user and their invoice, composed from both modules."
+    param id integer required min 1 description "The user id."
+    output json description "The user and the invoice."
+    u = (users.get {id: id})
+    inv = (billing.invoice {user: id})
+    return {user: u, invoice: inv}
+end
+
+operation report.remote
+    name "Remote user"
+    description "Fetch one user through the internal users module (network I/O in users.rivet)."
+    param id integer required min 1 description "The user id."
+    output json description "The user object returned by the API."
+    return (users.fetch {id: id})
+end

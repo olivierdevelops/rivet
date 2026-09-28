@@ -1,0 +1,8 @@
+# check.import_cycle: cycle.rivet imports cycle_b.rivet, which imports cycle.rivet.
+import "./cycle_b.rivet" as b
+
+operation top
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end

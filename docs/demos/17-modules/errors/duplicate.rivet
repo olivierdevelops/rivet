@@ -1,0 +1,9 @@
+# check.import_duplicate: the alias h is imported twice.
+import "./helper.rivet" as h
+import "./sub/m.rivet" as h
+
+operation top
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end

@@ -1,0 +1,31 @@
+# users.rivet: a module. Its IDs are short (get, list, fetch); the importer
+# namespaces them under its alias (users.get, users.list, users.fetch).
+# Its globals are private to this file.
+global greeting = "Hello"
+global api      = "https://api.example.com"
+
+operation get
+    name "Get a user"
+    description "One user by id (pure)."
+    param id integer required min 1 description "The user id."
+    output json description "The user."
+    return {id: id, name: "${greeting}, user ${id}"}
+end
+
+operation list
+    name "List users"
+    description "The first two users; calls inside a module use its own short IDs."
+    output json description "Two users."
+    return [(get {id: 1}), (request "get" {id: 2})]
+end
+
+operation fetch
+    name "Fetch a user"
+    description "Read one user from the remote API (one network site in this module)."
+    param id integer required min 1 description "The user id."
+    output json description "The user object returned by the API."
+    r = http get "${api}/users/${id}.json"
+        decode json
+    end
+    return r.body
+end

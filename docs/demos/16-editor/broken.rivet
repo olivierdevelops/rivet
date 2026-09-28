@@ -1,0 +1,7 @@
+# broken.rivet: line 6 has an unfinished object, so parsing stops there.
+global api = "https://api.example.com"
+
+operation demo.broken
+    output json description "Never compiles."
+    return {x: }
+end

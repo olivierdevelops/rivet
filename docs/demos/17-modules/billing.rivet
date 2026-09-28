@@ -1,0 +1,22 @@
+# billing.rivet: a module that imports another module.
+# Import paths resolve relative to this file and must stay inside the runtime root.
+import "./users.rivet" as people
+
+global rate = 0.2
+
+operation invoice
+    name "Invoice a user"
+    description "An invoice for one user; calls people.get inside this module."
+    param user integer required min 1 description "The user id."
+    output json description "The invoice."
+    who = (people.get {id: user})
+    return {user: who, amount: 100 * rate}
+end
+
+operation rates
+    name "Read the rate table"
+    description "Read the rate table (one file site in this module)."
+    output json description "The decoded content of rates.json."
+    value = file read "./rates.json" as json
+    return value
+end

@@ -1,0 +1,8 @@
+# check.import_collision: h.get from helper.rivet collides with the operation declared here.
+import "./helper.rivet" as h
+
+operation h.get
+    description "Clashes with the imported h.get."
+    output json description "Nothing."
+    return {}
+end

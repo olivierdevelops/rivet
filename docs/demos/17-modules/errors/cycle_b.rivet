@@ -1,0 +1,8 @@
+# The other half of the cycle started by cycle.rivet.
+import "./cycle.rivet" as a
+
+operation get
+    description "Never loads."
+    output json description "Nothing."
+    return {}
+end
