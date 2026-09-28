@@ -47,7 +47,13 @@ impl SpanMap {
     }
 
     fn pos(&self, offset: usize) -> (u32, u32) {
-        let before = &self.text[..offset.min(self.text.len())];
+        // Diagnostic ends may land inside a multi-byte character (`"\é"`);
+        // round up to the next char boundary instead of slicing mid-character.
+        let mut offset = offset.min(self.text.len());
+        while !self.text.is_char_boundary(offset) {
+            offset += 1;
+        }
+        let before = &self.text[..offset];
         let newlines = before.matches('\n').count() as u32;
         if newlines == 0 {
             (
@@ -100,11 +106,11 @@ fn lex(text: &str, map: &SpanMap) -> RivetResult<Vec<Token>> {
                     i += 1;
                 }
             }
-            if i < bytes.len() && (bytes[i] as char).is_alphabetic() {
-                let mut j = i;
-                while j < bytes.len() && (bytes[j] as char).is_alphanumeric() {
-                    j += 1;
-                }
+            // Decode real chars (not bytes): `10é` must not split `é` mid-character.
+            if text[i..].chars().next().is_some_and(char::is_alphabetic) {
+                let j = i + text[i..]
+                    .find(|ch: char| !ch.is_alphanumeric())
+                    .unwrap_or(text.len() - i);
                 return Err(err(
                     map,
                     "syntax.duration_unquoted",

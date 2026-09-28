@@ -219,6 +219,27 @@ fn convert_diagnostic(d: &Json, file: &SourceFile, keywords: &[String]) -> Synta
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
+    // `x = {n: n - 1}`: the line is an assignment whose value did not parse;
+    // `x` is a variable, so "unknown statement `x`, did you mean `if`?" misleads.
+    let after_word = line.trim_start()[first_word.len()..].trim_start();
+    let is_assignment = (after_word.starts_with('=') && !after_word.starts_with("=="))
+        || after_word.starts_with("+=");
+    if capy_code == "E0001"
+        && span.start_col as usize == first_col
+        && !first_word.is_empty()
+        && !keywords.contains(&first_word)
+        && is_assignment
+    {
+        return SyntaxDiagnostic {
+            code: "syntax.expression".into(),
+            message: format!("the value assigned to `{first_word}` does not parse"),
+            span,
+            help: Some(
+                "inside lists, objects and call arguments wrap infix expressions in parentheses, e.g. {n: (n - 1)}"
+                    .into(),
+            ),
+        };
+    }
     if capy_code == "E0001"
         && span.start_col as usize == first_col
         && !first_word.is_empty()
@@ -252,21 +273,31 @@ fn closest(word: &str, candidates: &[String]) -> Option<String> {
         .map(|(_, c)| c.clone())
 }
 
+/// Edit distance where swapping two adjacent characters costs one edit
+/// (optimal string alignment), so `retrun` is closest to `return`, not `retry`.
 fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.chars().enumerate() {
-        let mut cur = vec![i + 1];
-        for (j, cb) in b.iter().enumerate() {
-            cur.push(
-                (prev[j] + usize::from(ca != *cb))
-                    .min(prev[j + 1] + 1)
-                    .min(cur[j] + 1),
-            );
-        }
-        prev = cur;
+    let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
     }
-    prev[b.len()]
+    for j in 0..=b.len() {
+        d[0][j] = j;
+    }
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            let mut best = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                best = best.min(d[i - 2][j - 2] + 1);
+            }
+            d[i][j] = best;
+        }
+    }
+    d[a.len()][b.len()]
 }
 
 /// Capy's lexer accepts 2-space indentation; Rivet requires 4 spaces or tabs
@@ -371,6 +402,33 @@ mod tests {
             d.help.as_deref().unwrap_or("").contains("operation"),
             "{d:?}"
         );
+    }
+
+    // vhco:test language.compile_program -- a transposed keyword (`retrun`) suggests `return`, not a nearer-looking option word
+    #[test]
+    fn transposed_keyword_suggests_the_statement() {
+        let tree = parse("operation x\n    output json\n    retrun 1\nend\n");
+        let d = &tree.diagnostics[0];
+        assert_eq!(d.code, "syntax.unknown_statement");
+        assert_eq!(d.help.as_deref(), Some("did you mean `return`?"));
+        assert_eq!(levenshtein("retrun", "return"), 1);
+        assert_eq!(levenshtein("kitten", "sitting"), 3);
+    }
+
+    // vhco:test language.compile_program -- an assignment whose value fails to parse (`x = {n: n - 1}`) is syntax.expression with a parenthesize hint, not "unknown statement `x`"
+    #[test]
+    fn unparsable_assignment_value_is_not_an_unknown_statement() {
+        let tree = parse(
+            "operation x\n    output json\n    n = 1\n    x = {n: n - 1}\n    return x\nend\n",
+        );
+        let d = &tree.diagnostics[0];
+        assert_eq!(d.code, "syntax.expression", "{d:?}");
+        assert_eq!((d.span.start_line, d.span.start_col), (4, 5));
+        assert!(d.help.as_deref().unwrap().contains("{n: (n - 1)}"));
+        let tree = parse(
+            "operation x\n    output json\n    n = 1\n    x = {n: (n - 1)}\n    return x\nend\n",
+        );
+        assert!(tree.is_clean(), "{:?}", tree.diagnostics);
     }
 
     #[test]

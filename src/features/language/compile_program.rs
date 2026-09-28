@@ -1,4 +1,4 @@
-use super::lowering::lower::Lowerer;
+use super::lowering::lower::{Lowerer, strict_doc_findings};
 use super::ports::Parser;
 use crate::domain::ir::CompiledProgram;
 use crate::domain::source::SourceBundle;
@@ -49,9 +49,93 @@ pub fn compile_program(input: &SourceBundle, parser: &dyn Parser) -> RivetResult
         return Err(first);
     }
     program.warnings = lowerer.warnings;
+    // `check` warnings (never fatal here; `--strict-docs` promotes the undeclared
+    // codes): undeclared `fail` codes and unguarded `.result` reads of
+    // `fail independent` DAG nodes (S46, S123).
+    program.warnings.extend(
+        strict_doc_findings(&program)
+            .into_iter()
+            .filter(|f| f.code == "docs.undeclared_error"),
+    );
+    for op in &program.operations {
+        unguarded_results(&op.body, &mut Vec::new(), &[], &mut program.warnings);
+    }
     // vhco:step hash sha256 -- the source hash pins requests, sessions and manifests to this exact program
     program.source_hash = source_hash(input);
     Ok(program)
+}
+
+/// Warn when a `return` reads `NODE.result` of a `fail independent` DAG node
+/// without an enclosing `if NODE.status …` guard: that result is null unless
+/// the node succeeded. `nodes` are the independent nodes declared so far in
+/// this block chain; `guarded` are names whose `.status` an enclosing `if` tests.
+fn unguarded_results(
+    body: &[crate::domain::ir::Stmt],
+    nodes: &mut Vec<String>,
+    guarded: &[String],
+    out: &mut Vec<RivetError>,
+) {
+    use crate::domain::ir::{FailurePolicy, Rhs, Stmt};
+    for s in body {
+        match s {
+            Stmt::Dag {
+                options, nodes: ns, ..
+            } if options.failure == FailurePolicy::Independent => {
+                nodes.extend(ns.iter().map(|n| n.name.clone()));
+            }
+            Stmt::Return {
+                value: Rhs::Expr(e),
+                span,
+            } => {
+                let mut paths = Vec::new();
+                e.paths(&mut paths);
+                for p in paths {
+                    if p.len() >= 2
+                        && p[1] == "result"
+                        && nodes.contains(&p[0])
+                        && !guarded.contains(&p[0])
+                    {
+                        out.push(RivetError::syntax(
+                            "check.unguarded_result",
+                            format!(
+                                "`{0}.result` is null unless `{0}` succeeded; guard it with `if {0}.status == \"succeeded\"`",
+                                p[0]
+                            ),
+                            Some(span.clone()),
+                        ));
+                    }
+                }
+            }
+            Stmt::If {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                let mut paths = Vec::new();
+                cond.paths(&mut paths);
+                let mut inner: Vec<String> = guarded.to_vec();
+                inner.extend(
+                    paths
+                        .into_iter()
+                        .filter(|p| p.len() >= 2 && p[1] == "status")
+                        .map(|p| p[0].clone()),
+                );
+                unguarded_results(then, &mut nodes.clone(), &inner, out);
+                unguarded_results(otherwise, &mut nodes.clone(), &inner, out);
+            }
+            Stmt::Try { body, handler, .. } => {
+                unguarded_results(body, &mut nodes.clone(), guarded, out);
+                unguarded_results(handler, &mut nodes.clone(), guarded, out);
+            }
+            Stmt::For { body, .. }
+            | Stmt::While { body, .. }
+            | Stmt::Iterate { body, .. }
+            | Stmt::Scope { body, .. }
+            | Stmt::With { body, .. } => unguarded_results(body, &mut nodes.clone(), guarded, out),
+            _ => {}
+        }
+    }
 }
 
 fn source_hash(input: &SourceBundle) -> String {
