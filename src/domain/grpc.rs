@@ -176,7 +176,7 @@ impl GrpcStatus {
     }
 }
 
-/// Canonical gRPC status names (https://grpc.io/docs/guides/status-codes/).
+/// Canonical gRPC status names (<https://grpc.io/docs/guides/status-codes/>).
 pub fn status_name(code: i32) -> &'static str {
     match code {
         0 => "OK",

@@ -4,11 +4,11 @@
 #![allow(dead_code)]
 
 use rivet::Runtime;
-use rivet::domain::source::SourceBundle;
-use rivet::domain::{RivetError, RivetResult};
-use rivet::features::language::compile_program::compile_program;
-use rivet::infra::capy_parser::CapyParser;
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::internal::domain::source::SourceBundle;
+use rivet::internal::domain::{RivetError, RivetResult};
+use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::infra::capy_parser::CapyParser;
+use rivet::internal::orchestrator::runtime::policy_from_json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 /// Compile one in-memory file (no runtime, no I/O).
-pub fn compile(text: &str) -> RivetResult<rivet::domain::ir::CompiledProgram> {
+pub fn compile(text: &str) -> RivetResult<rivet::internal::domain::ir::CompiledProgram> {
     compile_program(
         &SourceBundle::single("app.rivet", text),
         &CapyParser::new().unwrap(),

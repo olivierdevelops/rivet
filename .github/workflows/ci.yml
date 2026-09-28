@@ -1,4 +1,6 @@
 # PLAN-2026-0001 TASK-051: T-27 (build/static), T-29 (samples) and T-31 (docs) on three OSes.
+# PLAN-2026-0002 TASK-034: a Cargo workspace (rivet-runtime + ffi/); the `rivet` binary needs the
+# `cli` feature, so the test job builds with --all-features; the `features` job is the T-10 matrix.
 # T-08's Linux sandbox gate needs a runner with kernel >= 6.12 (ADR-0003); until one is
 # configured, sandboxed exec on Linux refuses with unsupported.sandbox_backend by design.
 name: ci
@@ -29,22 +31,44 @@ jobs:
       # Each step runs through scripts/ci_step.py, which re-emits failures as annotations
       # (readable without admin rights; job logs are not).
       - name: fmt
-        run: python scripts/ci_step.py fmt -- cargo fmt --check
+        run: python scripts/ci_step.py fmt -- cargo fmt --all --check
       - name: clippy
         if: always()
-        run: python scripts/ci_step.py clippy -- cargo clippy --all-targets -- -D warnings
+        run: python scripts/ci_step.py clippy -- cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: build (release)
         if: always()
-        run: python scripts/ci_step.py build -- cargo build --release
+        run: python scripts/ci_step.py build -- cargo build --release --workspace --all-features
       - name: tests (T-01…T-29 suites)
         if: always()
-        run: python scripts/ci_step.py tests -- cargo test --all-targets --no-fail-fast
+        run: python scripts/ci_step.py tests -- cargo test --workspace --all-targets --all-features --no-fail-fast
       - name: docs (T-31)
         if: always()
         run: python scripts/ci_step.py docs -- python scripts/check_docs.py
       - name: version sync (T-33)
         if: always()
         run: python scripts/ci_step.py version -- python scripts/check_version.py --bin target/release/rivet${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  # T-10: the library builds with no default features and with each Cargo feature alone, and
+  # conformance_features runs its cfg(not(feature = …)) cases against a real runtime.
+  features:
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["none", "serve", "grpc", "quic", "oauth", "cli"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build (${{ matrix.features }})
+        run: python scripts/ci_step.py build ${{ matrix.features }} -- cargo build -p rivet-runtime --no-default-features ${{ matrix.features != 'none' && format('--features {0}', matrix.features) || '' }}
+      - name: conformance_features (${{ matrix.features }})
+        if: always()
+        run: python scripts/ci_step.py features ${{ matrix.features }} -- cargo test -p rivet-runtime --no-default-features ${{ matrix.features != 'none' && format('--features {0}', matrix.features) || '' }} --test conformance_features
 
   deny:
     runs-on: ubuntu-latest

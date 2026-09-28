@@ -54,10 +54,11 @@ With Perch on `PATH`, run these from the checkout root. Rust 1.90.0, rustfmt and
 
 ```sh
 perch --help           # list all commands and descriptions
-perch build            # optimized binary: target/release/rivet
+perch build            # optimized binary: target/release/rivet (cargo build --release --features cli)
 perch build_debug      # debug binary: target/debug/rivet
 perch install          # build release, then bman add "<absolute binary path>"
-perch tests            # cargo test --locked --all-targets
+perch tests            # cargo test --locked --workspace --all-targets --all-features
+perch features         # the library with no default features and with each Cargo feature alone
 perch gates            # formatting, type-check, lint, tests, docs and VHCO
 ```
 
@@ -65,6 +66,9 @@ Installation requires `bman` on `PATH` and runs `bman add` with the quoted absol
 Bman manages the global bin directory; `bman help` shows its location. The install task explicitly builds
 into this checkout's `target/` so it always installs that artifact. Other builds respect Cargo configuration,
 including `CARGO_TARGET_DIR`. The first build may fetch dependencies from the network.
+
+The checkout is a Cargo workspace: package `rivet-runtime` (library `rivet`; the `rivet` binary needs the
+`cli` Cargo feature) and `ffi/` (`rivet-ffi`). Default features are `serve`, `grpc`, `quic` and `oauth`.
 
 Other commands: `check`, `clippy`, `fmt`, `fmt_check`, `docs_check`, `architecture`, `help_cli`, `live`,
 `spec`, `docs`, `clean`, and `main`. `perch main` prints a short task list; bare `perch` shows Perch usage.

@@ -1,19 +1,72 @@
-[package]
-name = "rivet"
+# PLAN-2026-0002 P2c (ADR-0005): one workspace, two packages sharing one version.
+#   rivet-runtime (this package): lib `rivet`, bin `rivet` (feature `cli`)
+#   rivet-ffi (ffi/):             cdylib + staticlib `librivet` (C ABI, P2d)
+[workspace]
+members = [".", "ffi"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"
-description = "Rivet — protocol-visible operations, scoped resources and composable DAGs, parsed with Capy"
 repository = "https://github.com/olivierdevelops/rivet"
+homepage = "https://github.com/olivierdevelops/rivet"
+
+[package]
+name = "rivet-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Rivet — protocol-visible operations, scoped resources and composable DAGs, parsed with Capy"
 readme = "README.md"
+documentation = "https://docs.rs/rivet-runtime"
+keywords = ["runtime", "operations", "policy", "mcp", "scripting"]
+categories = ["network-programming", "command-line-utilities", "development-tools"]
+# crates.io package contents (TASK-035): the library, the CLI entry, the embedded
+# keyword table (highlight_source.rs `include_str!`s editors/keywords.json) and the examples.
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/src/**/*.rs",
+    "/src/infra/rivet.capy",
+    "/editors/keywords.json",
+    "/examples/embed.rs",
+    "/examples/modules.rs",
+    "/examples/modules/**/*.rivet",
+]
 
 [lib]
+name = "rivet"
 path = "src/lib.rs"
 
 [[bin]]
 name = "rivet"
 path = "src/main.rs"
+required-features = ["cli"]
+
+# Cargo features (PROP-2026-0002 R11, ADR-0005 decision 4). A bundle that uses
+# a compiled-out adapter fails at load with unsupported.feature (exit 5, HTTP 501).
+[features]
+default = ["serve", "grpc", "quic", "oauth"]
+# `rivet serve`: HTTP/SSE/polling/WebSocket/MCP over one axum listener.
+serve = ["dep:axum"]
+# `grpc CONNECTOR.Method` effects (dynamic, descriptor-driven).
+grpc = ["dep:tonic", "dep:prost", "dep:prost-reflect", "dep:tower"]
+# `quic` effects and HTTP/3 (`version 3`, `version prefer [3, …]`).
+quic = ["dep:quinn", "dep:h3", "dep:h3-quinn"]
+# OAuth 2.0 auth profiles and `store keychain` (platform credential stores).
+oauth = [
+    "dep:keyring-core",
+    "dep:apple-native-keyring-store",
+    "dep:windows-native-keyring-store",
+    "dep:zbus-secret-service-keyring-store",
+]
+# The `rivet` command-line binary.
+cli = ["dep:clap"]
 
 [dependencies]
 # language (ADR-0002)
@@ -31,25 +84,25 @@ base64 = "0.22"
 globset = "0.4.20"
 url = "2.5.8"
 # CLI and diagnostics
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"], optional = true }
 tracing = "0.1.44"
 # serve: one listener for REST, SSE, polling, WebSocket and MCP (ADR-0002 / RES-2026-0002)
-axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "matched-path", "query", "tokio", "ws"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "matched-path", "query", "tokio", "ws"], optional = true }
 # files
 cap-std = "4.0.3"
 cap-fs-ext = "4.0.3"
 # UDP sockets (TASK-042) and native QUIC (TASK-043), ADR-0002: one TLS provider (ring)
 socket2 = { version = "0.6.5", features = ["all"] }
-quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring", "log"] }
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring", "log"], optional = true }
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 rustls-platform-verifier = "0.7.1"
 rustls-pki-types = { version = "1.15", features = ["std"] }
 tokio-rustls = { version = "0.26.5", default-features = false, features = ["ring", "tls12"] }
 # gRPC (dynamic, descriptor-driven; RES-2026-0002 finding 5). TLS is done in Rivet's own connector.
-tonic = { version = "0.14.6", default-features = false, features = ["channel", "codegen"] }
-prost = "0.14.4"
-prost-reflect = { version = "0.16.5", features = ["serde"] }
-tower = { version = "0.5.3", features = ["util"] }
+tonic = { version = "0.14.6", default-features = false, features = ["channel", "codegen"], optional = true }
+prost = { version = "0.14.4", optional = true }
+prost-reflect = { version = "0.16.5", features = ["serde"], optional = true }
+tower = { version = "0.5.3", features = ["util"], optional = true }
 # transports (WS-B): broker-dialed HTTP/1.1+2 client, WebSocket client
 http = "1.5"
 http-body-util = "0.1.5"
@@ -57,25 +110,26 @@ hyper = { version = "1.11", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1.21", features = ["tokio"] }
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake", "stream", "connect"] }
 # HTTP/3 over the same quinn/ring stack (ADR-0002: exact pins for the 0.0.x crates; TASK-044)
-h3 = "=0.0.8"
-h3-quinn = "=0.0.10"
+h3 = { version = "=0.0.8", optional = true }
+h3-quinn = { version = "=0.0.10", optional = true }
 # OAuth 2.0 (WS-F, ADR-0002): hand-rolled over the broker HTTP client; CSPRNG for state/PKCE from ring
 ring = "0.17.14"
 # credentials (ADR-0002): keyring-core + one native store per OS for `store keychain "NS"`
-keyring-core = "1.0.0"
+keyring-core = { version = "1.0.0", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
+apple-native-keyring-store = { version = "1.0.2", features = ["keychain"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-native-keyring-store = "1.1.0"
+windows-native-keyring-store = { version = "1.1.0", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies.zbus-secret-service-keyring-store]
 version = "1.0.1"
 features = ["rt-tokio-crypto-rust"]
+optional = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.7"

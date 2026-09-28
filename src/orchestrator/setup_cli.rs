@@ -662,12 +662,21 @@ async fn run(cli: Cli) -> i32 {
                 0
             }
         }
+        #[cfg(feature = "serve")]
         Command::Serve(args) => {
             match super::setup_serve::run_cli(runtime.clone(), &args.listen, args.stdio).await {
                 Ok(code) => code,
                 Err(e) => fail_as(Some("rivet.serve"), &e, None, true),
             }
         }
+        // A CLI built without `serve` keeps the command and refuses it (exit 5).
+        #[cfg(not(feature = "serve"))]
+        Command::Serve(_) => fail_as(
+            Some("rivet.serve"),
+            &crate::domain::capabilities::unsupported_feature("serve", "`rivet serve`"),
+            None,
+            true,
+        ),
         Command::Graph { id, all } => {
             let query = crate::domain::call_graph::GraphQuery {
                 id: id.clone(),

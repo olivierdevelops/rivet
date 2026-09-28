@@ -1,10 +1,10 @@
 //! T-20 — declared outputs.
 
-use rivet::domain::outputs::ValueSpec;
-use rivet::domain::ports::Parser;
-use rivet::domain::source::SourceFile;
-use rivet::features::language::compile_output_spec::compile_output_spec;
-use rivet::infra::capy_parser::CapyParser;
+use rivet::internal::domain::outputs::ValueSpec;
+use rivet::internal::domain::ports::Parser;
+use rivet::internal::domain::source::SourceFile;
+use rivet::internal::features::language::compile_output_spec::compile_output_spec;
+use rivet::internal::infra::capy_parser::CapyParser;
 
 // vhco:test language.compile_output_spec -- a nested object output keeps field types, optionality and descriptions
 #[test]

@@ -10,8 +10,7 @@
 //!
 //! `cargo run --example modules`
 
-use rivet::Runtime;
-use rivet::domain::envelope::InputEnvelope;
+use rivet::{InputEnvelope, Runtime};
 use serde_json::json;
 
 #[tokio::main]

@@ -1,12 +1,12 @@
 //! T-01 — language: compilation, header rules, duplicates, prefix-call and cycle checks.
 #![allow(clippy::result_large_err)]
 
-use rivet::domain::RivetResult;
-use rivet::domain::ir::CompiledProgram;
-use rivet::domain::ir::{Rhs, Stmt};
-use rivet::domain::source::SourceBundle;
-use rivet::features::language::compile_program::compile_program;
-use rivet::infra::capy_parser::CapyParser;
+use rivet::internal::domain::RivetResult;
+use rivet::internal::domain::ir::CompiledProgram;
+use rivet::internal::domain::ir::{Rhs, Stmt};
+use rivet::internal::domain::source::SourceBundle;
+use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::infra::capy_parser::CapyParser;
 
 fn compile(text: &str) -> RivetResult<CompiledProgram> {
     compile_program(
@@ -25,7 +25,10 @@ fn compiles_the_catalog_demo() {
     let add = p.operation("demo.add").unwrap();
     assert_eq!(add.params.len(), 2);
     assert!(add.params[0].required);
-    assert_eq!(add.params[1].default, Some(rivet::domain::Value::Int(0)));
+    assert_eq!(
+        add.params[1].default,
+        Some(rivet::internal::domain::Value::Int(0))
+    );
     assert!(matches!(
         add.body[0],
         Stmt::Return {
@@ -88,7 +91,10 @@ async fn inc_2026_0009_numeric_index_paths_parse_and_evaluate() {
     let c = runtime(text)
         .request(
             "a.b",
-            rivet::domain::Value::object::<[(&str, rivet::domain::Value); 0], &str>([]),
+            rivet::internal::domain::Value::object::<
+                [(&str, rivet::internal::domain::Value); 0],
+                &str,
+            >([]),
             None,
         )
         .await
@@ -106,7 +112,10 @@ async fn inc_2026_0009_out_of_range_index_is_a_typed_error() {
     let c = runtime(text)
         .request(
             "a.b",
-            rivet::domain::Value::object::<[(&str, rivet::domain::Value); 0], &str>([]),
+            rivet::internal::domain::Value::object::<
+                [(&str, rivet::internal::domain::Value); 0],
+                &str,
+            >([]),
             None,
         )
         .await;
@@ -122,7 +131,10 @@ async fn inc_2026_0009_out_of_range_index_is_a_typed_error() {
     let ok = runtime("operation a.b\n    output json\n    xs = [1.5, 2]\n    return xs.0\nend\n")
         .request(
             "a.b",
-            rivet::domain::Value::object::<[(&str, rivet::domain::Value); 0], &str>([]),
+            rivet::internal::domain::Value::object::<
+                [(&str, rivet::internal::domain::Value); 0],
+                &str,
+            >([]),
             None,
         )
         .await

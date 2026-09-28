@@ -5,7 +5,7 @@
 #[path = "transport_support/mod.rs"]
 mod support;
 
-use rivet::domain::{ErrorKind, Value};
+use rivet::internal::domain::{ErrorKind, Value};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use support::*;
@@ -23,7 +23,7 @@ fn net_policy(targets: &[String]) -> String {
     )
 }
 
-async fn run(src: &str, policy: &str) -> Result<Value, rivet::domain::RivetError> {
+async fn run(src: &str, policy: &str) -> Result<Value, rivet::internal::domain::RivetError> {
     let tmp = tempfile::tempdir().unwrap();
     let rt = runtime(src, tmp.path().to_str().unwrap(), policy);
     rt.request("t.run", Value::Null, None)
@@ -856,14 +856,14 @@ async fn cancel_closes_handles_gracefully_in_reverse_order() {
     let req = rt.new_request(
         "t.run",
         Value::Null,
-        rivet::domain::contracts::Principal::local(),
+        rivet::internal::domain::contracts::Principal::local(),
     );
     let id = req.request_id.clone();
     let rt2 = rt.clone();
     let task = tokio::spawn(async move { rt2.dispatch_request(req, None).await });
     wait_for("both hellos", || log.hellos.load(Ordering::SeqCst) == 2).await;
     let started = std::time::Instant::now();
-    rt.cancel(&id, rivet::domain::contracts::Principal::local())
+    rt.cancel(&id, rivet::internal::domain::contracts::Principal::local())
         .unwrap();
     let e = task.await.unwrap().unwrap_err();
     assert_eq!(e.kind, ErrorKind::Cancelled, "{e:?}");
@@ -899,7 +899,7 @@ async fn deadline_expiry_closes_handles_gracefully() {
     let mut req = rt.new_request(
         "t.run",
         Value::Null,
-        rivet::domain::contracts::Principal::local(),
+        rivet::internal::domain::contracts::Principal::local(),
     );
     req.deadline_ms = 400;
     let started = std::time::Instant::now();
@@ -944,7 +944,7 @@ async fn cancel_terminates_and_reaps_child_processes() {
     let req = rt.new_request(
         "t.run",
         Value::Null,
-        rivet::domain::contracts::Principal::local(),
+        rivet::internal::domain::contracts::Principal::local(),
     );
     let id = req.request_id.clone();
     let rt2 = rt.clone();
@@ -968,7 +968,7 @@ async fn cancel_terminates_and_reaps_child_processes() {
         .trim()
         .parse()
         .unwrap();
-    rt.cancel(&id, rivet::domain::contracts::Principal::local())
+    rt.cancel(&id, rivet::internal::domain::contracts::Principal::local())
         .unwrap();
     let e = task.await.unwrap().unwrap_err();
     assert_eq!(e.kind, ErrorKind::Cancelled, "{e:?}");

@@ -22,8 +22,8 @@ mod transport;
 
 use oauth_support::{CLIENT_SECRET, Fake};
 use rivet::Runtime;
-use rivet::domain::Value;
-use rivet::orchestrator::setup_serve::{ServeOptions, start};
+use rivet::internal::domain::Value;
+use rivet::internal::orchestrator::setup_serve::{ServeOptions, start};
 use serde_json::{Value as Json, json};
 use std::net::SocketAddr;
 use std::path::Path;

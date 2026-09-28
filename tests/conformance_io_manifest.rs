@@ -3,8 +3,8 @@
 //! bundles (S62–S65, S141–S147, S153–S157), exit codes 0/2/3/4/7.
 
 use rivet::Runtime;
-use rivet::domain::Value;
-use rivet::domain::io_manifest::{FileStatus, IoQuery, Knowledge};
+use rivet::internal::domain::Value;
+use rivet::internal::domain::io_manifest::{FileStatus, IoQuery, Knowledge};
 use std::path::Path;
 use std::process::Command;
 

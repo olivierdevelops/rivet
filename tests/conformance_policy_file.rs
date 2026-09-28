@@ -15,10 +15,12 @@ mod serve_support;
 mod transport;
 
 use rivet::Runtime;
-use rivet::domain::policy::{AccessVerb, Capability, Decision, EffectIntent, EffectTarget};
-use rivet::domain::{ErrorKind, Value};
-use rivet::orchestrator::runtime::policy_from_json;
-use rivet::orchestrator::setup_serve::{ServeOptions, start};
+use rivet::internal::domain::policy::{
+    AccessVerb, Capability, Decision, EffectIntent, EffectTarget,
+};
+use rivet::internal::domain::{ErrorKind, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
+use rivet::internal::orchestrator::setup_serve::{ServeOptions, start};
 use serde_json::{Value as Json, json};
 use std::path::Path;
 use std::process::Command;

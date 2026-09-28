@@ -11,12 +11,12 @@
 //! ```
 #![allow(clippy::result_large_err)]
 
-use rivet::domain::contracts::Envelope;
-use rivet::domain::envelope::{EnvelopeStatus, InputEnvelope};
-use rivet::domain::io_manifest::IoQuery;
-use rivet::domain::policy::Capability;
-use rivet::domain::{RivetError, RivetResult, Value};
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::internal::domain::contracts::Envelope;
+use rivet::internal::domain::envelope::{EnvelopeStatus, InputEnvelope};
+use rivet::internal::domain::io_manifest::IoQuery;
+use rivet::internal::domain::policy::Capability;
+use rivet::internal::domain::{RivetError, RivetResult, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
 use rivet::{Module, Runtime};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -764,7 +764,7 @@ fn t20_manifest_graph_and_generate_cover_modules() {
         .collect();
     assert_eq!(&boot[..2], ["./app.rivet", "./lib/data.rivet"]);
     let g = rt
-        .graph(&rivet::domain::call_graph::GraphQuery {
+        .graph(&rivet::internal::domain::call_graph::GraphQuery {
             id: "data.public_file".into(),
             ..Default::default()
         })

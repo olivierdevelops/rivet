@@ -18,9 +18,9 @@
 
 mod support;
 
-use rivet::domain::envelope::{InputEnvelope, ResponseEnvelope};
-use rivet::domain::errors::ALL_KINDS;
-use rivet::domain::{RivetError, Value};
+use rivet::internal::domain::envelope::{InputEnvelope, ResponseEnvelope};
+use rivet::internal::domain::errors::ALL_KINDS;
+use rivet::internal::domain::{RivetError, Value};
 use serde_json::{Value as Json, json};
 use std::path::Path;
 use support::*;
@@ -695,11 +695,11 @@ async fn t03_builtins_and_json_outputs_are_envelopes() {
 struct StopAfterOne(std::sync::atomic::AtomicU64);
 
 #[async_trait::async_trait]
-impl rivet::domain::ports::DataSink for StopAfterOne {
+impl rivet::internal::domain::ports::DataSink for StopAfterOne {
     async fn send(
         &self,
-        _e: rivet::domain::contracts::DataEvent,
-    ) -> rivet::domain::RivetResult<()> {
+        _e: rivet::internal::domain::contracts::DataEvent,
+    ) -> rivet::internal::domain::RivetResult<()> {
         if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 1 {
             return Err(RivetError::consumer_stop());
         }
@@ -791,7 +791,7 @@ async fn t04_stream_records_then_one_result() {
         assert_record(r);
     }
     assert_result(&recs[2]);
-    let stop: std::sync::Arc<dyn rivet::domain::ports::DataSink> =
+    let stop: std::sync::Arc<dyn rivet::internal::domain::ports::DataSink> =
         std::sync::Arc::new(StopAfterOne(Default::default()));
     let out = rt
         .request(
@@ -958,9 +958,9 @@ async fn t15_legacy_aliases_and_refusals() {
     let rt = runtime(None);
     let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Json>::new()));
     let sink = std::sync::Arc::clone(&lines);
-    let handle = rivet::orchestrator::setup_serve::start(
+    let handle = rivet::internal::orchestrator::setup_serve::start(
         rt.clone(),
-        rivet::orchestrator::setup_serve::ServeOptions {
+        rivet::internal::orchestrator::setup_serve::ServeOptions {
             listen: Some("127.0.0.1:0".into()),
             access_log: Some(std::sync::Arc::new(move |l: &str| {
                 sink.lock().unwrap().push(serde_json::from_str(l).unwrap());

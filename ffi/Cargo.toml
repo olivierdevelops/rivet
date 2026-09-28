@@ -1,0 +1,23 @@
+# rivet-ffi: the C ABI of Rivet (PROP-2026-0002 R13–R15, R23; ADR-0005).
+# Only `#[no_mangle] extern "C"` shims live here; the logic (handles, guards,
+# JSON in/out) is the `ffi` surface in rivet-runtime's src/orchestrator/setup_ffi.rs.
+[package]
+name = "rivet-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "C ABI (librivet shared and static library) for the Rivet runtime"
+keywords = ["ffi", "c-abi", "runtime", "rivet"]
+categories = ["api-bindings", "development-tools::ffi"]
+publish = false
+
+[lib]
+name = "rivet"
+path = "src/lib.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+rivet_runtime = { package = "rivet-runtime", path = "..", version = "0.1.0" }

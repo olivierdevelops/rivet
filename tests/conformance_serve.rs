@@ -340,9 +340,9 @@ async fn bearer_auth_and_principals() {
 #[tokio::test]
 async fn non_loopback_without_auth_refuses() {
     let rt = runtime(None);
-    let e = rivet::orchestrator::setup_serve::start(
+    let e = rivet::internal::orchestrator::setup_serve::start(
         rt,
-        rivet::orchestrator::setup_serve::ServeOptions {
+        rivet::internal::orchestrator::setup_serve::ServeOptions {
             listen: Some("0.0.0.0:0".into()),
             ..Default::default()
         },
@@ -570,9 +570,9 @@ async fn serve_logged(
     let rt = runtime(policy);
     let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Json>::new()));
     let sink = std::sync::Arc::clone(&lines);
-    let handle = rivet::orchestrator::setup_serve::start(
+    let handle = rivet::internal::orchestrator::setup_serve::start(
         rt.clone(),
-        rivet::orchestrator::setup_serve::ServeOptions {
+        rivet::internal::orchestrator::setup_serve::ServeOptions {
             listen: Some("127.0.0.1:0".into()),
             access_log: Some(std::sync::Arc::new(move |line: &str| {
                 sink.lock()

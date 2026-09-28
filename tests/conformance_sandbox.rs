@@ -15,8 +15,8 @@
 #[path = "transport_support/mod.rs"]
 mod support;
 
-use rivet::domain::io_manifest::IoQuery;
-use rivet::domain::{ErrorKind, RivetError, Value};
+use rivet::internal::domain::io_manifest::IoQuery;
+use rivet::internal::domain::{ErrorKind, RivetError, Value};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -325,7 +325,7 @@ async fn bootstrap_list_is_reported() {
     let rt2 = rivet::Runtime::builder()
         .source("app.rivet", src, &p(dir.path()))
         .policy(
-            rivet::orchestrator::runtime::policy_from_json(
+            rivet::internal::orchestrator::runtime::policy_from_json(
                 br#"{"version":1,"grants":[{"capability":"allow_read","targets":["./fixtures/**"]}]}"#,
                 &p(dir.path()),
             )

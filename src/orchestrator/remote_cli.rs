@@ -76,18 +76,7 @@ pub fn check_input_flags(input_jsonl: Option<&str>, stream: bool) -> RivetResult
     }
 }
 
-/// The operation must declare `receives` to accept live input.
-pub fn receives_of(entry: &RegistryEntry) -> RivetResult<ValueSpec> {
-    entry.receives.clone().ok_or_else(|| {
-        RivetError::validation(
-            "validation.no_input",
-            format!(
-                "`{}` does not declare `receives`; drop --input-jsonl",
-                entry.id
-            ),
-        )
-    })
-}
+pub use super::setup_library::receives_of;
 
 /// Read JSON Lines from stdin and enqueue each item as it arrives (the
 /// bounded channel applies backpressure; nothing is buffered up front).

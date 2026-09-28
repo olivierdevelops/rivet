@@ -19,11 +19,11 @@ mod serve_support;
 mod support;
 
 use rivet::Runtime;
-use rivet::domain::contracts::Principal;
-use rivet::domain::errors::ALL_KINDS;
-use rivet::domain::{ErrorKind, Value};
-use rivet::orchestrator::runtime::policy_from_json;
-use rivet::orchestrator::setup_serve::{ServeOptions, start};
+use rivet::internal::domain::contracts::Principal;
+use rivet::internal::domain::errors::ALL_KINDS;
+use rivet::internal::domain::{ErrorKind, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
+use rivet::internal::orchestrator::setup_serve::{ServeOptions, start};
 use serde_json::json;
 use std::time::Duration;
 use support::*;
@@ -719,14 +719,17 @@ async fn big_body_server(len: usize) -> u16 {
 // vhco:test execution.request_operation -- G11 default size limits follow the proposal (8 MiB frame/body, 16-frame / 32 MiB session queues, 256 MiB host budget): a 9 MiB HTTP body is limit.http_body by default and passes with an explicit `max_body`
 #[tokio::test]
 async fn default_body_limit_is_8_mib_and_max_body_overrides() {
-    let defaults = rivet::domain::sessions::SessionLimits::default();
+    let defaults = rivet::internal::domain::sessions::SessionLimits::default();
     assert_eq!(
         (defaults.queue_frames, defaults.queue_bytes),
         (16, 32 << 20)
     );
-    assert_eq!(rivet::domain::transport::DEFAULT_MAX_FRAME, 8 << 20);
     assert_eq!(
-        rivet::domain::policy::PolicyLimits::default().max_buffered_bytes,
+        rivet::internal::domain::transport::DEFAULT_MAX_FRAME,
+        8 << 20
+    );
+    assert_eq!(
+        rivet::internal::domain::policy::PolicyLimits::default().max_buffered_bytes,
         256 << 20
     );
     let port = big_body_server(9 << 20).await;

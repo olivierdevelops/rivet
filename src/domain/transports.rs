@@ -426,7 +426,7 @@ pub struct ProcessPlan {
     pub cwd: Option<String>,
     pub stdin: Option<CodecInput>,
     pub timeout_ms: u64,
-    /// Exit codes that count as success (default [0]).
+    /// Exit codes that count as success (default `[0]`).
     pub accept_exit: Vec<i64>,
     pub decode_stdout: Option<CodecKind>,
     pub decode_stderr: Option<CodecKind>,

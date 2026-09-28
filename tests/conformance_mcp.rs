@@ -23,9 +23,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use rivet::Runtime;
-use rivet::domain::Value;
-use rivet::domain::mcp::snapshot_hash;
-use rivet::orchestrator::setup_serve::{ServeHandle, ServeOptions, start};
+use rivet::internal::domain::Value;
+use rivet::internal::domain::mcp::snapshot_hash;
+use rivet::internal::orchestrator::setup_serve::{ServeHandle, ServeOptions, start};
 use serde_json::{Value as Json, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -53,7 +53,7 @@ fn policy(grants: Json, approved: &[String]) -> String {
     serde_json::to_string_pretty(&p).unwrap()
 }
 
-fn load(dir: &Path) -> Result<Runtime, rivet::domain::RivetError> {
+fn load(dir: &Path) -> Result<Runtime, rivet::internal::domain::RivetError> {
     Runtime::builder()
         .file(dir.join("app.rivet").to_str().unwrap())
         .build()
@@ -67,12 +67,12 @@ fn load_discovery(dir: &Path) -> Runtime {
         .unwrap()
 }
 
-fn sandbox_missing(e: &rivet::domain::RivetError) -> bool {
+fn sandbox_missing(e: &rivet::internal::domain::RivetError) -> bool {
     e.code == "unsupported.sandbox_backend"
 }
 
 /// Serialized error (with nested details) for substring checks.
-fn error_text(e: &rivet::domain::RivetError) -> String {
+fn error_text(e: &rivet::internal::domain::RivetError) -> String {
     e.to_value().to_json().to_string()
 }
 
@@ -227,7 +227,7 @@ async fn stdio_rivet_peer_sync_approve_call() {
         .await
         .unwrap_err();
     assert_eq!(e.code, "mcp.tool_failed");
-    assert_eq!(e.kind, rivet::domain::ErrorKind::Application);
+    assert_eq!(e.kind, rivet::internal::domain::ErrorKind::Application);
     assert_eq!(e.exit_code(), 5);
     assert!(
         error_text(&e).contains("output.invalid"),
@@ -409,7 +409,7 @@ async fn stdio_fake_server_errors_and_sampling() {
         .await
         .unwrap_err();
     assert_eq!(e.code, "mcp.tool_failed");
-    assert_eq!(e.effects, rivet::domain::EffectsStatus::Unknown);
+    assert_eq!(e.effects, rivet::internal::domain::EffectsStatus::Unknown);
 
     let e = rt
         .request("fake.tools.broken", Value::Null, None)
@@ -528,7 +528,7 @@ async fn http_rivet_serve_peer() {
         .unwrap();
     assert_eq!(c.result, Value::Int(42));
     // G22: an opaque remote tool call is `unknown`, whether wrapped or called directly.
-    assert_eq!(c.effects, rivet::domain::EffectsStatus::Unknown);
+    assert_eq!(c.effects, rivet::internal::domain::EffectsStatus::Unknown);
     let direct = rt
         .request(
             "peer.tools.demo.add",
@@ -537,13 +537,16 @@ async fn http_rivet_serve_peer() {
         )
         .await
         .unwrap();
-    assert_eq!(direct.effects, rivet::domain::EffectsStatus::Unknown);
+    assert_eq!(
+        direct.effects,
+        rivet::internal::domain::EffectsStatus::Unknown
+    );
     let e = rt
         .request("peer.tools.demo.bad", Value::Null, None)
         .await
         .unwrap_err();
     assert_eq!(e.code, "mcp.tool_failed");
-    assert_eq!(e.effects, rivet::domain::EffectsStatus::Unknown);
+    assert_eq!(e.effects, rivet::internal::domain::EffectsStatus::Unknown);
 
     // Without the network grant every POST is refused before connecting.
     write(
@@ -588,7 +591,7 @@ async fn bridge_recursion_is_bounded() {
     ));
     write(dir.path(), "app.rivet", &src);
     // The snapshot must match what this very server lists (G29 drift check).
-    let no_params = rivet::domain::outputs::params_schema(&[]);
+    let no_params = rivet::internal::domain::outputs::params_schema(&[]);
     let mut tools = vec![json!({"name": "loop.again", "inputSchema": no_params})];
     for i in 1..=steps {
         tools.push(json!({"name": format!("step.s{i}"), "inputSchema": no_params}));
@@ -785,7 +788,7 @@ async fn demo_06_readme_flows() {
 
     // io --check-policy: transport + opaque_remote MCP call, both allowed.
     let report = rt
-        .io(&rivet::domain::io_manifest::IoQuery {
+        .io(&rivet::internal::domain::io_manifest::IoQuery {
             ids: vec!["contacts.find".into()],
             check_policy: true,
             format: "json".into(),

@@ -2030,7 +2030,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "rivet"
+name = "rivet-ffi"
+version = "0.1.0"
+dependencies = [
+ "rivet-runtime",
+]
+
+[[package]]
+name = "rivet-runtime"
 version = "0.1.0"
 dependencies = [
  "apple-native-keyring-store",

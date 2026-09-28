@@ -10,13 +10,13 @@
 #![allow(clippy::result_large_err)]
 
 use rivet::Runtime;
-use rivet::domain::io_manifest::{IoQuery, Knowledge};
-use rivet::domain::ir::CompiledProgram;
-use rivet::domain::policy::Capability;
-use rivet::domain::source::SourceBundle;
-use rivet::domain::{RivetError, RivetResult, Value};
-use rivet::features::language::compile_program::compile_program;
-use rivet::infra::capy_parser::CapyParser;
+use rivet::internal::domain::io_manifest::{IoQuery, Knowledge};
+use rivet::internal::domain::ir::CompiledProgram;
+use rivet::internal::domain::policy::Capability;
+use rivet::internal::domain::source::SourceBundle;
+use rivet::internal::domain::{RivetError, RivetResult, Value};
+use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::infra::capy_parser::CapyParser;
 use std::process::Command;
 
 fn compile(text: &str) -> RivetResult<CompiledProgram> {

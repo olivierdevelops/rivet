@@ -3,8 +3,8 @@
 //! in manifests, drafts or traces.
 
 use rivet::Runtime;
-use rivet::domain::Value;
-use rivet::domain::io_manifest::{IoQuery, SiteKind};
+use rivet::internal::domain::Value;
+use rivet::internal::domain::io_manifest::{IoQuery, SiteKind};
 
 const SRC: &str = r#"operation a.all
     param name text required
@@ -250,7 +250,7 @@ end
 // vhco:test audit.build_graph -- G4: the static call graph expands literal calls into the callee, marks `if` arms conditional, lists DAG nodes with after edges, and renders the S63 tree; JSON carries the same nodes plus contains/after edges
 #[test]
 fn static_call_graph_tree_and_json() {
-    use rivet::domain::call_graph::GraphQuery;
+    use rivet::internal::domain::call_graph::GraphQuery;
     let rt = Runtime::builder()
         .source("app.rivet", GRAPH_SRC, ".")
         .build()

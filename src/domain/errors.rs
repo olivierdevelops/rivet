@@ -412,6 +412,9 @@ impl std::error::Error for RivetError {}
 ///  check.import_cycle|duplicate|collision  syntax  2    422   no
 ///  limit.imports                     limit         5    429   yes (kind rule)
 ///  check.module_policy_ignored       warning only (never fails a load)
+///  unsupported.feature               unsupported   5    501   no   (details.feature)
+///  validation.ffi_argument           validation    2    422   no   (C ABI)
+///  internal.panic                    internal      5    500   no   (C ABI)
 /// ```
 pub mod codes {
     pub const SYNTAX_GLOBAL: &str = "syntax.global";
@@ -428,6 +431,12 @@ pub mod codes {
     pub const IMPORT_COLLISION: &str = "check.import_collision";
     pub const LIMIT_IMPORTS: &str = "limit.imports";
     pub const MODULE_POLICY_IGNORED: &str = "check.module_policy_ignored";
+    /// A bundle uses an adapter whose Cargo feature is compiled out (R11).
+    pub const UNSUPPORTED_FEATURE: &str = "unsupported.feature";
+    /// FFI: a null, non-UTF-8, non-JSON or freed argument (R14).
+    pub const FFI_ARGUMENT: &str = "validation.ffi_argument";
+    /// FFI: a panic caught at the C boundary (R14).
+    pub const INTERNAL_PANIC: &str = "internal.panic";
 }
 
 /// Registry rows of the PROP-2026-0002 language and module codes.
@@ -446,6 +455,9 @@ pub const LANGUAGE_CODES: &[(&str, ErrorKind)] = &[
     (codes::IMPORT_COLLISION, ErrorKind::Syntax),
     (codes::LIMIT_IMPORTS, ErrorKind::Limit),
     (codes::MODULE_POLICY_IGNORED, ErrorKind::Syntax),
+    (codes::UNSUPPORTED_FEATURE, ErrorKind::Unsupported),
+    (codes::FFI_ARGUMENT, ErrorKind::Validation),
+    (codes::INTERNAL_PANIC, ErrorKind::Internal),
 ];
 
 /// The registered kind of a PROP-2026-0002 language or module code.
@@ -500,5 +512,8 @@ mod tests {
         assert_eq!(row(codes::IMPORT_NOT_FOUND), (4, 404, false));
         assert_eq!(row(codes::IMPORT_OUTSIDE_ROOT), (3, 403, false));
         assert_eq!(row(codes::LIMIT_IMPORTS), (5, 429, true));
+        assert_eq!(row(codes::UNSUPPORTED_FEATURE), (5, 501, false));
+        assert_eq!(row(codes::FFI_ARGUMENT), (2, 422, false));
+        assert_eq!(row(codes::INTERNAL_PANIC), (5, 500, false));
     }
 }

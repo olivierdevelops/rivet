@@ -2,8 +2,8 @@
 //! truncation, oversized sends, listener binds, separately authorized replies,
 //! multicast on loopback and the docs/demos/08-udp bundle. Local fixtures only.
 
-use rivet::domain::{ErrorKind, RivetError, Value};
-use rivet::orchestrator::runtime::{Runtime, policy_from_json};
+use rivet::internal::domain::{ErrorKind, RivetError, Value};
+use rivet::internal::orchestrator::runtime::{Runtime, policy_from_json};
 use std::net::{SocketAddr, UdpSocket as StdUdp};
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -351,7 +351,7 @@ async fn demo_08_udp_bundle() {
 
 /// The static `io --check-policy` verdict of one operation: denied when any site is.
 fn manifest_denies(rt: &Runtime, id: &str) -> bool {
-    let q = rivet::domain::io_manifest::IoQuery {
+    let q = rivet::internal::domain::io_manifest::IoQuery {
         ids: vec![id.to_string()],
         check_policy: true,
         format: "json".into(),

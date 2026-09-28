@@ -2,10 +2,10 @@
 //!
 //! `cargo run --example dump_ast -- path/to/app.rivet`
 
-use rivet::domain::ports::Parser;
-use rivet::domain::source::SourceFile;
-use rivet::domain::syntax_tree::SyntaxNode;
-use rivet::infra::capy_parser::CapyParser;
+use rivet::internal::domain::ports::Parser;
+use rivet::internal::domain::source::SourceFile;
+use rivet::internal::domain::syntax_tree::SyntaxNode;
+use rivet::internal::infra::capy_parser::CapyParser;
 
 fn show(n: &SyntaxNode, depth: usize) {
     let caps: Vec<String> = n

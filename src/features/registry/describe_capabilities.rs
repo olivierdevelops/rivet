@@ -18,6 +18,20 @@ fn feature(name: &str, stage: &str, supported: bool, detail: Json) -> Json {
     j
 }
 
+/// A row whose adapter needs a Cargo feature: unsupported with a reason when
+/// this build was compiled without it (PROP-2026-0002 R11).
+fn built(input: &BuildProbe, cargo_feature: &str, row: Json) -> Json {
+    if input.build_features.iter().any(|f| f == cargo_feature) {
+        return row;
+    }
+    let mut row = row;
+    row["support"] = json!("unsupported");
+    row["reason"] = json!(format!(
+        "compiled without the `{cargo_feature}` Cargo feature (unsupported.feature)"
+    ));
+    row
+}
+
 // vhco:usecase registry.describe_capabilities(input: BuildProbe) -> CapabilityReport
 // vhco:label Describe build capabilities
 // vhco:about Reports what this build and platform support — protocols and their versions/modes, OAuth flows, the process sandbox backend (active, gated or unsupported), serve surfaces, Stage C features that are refused, and the version — without I/O or sensitive data, for any authenticated principal.
@@ -32,11 +46,15 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
             true,
             json!({"versions": ["1.1", "2", "3"], "streaming": ["sse", "jsonl", "lines", "bytes"]}),
         ),
-        feature(
-            "http3",
-            "B",
-            true,
-            json!({"selection": ["strict", "prefer [3, 2]"]}),
+        built(
+            input,
+            "quic",
+            feature(
+                "http3",
+                "B",
+                true,
+                json!({"selection": ["strict", "prefer [3, 2]"]}),
+            ),
         ),
         feature("files", "A", true, json!({"scoped": ["open"]})),
         feature("websocket", "B", true, json!({"schemes": ["ws", "wss"]})),
@@ -44,8 +62,16 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
         feature("unix", "B", cfg!(unix), json!({})),
         feature("udp", "B", true, json!({})),
         feature("udp_multicast", "B", true, json!({})),
-        feature("quic_v1", "B", true, json!({"streams": ["bidi", "uni"]})),
-        feature("quic_datagram", "B", true, json!({})),
+        built(
+            input,
+            "quic",
+            feature("quic_v1", "B", true, json!({"streams": ["bidi", "uni"]})),
+        ),
+        built(
+            input,
+            "quic",
+            feature("quic_datagram", "B", true, json!({})),
+        ),
         feature(
             "quic_migration",
             "B",
@@ -58,11 +84,15 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
             false,
             json!({"reason": "0-RTT replay risk; `early_data true` is refused (unsupported.quic_early_data)"}),
         ),
-        feature(
+        built(
+            input,
             "grpc",
-            "B",
-            true,
-            json!({"modes": ["unary", "server_stream", "client_stream", "bidi"], "transport": "http2"}),
+            feature(
+                "grpc",
+                "B",
+                true,
+                json!({"modes": ["unary", "server_stream", "client_stream", "bidi"], "transport": "http2"}),
+            ),
         ),
         feature(
             "mcp",
@@ -70,15 +100,31 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
             true,
             json!({"client_transports": ["stdio", "http"], "server_transports": ["stdio", "http"]}),
         ),
-        feature("oauth2_client_credentials", "B", true, json!({})),
-        feature(
-            "oauth2_pkce",
-            "B",
-            true,
-            json!({"grant": "authorization_code"}),
+        built(
+            input,
+            "oauth",
+            feature("oauth2_client_credentials", "B", true, json!({})),
         ),
-        feature("oauth2_device", "B", true, json!({})),
-        feature("oauth2_refresh", "B", true, json!({})),
+        built(
+            input,
+            "oauth",
+            feature(
+                "oauth2_pkce",
+                "B",
+                true,
+                json!({"grant": "authorization_code"}),
+            ),
+        ),
+        built(
+            input,
+            "oauth",
+            feature("oauth2_device", "B", true, json!({})),
+        ),
+        built(
+            input,
+            "oauth",
+            feature("oauth2_refresh", "B", true, json!({})),
+        ),
         feature(
             "oauth2_password",
             "B",
@@ -147,6 +193,15 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
         "status": input.sandbox_status.as_str(),
         "reason": input.sandbox_reason,
     });
+    let has = |f: &str| input.build_features.iter().any(|b| b == f);
+    let mut surfaces: Vec<&str> = Vec::new();
+    if has("cli") {
+        surfaces.push("cli");
+    }
+    if has("serve") {
+        surfaces.extend(["http", "sse", "poll", "websocket", "mcp"]);
+    }
+    surfaces.push("library");
     Value::from_json(&json!({
         "version": input.version,
         "platform": {"os": input.os, "arch": input.arch},
@@ -154,9 +209,11 @@ pub fn describe_capabilities(input: &BuildProbe) -> Value {
         "features": features,
         "sandbox": sandbox,
         "serve": {
-            "surfaces": ["cli", "http", "sse", "poll", "websocket", "mcp", "library"],
+            "surfaces": surfaces,
             "auth": ["none", "bearer"],
         },
+        "build_features": input.build_features,
+        "abi_version": input.abi_version,
     }))
 }
 
@@ -175,6 +232,8 @@ mod tests {
             sandbox_backend: "linux-landlock-seccomp".into(),
             sandbox_status: SandboxStatus::Gated,
             sandbox_reason: "gated".into(),
+            build_features: vec!["serve".into(), "grpc".into(), "cli".into()],
+            abi_version: 1,
         })
         .to_json();
         let names: Vec<&str> = v["features"]
@@ -205,5 +264,26 @@ mod tests {
         }
         assert_eq!(v["sandbox"]["status"], "gated");
         assert_eq!(v["version"], "0.1.0-dev");
+        assert_eq!(
+            v["build_features"],
+            serde_json::json!(["serve", "grpc", "cli"])
+        );
+        let row = |n: &str| {
+            v["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|f| f["name"] == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(row("grpc")["support"], "supported");
+        // quic and oauth are compiled out in this probe: their rows say so.
+        assert_eq!(row("quic_v1")["support"], "unsupported");
+        assert!(row("http3")["reason"].as_str().unwrap().contains("`quic`"));
+        assert_eq!(row("oauth2_pkce")["support"], "unsupported");
+        assert_eq!(v["abi_version"], 1);
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, crate::domain::capabilities::CAPABILITY_REPORT_KEYS);
     }
 }

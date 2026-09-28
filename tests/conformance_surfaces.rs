@@ -14,7 +14,7 @@ mod oauth_support;
 mod support;
 
 use rivet::Runtime;
-use rivet::orchestrator::setup_serve::{ServeHandle, ServeOptions, start};
+use rivet::internal::orchestrator::setup_serve::{ServeHandle, ServeOptions, start};
 use serde_json::{Value as Json, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};

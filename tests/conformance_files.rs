@@ -14,8 +14,8 @@
 //! ```
 
 use rivet::Runtime;
-use rivet::domain::{ErrorKind, RivetError, Value};
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::internal::domain::{ErrorKind, RivetError, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
 use std::path::Path;
 
 /// Read, write and delete granted under `./out/**`, read under `./data/**`.
@@ -591,7 +591,7 @@ async fn file_effects_are_traced_with_operation_and_span() {
     let req = rt.new_request(
         "t.run",
         Value::Null,
-        rivet::domain::contracts::Principal::local(),
+        rivet::internal::domain::contracts::Principal::local(),
     );
     let request_id = req.request_id.clone();
     let e = rt.dispatch_request(req, None).await.unwrap_err();
@@ -787,11 +787,11 @@ async fn demo_04_files_chunks_runs() {
     let got = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
     struct Collect(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
     #[async_trait::async_trait]
-    impl rivet::domain::ports::DataSink for Collect {
+    impl rivet::internal::domain::ports::DataSink for Collect {
         async fn send(
             &self,
-            item: rivet::domain::contracts::DataEvent,
-        ) -> rivet::domain::RivetResult<()> {
+            item: rivet::internal::domain::contracts::DataEvent,
+        ) -> rivet::internal::domain::RivetResult<()> {
             if let Value::Bytes(b) = item.data {
                 self.0.lock().unwrap().extend_from_slice(&b);
             }

@@ -173,6 +173,11 @@ fn build_probe() -> BuildProbe {
         sandbox_backend: sandbox::BACKEND.to_string(),
         sandbox_status: status,
         sandbox_reason: reason.to_string(),
+        build_features: super::runtime::build_features()
+            .iter()
+            .map(|f| f.to_string())
+            .collect(),
+        abi_version: crate::domain::capabilities::ABI_VERSION,
     }
 }
 
@@ -182,6 +187,7 @@ fn envelope_args(rt: &Runtime, req: &Request) -> RivetResult<InputEnvelope> {
     let input = parse_input(RawInput::new(req.params.to_json()))?;
     if input.is_legacy() {
         // Over HTTP (MCP POST /mcp, /v1/request) the answer gets `Deprecation: true`.
+        #[cfg(feature = "serve")]
         super::setup_serve::note_access(|n| n.deprecated = true);
     }
     rt.note_deprecated_input(

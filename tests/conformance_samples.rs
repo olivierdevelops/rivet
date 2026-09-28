@@ -1,9 +1,9 @@
 //! T-29 — sample corpus: every demo bundle compiles; every reference example parses.
 
-use rivet::domain::ports::Parser;
-use rivet::domain::source::{SourceBundle, SourceFile};
-use rivet::features::language::compile_program::compile_program;
-use rivet::infra::capy_parser::CapyParser;
+use rivet::internal::domain::ports::Parser;
+use rivet::internal::domain::source::{SourceBundle, SourceFile};
+use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::infra::capy_parser::CapyParser;
 
 // vhco:test language.compile_program -- every docs/demos app.rivet compiles into a program
 #[test]

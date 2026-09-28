@@ -9,11 +9,11 @@
 use futures_util::future::BoxFuture;
 use prost::Message;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor, ReflectMessage};
-use rivet::domain::contracts::DataEvent;
-use rivet::domain::errors::ErrorKind;
-use rivet::domain::ports::DataSink;
-use rivet::domain::{RivetError, RivetResult, Value};
-use rivet::orchestrator::runtime::Runtime;
+use rivet::internal::domain::contracts::DataEvent;
+use rivet::internal::domain::errors::ErrorKind;
+use rivet::internal::domain::ports::DataSink;
+use rivet::internal::domain::{RivetError, RivetResult, Value};
+use rivet::internal::orchestrator::runtime::Runtime;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::pin::Pin;
@@ -1080,9 +1080,9 @@ async fn cli_live_input_local_and_remote() {
     let file = b._dir.path().join("app.rivet");
     let file = file.to_str().unwrap();
     let rt = b.rt.as_ref().unwrap().clone();
-    let server = rivet::orchestrator::setup_serve::start(
+    let server = rivet::internal::orchestrator::setup_serve::start(
         rt,
-        rivet::orchestrator::setup_serve::ServeOptions {
+        rivet::internal::orchestrator::setup_serve::ServeOptions {
             listen: Some("127.0.0.1:0".into()),
             ..Default::default()
         },

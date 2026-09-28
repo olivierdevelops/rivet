@@ -19,6 +19,7 @@ use crate::domain::mcp::{
 use crate::domain::modules::CatalogSnapshot;
 use crate::domain::policy::{AccessVerb, Capability, Decision};
 use crate::domain::policy::{EffectIntent, Permit, Policy};
+#[cfg(feature = "grpc")]
 use crate::domain::ports::GrpcDriver;
 use crate::domain::ports::McpClient;
 use crate::domain::ports::TraceStore;
@@ -39,12 +40,14 @@ use crate::features::connectors::invoke_mcp::invoke_mcp;
 use crate::features::datagrams::exchange_datagrams::exchange_datagrams;
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
+#[cfg(feature = "grpc")]
 use crate::features::grpc::invoke_rpc::{check_program as check_grpc_program, invoke_rpc};
 use crate::features::language::compile_program::compile_program;
 use crate::features::language::resolve_imports::resolve_imports;
 use crate::features::policy::authorize_effect::authorize_effect;
 use crate::features::policy::generate_policy::{PolicyGenerateInput, generate_policy};
 use crate::features::policy::load_policy::{load_policy, parse_policy};
+#[cfg(feature = "quic")]
 use crate::features::quic::exchange_quic::exchange_quic;
 use crate::features::registry::describe_operations::describe_operations;
 use crate::features::registry::inspect_outputs::{OutputQuery, inspect_outputs};
@@ -54,18 +57,23 @@ use crate::features::transports::run_process::confine_process;
 use crate::infra::capy_parser::CapyParser;
 use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
+#[cfg(feature = "grpc")]
 use crate::infra::grpc_adapter::{GrpcEffects, GrpcTransport, InvokeFn};
 use crate::infra::mcp_client::{McpHttpFn, McpPeer, McpSpawnFn};
+#[cfg(feature = "oauth")]
 use crate::infra::oauth_adapter::OAuthAdapter;
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_draft_writer::ExclusiveDraftWriter;
 use crate::infra::policy_file_reader::DiskPolicyReader;
+#[cfg(feature = "quic")]
 use crate::infra::quic_adapter::QuicAdapter;
 use crate::infra::registry::ProgramRegistry;
 use crate::infra::session_driver::SessionHost;
 use crate::infra::source_loader::DiskSourceLoader;
 use crate::infra::trace_store::{MemoryTraceStore, current_effect_scope};
 use crate::infra::udp_adapter::UdpAdapter;
+#[cfg(not(feature = "oauth"))]
+use crate::infra::unsupported_features::oauth::NoOAuth as OAuthAdapter;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -223,6 +231,28 @@ impl RuntimeBuilder {
         anchor(&mut policy, &bundle.root);
         Runtime::assemble(bundle, program, policy, self.discovery, self.session_limits)
     }
+}
+
+/// The Cargo features compiled into this build, in report order
+/// (`rivet.capabilities.build_features`, PROP-2026-0002 R11).
+pub fn build_features() -> Vec<&'static str> {
+    let mut on = Vec::new();
+    if cfg!(feature = "serve") {
+        on.push("serve");
+    }
+    if cfg!(feature = "grpc") {
+        on.push("grpc");
+    }
+    if cfg!(feature = "quic") {
+        on.push("quic");
+    }
+    if cfg!(feature = "oauth") {
+        on.push("oauth");
+    }
+    if cfg!(feature = "cli") {
+        on.push("cli");
+    }
+    on
 }
 
 /// Parse policy JSON with the same strict schema as policy.json (library hosts).
@@ -490,16 +520,23 @@ fn register_transports(interp: &mut Interpreter, root: &str) {
             Box::pin(async move { exchange_datagrams(plan, ev.as_ref(), drv.as_ref()).await })
         }))),
     );
-    let tls_files: Arc<dyn FileAccess> = Arc::new(ConfinedFiles::new(root));
-    interp.register_adapter(
-        "quic",
-        Arc::new(QuicAdapter::new(
-            Arc::new(|plan, ev, drv| {
-                Box::pin(async move { exchange_quic(plan, ev.as_ref(), drv.as_ref()).await })
-            }),
-            tls_files,
-        )),
-    );
+    // Without the `quic` feature no adapter is registered: bundles using
+    // `quic` were already refused at load (unsupported.feature).
+    #[cfg(feature = "quic")]
+    {
+        let tls_files: Arc<dyn FileAccess> = Arc::new(ConfinedFiles::new(root));
+        interp.register_adapter(
+            "quic",
+            Arc::new(QuicAdapter::new(
+                Arc::new(|plan, ev, drv| {
+                    Box::pin(async move { exchange_quic(plan, ev.as_ref(), drv.as_ref()).await })
+                }),
+                tls_files,
+            )),
+        );
+    }
+    #[cfg(not(feature = "quic"))]
+    let _ = root;
 }
 
 /// The dispatcher handed to the interpreter for nested `(request …)` calls.
@@ -568,6 +605,9 @@ impl Snapshot {
         let root = catalog.bundle.root.as_str();
         let policy = broker.policy().clone();
         let effects = analyze_program(&program);
+        // A bundle that uses an adapter compiled out of this build is refused
+        // here, before anything runs (unsupported.feature, R11).
+        crate::domain::capabilities::require_build_features(&program, &effects, &build_features())?;
         let mut index: SiteIndex = HashMap::new();
         for op in &effects.operations {
             for s in &op.sites {
@@ -640,17 +680,20 @@ impl Snapshot {
         super::file_streams::register(&mut interp, root);
         // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
         // call modes fail the load before anything dials.
-        let grpc = Arc::new(GrpcTransport::load(&program, root)?);
-        check_grpc_program(&program, grpc.catalog())?;
-        let grpc_credentials = Arc::clone(&credentials);
-        let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
-            let driver = Arc::clone(&grpc);
-            let creds = Arc::clone(&grpc_credentials);
-            Box::pin(async move {
-                invoke_rpc(plan, policy.as_ref(), driver.as_ref(), Some(creds.as_ref())).await
-            })
-        });
-        interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
+        #[cfg(feature = "grpc")]
+        {
+            let grpc = Arc::new(GrpcTransport::load(&program, root)?);
+            check_grpc_program(&program, grpc.catalog())?;
+            let grpc_credentials = Arc::clone(&credentials);
+            let invoke: Arc<InvokeFn> = Arc::new(move |plan, policy| {
+                let driver = Arc::clone(&grpc);
+                let creds = Arc::clone(&grpc_credentials);
+                Box::pin(async move {
+                    invoke_rpc(plan, policy.as_ref(), driver.as_ref(), Some(creds.as_ref())).await
+                })
+            });
+            interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
+        }
         let registry = Arc::new(
             ProgramRegistry::new(Arc::clone(&program))
                 .with_imports(import_entries)

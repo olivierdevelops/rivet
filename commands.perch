@@ -16,10 +16,10 @@ end
 # Commands resolve paths from this file, including when invoked with perch -f.
 
 command build
-    description "Build the release rivet binary"
+    description "Build the release rivet binary (the `cli` Cargo feature)"
     dir "${script_dir}"
     do
-        cargo build --locked --release --bin rivet
+        cargo build --locked --release --features cli --bin rivet
     end
 end
 
@@ -27,7 +27,7 @@ command build_debug
     description "Build the debug rivet binary"
     dir "${script_dir}"
     do
-        cargo build --locked --bin rivet
+        cargo build --locked --features cli --bin rivet
     end
 end
 
@@ -35,24 +35,24 @@ command install
     description "Build the release binary and install globally with bman add"
     dir "${script_dir}"
     do
-        cargo build --locked --release --bin rivet --target-dir "${script_dir}/target"
+        cargo build --locked --release --features cli --bin rivet --target-dir "${script_dir}/target"
         bman add "${script_dir}/target/release/rivet${exe_ext}"
     end
 end
 
 command check
-    description "Type-check all targets"
+    description "Type-check every workspace target with all Cargo features"
     dir "${script_dir}"
     do
-        cargo check --locked --all-targets
+        cargo check --locked --workspace --all-targets --all-features
     end
 end
 
 command tests
-    description "Run all Rust test targets"
+    description "Run every workspace test target with all Cargo features"
     dir "${script_dir}"
     do
-        cargo test --locked --all-targets
+        cargo test --locked --workspace --all-targets --all-features
     end
 end
 
@@ -60,7 +60,20 @@ command clippy
     description "Lint all targets and fail on warnings"
     dir "${script_dir}"
     do
-        cargo clippy --locked --all-targets -- -D warnings
+        cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+    end
+end
+
+command features
+    description "Build the library with no default features and with each Cargo feature alone (T-10)"
+    dir "${script_dir}"
+    do
+        cargo build --locked -p rivet-runtime --no-default-features
+        cargo build --locked -p rivet-runtime --no-default-features --features serve
+        cargo build --locked -p rivet-runtime --no-default-features --features grpc
+        cargo build --locked -p rivet-runtime --no-default-features --features quic
+        cargo build --locked -p rivet-runtime --no-default-features --features oauth
+        cargo build --locked -p rivet-runtime --no-default-features --features cli
     end
 end
 
@@ -106,6 +119,7 @@ command gates
         check
         clippy
         tests
+        features
         docs_check
         architecture
     end
@@ -115,7 +129,7 @@ command help_cli
     description "Build and show rivet --help"
     dir "${script_dir}"
     do
-        cargo run --locked --bin rivet -- --help
+        cargo run --locked --features cli --bin rivet -- --help
     end
 end
 
@@ -159,6 +173,7 @@ command main
         print "  build / build_debug   Build release / debug binary"
         print "  install               Build and install rivet globally with bman"
         print "  check / tests / clippy Type-check, test or lint all targets"
+        print "  features              Build each Cargo feature alone (feature matrix)"
         print "  fmt / fmt_check       Format sources / check formatting"
         print "  docs_check            Validate documentation"
         print "  architecture          Validate VHCO architecture, sync and guarantees"

@@ -5,7 +5,7 @@
 #[path = "transport_support/mod.rs"]
 mod support;
 
-use rivet::domain::Value;
+use rivet::internal::domain::Value;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -133,7 +133,7 @@ async fn disconnect_mid_stream() {
         .request("cut.read", Value::Null, Some(sink.clone()))
         .await
         .unwrap_err();
-    assert_eq!(e.kind, rivet::domain::ErrorKind::Connection);
+    assert_eq!(e.kind, rivet::internal::domain::ErrorKind::Connection);
     assert_eq!(*sink.items.lock().unwrap(), vec![Value::text("ab")]);
 }
 

@@ -4306,6 +4306,13 @@
         ]
       },
       {
+        "name": "unsupported_features",
+        "satisfies": [
+          "OAuthSessionDriver",
+          "CredentialProvider"
+        ]
+      },
+      {
         "name": "wire_codec"
       },
       {
@@ -7011,6 +7018,14 @@
         {
           "name": "sandbox_reason",
           "type": "string"
+        },
+        {
+          "name": "build_features",
+          "type": "string[]"
+        },
+        {
+          "name": "abi_version",
+          "type": "int"
         }
       ]
     },

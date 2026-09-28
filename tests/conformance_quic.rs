@@ -5,8 +5,8 @@
 //! docs/demos/09-quic bundle against the fixture.
 
 use quinn::crypto::rustls::QuicServerConfig;
-use rivet::domain::{ErrorKind, RivetError, Value};
-use rivet::orchestrator::runtime::{Runtime, policy_from_json};
+use rivet::internal::domain::{ErrorKind, RivetError, Value};
+use rivet::internal::orchestrator::runtime::{Runtime, policy_from_json};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use std::net::SocketAddr;
 use std::sync::Arc;

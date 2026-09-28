@@ -20,7 +20,7 @@ give the same bytes and SHA-256.
     python3 editors/vscode/package_vsix.py [--out DIR]     # default DIR: <repo>/dist
     code --install-extension dist/rivet-0.1.0.vsix
 
-The package.json version must equal the Cargo.toml package version (checked
+The package.json version must equal the Cargo.toml workspace (else package) version (checked
 here and by `cargo test --test conformance_highlight`).
 Standard library only.
 """
@@ -50,7 +50,11 @@ CONTENT_TYPES = {
 
 def cargo_version() -> str:
     text = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
-    m = re.search(r'^\[package\][^\[]*?^version\s*=\s*"([^"]+)"', text, re.S | re.M)
+    # The workspace version (PLAN-2026-0002 TASK-030) is the one version source;
+    # a manifest without a workspace keeps [package].version.
+    m = re.search(r'^\[workspace\.package\][^\[]*?^version\s*=\s*"([^"]+)"', text, re.S | re.M) or re.search(
+        r'^\[package\][^\[]*?^version\s*=\s*"([^"]+)"', text, re.S | re.M
+    )
     if not m:
         raise SystemExit("package_vsix: no [package] version in Cargo.toml")
     return m.group(1)

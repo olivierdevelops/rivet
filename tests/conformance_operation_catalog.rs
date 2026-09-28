@@ -17,12 +17,12 @@ mod serve_support;
 #[path = "p3_support/mod.rs"]
 mod support;
 
-use rivet::domain::ErrorKind;
-use rivet::domain::Value;
-use rivet::domain::source::{SourceBundle, SourceFile};
-use rivet::features::language::compile_program::compile_program;
-use rivet::infra::capy_parser::CapyParser;
-use rivet::orchestrator::setup_serve::{ServeOptions, start};
+use rivet::internal::domain::ErrorKind;
+use rivet::internal::domain::Value;
+use rivet::internal::domain::source::{SourceBundle, SourceFile};
+use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::infra::capy_parser::CapyParser;
+use rivet::internal::orchestrator::setup_serve::{ServeOptions, start};
 use serde_json::{Value as Json, json};
 use support::*;
 
@@ -392,10 +392,10 @@ async fn private_helper_is_hidden_but_callable_in_bundle() {
         .unwrap_err();
     assert_eq!(e.kind, ErrorKind::NotFound, "no generic-request bypass");
     let e = rt
-        .open_session(rivet::domain::sessions::SessionOpenInput {
+        .open_session(rivet::internal::domain::sessions::SessionOpenInput {
             id: helper.into(),
             params: params.clone(),
-            principal: rivet::domain::contracts::Principal::local(),
+            principal: rivet::internal::domain::contracts::Principal::local(),
             connection_owned: false,
             deadline_ms: None,
             trace: None,

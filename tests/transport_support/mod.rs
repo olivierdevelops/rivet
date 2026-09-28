@@ -6,10 +6,10 @@
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use rivet::Runtime;
-use rivet::domain::contracts::DataEvent;
-use rivet::domain::ports::DataSink;
-use rivet::domain::{RivetResult, Value};
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::internal::domain::contracts::DataEvent;
+use rivet::internal::domain::ports::DataSink;
+use rivet::internal::domain::{RivetResult, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

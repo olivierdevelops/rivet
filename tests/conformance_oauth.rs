@@ -11,9 +11,9 @@ mod oauth_support;
 
 use oauth_support::{CLIENT_SECRET, Fake};
 use rivet::Runtime;
-use rivet::domain::contracts::Principal;
-use rivet::domain::{RivetError, Value};
-use rivet::orchestrator::runtime::policy_from_json;
+use rivet::internal::domain::contracts::Principal;
+use rivet::internal::domain::{RivetError, Value};
+use rivet::internal::orchestrator::runtime::policy_from_json;
 use std::sync::Once;
 use std::time::{Duration, Instant};
 

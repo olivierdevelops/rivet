@@ -3,8 +3,9 @@
 
 Checks that the one canonical version in Cargo.toml is what every surface reports:
 
-    Cargo.toml [package].version
-      ├── rivet --version                    "rivet X.Y.Z"
+    Cargo.toml [workspace.package].version   (PLAN-2026-0002 TASK-034)
+      ├── rivet-runtime and ffi/ (rivet-ffi) inherit it: version.workspace = true
+      ├── rivet --version                    "rivet X.Y.Z"  (binary built with --features cli)
       ├── MCP initialize serverInfo.version  (serve --stdio)
       ├── rivet.capabilities result.version
       └── with --tag: HEAD is exactly tag vX.Y.Z and the tree is clean
@@ -22,10 +23,27 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def section(text, name):
+    """The body of one TOML table ([name]) up to the next table header."""
+    if f'[{name}]' not in text:
+        return None
+    return text.split(f'[{name}]', 1)[1].split('\n[', 1)[0]
+
+
 def cargo_version():
+    """[workspace.package].version (0.2.0 layout), else [package].version (0.1.0)."""
     text = open(os.path.join(ROOT, 'Cargo.toml')).read()
-    package = text.split('[package]', 1)[1].split('\n[', 1)[0]
-    return re.search(r'^version\s*=\s*"([^"]+)"', package, re.M).group(1)
+    table = section(text, 'workspace.package') or section(text, 'package')
+    return re.search(r'^version\s*=\s*"([^"]+)"', table, re.M).group(1)
+
+
+def inherited(manifest):
+    """True when a member manifest takes the workspace version."""
+    path = os.path.join(ROOT, manifest)
+    if not os.path.exists(path):
+        return None
+    package = section(open(path).read(), 'package') or ''
+    return re.search(r'^version\.workspace\s*=\s*true', package, re.M) is not None
 
 
 def run(cmd, **kw):
@@ -45,6 +63,18 @@ def main():
             problems.append(label)
 
     print(f'    Cargo.toml version                 {want}')
+    for manifest in ('Cargo.toml', 'ffi/Cargo.toml'):
+        got = inherited(manifest)
+        if got is None:
+            continue
+        print(f'{"ok " if got else "BAD"} {manifest + " version.workspace":<34} {"yes" if got else "no"}')
+        if not got:
+            problems.append(manifest)
+    if not os.path.exists(binary):
+        print(f'BAD {"rivet binary":<34} missing: {binary} (cargo build --release --features cli)')
+        problems.append('rivet binary')
+        print('version sync: FAILED (' + ', '.join(problems) + ')')
+        return 1
     check('rivet --version', run([binary, '--version']).stdout.strip().removeprefix('rivet '))
 
     with tempfile.TemporaryDirectory() as d:

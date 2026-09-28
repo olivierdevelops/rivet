@@ -14,7 +14,7 @@
 mod support;
 
 use rivet::Runtime;
-use rivet::domain::{ErrorKind, Value};
+use rivet::internal::domain::{ErrorKind, Value};
 use std::time::{Duration, Instant};
 use support::*;
 

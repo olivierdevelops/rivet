@@ -303,7 +303,7 @@ impl Scope {
             .ok_or_else(|| {
                 RivetError::not_found("not_found.operation", format!("no operation `{id}`"))
             })?;
-        let receives = super::remote_cli::receives_of(&entry)?;
+        let receives = receives_of(&entry)?;
         let req = self.rt.new_request(id, params, Principal::local());
         let request_id = req.request_id.clone();
         let (tx, rx) = tokio::sync::mpsc::channel::<Envelope>(STREAM_QUEUE);
@@ -669,4 +669,19 @@ pub mod highlight {
             Err((t, e)) => Err((render(source, &t, format), e)),
         }
     }
+}
+
+/// The operation must declare `receives` to accept live input.
+pub fn receives_of(
+    entry: &crate::domain::contracts::RegistryEntry,
+) -> RivetResult<crate::domain::outputs::ValueSpec> {
+    entry.receives.clone().ok_or_else(|| {
+        RivetError::validation(
+            "validation.no_input",
+            format!(
+                "`{}` does not declare `receives`; drop --input-jsonl",
+                entry.id
+            ),
+        )
+    })
 }

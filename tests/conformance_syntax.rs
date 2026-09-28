@@ -17,8 +17,8 @@
 #[path = "p3_support/mod.rs"]
 mod support;
 
-use rivet::domain::ir::{Expr, Rhs, Stmt};
-use rivet::domain::{ErrorKind, Value};
+use rivet::internal::domain::ir::{Expr, Rhs, Stmt};
+use rivet::internal::domain::{ErrorKind, Value};
 use support::*;
 
 /// Wrap body lines in `operation t.run` / `output json` (4-space indented):
@@ -28,14 +28,14 @@ fn op(body: &str) -> String {
     format!("operation t.run\n    output json\n{indented}end\n")
 }
 
-fn err(text: &str) -> rivet::domain::RivetError {
+fn err(text: &str) -> rivet::internal::domain::RivetError {
     match compile(text) {
         Ok(_) => panic!("expected a compile error for:\n{text}"),
         Err(e) => e,
     }
 }
 
-async fn run(src: &str, params: Value) -> Result<Value, rivet::domain::RivetError> {
+async fn run(src: &str, params: Value) -> Result<Value, rivet::internal::domain::RivetError> {
     let rt = runtime(src, ".", r#"{"version":1}"#);
     rt.request("t.run", params, None).await.map(|c| c.result)
 }

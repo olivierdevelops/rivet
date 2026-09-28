@@ -5,9 +5,11 @@
 
 mod support;
 
-use rivet::domain::contracts::Principal;
-use rivet::domain::sessions::{SessionOpenInput, SessionReadInput, SessionRef, SessionSendInput};
-use rivet::domain::{ErrorKind, Value};
+use rivet::internal::domain::contracts::Principal;
+use rivet::internal::domain::sessions::{
+    SessionOpenInput, SessionReadInput, SessionRef, SessionSendInput,
+};
+use rivet::internal::domain::{ErrorKind, Value};
 use serde_json::json;
 use support::*;
 
@@ -462,13 +464,13 @@ async fn idle_sessions_expire_without_a_session_call() {
     let rt = rivet::Runtime::builder()
         .source("app.rivet", &catalog(), ".")
         .policy(
-            rivet::orchestrator::runtime::policy_from_json(
+            rivet::internal::orchestrator::runtime::policy_from_json(
                 br#"{"version":1,"limits":{"max_concurrent_requests":1}}"#,
                 ".",
             )
             .unwrap(),
         )
-        .session_limits(rivet::domain::sessions::SessionLimits {
+        .session_limits(rivet::internal::domain::sessions::SessionLimits {
             idle_ms: 200,
             retention_ms: 5_000,
             ..Default::default()

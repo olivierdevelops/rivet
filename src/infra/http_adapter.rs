@@ -22,8 +22,11 @@ use super::effect_args::{
     apply_tls, bad, budget_ms, duration, int, int_list, key, options, origin, read_file, text, word,
 };
 use super::execution_driver::{EffectAdapter, EffectCtx, EvalArg, EvaluatedForm, ResourceHandle};
+#[cfg(feature = "quic")]
 use super::h3_client;
 use super::net_tls::{client_config, connect_err, handshake_err, resolve, server_name};
+#[cfg(not(feature = "quic"))]
+use super::unsupported_features::h3_client;
 use crate::domain::auth::{AuthContext, CredentialInput, CredentialLease, origin_of};
 use crate::domain::ir::EffectForm;
 use crate::domain::policy::{AccessVerb, Capability, EffectTarget};
