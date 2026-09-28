@@ -522,3 +522,48 @@ mod tests {
         );
     }
 }
+
+// vhco:infra file_access satisfies FileProbe
+// vhco:file stat <bundle root>/** -- `io --check-files` metadata probes of needed paths (never opened or read)
+impl crate::domain::ports::FileProbe for ConfinedFiles {
+    fn stat(
+        &self,
+        input: &crate::domain::io_manifest::FileProbeInput,
+    ) -> crate::domain::io_manifest::FileProbeResult {
+        use crate::domain::io_manifest::{FileProbeResult, FileStatus};
+        let status = match (rel(&input.path), self.dir()) {
+            (Ok(p), Ok(dir)) => match dir.metadata(&p) {
+                Ok(meta) => {
+                    if readable(&meta) {
+                        FileStatus::Present
+                    } else {
+                        FileStatus::Unreadable
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => FileStatus::Missing,
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    FileStatus::Unreadable
+                }
+                Err(_) => FileStatus::Missing,
+            },
+            (Err(_), _) => FileStatus::NotPermitted,
+            (_, Err(_)) => FileStatus::Missing,
+        };
+        FileProbeResult {
+            path: input.path.clone(),
+            status,
+        }
+    }
+}
+
+/// Readability from permission bits only (the file is never opened).
+#[cfg(unix)]
+fn readable(meta: &cap_std::fs::Metadata) -> bool {
+    use cap_std::fs::PermissionsExt;
+    meta.permissions().mode() & 0o444 != 0
+}
+
+#[cfg(not(unix))]
+fn readable(_meta: &cap_std::fs::Metadata) -> bool {
+    true
+}

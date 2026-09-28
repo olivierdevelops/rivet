@@ -7,9 +7,14 @@ use crate::domain::contracts::{
 };
 use crate::domain::errors::ErrorKind;
 use crate::domain::files::FileOperation;
+use crate::domain::io_manifest::{
+    IoQuery, IoReport, PolicyDraft, TraceEvent, TraceQuery, TraceResult,
+};
 use crate::domain::ir::CompiledProgram;
+use crate::domain::policy::{AccessVerb, Capability, Decision};
 use crate::domain::policy::{EffectIntent, Permit, Policy};
 use crate::domain::ports::GrpcDriver;
+use crate::domain::ports::TraceStore;
 use crate::domain::ports::{
     DataSink, Dispatcher, FileAccess, PolicyEvaluator, PolicyLocator, Registry, SessionDriver,
     SourceLoader,
@@ -17,12 +22,16 @@ use crate::domain::ports::{
 use crate::domain::serve::OperationAccess;
 use crate::domain::source::SourceBundle;
 use crate::domain::{RivetError, RivetResult, Value};
+use crate::features::audit::effect_sites::analyze_program;
+use crate::features::audit::inspect_effects::{AuditPorts, inspect_effects};
+use crate::features::audit::read_trace::read_trace;
 use crate::features::datagrams::exchange_datagrams::exchange_datagrams;
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
 use crate::features::grpc::invoke_rpc::{check_program as check_grpc_program, invoke_rpc};
 use crate::features::language::compile_program::compile_program;
 use crate::features::policy::authorize_effect::authorize_effect;
+use crate::features::policy::generate_policy::{PolicyGenerateInput, generate_policy};
 use crate::features::policy::load_policy::{load_policy, parse_policy};
 use crate::features::quic::exchange_quic::exchange_quic;
 use crate::features::registry::describe_operations::describe_operations;
@@ -33,14 +42,18 @@ use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
 use crate::infra::grpc_adapter::{GrpcEffects, GrpcTransport, InvokeFn};
 use crate::infra::policy_broker::PolicyBroker;
+use crate::infra::policy_draft_writer::ExclusiveDraftWriter;
 use crate::infra::policy_file_reader::DiskPolicyReader;
 use crate::infra::quic_adapter::QuicAdapter;
 use crate::infra::registry::ProgramRegistry;
 use crate::infra::session_driver::SessionHost;
 use crate::infra::source_loader::DiskSourceLoader;
+use crate::infra::trace_store::{MemoryTraceStore, current_effect_scope};
 use crate::infra::udp_adapter::UdpAdapter;
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Semaphore;
 
@@ -142,6 +155,7 @@ struct Inner {
     registry: Arc<ProgramRegistry>,
     driver: Arc<Interpreter>,
     broker: Arc<PolicyBroker>,
+    trace: Arc<MemoryTraceStore>,
     concurrency: Arc<Semaphore>,
     counter: AtomicU64,
     /// Live sessions (polling, WebSocket refs, `rivet.sessions.*`, library).
@@ -157,8 +171,109 @@ pub struct Runtime {
 /// FileAccess seen by the interpreter: every call runs the `files.apply_file_operation`
 /// use case (authorization per intent) before the confined adapter touches disk.
 struct PolicedFiles {
-    evaluator: Arc<PolicyBroker>,
+    evaluator: Arc<dyn PolicyEvaluator>,
     raw: ConfinedFiles,
+}
+
+/// Static evaluator for `io --check-policy` / `--check-files`: the same
+/// decision function over the effective policy, without the decision log or trace.
+struct StaticEvaluator {
+    policy: Policy,
+    root: String,
+}
+
+impl PolicyEvaluator for StaticEvaluator {
+    fn evaluate(&self, intent: &EffectIntent) -> Permit {
+        authorize_effect(intent, &self.policy, &self.root)
+    }
+
+    fn policy(&self) -> &Policy {
+        &self.policy
+    }
+}
+
+type SiteIndex = HashMap<(String, u32, Capability, AccessVerb), Vec<(String, String)>>;
+
+/// The evaluator every adapter sees: the broker's decision plus one trace event
+/// per attempt, attributed to request + manifest effect_id through the
+/// interpreter's effect scope.
+struct TracedEvaluator {
+    broker: Arc<PolicyBroker>,
+    trace: Arc<MemoryTraceStore>,
+    index: SiteIndex,
+    attempts: Mutex<HashMap<(String, String), u32>>,
+}
+
+/// Drop query strings, fragments and URL userinfo from traced targets.
+fn redact_target(t: &str) -> String {
+    let t = t.split(['?', '#']).next().unwrap_or(t);
+    match t.split_once("://") {
+        Some((scheme, rest)) => {
+            let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+            let host = authority.rsplit('@').next().unwrap_or(authority);
+            format!("{scheme}://{host}{path}")
+        }
+        None => t.to_string(),
+    }
+}
+
+impl PolicyEvaluator for TracedEvaluator {
+    fn evaluate(&self, intent: &EffectIntent) -> Permit {
+        let permit = self.broker.evaluate(intent);
+        if let Some(scope) = current_effect_scope() {
+            let target = intent.target.as_str();
+            let effect_id = intent.effect_id.clone().or_else(|| {
+                let cands = self.index.get(&(
+                    scope.operation_id.clone(),
+                    scope.line,
+                    intent.capability,
+                    intent.verb,
+                ))?;
+                cands
+                    .iter()
+                    .find(|(_, tpl)| tpl == target)
+                    .or(cands.first())
+                    .map(|(id, _)| id.clone())
+            });
+            let attempt = {
+                let key = (
+                    scope.request_id.clone(),
+                    effect_id.clone().unwrap_or_default(),
+                );
+                let mut g = self.attempts.lock().unwrap_or_else(|e| e.into_inner());
+                if g.len() > 50_000 {
+                    g.clear();
+                }
+                let n = g.entry(key).or_default();
+                *n += 1;
+                *n
+            };
+            self.trace.record(TraceEvent {
+                request_id: scope.request_id,
+                trace_id: scope.trace_id,
+                node_id: None,
+                attempt,
+                effect_id,
+                operation_id: scope.operation_id,
+                phase: "decision".into(),
+                capability: intent.capability.as_str().into(),
+                access: intent.verb.as_str().into(),
+                target: redact_target(target),
+                decision: match permit.decision {
+                    Decision::Allowed => "allowed".into(),
+                    Decision::Denied => "denied".into(),
+                },
+                policy_hash: self.broker.policy().sha256.clone().unwrap_or_default(),
+                source: intent.span.clone(),
+                outcome: serde_json::json!({"rule": permit.rule}),
+            });
+        }
+        permit
+    }
+
+    fn policy(&self) -> &Policy {
+        self.broker.policy()
+    }
 }
 
 #[async_trait]
@@ -237,11 +352,29 @@ impl Runtime {
                 authorize_effect(i, p, root)
             });
         let broker = Arc::new(PolicyBroker::new(policy.clone(), &bundle.root, decide));
+        let effects = analyze_program(&program);
+        let mut index: SiteIndex = HashMap::new();
+        for op in &effects.operations {
+            for s in &op.sites {
+                for v in &s.access {
+                    index
+                        .entry((op.operation_id.clone(), s.statement_line, s.capability, *v))
+                        .or_default()
+                        .push((s.effect_id.clone(), s.target.template.clone()));
+                }
+            }
+        }
+        let trace = Arc::new(MemoryTraceStore::default());
+        let evaluator: Arc<dyn PolicyEvaluator> = Arc::new(TracedEvaluator {
+            broker: Arc::clone(&broker),
+            trace: Arc::clone(&trace),
+            index,
+            attempts: Mutex::new(HashMap::new()),
+        });
         let files: Arc<dyn FileAccess> = Arc::new(PolicedFiles {
-            evaluator: Arc::clone(&broker),
+            evaluator: Arc::clone(&evaluator),
             raw: ConfinedFiles::new(&bundle.root),
         });
-        let evaluator: Arc<dyn PolicyEvaluator> = broker.clone();
         let mut interp = Interpreter::new(Arc::clone(&program), files, evaluator);
         register_transports(&mut interp, &bundle.root);
         // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
@@ -254,7 +387,7 @@ impl Runtime {
         });
         interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
         let driver = Arc::new(interp);
-        let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)));
+        let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)).with_effects(effects));
         let catalog_version = program.source_hash.clone();
         let inner = Arc::new_cyclic(|weak: &std::sync::Weak<Inner>| {
             let w = weak.clone();
@@ -271,6 +404,7 @@ impl Runtime {
                 registry,
                 driver,
                 broker,
+                trace,
                 concurrency: Arc::new(Semaphore::new(
                     policy.limits.max_concurrent_requests as usize,
                 )),
@@ -458,6 +592,106 @@ impl Runtime {
         self.inner.driver.detach_input(&request_id);
         out
     }
+
+    fn static_evaluator(&self) -> StaticEvaluator {
+        StaticEvaluator {
+            policy: self.policy().clone(),
+            root: self.inner.bundle.root.clone(),
+        }
+    }
+
+    /// The I/O manifest (`rivet io`, `rivet.io`, `rt.io`): synchronous, reads only
+    /// the compiled catalog and loaded policy; `check_files` probes needed paths
+    /// through the broker, `trace_request_id` joins this host's trace store.
+    pub fn io(&self, query: &IoQuery) -> RivetResult<IoReport> {
+        let evaluator = self.static_evaluator();
+        let probe = ConfinedFiles::new(&self.inner.bundle.root);
+        inspect_effects(
+            query,
+            &AuditPorts {
+                registry: self.inner.registry.as_ref(),
+                policy: &evaluator,
+                trace: Some(self.inner.trace.as_ref()),
+                probe: Some(&probe),
+            },
+        )
+    }
+
+    /// Least-privilege draft for `ids` (empty = every public operation). Never writes.
+    pub fn generate_policy(&self, ids: &[&str]) -> RivetResult<PolicyDraft> {
+        let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+        self.generate_policy_draft(&ids, false, None)
+    }
+
+    /// `rivet policy generate [ID ...|--all] [--output PATH]`.
+    pub fn generate_policy_draft(
+        &self,
+        ids: &[String],
+        all: bool,
+        output: Option<&str>,
+    ) -> RivetResult<PolicyDraft> {
+        let report = self.io(&IoQuery {
+            ids: ids.to_vec(),
+            all,
+            format: "json".into(),
+            ..IoQuery::default()
+        })?;
+        let rebase = output
+            .map(|o| rebase_prefix(o, &self.inner.bundle.root))
+            .unwrap_or_default();
+        generate_policy(
+            &PolicyGenerateInput {
+                manifest: report.manifest,
+                output: output.map(str::to_string),
+                rebase,
+            },
+            &ExclusiveDraftWriter,
+        )
+    }
+
+    /// `rivet trace show REQ`: this host's recorded broker decisions for a request.
+    pub fn trace(&self, request_id: &str) -> RivetResult<TraceResult> {
+        read_trace(&TraceQuery::new(request_id), self.inner.trace.as_ref())
+    }
+
+    /// The raw trace store (for hosts that export or inspect it).
+    pub fn trace_store(&self) -> Arc<dyn TraceStore> {
+        self.inner.trace.clone()
+    }
+}
+
+/// Relative path from the draft file's directory back to the bundle root.
+fn rebase_prefix(output: &str, root: &str) -> String {
+    let abs = |p: &std::path::Path| {
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(p)
+        }
+    };
+    let norm = |p: std::path::PathBuf| {
+        let mut out: Vec<String> = Vec::new();
+        for c in p.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    out.pop();
+                }
+                std::path::Component::Normal(s) => out.push(s.to_string_lossy().to_string()),
+                _ => {}
+            }
+        }
+        out
+    };
+    let out_dir = std::path::Path::new(output)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let a = norm(abs(out_dir));
+    let b = norm(abs(std::path::Path::new(root)));
+    let common = a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count();
+    let mut parts: Vec<String> = vec!["..".to_string(); a.len() - common];
+    parts.extend(b[common..].iter().cloned());
+    parts.join("/")
 }
 
 #[cfg(test)]

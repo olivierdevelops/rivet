@@ -1,22 +1,33 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy
 // vhco:trigger cli execution/request_operation = rivet request ID --params JSON
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
+// vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
+// vhco:trigger cli audit/read_trace = rivet trace show REQ
+// vhco:trigger cli policy/generate_policy = rivet policy generate [ID ...|--all] [--output PATH]
+// vhco:api cli audit/inspect_effects rivet io [ID ...] [flags] -- the I/O manifest; stdout in the requested format, summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)
+// vhco:request { "ids": "string[]", "all": "bool", "by": "operation|target|capability", "kind": "string?", "access": "string[]", "format": "table|json|markdown|csv", "check_policy": "bool", "strict": "bool", "needs": "bool", "check_files": "bool", "trace": "string?" }
+// vhco:response { "bundle": "FileDigest", "policy": "FileDigest?", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]", "needs": "OperationNeeds[]", "bootstrap": "EffectSite[]" }
+// vhco:api cli policy/generate_policy rivet policy generate [ID ...|--all] [--output PATH] -- least-privilege policy.json draft on stdout (or a new file); review items on stderr; exit 7 when review items exist, 4 conflict.exists
+// vhco:request { "ids": "string[]", "all": "bool", "output": "string?" }
+// vhco:response { "version": "1", "grants": "Grant[]", "network": "{deny_private_ranges: true}" }
 // vhco:api cli execution/request_operation rivet request ID --params JSON -- invoke one operation; stdout is the Completion JSON, errors are an ErrorEnvelope on stderr with the registry exit code
 // vhco:request { "id": "string — operation ID", "params": "JSON object" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
 
 use crate::domain::contracts::error_envelope;
+use crate::domain::io_manifest::IoQuery;
 use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
 use crate::features::language::lower::strict_doc_findings;
 use crate::io::cli::{
-    Cli, Command, PolicyCommand, render_describe, render_list, render_outputs, render_policy,
+    Cli, Command, PolicyCommand, TraceCommand, render_describe, render_list, render_outputs,
+    render_policy, render_policy_review,
 };
 use crate::orchestrator::runtime::{Runtime, RuntimeBuilder};
 use clap::Parser;
@@ -230,17 +241,37 @@ async fn run(cli: Cli) -> i32 {
             0
         }
         Command::Policy {
-            command: PolicyCommand::Explain { .. },
+            command: PolicyCommand::Explain { id, .. },
         } => {
+            let report = match id {
+                Some(id) => match runtime.io(&IoQuery {
+                    ids: vec![id.clone()],
+                    all: true,
+                    check_policy: true,
+                    format: if cli.json {
+                        "json".into()
+                    } else {
+                        "table".into()
+                    },
+                    ..IoQuery::default()
+                }) {
+                    Ok(r) => Some(r),
+                    Err(e) => return fail(&e, None, cli.json),
+                },
+                None => None,
+            };
             if cli.json {
                 let p = runtime.policy();
-                let _ = writeln!(
-                    stdout,
-                    "{}",
-                    serde_json::json!({"present": p.present, "file": p.file, "sha256": p.sha256, "grants": p.grants.len(), "deny": p.deny.len()})
-                );
+                let mut v = serde_json::json!({"present": p.present, "file": p.file, "sha256": p.sha256, "grants": p.grants.len(), "deny": p.deny.len()});
+                if let Some(r) = &report {
+                    v["sites"] = r.manifest.to_json()["sites"].clone();
+                }
+                let _ = writeln!(stdout, "{v}");
             } else {
                 let _ = write!(stdout, "{}", render_policy(runtime.policy()));
+                if let Some(r) = &report {
+                    let _ = write!(stdout, "\n{}", r.rendered);
+                }
             }
             0
         }
@@ -250,10 +281,39 @@ async fn run(cli: Cli) -> i32 {
                 Err(e) => fail(&e, None, true),
             }
         }
-        Command::Io(_)
-        | Command::Policy {
-            command: PolicyCommand::Generate { .. },
-        } => fail(
+        Command::Io(args) => match runtime.io(&args.to_query(cli.json)) {
+            Ok(report) => {
+                let _ = write!(stdout, "{}", report.rendered);
+                if !report.diagnostics.is_empty() {
+                    eprint!("{}", report.diagnostics);
+                }
+                report.exit_code as i32
+            }
+            Err(e) => fail(&e, None, cli.json),
+        },
+        Command::Policy {
+            command: PolicyCommand::Generate { ids, all, output },
+        } => match runtime.generate_policy_draft(ids, *all, output.as_deref()) {
+            Ok(draft) => {
+                if output.is_none() {
+                    let _ = write!(stdout, "{}", draft.render());
+                }
+                eprint!("{}", render_policy_review(&draft));
+                draft.exit_code as i32
+            }
+            Err(e) => fail(&e, None, true),
+        },
+        Command::Trace {
+            command: TraceCommand::Show { request_id },
+        } => match runtime.trace(request_id) {
+            Ok(t) => {
+                let _ = writeln!(stdout, "{}", t.to_json());
+                0
+            }
+            Err(e) => fail(&e, None, true),
+        },
+        #[allow(unreachable_patterns)]
+        _ => fail(
             &RivetError::unsupported(
                 "unsupported.command",
                 "this command is not available in this development build yet",

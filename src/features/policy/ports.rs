@@ -4,3 +4,5 @@
 pub use crate::domain::ports::PolicyFileReader;
 // vhco:port PolicyEvaluator { evaluate(EffectIntent) -> Permit }
 pub use crate::domain::ports::PolicyEvaluator;
+// vhco:port PolicyDraftWriter { write_new(input: PolicyDraftFile) -> PolicyDraftReceipt }
+pub use crate::domain::ports::PolicyDraftWriter;

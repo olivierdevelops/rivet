@@ -2,6 +2,7 @@
 
 use crate::domain::RivetResult;
 use crate::domain::contracts::{Catalog, CatalogQuery, RegistryEntry};
+use crate::domain::io_manifest::EffectCatalog;
 use crate::domain::ir::{CompiledProgram, Operation};
 use crate::domain::ports::Registry;
 use std::sync::Arc;
@@ -10,12 +11,23 @@ use std::sync::Arc;
 pub struct ProgramRegistry {
     program: Arc<CompiledProgram>,
     entries: Vec<RegistryEntry>,
+    effects: Arc<EffectCatalog>,
 }
 
 impl ProgramRegistry {
     pub fn new(program: Arc<CompiledProgram>) -> ProgramRegistry {
         let entries = program.operations.iter().map(entry_of).collect();
-        ProgramRegistry { program, entries }
+        ProgramRegistry {
+            program,
+            entries,
+            effects: Arc::new(EffectCatalog::default()),
+        }
+    }
+
+    /// Attach the effect sites computed once from the same program.
+    pub fn with_effects(mut self, effects: EffectCatalog) -> ProgramRegistry {
+        self.effects = Arc::new(effects);
+        self
     }
 }
 
@@ -49,5 +61,9 @@ impl Registry for ProgramRegistry {
 
     fn program(&self) -> Arc<CompiledProgram> {
         Arc::clone(&self.program)
+    }
+
+    fn effect_sites(&self) -> Arc<EffectCatalog> {
+        Arc::clone(&self.effects)
     }
 }

@@ -2,6 +2,7 @@
 //! the shared dispatcher; `orchestrator::setup_cli` connects the two.
 
 use crate::domain::contracts::{Catalog, OutputReport, RegistryEntry};
+use crate::domain::io_manifest::{IoQuery, PolicyDraft};
 use crate::domain::outputs::{FieldSpec, ValueSpec};
 use crate::domain::policy::Policy;
 use clap::{Args, Parser, Subcommand};
@@ -59,6 +60,17 @@ pub enum Command {
     },
     /// Serve every surface (REST, SSE, polling, WebSocket, MCP) on one listener.
     Serve(ServeArgs),
+    /// Request traces recorded by this host.
+    Trace {
+        #[command(subcommand)]
+        command: TraceCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TraceCommand {
+    /// Show one request's broker decisions and attempts (each with its effect_id).
+    Show { request_id: String },
 }
 
 #[derive(Args, Debug)]
@@ -80,6 +92,7 @@ pub struct IoArgs {
     pub ids: Vec<String>,
     #[arg(long)]
     pub all: bool,
+    /// Follow literal (request "id" …) calls (the default; accepted for clarity).
     #[arg(long)]
     pub transitive: bool,
     #[arg(long)]
@@ -345,5 +358,61 @@ pub fn render_policy(p: &Policy) -> String {
             ));
         }
     }
+    out
+}
+
+impl IoArgs {
+    /// The shared manifest query; the global `--json` is an alias for `--format json`.
+    pub fn to_query(&self, json: bool) -> IoQuery {
+        IoQuery {
+            ids: self.ids.clone(),
+            all: self.all,
+            transitive: true,
+            strict: self.strict,
+            include_bootstrap: self.include_bootstrap,
+            by: self.by.clone(),
+            kind: self.kind.clone(),
+            access: self
+                .access
+                .as_deref()
+                .map(|a| a.split(',').map(|s| s.trim().to_string()).collect())
+                .unwrap_or_default(),
+            format: if json {
+                "json".into()
+            } else {
+                self.format.clone()
+            },
+            check_policy: self.check_policy,
+            needs: self.needs,
+            check_files: self.check_files,
+            trace_request_id: self.trace.clone(),
+        }
+    }
+}
+
+/// stderr lines of `policy generate`: one per review site plus a summary.
+pub fn render_policy_review(d: &PolicyDraft) -> String {
+    let mut out = String::new();
+    for s in &d.review {
+        let why = match s.knowledge.as_str() {
+            "dynamic" => "not granted (dynamic target)".to_string(),
+            k => format!("not granted ({k})"),
+        };
+        out.push_str(&format!(
+            "review  {}  {} {}  {}  {}  {why}\n",
+            s.effect_id,
+            s.kind.as_str(),
+            s.access_label(),
+            s.target_display(),
+            s.source_label()
+        ));
+    }
+    let n = d.review.len();
+    out.push_str(&format!(
+        "policy generate: {} grants, {n} review item{}{}\n",
+        d.grants.len(),
+        if n == 1 { "" } else { "s" },
+        if n > 0 { " — draft incomplete" } else { "" }
+    ));
     out
 }
