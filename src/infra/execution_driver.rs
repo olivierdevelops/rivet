@@ -31,14 +31,102 @@ use std::time::{Duration, Instant};
 /// orchestrator; an unregistered kind fails with `unsupported.adapter`.
 #[async_trait]
 pub trait EffectAdapter: Send + Sync {
-    /// One-shot form (`x = http get …`, `file …`).
+    /// One-shot form (`x = http get …`, `command …`).
     async fn run(
         &self,
         ctx: &EffectCtx,
         form: &EffectForm,
         args: EvaluatedForm,
-    ) -> RivetResult<Value>;
+    ) -> RivetResult<Value> {
+        let _ = (ctx, args);
+        Err(RivetError::unsupported(
+            "unsupported.form",
+            format!(
+                "`{}` has no one-shot form; use `with {} … as NAME`",
+                form.kind.as_str(),
+                form.kind.as_str()
+            ),
+        ))
+    }
+
+    /// Scoped form (`with KIND … as NAME … end`). The returned handle is owned
+    /// by the enclosing scope and closed when the scope exits for any reason.
+    async fn open(
+        &self,
+        ctx: &EffectCtx,
+        form: &EffectForm,
+        args: EvaluatedForm,
+    ) -> RivetResult<Box<dyn ResourceHandle>> {
+        let _ = (ctx, args);
+        Err(RivetError::unsupported(
+            "unsupported.form",
+            format!("`{}` has no scoped form", form.kind.as_str()),
+        ))
+    }
 }
+
+/// An open, scope-owned resource (`with … as NAME`). Handles are not values:
+/// they cannot be returned, stored or passed to DAG nodes.
+#[async_trait]
+pub trait ResourceHandle: Send {
+    /// `NAME.method ARGS` (`socket.send json {…}`, `rpc.finish_send`,
+    /// `process.stdin.send json {…}` → method `stdin.send`).
+    async fn call(
+        &mut self,
+        ctx: &EffectCtx,
+        method: &str,
+        args: Vec<EvalArg>,
+    ) -> RivetResult<Value> {
+        let _ = (ctx, args);
+        Err(RivetError::unsupported(
+            "unsupported.method",
+            format!("this resource has no `{method}` method"),
+        ))
+    }
+
+    /// `for item in NAME`; `Ok(None)` ends the iteration.
+    async fn next(&mut self, ctx: &EffectCtx) -> RivetResult<Option<Value>> {
+        let _ = ctx;
+        Err(RivetError::unsupported(
+            "unsupported.iterate",
+            "this resource cannot be iterated",
+        ))
+    }
+
+    /// `NAME.property` reads (`rpc.completion`, `events.result`).
+    async fn property(&mut self, ctx: &EffectCtx, name: &str) -> RivetResult<Value> {
+        let _ = ctx;
+        Err(RivetError::unsupported(
+            "unsupported.property",
+            format!("this resource has no `{name}` property"),
+        ))
+    }
+
+    /// `with NAME.open bidi as child` — a child resource of this one.
+    async fn open_child(
+        &mut self,
+        ctx: &EffectCtx,
+        method: &str,
+        args: Vec<EvalArg>,
+        options: Vec<(String, Vec<EvalArg>)>,
+    ) -> RivetResult<Box<dyn ResourceHandle>> {
+        let _ = (ctx, args, options);
+        Err(RivetError::unsupported(
+            "unsupported.child",
+            format!("this resource cannot `{method}` a child resource"),
+        ))
+    }
+
+    /// Graceful close; the caller bounds it by the cleanup grace period.
+    async fn close(self: Box<Self>) -> RivetResult<()> {
+        Ok(())
+    }
+}
+
+/// Cleanup grace period (PROP-2026-0001 defaults).
+pub const CLEANUP_GRACE: Duration = Duration::from_secs(5);
+
+type SharedHandle = Arc<tokio::sync::Mutex<Option<Box<dyn ResourceHandle>>>>;
 
 /// Head arguments and options with every expression evaluated.
 #[derive(Clone, Debug, Default)]
@@ -261,6 +349,8 @@ struct Frame {
     request: Request,
     run: Arc<RunState>,
     secrets: HashMap<String, Vec<String>>,
+    /// Open resource handles, innermost last.
+    handles: Vec<(String, SharedHandle)>,
 }
 
 impl Frame {
@@ -270,7 +360,16 @@ impl Frame {
             request: request.clone(),
             run,
             secrets: HashMap::new(),
+            handles: Vec::new(),
         }
+    }
+
+    fn handle(&self, name: &str) -> Option<SharedHandle> {
+        self.handles
+            .iter()
+            .rev()
+            .find(|(n, _)| n == name)
+            .map(|(_, h)| Arc::clone(h))
     }
 
     fn define(&mut self, name: &str, v: Value) {
@@ -279,7 +378,9 @@ impl Frame {
         }
     }
 
-    /// Assign to the nearest scope that has the name, else define locally.
+    /// Assign to the nearest scope that has the name; a new name is an
+    /// operation-level variable (visible after the block that assigned it).
+    /// Loop variables, `error` and parameters are block bindings via `define`.
     fn assign(&mut self, name: &str, v: Value) {
         for s in self.scopes.iter_mut().rev() {
             if let Some(slot) = s.get_mut(name) {
@@ -287,7 +388,9 @@ impl Frame {
                 return;
             }
         }
-        self.define(name, v);
+        if let Some(s) = self.scopes.first_mut() {
+            s.insert(name.to_string(), v);
+        }
     }
 
     fn get(&self, name: &str) -> Option<&Value> {
@@ -446,6 +549,38 @@ impl<'a> Machine<'a> {
                     body,
                     span,
                 } => {
+                    if let Expr::Path(path, _) = iter {
+                        if path.len() == 1 && frame.get(&path[0]).is_none() {
+                            if let Some(handle) = frame.handle(&path[0]) {
+                                loop {
+                                    let ctx = self.ctx(frame, span);
+                                    let item = {
+                                        let mut guard = handle.lock().await;
+                                        let h = guard.as_mut().ok_or_else(|| {
+                                            RivetError::new(
+                                                ErrorKind::Cleanup,
+                                                "cleanup.closed",
+                                                format!("`{}` is already closed", path[0]),
+                                            )
+                                        })?;
+                                        h.next(&ctx)
+                                            .await
+                                            .map_err(|e| e.with_span(Some(span.clone())))?
+                                    };
+                                    let Some(item) = item else { break };
+                                    frame.scopes.push(HashMap::from([(var.clone(), item)]));
+                                    let r = self.exec_block(frame, body).await;
+                                    frame.scopes.pop();
+                                    match r? {
+                                        Flow::Break => break,
+                                        Flow::Normal => {}
+                                        other => return Ok(other),
+                                    }
+                                }
+                                return Ok(Flow::Normal);
+                            }
+                        }
+                    }
                     let items = match self.eval(frame, iter).await? {
                         Value::List(items) => items,
                         other => {
@@ -564,7 +699,16 @@ impl<'a> Machine<'a> {
                     let _ = self.eval(frame, cond).await?;
                     Ok(Flow::Normal)
                 }
-                Stmt::With { form, span, .. } => Err(self.unsupported(form, span)),
+                Stmt::With {
+                    form,
+                    source,
+                    bind,
+                    body,
+                    span,
+                } => {
+                    self.run_with(frame, form, source.as_ref(), bind.as_deref(), body, span)
+                        .await
+                }
                 Stmt::Member { call, span } => {
                     self.member(frame, call, span).await?;
                     Ok(Flow::Normal)
@@ -600,17 +744,199 @@ impl<'a> Machine<'a> {
         call: &MemberCall,
         span: &SourceSpan,
     ) -> RivetResult<Value> {
-        let _ = frame;
-        Err(RivetError::unsupported(
-            "unsupported.handle",
-            format!(
-                "`{}.{}`: no open resource handle named `{}` supports this call in this build",
-                call.object.join("."),
-                call.method,
-                call.object.join(".")
-            ),
-        )
-        .with_span(Some(span.clone())))
+        let name = &call.object[0];
+        let Some(handle) = frame.handle(name) else {
+            return Err(RivetError::unsupported(
+                "unsupported.handle",
+                format!(
+                    "`{}.{}`: `{name}` is not an open resource in this scope",
+                    call.object.join("."),
+                    call.method
+                ),
+            )
+            .with_span(Some(span.clone())));
+        };
+        let mut method: Vec<&str> = call.object[1..].iter().map(String::as_str).collect();
+        method.push(&call.method);
+        let method = method.join(".");
+        let mut args = Vec::with_capacity(call.args.len());
+        for a in &call.args {
+            args.push(self.eval_arg(frame, a).await?);
+        }
+        let ctx = self.ctx(frame, span);
+        let mut guard = handle.lock().await;
+        let h = guard.as_mut().ok_or_else(|| {
+            RivetError::new(
+                ErrorKind::Cleanup,
+                "cleanup.closed",
+                format!("`{name}` is already closed"),
+            )
+        })?;
+        let r = h
+            .call(&ctx, &method, args)
+            .await
+            .map_err(|e| e.with_span(Some(span.clone())));
+        if r.is_ok() && (method.contains("send") || method.contains("write")) {
+            frame.run.commit();
+        }
+        r
+    }
+
+    /// `with RESOURCE … as NAME … end`: open, run the body, always close
+    /// (reverse acquisition order is structural: inner scopes close first).
+    async fn run_with(
+        &self,
+        frame: &mut Frame,
+        form: &EffectForm,
+        source: Option<&Expr>,
+        bind: Option<&str>,
+        body: &[Stmt],
+        span: &SourceSpan,
+    ) -> RivetResult<Flow> {
+        let evaluated = self.evaluate_form(frame, form).await?;
+        let ctx = self.ctx(frame, span);
+        let opened: RivetResult<Box<dyn ResourceHandle>> = match (&form.kind, source) {
+            (
+                EffectKind::RequestStream,
+                Some(Expr::Call {
+                    args, span: cspan, ..
+                }),
+            ) => {
+                let mut vals = Vec::new();
+                for a in args {
+                    vals.push(self.eval(frame, a).await?);
+                }
+                self.open_request_stream(frame, vals, cspan).await
+            }
+            (EffectKind::Connection, Some(Expr::Path(path, pspan))) => match frame.handle(&path[0])
+            {
+                None => Err(RivetError::unsupported(
+                    "unsupported.handle",
+                    format!("`{}` is not an open resource in this scope", path[0]),
+                )
+                .with_span(Some(pspan.clone()))),
+                Some(parent) => {
+                    let method = path[1..].join(".");
+                    let mut guard = parent.lock().await;
+                    match guard.as_mut() {
+                        Some(h) => {
+                            h.open_child(
+                                &ctx,
+                                &method,
+                                evaluated.head.clone(),
+                                evaluated.options.clone(),
+                            )
+                            .await
+                        }
+                        None => Err(RivetError::new(
+                            ErrorKind::Cleanup,
+                            "cleanup.closed",
+                            format!("`{}` is already closed", path[0]),
+                        )),
+                    }
+                }
+            },
+            _ => match self.interp.adapters.get(form.kind.as_str()) {
+                Some(adapter) => adapter.open(&ctx, form, evaluated).await,
+                None => Err(self.unsupported(form, span)),
+            },
+        };
+        let handle: SharedHandle = Arc::new(tokio::sync::Mutex::new(Some(
+            opened.map_err(|e| e.with_span(Some(span.clone())))?,
+        )));
+        let name = bind.unwrap_or("_").to_string();
+        frame.handles.push((name.clone(), Arc::clone(&handle)));
+        let result = self.scoped(frame, body).await;
+        if let Some(pos) = frame
+            .handles
+            .iter()
+            .rposition(|(n, h)| n == &name && Arc::ptr_eq(h, &handle))
+        {
+            frame.handles.remove(pos);
+        }
+        // Always close, after success, error, break or return; the primary error wins.
+        let taken = handle.lock().await.take();
+        let closed = match taken {
+            Some(h) => match tokio::time::timeout(CLEANUP_GRACE, h.close()).await {
+                Ok(r) => r,
+                Err(_) => Err(RivetError::new(
+                    ErrorKind::Cleanup,
+                    "cleanup.timeout",
+                    format!(
+                        "`{name}` did not close within {} s",
+                        CLEANUP_GRACE.as_secs()
+                    ),
+                )),
+            },
+            None => Ok(()),
+        };
+        match (result, closed) {
+            (Ok(flow), Ok(())) => Ok(flow),
+            (Ok(_), Err(e)) => Err(RivetError::new(
+                ErrorKind::Cleanup,
+                "cleanup.failed",
+                format!("closing `{name}` failed: {}", e.message),
+            )
+            .with_span(Some(span.clone()))),
+            (Err(e), Ok(())) => Err(e),
+            (Err(mut e), Err(c)) => {
+                e.suppressed.push(c);
+                Err(e)
+            }
+        }
+    }
+
+    /// Built-in `with (request.stream ID PARAMS) as events`: the child request
+    /// runs in a task owned by this scope; items arrive through a bounded
+    /// channel (16 frames) so a slow body applies backpressure.
+    async fn open_request_stream(
+        &self,
+        frame: &mut Frame,
+        vals: Vec<Value>,
+        span: &SourceSpan,
+    ) -> RivetResult<Box<dyn ResourceHandle>> {
+        let id = vals
+            .first()
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                runtime_err(
+                    "call.request",
+                    "(request.stream ID PARAMS) needs an operation ID string",
+                    span,
+                )
+            })?
+            .to_string();
+        let params = vals.get(1).cloned().unwrap_or(Value::Object(vec![]));
+        let dispatcher = Arc::clone(
+            self.interp
+                .dispatcher
+                .get()
+                .ok_or_else(|| RivetError::internal("nested dispatcher not configured"))?,
+        );
+        let child = Request {
+            request_id: format!("{}.s{}", frame.request.request_id, rand_suffix()),
+            trace_id: frame.request.trace_id.clone(),
+            operation_id: id,
+            params,
+            principal: frame.request.principal.clone(),
+            parent_request_id: Some(frame.request.request_id.clone()),
+            depth: frame.request.depth + 1,
+            deadline_ms: frame
+                .run
+                .deadline
+                .saturating_duration_since(Instant::now())
+                .as_millis()
+                .max(1) as u64,
+            include_private: true,
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel::<Value>(16);
+        let sink: Arc<dyn DataSink> = Arc::new(ChannelSink { tx });
+        let task = tokio::spawn(async move { dispatcher.dispatch(child, Some(sink)).await });
+        Ok(Box::new(RequestStreamHandle {
+            rx,
+            task: Some(task),
+            completion: None,
+        }))
     }
 
     async fn emit(&self, frame: &mut Frame, v: Value, span: &SourceSpan) -> RivetResult<()> {
@@ -1206,7 +1532,46 @@ impl<'a> Machine<'a> {
                     }
                     Ok(Value::Text(s))
                 }
-                Expr::Path(path, span) => lookup(frame, path, Some(span)),
+                Expr::Path(path, span) => {
+                    if frame.get(&path[0]).is_none() {
+                        if let Some(handle) = frame.handle(&path[0]) {
+                            if path.len() < 2 {
+                                return Err(runtime_err(
+                                    "value.handle",
+                                    format!(
+                                        "`{}` is an open resource, not a value; read a property such as `{}.result`",
+                                        path[0], path[0]
+                                    ),
+                                    span,
+                                ));
+                            }
+                            let ctx = self.ctx(frame, span);
+                            let mut guard = handle.lock().await;
+                            let h = guard.as_mut().ok_or_else(|| {
+                                RivetError::new(
+                                    ErrorKind::Cleanup,
+                                    "cleanup.closed",
+                                    format!("`{}` is already closed", path[0]),
+                                )
+                            })?;
+                            let mut v = h
+                                .property(&ctx, &path[1])
+                                .await
+                                .map_err(|e| e.with_span(Some(span.clone())))?;
+                            for seg in &path[2..] {
+                                v = v.get(seg).cloned().ok_or_else(|| {
+                                    runtime_err(
+                                        "value.missing_key",
+                                        format!("no key `{seg}`"),
+                                        span,
+                                    )
+                                })?;
+                            }
+                            return Ok(v);
+                        }
+                    }
+                    lookup(frame, path, Some(span))
+                }
                 Expr::List(items) => {
                     let mut out = Vec::with_capacity(items.len());
                     for i in items {
@@ -1559,5 +1924,81 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     match (num(a), num(b)) {
         (Some(x), Some(y)) => x == y,
         _ => a == b,
+    }
+}
+
+/// DataSink that forwards items into a bounded channel.
+struct ChannelSink {
+    tx: tokio::sync::mpsc::Sender<Value>,
+}
+
+#[async_trait]
+impl DataSink for ChannelSink {
+    async fn send(&self, event: DataEvent) -> RivetResult<()> {
+        self.tx.send(event.data).await.map_err(|_| {
+            RivetError::new(
+                ErrorKind::Cancelled,
+                "cancelled.consumer",
+                "the stream consumer closed",
+            )
+        })
+    }
+}
+
+struct RequestStreamHandle {
+    rx: tokio::sync::mpsc::Receiver<Value>,
+    task: Option<tokio::task::JoinHandle<RivetResult<crate::domain::contracts::Completion>>>,
+    completion: Option<crate::domain::contracts::Completion>,
+}
+
+impl RequestStreamHandle {
+    async fn finish(&mut self) -> RivetResult<()> {
+        if let Some(task) = self.task.take() {
+            match task.await {
+                Ok(Ok(c)) => self.completion = Some(c),
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(RivetError::internal(format!("stream task failed: {e}"))),
+            }
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ResourceHandle for RequestStreamHandle {
+    async fn next(&mut self, _ctx: &EffectCtx) -> RivetResult<Option<Value>> {
+        match self.rx.recv().await {
+            Some(v) => Ok(Some(v)),
+            None => {
+                self.finish().await?;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn property(&mut self, _ctx: &EffectCtx, name: &str) -> RivetResult<Value> {
+        match name {
+            "result" | "completion" => {
+                while self.rx.recv().await.is_some() {}
+                self.finish().await?;
+                Ok(match &self.completion {
+                    Some(c) if name == "result" => c.result.clone(),
+                    Some(c) => Value::from_json(&c.to_json()),
+                    None => Value::Null,
+                })
+            }
+            other => Err(RivetError::unsupported(
+                "unsupported.property",
+                format!("a request stream has no `{other}` property (use result or completion)"),
+            )),
+        }
+    }
+
+    async fn close(mut self: Box<Self>) -> RivetResult<()> {
+        if let Some(task) = self.task.take() {
+            task.abort();
+            let _ = task.await;
+        }
+        Ok(())
     }
 }

@@ -468,4 +468,19 @@ mod tests {
         assert_eq!(e.code, "permission.denied");
         assert!(!tmp.path().join("out/a.json").exists());
     }
+
+    #[tokio::test]
+    async fn request_stream_iterates_child_items_and_reads_the_result() {
+        let r = rt(
+            "operation s.count\n    private true\n    output json\n    emits integer\n    emit 1\n    emit 2\n    emit 3\n    return {done: true}\nend\n\noperation s.sum\n    output json\n    total = 0\n    with (request.stream \"s.count\" {}) as items\n        for n in items\n            total += n\n        end\n        final = items.result\n    end\n    return {total: total, final: final}\nend\n",
+        );
+        let c = r.request("s.sum", Value::Null, None).await.unwrap();
+        assert_eq!(
+            c.result,
+            Value::object([
+                ("total", Value::Int(6)),
+                ("final", Value::object([("done", Value::Bool(true))]))
+            ])
+        );
+    }
 }
