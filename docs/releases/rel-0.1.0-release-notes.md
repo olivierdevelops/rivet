@@ -15,6 +15,12 @@ release_date: 2026-09-28
 source_branch: main
 previous_version: null
 previous_tag: null
+release:
+  version: "0.1.0"
+  tag: v0.1.0
+  commit: f69b5b911f174b0198adb89c8305c8cce268fc11
+  date: 2026-09-28
+  branch: main
 systems: [Rivet]
 components: [language, registry, execution, files, policy, audit, auth, connectors, datagrams, quic, grpc, sessions, serve, transports]
 affected_versions:
