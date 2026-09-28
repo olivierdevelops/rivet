@@ -154,22 +154,23 @@ pub async fn run_dag(input: DagInput, runner: &dyn DagNodeRunner) -> DagCompleti
         })
         .collect();
     if let Some(e) = &mut fatal
-        && e.details == Value::Null {
-            e.details = Value::object([(
-                "nodes",
-                Value::List(
-                    nodes
-                        .iter()
-                        .map(|x| {
-                            Value::object([
-                                ("id", Value::text(&x.id)),
-                                ("status", Value::text(x.status.as_str())),
-                            ])
-                        })
-                        .collect(),
-                ),
-            )]);
-        }
+        && e.details == Value::Null
+    {
+        e.details = Value::object([(
+            "nodes",
+            Value::List(
+                nodes
+                    .iter()
+                    .map(|x| {
+                        Value::object([
+                            ("id", Value::text(&x.id)),
+                            ("status", Value::text(x.status.as_str())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        )]);
+    }
     DagCompletion {
         nodes,
         fatal,
