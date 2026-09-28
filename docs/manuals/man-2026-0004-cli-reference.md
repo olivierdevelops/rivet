@@ -96,7 +96,7 @@ Invoke one operation. `rivet request [OPTIONS] <ID>`
 |---|---|---|
 | `--params JSON` | `{}` | parameters as a JSON object |
 | `--stream` | off | print NDJSON envelopes (data items, then the result) |
-| `--timeout D` | `30s` | request deadline, `^[0-9]+(ms|s|m|h)$` |
+| `--timeout D` | `30s` | request deadline, `^[0-9]+(ms\|s\|m\|h)$` |
 | `--input-jsonl -` | none | stdin JSON Lines as live input for a `receives` operation; needs `--stream`; EOF = finish input |
 
 ```text
@@ -229,10 +229,10 @@ Full workflows: [MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md#re
 | Option | Default | Purpose |
 |---|---|---|
 | `IDS…` / `--all` | all public operations | restrict to these operations (and what they call) |
-| `--by operation|target|capability` | `operation` | table grouping |
+| `--by operation\|target\|capability` | `operation` | table grouping |
 | `--kind K` | all | `file`, `network`, `process`, `env`, `mcp`, `grpc`, `auth`, `credential`, … |
 | `--access V[,V]` | all | filter by access verb (`create`, `delete`, `connect`, …) |
-| `--format table|json|markdown|csv` | `table` | output format (`--json` = `--format json`) |
+| `--format table\|json\|markdown\|csv` | `table` | output format (`--json` = `--format json`) |
 | `--check-policy` | off | add a DECISION column; exit 3 if any site is denied/unknown |
 | `--strict` | off | exit 7 if any site is dynamic/opaque |
 | `--needs` | off | list the files each operation needs to exist before it runs |
@@ -324,7 +324,7 @@ OAuth account management through the `rivet.auth.*` built-ins; tokens are never 
 | Subcommand | Syntax | Result |
 |---|---|---|
 | `begin` | `auth begin PROFILE --account A` | authorization_code: `{transaction_id, expires_at, authorization_url}`; device_code: `{transaction_id, expires_at, verification_uri, user_code, interval_seconds}` |
-| `complete` | `auth complete --params JSON | --params-file PATH [--timeout D]` | `{"transaction_id":…,"callback":{…}}` or `{"transaction_id":…,"wait":true}`; connected status, or `{"state":"pending",…}` when the deadline arrives first |
+| `complete` | `auth complete --params JSON \| --params-file PATH [--timeout D]` | `{"transaction_id":…,"callback":{…}}` or `{"transaction_id":…,"wait":true}`; connected status, or `{"state":"pending",…}` when the deadline arrives first |
 | `status` | `auth status PROFILE --account A` | `{profile, account, state, scopes, expires_at, generation}` (never refreshes) |
 | `disconnect` | `auth disconnect PROFILE --account A` | `{…,"local_only":true,"generation":N}` |
 | `cancel` | `auth cancel TRANSACTION_ID` | cancels an open transaction |
@@ -369,7 +369,7 @@ Failures: non-loopback without auth → `serve.auth_required` (exit 2); `--liste
 | `request` | run one operation | `request ID [--params JSON] [--stream] [--timeout D] [--input-jsonl -]` | bundle, params, stdin | Completion / NDJSON; 0,2–6,130 | validation, permission, not_found, timeout | `request demo.add --params '{"a":2}'` | 0.1.0 |
 | `list` | catalog summary | `list [--outputs] [--json]` | bundle | table/JSON; 0,2 | compile errors | `list --outputs` | 0.1.0 |
 | `describe` | full descriptors | `describe [IDS…] [--json]` | bundle | table/JSON; 0,2,4 | not_found.operation | `describe demo.add` | 0.1.0 |
-| `outputs` | declared outputs | `outputs ID | --all [--json]` | bundle | table/JSON Schema; 0,2,4 | validation.query | `outputs --all` | 0.1.0 |
+| `outputs` | declared outputs | `outputs ID \| --all [--json]` | bundle | table/JSON Schema; 0,2,4 | validation.query | `outputs --all` | 0.1.0 |
 | `check` | compile only | `check [--strict-docs]` | bundle, policy | `ok: …`; 0,2,4 | syntax, docs | `check --strict-docs` | 0.1.0 |
 | `io` | I/O manifest | `io [IDS…] [--all] [--by …] [--kind K] [--access V] [--format …] [--check-policy] [--strict] [--needs] [--check-files] [--include-bootstrap] [--trace REQ]` | bundle, policy, files (probe) | table/JSON/MD/CSV; 0,2,3,4,7 | validation.usage | `io --by target` | 0.1.0 |
 | `policy explain` | effective policy + decisions | `policy explain [ID] [--params JSON]` | bundle, policy | table; 0,2 | policy.invalid | `policy explain notes.update` | 0.1.0 |

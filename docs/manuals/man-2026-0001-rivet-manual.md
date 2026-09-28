@@ -144,7 +144,7 @@ and it cannot see what a spawned child process does except through the OS sandbo
 | Policy broker | The single component that authorizes every effect against `policy.json`; deny entries win. |
 | Principal | The authenticated caller of a serve surface (`local` for CLI and library). |
 | Session | A live request with an ID you can poll, feed input to, finish or cancel (polling, WebSocket refs, `rivet.sessions.*`). |
-| Connector | A declared MCP or gRPC endpoint (`connector NAME mcp|grpc … end`). |
+| Connector | A declared MCP or gRPC endpoint (`connector NAME mcp\|grpc … end`). |
 | Auth profile | A declared OAuth 2.0 client (`auth NAME oauth2 … end`), used by `auth PROFILE account "A"`. |
 
 ## Architecture and Mental Model
@@ -206,7 +206,7 @@ or `--stdio`; **Lib** = Rust `Runtime`.
 | `private true` helpers | Keep helper operations callable only from other operations | language | 0.1.0 | [MAN-0003 §Operations](man-2026-0003-language-guide.md#write-an-operation) | [05-dag](../demos/05-dag/README.md) |
 | Composition `(request "id" {…})`, dynamic IDs with `allow […]` | Reuse operations; literal calls are checked at compile time, cycles rejected | language | 0.1.0 | [MAN-0003 §Calls](man-2026-0003-language-guide.md#call-other-operations) | [11-sandbox](../demos/11-sandbox/README.md) |
 | Control flow: `if`, `for`, `while`, `break`, `iterate max N`, `return`, `+=` | Ordinary logic with bounded loops | language | 0.1.0 | [MAN-0003 §Control flow](man-2026-0003-language-guide.md#control-flow) | [01-catalog](../demos/01-catalog/README.md) |
-| `try` / `catch error [kind K|code "C"]` | Recover from a typed failure | language | 0.1.0 | [MAN-0003 §try/catch](man-2026-0003-language-guide.md#recover-with-try-and-catch) | [03-http](../demos/03-http/README.md) |
+| `try` / `catch error [kind K\|code "C"]` | Recover from a typed failure | language | 0.1.0 | [MAN-0003 §try/catch](man-2026-0003-language-guide.md#recover-with-try-and-catch) | [03-http](../demos/03-http/README.md) |
 | `map … limit N … yield`, `poll every … timeout … until … yield` | Bounded fan-out; wait for a remote job | language | 0.1.0 | [MAN-0003 §map and poll](man-2026-0003-language-guide.md#map-poll-and-iterate) | [05-dag](../demos/05-dag/README.md) |
 | `dag` with `node … after […]`, `fail fast`/`fail independent` | Run a dependency graph and inspect per-node status | language | 0.1.0 | [MAN-0003 §DAG](man-2026-0003-language-guide.md#run-a-dag) | [05-dag](../demos/05-dag/README.md) |
 | `concurrent` / `task`, `scope timeout` | Structured parallel work joined before exit; group deadlines | language | 0.1.0 | [MAN-0003 §Concurrency](man-2026-0003-language-guide.md#concurrent-tasks-and-scopes) | [10-grpc](../demos/10-grpc/README.md) |
@@ -222,7 +222,7 @@ or `--stdio`; **Lib** = Rust `Runtime`.
 | File verbs: `read`, `list`, `stat`, `create`, `update`, `write`, `append`, `delete` (`missing ok`), `copy`, `move` | Explicit intent per write; `create` never overwrites, `update` never creates | all | 0.1.0 | [MAN-0003 §Files](man-2026-0003-language-guide.md#files) | [02-file-crud](../demos/02-file-crud/README.md) |
 | Hard-link refusal | Stop writes through a second name of a file | all | 0.1.0 | [MAN-0003 §Files](man-2026-0003-language-guide.md#files) | [02-file-crud](../demos/02-file-crud/README.md) |
 | HTTP/1.1 and HTTP/2 client | Call REST APIs with explicit methods, bodies, decoding, retries and redirects | all | 0.1.0 | [MAN-0008 §HTTP](man-2026-0008-protocols-and-connectors.md#http11-and-http2) | [03-http](../demos/03-http/README.md) |
-| HTTP response streams: `stream sse|jsonl|lines|bytes` | Consume model/log streams item by item | all | 0.1.0 | [MAN-0008 §Streams](man-2026-0008-protocols-and-connectors.md#http-response-streams) | [04-streaming](../demos/04-streaming/README.md) |
+| HTTP response streams: `stream sse\|jsonl\|lines\|bytes` | Consume model/log streams item by item | all | 0.1.0 | [MAN-0008 §Streams](man-2026-0008-protocols-and-connectors.md#http-response-streams) | [04-streaming](../demos/04-streaming/README.md) |
 | HTTP/3 (`version 3`, `version prefer [3, 2]`) | Require or prefer QUIC-based HTTP without silent fallback | all | 0.1.0 | [MAN-0008 §HTTP/3](man-2026-0008-protocols-and-connectors.md#http3) | [09-quic](../demos/09-quic/README.md) |
 | WebSocket client | Scoped request/response or streaming over `ws://`/`wss://` | all | 0.1.0 | [MAN-0008 §WebSocket](man-2026-0008-protocols-and-connectors.md#websocket-client) | [04-streaming](../demos/04-streaming/README.md) |
 | TCP and Unix sockets with framing | Talk to line/length-prefixed services | all | 0.1.0 | [MAN-0008 §TCP/Unix](man-2026-0008-protocols-and-connectors.md#tcp-and-unix-sockets) | — |

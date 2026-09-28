@@ -453,7 +453,7 @@ scope timeout "200ms" (poll that never finishes) → timeout.scope "scope exceed
 
 | Resource | Example header | Guide |
 |---|---|---|
-| HTTP stream | `with http get "URL" as events` + `stream sse|jsonl|lines|bytes` | MAN-2026-0008 |
+| HTTP stream | `with http get "URL" as events` + `stream sse\|jsonl\|lines\|bytes` | MAN-2026-0008 |
 | WebSocket | `with websocket "wss://…" as socket` | MAN-2026-0008 |
 | TCP / Unix | `with tcp "HOST:PORT" as conn` / `with unix "/path.sock" as conn` | MAN-2026-0008 |
 | UDP | `with udp "HOST:PORT" as s`, `with udp bind …`, `with udp multicast …` | MAN-2026-0008 |
@@ -471,10 +471,10 @@ Why: each verb states intent, so `rivet io` and `policy.json` can tell a create 
 
 | Statement | Access verbs (capability) | Behaviour |
 |---|---|---|
-| `x = file read "P" as json|text|bytes` | read (`allow_read`) | missing → `not_found.file` |
+| `x = file read "P" as json\|text\|bytes` | read (`allow_read`) | missing → `not_found.file` |
 | `file list "DIR"` | list (`allow_read`) | `[{name, type, size}]` sorted by name |
 | `file stat "P"` | stat (`allow_read`) | `{path, type, size, version}` |
-| `file create "P" json|text|bytes V` | create (`allow_write`) | exists → `conflict.already_exists` (exit 4), file unchanged |
+| `file create "P" json\|text\|bytes V` | create (`allow_write`) | exists → `conflict.already_exists` (exit 4), file unchanged |
 | `file update "P" json V` | stat + update | missing → `not_found.file`; `if_version V` option guards |
 | `file write "P" …` | create, update | create or replace |
 | `file append "P" …` | append | — |
@@ -556,7 +556,7 @@ Statement shapes (the 0.1.0 grammar, `src/infra/rivet.capy`):
 
 | Keyword | Shape |
 |---|---|
-| declarations | `operation ID` / `pipeline ID` / `connector NAME mcp|grpc` / `auth NAME oauth2` … `end` |
+| declarations | `operation ID` / `pipeline ID` / `connector NAME mcp\|grpc` / `auth NAME oauth2` … `end` |
 | header | `name`, `description`, `private`, `param`, `output`, `emits`, `receives`, `error` |
 | assignment | `NAME = EXPR`, `NAME += EXPR`, `NAME = map …`, `NAME = poll …` |
 | statements | `return`, `yield`, `emit`, `fail`, `break`, bare `(call …)`, `NAME.method …` |
