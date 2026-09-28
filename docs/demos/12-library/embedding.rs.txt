@@ -81,7 +81,7 @@ async fn main() -> RivetResult<()> {
 }
 
 // Notes:
-// - A DataSink passed to request(ID, params, Some(sink)) receives each emitted item;
+// - A DataSink passed to rt.request(ID, params, Some(sink)) receives each emitted item;
 //   returning RivetError::consumer_stop() ends the request `cancelled`, not failed.
 // - Dropping a request future runs its cleanup; rt.scope joins everything it started.
 // - Runtime is Clone + Send + Sync; share it across tasks instead of rebuilding it.

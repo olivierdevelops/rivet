@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "method": "tools/call",
+  "params": {
+    "name": "rivet.sessions.read",
+    "arguments": {"session_id": "SESSION_ID", "after_seq": 0, "wait_ms": 1000}
+  }
+}

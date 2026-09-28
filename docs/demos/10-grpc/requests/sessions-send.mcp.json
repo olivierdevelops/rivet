@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "rivet.sessions.send",
+    "arguments": {"session_id": "SESSION_ID", "send_seq": 1, "data": {"text": "hello"}}
+  }
+}
