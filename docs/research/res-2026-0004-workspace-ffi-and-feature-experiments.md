@@ -5,7 +5,7 @@ document_type: research
 status: completed
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -127,9 +127,11 @@ path = "src/lib.rs"
 
 Two side findings about `vhco sync` that matter for every later phase:
 
-- `sync` compares **flow triggers, flow outputs and flow ports** as well as surfaces, use cases, todos, ports
-  and domain fields. Renaming a `vhco:trigger` line (for example `--params` → `--data`) is a contract change: the
-  flow's `triggers` in `vhco-contract.json` must be edited by hand in the same change.
+- `sync` compares **flow triggers, flow outputs, flow ports and the ordered `layer: ref` pairs of a flow's
+  handling** as well as surfaces, use cases, todos, ports and domain fields. Renaming a `vhco:trigger` line (for
+  example `--params` → `--data`) or changing a use case's `vhco:step` sequence is a contract change: the flow in
+  `vhco-contract.json` must be edited by hand in the same change
+  ([TRBL-2026-0004](../troubleshooting/trbl-2026-0004-vhco-sync-drift-after-renaming-triggers-or-steps.md)).
 - It does **not** compare prose (`about`, todo text, handling roles).
 
 ### E2 — symbol export and linking
@@ -270,4 +272,5 @@ from the graph. The fallback in PROP-2026-0002's risk table is not needed.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Corrected the E1 side finding: `vhco sync` also compares flow handling (`layer: ref` pairs); linked TRBL-2026-0004. |
 | 1 | 2026-09-28 | Claude | E1 (vhco + workspace), E2 (cdylib/staticlib symbol export, C shared and static link) and E3 (grpc feature gate) run in a scratch copy; all PASS on macOS; entanglement survey for quic, serve, oauth and cli. |
