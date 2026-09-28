@@ -1,0 +1,45 @@
+{
+  "name": "rivet",
+  "displayName": "Rivet",
+  "description": "Syntax highlighting, comments, brackets and end-based indentation for Rivet (.rivet) sources",
+  "version": "0.1.0",
+  "publisher": "rivet",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/olivierdevelops/rivet"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "rivet",
+    "syntax",
+    "highlighting"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "rivet",
+        "aliases": [
+          "Rivet",
+          "rivet"
+        ],
+        "extensions": [
+          ".rivet"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rivet",
+        "scopeName": "source.rivet",
+        "path": "./syntaxes/rivet.tmLanguage.json"
+      }
+    ]
+  }
+}

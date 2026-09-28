@@ -1,0 +1,9 @@
+# Files kept out of the packaged .vsix (read by package_vsix.py and by vsce).
+.vscodeignore
+package_vsix.py
+**/*.py
+**/__pycache__/**
+**/*.vsix
+dist/**
+node_modules/**
+.vscode/**

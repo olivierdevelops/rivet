@@ -4,3 +4,5 @@
 *.swp
 /tests/fixtures/data/generated/
 /.claude/
+/dist/
+__pycache__/

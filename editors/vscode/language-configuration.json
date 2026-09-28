@@ -1,0 +1,102 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "{",
+      "}"
+    ]
+  ],
+  "autoClosingPairs": [
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "`",
+      "close": "`",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "${",
+      "close": "}",
+      "notIn": [
+        "comment"
+      ]
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "(",
+      ")"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "{",
+      "}"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "`",
+      "`"
+    ]
+  ],
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)*|-?\\d[\\d_]*(?:\\.\\d+)?",
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:(?:operation|pipeline)\\s+\\S+|(?:connector|auth)\\s+\\w+\\s+\\w+|if\\b.*|else|while\\b.*|for\\s+\\w+\\s+in\\b.*|try|catch\\b.*|dag\\b.*|concurrent\\b.*|task\\s+\\w+|scope\\b.*|iterate\\b.*|with\\b.*|(?:output|emits|receives)\\s+(?:list\\s+)*object\\b.*|field\\s+\\w+\\s+(?:list\\s+)*object\\b.*|\\w+\\s*=\\s*(?:map|poll)\\b.*)\\s*(?:#.*)?$",
+    "decreaseIndentPattern": "^\\s*(?:end|else|catch)\\b"
+  },
+  "folding": {
+    "offSide": true,
+    "markers": {
+      "start": "^\\s*#\\s*region\\b",
+      "end": "^\\s*#\\s*endregion\\b"
+    }
+  }
+}
