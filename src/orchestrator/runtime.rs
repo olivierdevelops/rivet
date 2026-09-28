@@ -375,7 +375,8 @@ impl Runtime {
             evaluator: Arc::clone(&evaluator),
             raw: ConfinedFiles::new(&bundle.root),
         });
-        let mut interp = Interpreter::new(Arc::clone(&program), files, evaluator);
+        let mut interp = Interpreter::new(Arc::clone(&program), Arc::clone(&files), evaluator);
+        crate::orchestrator::transports::register(&mut interp, files, &bundle.root);
         register_transports(&mut interp, &bundle.root);
         // gRPC: descriptor sets are bootstrap reads; unknown methods or wrong
         // call modes fail the load before anything dials.
