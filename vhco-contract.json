@@ -5529,6 +5529,11 @@
           "lane": "driver"
         },
         {
+          "layer": "accept",
+          "ref": "ResponseEnvelope::accepted",
+          "role": "202 envelope, status accepted, data = the SessionReceipt with events_url"
+        },
+        {
           "layer": "read",
           "ref": "driver.read",
           "role": "bounded long-poll with the clamped wait",
@@ -5536,8 +5541,8 @@
         },
         {
           "layer": "encode",
-          "ref": "error_envelope",
-          "role": "error → {request_id, trace_id, error} with its registry HTTP status"
+          "ref": "ResponseEnvelope::from_error",
+          "role": "error → envelope (status error|cancelled, data null) with its registry HTTP status"
         }
       ]
     },
@@ -5972,18 +5977,33 @@
       "handling": [
         {
           "layer": "shape",
-          "ref": "InputEnvelope::parse",
-          "role": "object only; no `error` key; unknown keys ignored"
+          "ref": "as_object",
+          "role": "a non-object body is refused (validation.input_envelope) before any key is read"
         },
         {
-          "layer": "aliases",
-          "ref": "alias",
-          "role": "operation|id and data|params: one of each, mixing is validation.input_envelope; aliases are reported"
+          "layer": "no_error",
+          "ref": "body.get",
+          "role": "`error` belongs to output envelopes only: refused"
+        },
+        {
+          "layer": "operation",
+          "ref": "pick",
+          "role": "`operation`, else the deprecated `id` (recorded in aliases); both → validation.input_envelope; neither → validation.required"
+        },
+        {
+          "layer": "data",
+          "ref": "pick",
+          "role": "`data`, else the deprecated `params`; absent or null becomes {}"
         },
         {
           "layer": "options",
-          "ref": "options",
-          "role": "deadline_ms clamped to 1..=600000; restrict passed through; stream and pretty booleans"
+          "ref": "body.get",
+          "role": "typed optional keys: deadline_ms clamped to 1..=600000, restrict passed through, stream and pretty booleans"
+        },
+        {
+          "layer": "build",
+          "ref": "InputEnvelope",
+          "role": "the one input shape every surface dispatches, with the aliases used"
         }
       ]
     },

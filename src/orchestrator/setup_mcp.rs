@@ -7,17 +7,20 @@
 //!  POST /mcp tools/list  ─▶ direct tools (authorized, public) + every built-in the principal may call
 //!                          (rivet.request/list/describe/outputs/sessions.*/io/policy.generate/
 //!                           trace.show/connectors.sync/auth.*), each with its schemas
-//!  POST /mcp tools/call  ─▶ unary: Completion │ streaming: SessionReceipt │ failure: isError + ErrorEnvelope
+//!  POST /mcp tools/call  ─▶ structuredContent = ResponseEnvelope, text content = its JSON:
+//!                          unary: status ok │ streaming: status accepted, data SessionReceipt │
+//!                          failure: status error|cancelled + isError (JSON-RPC framing unchanged)
 //!  GET /mcp ─▶ 405        DELETE /mcp ─▶ 204 (unknown session 404)
 //! ```
 
-// vhco:surface mcp kind mcp calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authenticate_principal, serve/authorize_operation, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface mcp kind mcp calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authenticate_principal, serve/authorize_operation, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
 // vhco:trigger mcp auth/begin_authorization = tools/call {name: "rivet.auth.begin"}
 // vhco:trigger mcp auth/complete_authorization = tools/call {name: "rivet.auth.complete"}
 // vhco:trigger mcp auth/credential_status = tools/call {name: "rivet.auth.status"}
 // vhco:trigger mcp auth/disconnect_account = tools/call {name: "rivet.auth.disconnect"}
 // vhco:trigger mcp auth/cancel_authorization = tools/call {name: "rivet.auth.cancel"}
-// vhco:trigger mcp execution/request_operation = tools/call {name: ID} | tools/call {name: "rivet.request"}
+// vhco:trigger mcp execution/request_operation = tools/call {name: ID} | tools/call {name: "rivet.request", arguments: {operation, data}}
+// vhco:trigger mcp serve/parse_input = tools/call {name: "rivet.request"|"rivet.sessions.open", arguments: {operation, data}}
 // vhco:trigger mcp registry/describe_operations = tools/list | tools/call {name: "rivet.list"|"rivet.describe"}
 // vhco:trigger mcp registry/inspect_outputs = tools/call {name: "rivet.outputs"}
 // vhco:trigger mcp sessions/open_session = tools/call {name: STREAMING_ID} | tools/call {name: "rivet.sessions.open"}
@@ -28,8 +31,8 @@
 // vhco:trigger mcp serve/authenticate_principal = Authorization: Bearer TOKEN on every POST /mcp
 // vhco:trigger mcp serve/authorize_operation = tools/list filtering and every tools/call
 // vhco:api mcp execution/request_operation POST /mcp tools/call -- call an operation as its direct named tool
-// vhco:request { "jsonrpc": "2.0", "id": "int", "method": "tools/call", "params": "{name: ID, arguments: object, restrict?: {grants:[…]} (narrows this call only)}" }
-// vhco:response { "content": "[{type:text, text: serialized Completion}]", "structuredContent": "Completion | SessionReceipt | ErrorEnvelope", "isError": "bool" }
+// vhco:request { "jsonrpc": "2.0", "id": "int", "method": "tools/call", "params": "{name: ID, arguments: object (rivet.request: {operation, data}), restrict?: {grants:[…]} (narrows this call only)}" }
+// vhco:response { "content": "[{type:text, text: serialized ResponseEnvelope}]", "structuredContent": "ResponseEnvelope {request_id, trace_id, operation, type, status: ok|accepted|error|cancelled, data, error, effects, data_count}", "isError": "bool — status error or cancelled" }
 
 use super::builtins::{BUILTIN_IDS, visible};
 use super::runtime::Runtime;
@@ -38,13 +41,13 @@ use super::setup_serve::{
 };
 use crate::domain::contracts::Principal;
 use crate::domain::contracts::TraceContext;
+use crate::domain::envelope::{EnvelopeStatus, ResponseEnvelope};
 use crate::domain::mcp::BridgeHops;
 use crate::domain::serve::{MCP_PROTOCOL_VERSION, OperationAccess};
 use crate::domain::sessions::SessionOpenInput;
 use crate::domain::{ErrorKind, RivetError, Value};
 use crate::features::serve::authorize_operation::require_operation;
 use crate::features::sessions::open_session::open_session;
-use crate::io::http::error_body;
 use crate::io::mcp::{
     INVALID_PARAMS, METHOD_NOT_FOUND, builtin_tools, initialize_result, parse_message, rpc_error,
     rpc_result, tool_descriptor, tool_result,
@@ -130,10 +133,14 @@ async fn call_tool(
     restrict: Option<Value>,
 ) -> Result<Json, (i64, String)> {
     let unknown = || (INVALID_PARAMS, format!("Unknown tool: {name}"));
-    let outcome = if BUILTIN_IDS.contains(&name) {
+    let outcome: Result<ResponseEnvelope, crate::domain::RivetError> = if BUILTIN_IDS
+        .contains(&name)
+    {
         let mut req = rt.new_request_traced(name, args, principal.clone(), trace);
         req.restrict = restrict;
-        rt.dispatch_request(req, None).await.map(|c| c.to_json())
+        rt.dispatch_request(req, None)
+            .await
+            .map(|c| ResponseEnvelope::from_completion(&c))
     } else {
         if !visible(rt, principal, name) {
             return Err(unknown());
@@ -164,17 +171,24 @@ async fn call_tool(
                 .await
             }
             .await;
-            opened.map(|r| r.to_json())
+            // A streaming tool answers with an accepted envelope carrying the receipt.
+            opened
+                .map(|r| ResponseEnvelope::accepted(&r.request_id, &r.trace_id, name, r.to_json()))
         } else {
             rt.request_bridged(principal.clone(), name, args, bridge, trace, restrict)
                 .await
-                .map(|c| c.to_json())
+                .map(|c| ResponseEnvelope::from_completion(&c))
         }
     };
-    Ok(match outcome {
-        Ok(structured) => tool_result(structured, false),
-        Err(e) => tool_result(error_body(&e), true),
-    })
+    let envelope = match outcome {
+        Ok(env) => env,
+        Err(e) => ResponseEnvelope::from_error(Some(name), &e),
+    };
+    let is_error = matches!(
+        envelope.status(),
+        EnvelopeStatus::Error | EnvelopeStatus::Cancelled
+    );
+    Ok(tool_result(envelope.to_json(), is_error))
 }
 
 fn origin_allowed(headers: &HeaderMap) -> bool {
@@ -301,8 +315,8 @@ async fn post_mcp(
         Ok(r) => rpc_result(&id, r),
         Err((c, m)) => rpc_error(&id, c, &m),
     };
-    // traceparent of the request a tools/call ran (Completion, SessionReceipt
-    // or ErrorEnvelope carry its ids); other methods echo the caller's trace.
+    // traceparent of the request a tools/call ran (its envelope carries the
+    // ids); other methods echo the caller's trace.
     let sc = &out["result"]["structuredContent"];
     let ids = |j: &Json| {
         Some((
@@ -310,7 +324,7 @@ async fn post_mcp(
             j.get("request_id")?.as_str()?.to_string(),
         ))
     };
-    let ran = ids(sc).or_else(|| ids(&sc["error"]));
+    let ran = ids(sc);
     let resp = json_response(200, out.clone());
     match (ran, trace) {
         (Some((tid, rid)), _) if !tid.is_empty() => with_traceparent(resp, &tid, &rid),

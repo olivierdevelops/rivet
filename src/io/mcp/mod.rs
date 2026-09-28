@@ -4,12 +4,15 @@
 //!
 //! ```text
 //!  tools/list ─▶ one direct tool per authorized public operation
-//!               {name:id, title:name, description, inputSchema:params, outputSchema:Completion{result:output}}
-//!               streaming ops add _meta {"rivet/delivery":"session"} and return a SessionReceipt
+//!               {name:id, title:name, description, inputSchema:params, outputSchema:ResponseEnvelope{data:output}}
+//!               streaming ops add _meta {"rivet/delivery":"session"} and return an accepted envelope
+//!               whose data is the SessionReceipt
 //!             + every built-in the principal may call (rivet.request / list / describe /
 //!               outputs / sessions.* / io / policy.generate / trace.show /
 //!               connectors.sync / auth.*), filtered by the caller's authorization
-//!  tools/call ─▶ {content:[{type:text,text:JSON}], structuredContent:JSON, isError}
+//!  tools/call ─▶ {content:[{type:text,text:<envelope JSON>}], structuredContent:<envelope>,
+//!               isError: status is error or cancelled}   (JSON-RPC framing unchanged)
+//!  rivet.request / rivet.sessions.open arguments: {operation, data} (deprecated {id, params})
 //! ```
 
 use crate::domain::contracts::RegistryEntry;
@@ -80,22 +83,27 @@ pub fn initialize_result(version: &str) -> Json {
     })
 }
 
-/// Completion envelope schema whose `result` is `result_schema`.
-pub fn completion_schema(result_schema: Json) -> Json {
+/// ResponseEnvelope schema (PROP-2026-0002 R1) whose `data` is `data_schema`
+/// when the call succeeds (`data` is null on error/cancelled).
+pub fn envelope_schema(data_schema: Json) -> Json {
     json!({
         "type": "object",
         "properties": {
             "request_id": {"type": "string"},
             "trace_id": {"type": "string"},
-            "result": result_schema,
-            "data_count": {"type": "integer", "minimum": 0},
+            "operation": {"type": ["string", "null"]},
+            "type": {"type": "string", "enum": ["result"]},
+            "status": {"type": "string", "enum": ["ok", "error", "cancelled", "accepted"]},
+            "data": {"anyOf": [data_schema, {"type": "null"}]},
+            "error": {"type": ["object", "null"]},
             "effects": {"type": "string", "enum": ["none", "committed", "partial", "unknown"]},
+            "data_count": {"type": "integer", "minimum": 0},
         },
-        "required": ["request_id", "trace_id", "result", "data_count", "effects"],
+        "required": ["request_id", "trace_id", "operation", "type", "status", "data", "error", "effects", "data_count"],
     })
 }
 
-/// SessionReceipt schema (streaming tools' success result).
+/// SessionReceipt schema (the `data` of a streaming tool's accepted envelope).
 pub fn receipt_schema() -> Json {
     json!({
         "type": "object",
@@ -113,6 +121,21 @@ pub fn receipt_schema() -> Json {
     })
 }
 
+/// Input envelope properties for `rivet.request` / `rivet.sessions.open`:
+/// `operation` + `data`, with the deprecated 0.1.0 `id` / `params` aliases.
+fn envelope_input_props(extra: Json) -> Json {
+    let mut props = json!({
+        "operation": {"type": "string", "description": "Operation ID."},
+        "data": {"type": "object", "description": "Operation input (default {})."},
+        "id": {"type": "string", "deprecated": true, "description": "Deprecated alias of `operation` (removed in 0.3.0)."},
+        "params": {"type": "object", "deprecated": true, "description": "Deprecated alias of `data` (removed in 0.3.0)."},
+    });
+    if let (Json::Object(p), Json::Object(x)) = (&mut props, extra) {
+        p.extend(x);
+    }
+    props
+}
+
 /// Direct named tool for one public operation.
 pub fn tool_descriptor(e: &RegistryEntry) -> Json {
     let mut t = json!({
@@ -124,10 +147,10 @@ pub fn tool_descriptor(e: &RegistryEntry) -> Json {
         t["description"] = json!(d);
     }
     if e.streaming() {
-        t["outputSchema"] = receipt_schema();
+        t["outputSchema"] = envelope_schema(receipt_schema());
         t["_meta"] = json!({"rivet/delivery": "session"});
     } else {
-        t["outputSchema"] = completion_schema(e.output_schema());
+        t["outputSchema"] = envelope_schema(e.output_schema());
     }
     t
 }
@@ -138,7 +161,7 @@ fn builtin(name: &str, title: &str, description: &str, props: Json, required: &[
         "title": title,
         "description": description,
         "inputSchema": {"type": "object", "properties": props, "required": required, "additionalProperties": false},
-        "outputSchema": completion_schema(json!({})),
+        "outputSchema": envelope_schema(json!({})),
     })
 }
 
@@ -149,9 +172,9 @@ pub fn builtin_tools() -> Vec<Json> {
         builtin(
             "rivet.request",
             "Request an operation",
-            "Generic dispatch: Completion for unary operations, SessionReceipt for streaming ones.",
-            json!({"id": {"type": "string"}, "params": {"type": "object"}}),
-            &["id"],
+            "Generic dispatch of an input envelope {operation, data}: the operation's envelope for unary operations, an accepted envelope with a SessionReceipt for streaming ones.",
+            envelope_input_props(json!({})),
+            &[],
         ),
         builtin(
             "rivet.list",
@@ -177,9 +200,9 @@ pub fn builtin_tools() -> Vec<Json> {
         builtin(
             "rivet.sessions.open",
             "Open a session",
-            "Open a live session for an operation; returns a SessionReceipt.",
-            json!({"id": {"type": "string"}, "params": {"type": "object"}}),
-            &["id"],
+            "Open a live session for an input envelope {operation, data}; returns a SessionReceipt.",
+            envelope_input_props(json!({"deadline_ms": {"type": "integer", "minimum": 1}})),
+            &[],
         ),
         builtin(
             "rivet.sessions.send",
@@ -310,7 +333,8 @@ pub fn builtin_tools() -> Vec<Json> {
     ]
 }
 
-/// Tool result carrying a structured JSON object.
+/// Tool result carrying one ResponseEnvelope: the text content is its JSON and
+/// `structuredContent` the object itself.
 pub fn tool_result(structured: Json, is_error: bool) -> Json {
     json!({
         "content": [{"type": "text", "text": structured.to_string()}],

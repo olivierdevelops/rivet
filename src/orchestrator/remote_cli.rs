@@ -1,11 +1,11 @@
 //! `rivet --endpoint URL …`: the CLI as a thin client of a running
 //! `rivet serve`, plus the `--input-jsonl -` stdin feeder shared with local
 //! runs. Every command maps onto the server's public surfaces, so a remote
-//! run prints the same Completion / tables / ErrorEnvelope and exits with the
-//! same registry code as a local one.
+//! run prints the same ResponseEnvelope / tables and exits with the same
+//! registry code as a local one.
 //!
 //! ```text
-//!  request ID [--stream] ─────────▶ POST /v1/request (SSE with --stream)
+//!  request ID [--stream] ─────────▶ POST /v1/request {operation, data} (SSE with --stream)
 //!  request ID --input-jsonl - --stream
 //!       stdin JSONL ─validate─▶ input frames ─▶ GET /v1/ws ─▶ data frames ─▶ NDJSON stdout
 //!       EOF ─▶ finish_input · malformed line / Ctrl-C ─▶ cancel
@@ -14,8 +14,11 @@
 //!  io [flags] [--trace REQ] ─────▶ GET /v1/io?…&format=F  (rendered IoReport; exit code from the server)
 //! ```
 
-use super::setup_cli::{NdjsonSink, auth_request, fail, parse_params};
-use crate::domain::contracts::{Catalog, Envelope, RegistryEntry};
+use super::setup_cli::{
+    NdjsonSink, auth_request, fail, fail_as, format, print_envelope, resolve_input,
+};
+use crate::domain::contracts::{Catalog, Completion, RegistryEntry};
+use crate::domain::envelope::ResponseEnvelope;
 use crate::domain::ir::parse_duration_ms;
 use crate::domain::outputs::ValueSpec;
 use crate::domain::ports::{DataSink, RemoteCall, RemoteEndpoint};
@@ -60,10 +63,10 @@ pub fn timeout_ms(t: &Option<String>) -> RivetResult<Option<u64>> {
 
 /// `--input-jsonl SRC --stream` preconditions: only `-` (stdin) is an input
 /// channel; other paths would be file reads the CLI does not broker.
-pub fn check_input_flags(args: &RequestArgs) -> RivetResult<bool> {
-    match args.input_jsonl.as_deref() {
+pub fn check_input_flags(input_jsonl: Option<&str>, stream: bool) -> RivetResult<bool> {
+    match input_jsonl {
         None => Ok(false),
-        Some("-") if args.stream => Ok(true),
+        Some("-") if stream => Ok(true),
         Some("-") => Err(usage(
             "--input-jsonl - needs --stream (output is NDJSON envelopes)",
         )),
@@ -193,8 +196,15 @@ fn entry_of(j: &Json) -> RivetResult<RegistryEntry> {
     RegistryEntry::from_json(j).ok_or_else(|| protocol("the server sent a malformed descriptor"))
 }
 
+/// A GET route's envelope, and its `data` payload.
+async fn get_data(client: &dyn RemoteEndpoint, path: &str) -> RivetResult<(Json, Json)> {
+    let env = client.get(path).await?;
+    let data = env.get("data").cloned().unwrap_or(Json::Null);
+    Ok((env, data))
+}
+
 async fn ids_in_order(client: &dyn RemoteEndpoint) -> RivetResult<Vec<String>> {
-    let j = client.get("/v1/operations").await?;
+    let (_, j) = get_data(client, "/v1/operations").await?;
     Ok(j.get("operations")
         .and_then(Json::as_array)
         .map(|a| {
@@ -210,7 +220,7 @@ async fn builtin(
     id: &str,
     params: Json,
     deadline_ms: Option<u64>,
-) -> RivetResult<Json> {
+) -> RivetResult<Completion> {
     let c = client
         .request(RemoteCall {
             id: id.to_string(),
@@ -225,7 +235,12 @@ async fn builtin(
             }
             e
         })?;
-    Ok(c.result.to_json())
+    Ok(c)
+}
+
+/// Re-render a server envelope in the CLI format.
+fn print_json(env: &Json) {
+    let _ = writeln!(std::io::stdout(), "{}", format().render(env));
 }
 
 /// Run one CLI command against the server; returns the process exit code.
@@ -249,10 +264,10 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
             };
             match client.request(call).await {
                 Ok(c) => {
-                    let _ = writeln!(stdout, "{}", c.to_json());
+                    print_envelope(&ResponseEnvelope::from_completion(&c));
                     0
                 }
-                Err(e) => fail(&e, None, true),
+                Err(e) => fail_as(Some(id), &e, None, true),
             }
         }
         Command::Trace {
@@ -265,11 +280,11 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
         )
         .await
         {
-            Ok(t) => {
-                let _ = writeln!(stdout, "{t}");
+            Ok(c) => {
+                print_envelope(&ResponseEnvelope::from_completion(&c));
                 0
             }
-            Err(e) => fail(&e, None, true),
+            Err(e) => fail_as(Some("rivet.trace.show"), &e, None, true),
         },
         Command::Trace {
             command: TraceCommand::Export { request_id, output },
@@ -281,11 +296,11 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
         )
         .await
         {
-            Ok(t) => {
-                let _ = writeln!(stdout, "{t}");
+            Ok(c) => {
+                print_envelope(&ResponseEnvelope::from_completion(&c));
                 0
             }
-            Err(e) => fail(&e, None, true),
+            Err(e) => fail_as(Some("rivet.trace.export"), &e, None, true),
         },
         Command::Connectors {
             command: ConnectorsCommand::Sync { name, output },
@@ -297,15 +312,16 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
         )
         .await
         {
-            Ok(r) => {
-                let _ = writeln!(stdout, "{r}");
+            Ok(c) => {
+                print_envelope(&ResponseEnvelope::from_completion(&c));
+                let r = c.result.to_json();
                 let sha = r.get("sha256").and_then(Json::as_str).unwrap_or("");
                 eprintln!(
                     "wrote candidate snapshot {output} ({sha}); after review, approve it in policy.json: \"approved\": {{\"snapshots\": [\"{sha}\"]}}"
                 );
                 0
             }
-            Err(e) => fail(&e, None, true),
+            Err(e) => fail_as(Some("rivet.connectors.sync"), &e, None, true),
         },
         Command::List { outputs } => match list(cli.json, *outputs, client).await {
             Ok(text) => {
@@ -365,20 +381,27 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
             let query: String = url::form_urlencoded::Serializer::new(String::new())
                 .extend_pairs(pairs)
                 .finish();
-            match client.get(&format!("/v1/io?{query}")).await {
-                Ok(r) => {
-                    let _ = write!(
-                        stdout,
-                        "{}",
-                        r.get("rendered").and_then(Json::as_str).unwrap_or("")
-                    );
+            match get_data(client, &format!("/v1/io?{query}")).await {
+                Ok((env, r)) => {
+                    if q.format == "json" {
+                        // The JSON format is an envelope whose data is the manifest.
+                        let mut env = env;
+                        env["data"] = r.get("manifest").cloned().unwrap_or(Json::Null);
+                        print_json(&env);
+                    } else {
+                        let _ = write!(
+                            stdout,
+                            "{}",
+                            r.get("rendered").and_then(Json::as_str).unwrap_or("")
+                        );
+                    }
                     let diag = r.get("diagnostics").and_then(Json::as_str).unwrap_or("");
                     if !diag.is_empty() {
                         eprint!("{diag}");
                     }
                     r.get("exit_code").and_then(Json::as_i64).unwrap_or(0) as i32
                 }
-                Err(e) => fail(&e, None, cli.json),
+                Err(e) => fail_as(Some("rivet.io"), &e, None, cli.json || q.format == "json"),
             }
         }
         Command::Check { .. }
@@ -395,27 +418,42 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
 }
 
 async fn request(args: &RequestArgs, client: &dyn RemoteEndpoint) -> i32 {
-    let params = match parse_params(&args.params) {
-        Ok(p) => p,
-        Err(e) => return fail(&e, None, true),
+    // serve.parse_input on the client side: --data / --input (or the deprecated --params).
+    let input = match resolve_input(args) {
+        Ok(i) => i,
+        Err(e) => return fail_as(args.id.as_deref(), &e, None, true),
     };
-    let (deadline_ms, live) = match (timeout_ms(&args.timeout), check_input_flags(args)) {
-        (Ok(d), Ok(l)) => (d, l),
-        (Err(e), _) | (_, Err(e)) => return fail(&e, None, true),
+    let op = input.operation.clone();
+    let stream = args.stream || input.stream == Some(true);
+    if stream && format() == crate::domain::envelope::OutputFormat::Pretty {
+        return fail_as(
+            Some(&op),
+            &usage("--pretty cannot be used with --stream: NDJSON records must stay one per line"),
+            None,
+            true,
+        );
+    }
+    let (deadline_ms, live) = match (
+        timeout_ms(&args.timeout),
+        check_input_flags(args.input_jsonl.as_deref(), stream),
+    ) {
+        (Ok(d), Ok(l)) => (d.or(input.deadline_ms), l),
+        (Err(e), _) | (_, Err(e)) => return fail_as(Some(&op), &e, None, true),
     };
     let call = RemoteCall {
-        id: args.id.clone(),
-        params,
+        id: op.clone(),
+        params: input.data,
         deadline_ms,
     };
+    let sink = Arc::new(NdjsonSink::default());
     let outcome = if live {
-        duplex(call, client).await
+        duplex(call, client, sink.clone()).await
     } else {
         // Ctrl-C drops the exchange: the server cancels a request whose
         // client disconnected (SSE) and the CLI reports `cancelled` (130).
         let run = async {
-            if args.stream {
-                client.request_stream(call, Arc::new(NdjsonSink)).await
+            if stream {
+                client.request_stream(call, sink.clone()).await
             } else {
                 client.request(call).await
             }
@@ -426,16 +464,17 @@ async fn request(args: &RequestArgs, client: &dyn RemoteEndpoint) -> i32 {
         }
     };
     match outcome {
-        Ok(c) => {
-            let line = if args.stream {
-                Envelope::Result(c).to_json()
-            } else {
-                c.to_json()
-            };
-            let _ = writeln!(std::io::stdout(), "{line}");
+        Ok(c) if stream => {
+            let r = ResponseEnvelope::from_completion(&c).with_seq(sink.next_seq());
+            let _ = writeln!(std::io::stdout(), "{}", r.to_json_string());
             0
         }
-        Err(e) => fail(&e, None, true),
+        Ok(c) => {
+            print_envelope(&ResponseEnvelope::from_completion(&c));
+            0
+        }
+        Err(e) if stream => sink.fail(&op, &e),
+        Err(e) => fail_as(Some(&op), &e, None, true),
     }
 }
 
@@ -444,17 +483,16 @@ async fn request(args: &RequestArgs, client: &dyn RemoteEndpoint) -> i32 {
 async fn duplex(
     call: RemoteCall,
     client: &dyn RemoteEndpoint,
-) -> RivetResult<crate::domain::contracts::Completion> {
-    let described = client
-        .get(&format!("/v1/operations/{}", seg(&call.id)))
-        .await?;
+    ndjson: Arc<NdjsonSink>,
+) -> RivetResult<Completion> {
+    let (_, described) = get_data(client, &format!("/v1/operations/{}", seg(&call.id))).await?;
     let receives = receives_of(&entry_of(&described)?)?;
     let (tx, rx) = tokio::sync::mpsc::channel::<Value>(INPUT_QUEUE);
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     let mut cancel_tx = Some(cancel_tx);
     let (failed_tx, mut failed_rx) = tokio::sync::oneshot::channel::<RivetError>();
     let feeder = tokio::spawn(feed_stdin_jsonl(tx, receives, failed_tx));
-    let sink: Arc<dyn DataSink> = Arc::new(NdjsonSink);
+    let sink: Arc<dyn DataSink> = ndjson;
     let run = client.duplex(call, rx, cancel_rx, sink);
     tokio::pin!(run);
     let mut watching = true;
@@ -502,12 +540,23 @@ async fn list(
     client: &dyn RemoteEndpoint,
 ) -> RivetResult<String> {
     if json_out {
-        return Ok(format!("{}\n", client.get("/v1/operations").await?));
+        if with_outputs {
+            let c = builtin(client, "rivet.list", json!({"outputs": true}), None).await?;
+            return Ok(format!(
+                "{}\n",
+                ResponseEnvelope::from_completion(&c).render(format())
+            ));
+        }
+        let (env, _) = get_data(client, "/v1/operations").await?;
+        return Ok(format!("{}\n", format().render(&env)));
     }
     let j = if with_outputs {
-        builtin(client, "rivet.list", json!({"outputs": true}), None).await?
+        builtin(client, "rivet.list", json!({"outputs": true}), None)
+            .await?
+            .result
+            .to_json()
     } else {
-        client.get("/v1/operations").await?
+        get_data(client, "/v1/operations").await?.1
     };
     let entries = j
         .get("operations")
@@ -530,8 +579,13 @@ async fn describe(
         ids.to_vec()
     };
     let mut found: Vec<(String, Json)> = Vec::new();
+    let mut ids: Option<(String, String)> = None;
     for id in &wanted {
-        let j = client.get(&format!("/v1/operations/{}", seg(id))).await?;
+        let (env, j) = get_data(client, &format!("/v1/operations/{}", seg(id))).await?;
+        if ids.is_none() {
+            let s = |k: &str| env.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+            ids = Some((s("request_id"), s("trace_id")));
+        }
         found.push((id.clone(), j));
     }
     // Same order as a local run: catalog order, not argv order.
@@ -543,7 +597,9 @@ async fn describe(
         } else {
             Json::Array(items)
         };
-        return Ok(format!("{out}\n"));
+        let (rid, tid) = ids.unwrap_or_default();
+        let env = ResponseEnvelope::payload(&rid, &tid, "rivet.describe", out);
+        return Ok(format!("{}\n", env.render(format())));
     }
     let mut text = String::new();
     for (i, (_, j)) in found.iter().enumerate() {
@@ -568,15 +624,18 @@ async fn outputs(
         ));
     }
     if json_out {
-        let j = match id {
+        let env = match id {
             Some(id) => {
-                client
-                    .get(&format!("/v1/operations/{}/outputs", seg(id)))
+                get_data(client, &format!("/v1/operations/{}/outputs", seg(id)))
                     .await?
+                    .0
             }
-            None => builtin(client, "rivet.outputs", json!({"all": true}), None).await?,
+            None => ResponseEnvelope::from_completion(
+                &builtin(client, "rivet.outputs", json!({"all": true}), None).await?,
+            )
+            .to_json(),
         };
-        return Ok(format!("{j}\n"));
+        return Ok(format!("{}\n", format().render(&env)));
     }
     let ids: Vec<String> = match id {
         Some(id) => vec![id.to_string()],
@@ -584,7 +643,7 @@ async fn outputs(
     };
     let mut reports = Vec::new();
     for id in &ids {
-        let j = client.get(&format!("/v1/operations/{}", seg(id))).await?;
+        let (_, j) = get_data(client, &format!("/v1/operations/{}", seg(id))).await?;
         reports.push(entry_of(&j)?.output_report());
     }
     reports.sort_by(|a, b| a.id.cmp(&b.id));

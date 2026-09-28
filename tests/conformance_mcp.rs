@@ -144,7 +144,7 @@ async fn stdio_rivet_peer_sync_approve_call() {
         dir.path(),
         peer.path(),
         "[\"demo.add\", \"demo.bad\"]",
-        "operation bridge.add\n    param a integer required\n    output json\n    r = (request \"peer.tools.demo.add\" {a: a, b: 3})\n    return r.structuredContent.result\nend\n",
+        "operation bridge.add\n    param a integer required\n    output json\n    r = (request \"peer.tools.demo.add\" {a: a, b: 3})\n    return r.structuredContent.data\nend\n",
     );
     write(
         dir.path(),
@@ -208,7 +208,7 @@ async fn stdio_rivet_peer_sync_approve_call() {
     let j = c.result.to_json();
     assert_eq!(j["isError"], json!(false));
     assert_eq!(j["content"][0]["type"], json!("text"));
-    assert_eq!(j["structuredContent"]["result"], json!(2));
+    assert_eq!(j["structuredContent"]["data"], json!(2));
 
     // Params are checked against the snapshot inputSchema before any I/O.
     let e = rt
@@ -502,7 +502,7 @@ async fn http_rivet_serve_peer() {
         dir.path(),
         "app.rivet",
         &format!(
-            "connector peer mcp\n    transport http \"http://{addr}/mcp\"\n    schema \"./schemas/peer.json\"\n    expose tools [\"demo.add\", \"demo.bad\"]\nend\n\noperation bridge.add\n    param a integer required\n    output json\n    r = (request \"peer.tools.demo.add\" {{a: a, b: 40}})\n    return r.structuredContent.result\nend\n"
+            "connector peer mcp\n    transport http \"http://{addr}/mcp\"\n    schema \"./schemas/peer.json\"\n    expose tools [\"demo.add\", \"demo.bad\"]\nend\n\noperation bridge.add\n    param a integer required\n    output json\n    r = (request \"peer.tools.demo.add\" {{a: a, b: 40}})\n    return r.structuredContent.data\nend\n"
         ),
     );
     let grants = json!([
@@ -952,8 +952,11 @@ async fn http_connector_oauth_and_catalog() {
         .request("crm.tools.whoami", Value::Null, None)
         .await
         .unwrap();
-    let text = c.to_json().to_string();
-    assert_eq!(c.to_json()["result"]["structuredContent"]["bearer"], true);
+    let text = c.envelope().to_json().to_string();
+    assert_eq!(
+        c.envelope().to_json()["data"]["structuredContent"]["bearer"],
+        true
+    );
     assert!(!text.contains("CANARY"), "{text}");
     // A second call reuses the cached lease (one token grant).
     rt.request("crm.tools.whoami", Value::Null, None)

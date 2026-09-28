@@ -322,7 +322,10 @@ fn demo11_json_manifest() {
         "json",
     ]);
     assert_eq!(code, 0);
-    let j: serde_json::Value = serde_json::from_str(&out).unwrap();
+    // `--format json` is an envelope (operation rivet.io) whose data is the manifest.
+    let env: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(env["operation"], "rivet.io");
+    let j = &env["data"];
     assert_eq!(j["complete"], true);
     assert_eq!(j["policy"]["file"], "policy.json");
     let sites = j["sites"].as_array().unwrap();

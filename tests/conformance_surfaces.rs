@@ -137,16 +137,16 @@ async fn local_and_remote_cli_agree() {
     let remote = ["--endpoint", host.url.as_str()];
     let cases: Vec<(Vec<&str>, Option<&str>)> = vec![
         (
-            vec!["request", "demo.add", "--params", r#"{"a":2,"b":3}"#],
+            vec!["request", "demo.add", "--data", r#"{"a":2,"b":3}"#],
             None,
         ),
-        (vec!["request", "demo.add", "--params", r#"{"b":3}"#], None),
+        (vec!["request", "demo.add", "--data", r#"{"b":3}"#], None),
         // G19: the 600000 ms host cap applies to local and --endpoint alike.
         (
             vec![
                 "request",
                 "demo.add",
-                "--params",
+                "--data",
                 r#"{"a":1,"b":1}"#,
                 "--timeout",
                 "10m",
@@ -158,7 +158,7 @@ async fn local_and_remote_cli_agree() {
                 "--json",
                 "request",
                 "demo.add",
-                "--params",
+                "--data",
                 r#"{"a":1,"b":1}"#,
                 "--timeout",
                 "601s",
@@ -167,13 +167,7 @@ async fn local_and_remote_cli_agree() {
         ),
         (vec!["request", "nope.op"], None),
         (
-            vec![
-                "request",
-                "demo.count",
-                "--params",
-                r#"{"n":3}"#,
-                "--stream",
-            ],
+            vec!["request", "demo.count", "--data", r#"{"n":3}"#, "--stream"],
             None,
         ),
         (
@@ -222,19 +216,39 @@ async fn local_and_remote_cli_agree() {
             );
         }
         if l.code != 0 {
+            // The terminal record of a cancelled live input carries `seq` and
+            // `data_count`, which count those racing items: compare without them.
+            let err = |s: &str| {
+                if cancelled_input {
+                    normalize(s)
+                        .lines()
+                        .map(|l| match serde_json::from_str::<Json>(l) {
+                            Ok(Json::Object(mut m)) => {
+                                m.remove("seq");
+                                m.remove("data_count");
+                                Json::Object(m).to_string()
+                            }
+                            _ => l.to_string(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    normalize(s)
+                }
+            };
             assert_eq!(
-                normalize(&l.stderr),
-                normalize(&r.stderr),
+                err(&l.stderr),
+                err(&r.stderr),
                 "{args:?}\nlocal {l:?}\nremote {r:?}"
             );
         }
         match args.as_slice() {
-            [_, "demo.add", "--params", p] if p.contains("\"a\"") => {
+            [_, "demo.add", "--data", p] if p.contains("\"a\"") => {
                 assert_eq!(l.code, 0);
                 let j: Json = serde_json::from_str(r.stdout.trim()).unwrap();
-                assert_eq!(j["result"], 5);
+                assert_eq!(j["data"], 5);
             }
-            [_, "demo.add", "--params", _] => {
+            [_, "demo.add", "--data", _] => {
                 assert_eq!(r.code, 2);
                 assert!(r.stderr.contains("validation.required"), "{r:?}");
             }
@@ -253,7 +267,7 @@ async fn local_and_remote_cli_agree() {
                     );
                     assert!(lines[0]["request_id"].as_str().unwrap().starts_with("req_"));
                     assert_eq!(
-                        (&lines[2]["type"], &lines[2]["result"]),
+                        (&lines[2]["type"], &lines[2]["data"]),
                         (&json!("result"), &json!(2))
                     );
                 }
@@ -307,7 +321,7 @@ async fn token_file_and_sensitive_builtins() {
     let ops = write(dir.path(), "ops.token", "ops-token");
     let host = host_for(dir, file).await;
     let url = host.url.as_str();
-    let add = ["request", "demo.add", "--params", r#"{"a":1,"b":1}"#];
+    let add = ["request", "demo.add", "--data", r#"{"a":1,"b":1}"#];
     let anon = cli(&[&["--endpoint", url][..], &add[..]].concat(), None).await;
     assert_eq!(anon.code, 3, "{anon:?}");
     assert!(anon.stderr.contains("\"kind\":\"auth\""), "{anon:?}");
@@ -384,8 +398,8 @@ async fn oauth_begin_complete_across_invocations() {
     .await;
     assert_eq!(begin.code, 0, "{begin:?}");
     let challenge: Json = serde_json::from_str(begin.stdout.trim()).unwrap();
-    let tx = challenge["result"]["transaction_id"].as_str().unwrap();
-    let (code, state) = f.approve(challenge["result"]["authorization_url"].as_str().unwrap());
+    let tx = challenge["data"]["transaction_id"].as_str().unwrap();
+    let (code, state) = f.approve(challenge["data"]["authorization_url"].as_str().unwrap());
     let cb = write(
         &dir_path,
         "callback.json",
@@ -418,7 +432,7 @@ async fn oauth_begin_complete_across_invocations() {
     .await;
     assert_eq!(done.code, 0, "{done:?}");
     let status: Json = serde_json::from_str(done.stdout.trim()).unwrap();
-    assert_eq!(status["result"]["state"], "connected");
+    assert_eq!(status["data"]["state"], "connected");
     let st = cli(
         &[&ep[..], &["auth", "status", "crm_user", "--account", "ada"]].concat(),
         None,
@@ -428,7 +442,7 @@ async fn oauth_begin_complete_across_invocations() {
     let contacts = cli(&[&ep[..], &["request", "user.contacts"]].concat(), None).await;
     assert_eq!(contacts.code, 0, "{contacts:?}");
     let j: Json = serde_json::from_str(contacts.stdout.trim()).unwrap();
-    assert_eq!(j["result"]["contacts"][0]["name"], "Ada");
+    assert_eq!(j["data"]["contacts"][0]["name"], "Ada");
     let cancel = cli(
         &[&ep[..], &["auth", "cancel", "auth_unknown"]].concat(),
         None,

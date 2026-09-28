@@ -192,6 +192,17 @@ impl Run {
         v.get("error").cloned().unwrap_or(v)
     }
 
+    /// The whole error envelope on stderr (0.2: `effects` sits at its top level).
+    pub fn envelope(&self) -> serde_json::Value {
+        let line = self
+            .stderr
+            .lines()
+            .rev()
+            .find(|l| l.trim_start().starts_with('{'))
+            .unwrap_or_else(|| panic!("no JSON on stderr: {}", self.stderr));
+        serde_json::from_str(line).unwrap()
+    }
+
     pub fn json(&self) -> serde_json::Value {
         serde_json::from_str(self.stdout.trim())
             .unwrap_or_else(|e| panic!("stdout not JSON ({e}): {}", self.stdout))

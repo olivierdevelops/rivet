@@ -103,7 +103,7 @@ fn discovery_beside_the_entry_file() {
             "--json",
             "request",
             "config.read",
-            "--params",
+            "--data",
             "{}",
         ],
     );
@@ -137,7 +137,7 @@ fn discovery_beside_the_entry_file() {
             "--json",
             "request",
             "config.read",
-            "--params",
+            "--data",
             "{}",
         ],
     );
@@ -150,7 +150,7 @@ fn discovery_beside_the_entry_file() {
             "services/app.rivet",
             "request",
             "fixture.echo",
-            "--params",
+            "--data",
             r#"{"value":"ok"}"#,
         ],
     );
@@ -196,7 +196,7 @@ fn explicit_policy_path() {
                 "--json",
                 "request",
                 "data.read",
-                "--params",
+                "--data",
                 &format!(r#"{{"name":"{name}"}}"#),
             ],
         )
@@ -216,7 +216,7 @@ fn explicit_policy_path() {
             "--json",
             "request",
             "fixture.echo",
-            "--params",
+            "--data",
             r#"{"value":"ok"}"#,
         ],
     );
@@ -234,7 +234,7 @@ fn explicit_policy_path() {
                 "--json",
                 "request",
                 "fixture.echo",
-                "--params",
+                "--data",
                 r#"{"value":"ok"}"#,
             ],
         );
@@ -394,7 +394,7 @@ fn schema_errors_name_their_json_pointer() {
         &g(r#"{"capability":"allow_read","targets":["./data/**"],"access":["read","delete"]}"#),
     );
     for args in [
-        vec!["request", "fixture.echo", "--params", r#"{"value":"ok"}"#],
+        vec!["request", "fixture.echo", "--data", r#"{"value":"ok"}"#],
         vec!["io", "--check-policy"],
     ] {
         let mut all = vec!["--file", "app.rivet", "--json"];
@@ -770,7 +770,7 @@ async fn request_restriction_on_http_mcp_ws() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": "t.a", "params": {}, "restrict": only_a}),
+        json!({"operation": "t.a", "data": {}, "restrict": only_a}),
         &[],
     )
     .await;
@@ -778,7 +778,7 @@ async fn request_restriction_on_http_mcp_ws() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": "t.b", "params": {}, "restrict": only_a}),
+        json!({"operation": "t.b", "data": {}, "restrict": only_a}),
         &[],
     )
     .await;
@@ -786,17 +786,23 @@ async fn request_restriction_on_http_mcp_ws() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": "t.secret", "params": {}, "restrict": wide}),
+        json!({"operation": "t.secret", "data": {}, "restrict": wide}),
         &[],
     )
     .await;
     assert_eq!(r.status, 403, "{}", r.text);
-    let r = serve_support::post(addr, "/v1/request", json!({"id": "t.b", "params": {}}), &[]).await;
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"operation": "t.b", "data": {}}),
+        &[],
+    )
+    .await;
     assert_eq!(r.status, 200, "{}", r.text);
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": "t.a", "params": {}, "restrict": {"grants": "x"}}),
+        json!({"operation": "t.a", "data": {}, "restrict": {"grants": "x"}}),
         &[],
     )
     .await;
@@ -826,12 +832,12 @@ async fn request_restriction_on_http_mcp_ws() {
     let mut ws = serve_support::ws_connect(addr, &[]).await.unwrap();
     serve_support::ws_send(
         &mut ws,
-        json!({"type": "request", "ref": "r1", "id": "t.a", "params": {}, "restrict": only_a}),
+        json!({"type": "request", "ref": "r1", "operation": "t.a", "data": {}, "restrict": only_a}),
     )
     .await;
     serve_support::ws_send(
         &mut ws,
-        json!({"type": "request", "ref": "r2", "id": "t.b", "params": {}, "restrict": only_a}),
+        json!({"type": "request", "ref": "r2", "operation": "t.b", "data": {}, "restrict": only_a}),
     )
     .await;
     let frames = serve_support::ws_until_terminal(&mut ws, &["r1", "r2"]).await;
@@ -842,9 +848,13 @@ async fn request_restriction_on_http_mcp_ws() {
             .cloned()
             .unwrap()
     };
-    assert_eq!(terminal("r1")["type"], "result", "{frames:?}");
+    assert_eq!(terminal("r1")["status"], "ok", "{frames:?}");
     let r2 = terminal("r2");
-    assert_eq!(r2["type"], "error", "{frames:?}");
+    assert_eq!(
+        (r2["type"].clone(), r2["status"].clone()),
+        (json!("result"), json!("error")),
+        "{frames:?}"
+    );
     assert!(r2.to_string().contains("permission.denied"), "{r2}");
 }
 
@@ -875,7 +885,7 @@ async fn per_request_restriction_cannot_widen() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": "t.read", "params": {}, "policy": widen, "grants": widen["grants"], "sandbox": "*"}),
+        json!({"operation": "t.read", "data": {}, "policy": widen, "grants": widen["grants"], "sandbox": "*"}),
         &[],
     )
     .await;
@@ -933,7 +943,7 @@ fn policy_explain_flags_star() {
     );
     assert_eq!(o.code, 0, "{}", o.stderr);
     let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();
-    let caps: Vec<&str> = j["broad"]
+    let caps: Vec<&str> = j["data"]["broad"]
         .as_array()
         .unwrap_or_else(|| panic!("no `broad` in {j}"))
         .iter()
@@ -972,7 +982,7 @@ fn policy_explain_params_evaluates_concrete_targets() {
     };
     let decisions = |o: &Out| -> Vec<(String, String)> {
         let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();
-        j["sites"]
+        j["data"]["sites"]
             .as_array()
             .unwrap()
             .iter()

@@ -225,9 +225,9 @@ async fn call(
     }
     match out {
         Ok(c) => {
-            let j = c.to_json();
+            let j = c.envelope().to_json();
             assert_clean("completion", &j.to_string());
-            Ok(j["result"].clone())
+            Ok(j["data"].clone())
         }
         Err(e) => {
             assert_clean("error", &err_text(&e));
@@ -246,9 +246,9 @@ async fn call_with_deadline(
     req.deadline_ms = deadline_ms;
     match rt.dispatch_request(req, None).await {
         Ok(c) => {
-            let j = c.to_json();
+            let j = c.envelope().to_json();
             assert_clean("completion", &j.to_string());
-            Ok(j["result"].clone())
+            Ok(j["data"].clone())
         }
         Err(e) => {
             assert_clean("error", &err_text(&e));
@@ -964,7 +964,7 @@ async fn cli_auth_commands() {
     assert_eq!(code, 0);
     let j: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
     assert!(
-        j["result"]["authorization_url"]
+        j["data"]["authorization_url"]
             .as_str()
             .unwrap()
             .contains("code_challenge_method=S256")

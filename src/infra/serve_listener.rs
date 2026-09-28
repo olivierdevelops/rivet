@@ -32,7 +32,7 @@ pub struct AxumListener {
 
 impl AxumListener {
     /// `surfaces` maps a surface name to its prebuilt routes; `fallback`
-    /// answers every unmounted route (404 ErrorEnvelope).
+    /// answers every unmounted route (404 error ResponseEnvelope).
     pub fn new(surfaces: Vec<(String, Router)>, fallback: Router) -> AxumListener {
         AxumListener {
             listener: None,
@@ -290,12 +290,23 @@ mod tests {
             let j: serde_json::Value = serde_json::from_str(&text).unwrap();
             match j["ref"].as_str().unwrap() {
                 "a" => a += 1,
-                "b" => b.push(j["type"].as_str().unwrap().to_string()),
+                "b" => b.push(format!(
+                    "{}{}",
+                    j["type"].as_str().unwrap(),
+                    j["status"]
+                        .as_str()
+                        .map(|s| format!(":{s}"))
+                        .unwrap_or_default()
+                )),
                 _ => replies += 1,
             }
         }
         assert_eq!(a, WS_LANE_FRAMES);
-        assert_eq!(b, vec!["data", "error"], "exactly one terminal frame for b");
+        assert_eq!(
+            b,
+            vec!["data", "result:error"],
+            "exactly one terminal record for b"
+        );
         assert_eq!(replies, 1);
     }
 }

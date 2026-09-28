@@ -1,4 +1,4 @@
 {
-  "id": "chat.exchange",
-  "params": {}
+  "operation": "chat.exchange",
+  "data": {}
 }

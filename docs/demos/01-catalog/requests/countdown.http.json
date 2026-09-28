@@ -1,4 +1,4 @@
 {
-  "id": "demo.countdown",
-  "params": {}
+  "operation": "demo.countdown",
+  "data": {}
 }

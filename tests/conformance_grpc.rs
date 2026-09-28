@@ -1032,7 +1032,7 @@ async fn live_chat(prefix: &[&str]) -> Vec<serde_json::Value> {
         .args([
             "request",
             "chat.exchange",
-            "--params",
+            "--data",
             "{}",
             "--input-jsonl",
             "-",
@@ -1099,7 +1099,8 @@ async fn cli_live_input_local_and_remote() {
         );
         assert_eq!(out[0]["type"], "data");
         assert_eq!(out[2]["type"], "result");
-        assert_eq!(out[2]["result"]["status"], "OK");
+        assert_eq!(out[2]["status"], "ok");
+        assert_eq!(out[2]["data"]["status"], "OK");
         // A line that breaks the `receives` schema cancels the call (exit 2).
         let bad = tokio::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
             .args(&prefix)

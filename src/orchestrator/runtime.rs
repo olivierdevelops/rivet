@@ -1045,6 +1045,7 @@ impl Runtime {
         Ok(Completion {
             request_id: req.request_id,
             trace_id: req.trace_id,
+            operation: id,
             result: result.to_value(kind),
             data_count: 0,
             effects: if kind == McpImportKind::Tool {
@@ -1319,6 +1320,42 @@ impl Runtime {
     /// The raw trace store (for hosts that export or inspect it).
     pub fn trace_store(&self) -> Arc<dyn TraceStore> {
         self.inner.trace.clone()
+    }
+
+    /// Record a trace note that a request arrived with deprecated input aliases
+    /// (`id`/`params`, PROP-2026-0002 R5); `rivet trace show` lists it as phase
+    /// `input`, decision `deprecated`. No effect id, so manifests ignore it.
+    pub fn note_deprecated_input(
+        &self,
+        request_id: &str,
+        trace_id: &str,
+        operation: &str,
+        aliases: &[String],
+    ) {
+        if aliases.is_empty() {
+            return;
+        }
+        self.inner
+            .trace
+            .record(crate::domain::io_manifest::TraceEvent {
+                request_id: request_id.to_string(),
+                trace_id: trace_id.to_string(),
+                node_id: None,
+                attempt: 0,
+                effect_id: None,
+                operation_id: operation.to_string(),
+                phase: "input".into(),
+                capability: "input".into(),
+                access: "deprecated".into(),
+                target: aliases.join(","),
+                decision: "deprecated".into(),
+                policy_hash: self.policy().sha256.clone().unwrap_or_default(),
+                source: None,
+                outcome: serde_json::json!({
+                    "deprecated": aliases,
+                    "hint": "send `operation` and `data`; `id` and `params` are removed in 0.3.0",
+                }),
+            });
     }
 }
 

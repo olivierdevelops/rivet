@@ -57,7 +57,7 @@ impl DataSink for EmitCheck {
 // vhco:usecase execution.request_operation(input: Request) -> Completion needs ExecutionDriver, ScopeSupervisor
 // vhco:label Request an operation
 // vhco:about The one dispatcher every surface uses: resolves the ID, rejects unknown/invalid params before injecting defaults, enforces call depth, drives the compiled body in a supervised scope, validates the result against the declared output and returns exactly one Completion or error.
-// vhco:example input={operation_id:"demo.add", params:{a:2, b:3}} => { "result": 5, "data_count": 0, "effects": "none" }
+// vhco:example input={operation_id:"demo.add", params:{a:2, b:3}} => { "operation": "demo.add", "type": "result", "status": "ok", "data": 5, "error": null, "effects": "none", "data_count": 0 }
 pub async fn request_operation(
     input: Request,
     registry: &dyn Registry,
@@ -141,6 +141,7 @@ pub async fn request_operation(
     Ok(Completion {
         request_id: input.request_id,
         trace_id: input.trace_id,
+        operation: input.operation_id,
         result: outcome.result,
         data_count: outcome.data_count,
         effects: outcome.effects,
@@ -402,6 +403,7 @@ mod tests {
                 sink.send(DataEvent {
                     request_id: plan.request.request_id.clone(),
                     trace_id: plan.request.trace_id.clone(),
+                    operation: plan.request.operation_id.clone(),
                     seq,
                     data,
                 })

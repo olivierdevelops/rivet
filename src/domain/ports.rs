@@ -386,12 +386,12 @@ pub struct RemoteCall {
 }
 
 /// Host bootstrap I/O, not a script effect: the CLI as a thin client of an
-/// existing `rivet serve` (`--endpoint URL`). Every method returns the server's
-/// own Completion or its ErrorEnvelope decoded back into the same RivetError,
-/// so exit codes follow the registry exactly as for a local run.
+/// existing `rivet serve` (`--endpoint URL`). Every method decodes the server's
+/// ResponseEnvelope: status ok → Completion, status error/cancelled → the same
+/// RivetError, so exit codes follow the registry exactly as for a local run.
 #[async_trait]
 pub trait RemoteEndpoint: Send + Sync {
-    /// `POST /v1/request {id, params}` → Completion.
+    /// `POST /v1/request {operation, data}` → Completion.
     async fn request(&self, call: RemoteCall) -> RivetResult<Completion>;
     /// `POST /v1/request` with `Accept: text/event-stream`: each data envelope
     /// goes to `sink` as it arrives; the terminal event is the result.
@@ -400,7 +400,7 @@ pub trait RemoteEndpoint: Send + Sync {
         call: RemoteCall,
         sink: Arc<dyn DataSink>,
     ) -> RivetResult<Completion>;
-    /// `GET PATH` (path plus query) → the JSON body of a 2xx answer.
+    /// `GET PATH` (path plus query) → the JSON body of a 2xx answer (a ResponseEnvelope).
     async fn get(&self, path: &str) -> RivetResult<serde_json::Value>;
     /// `/v1/ws` (subprotocol rivet.v1): one `request` frame, then an `input`
     /// frame per item received on `input` while data frames drain to `sink`;

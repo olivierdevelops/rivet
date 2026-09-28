@@ -79,7 +79,11 @@ async fn host_buffer_budget_is_reserved_by_session_queues() {
     let data: Vec<_> = events.iter().filter(|e| e["type"] == "data").collect();
     assert_eq!(data.len(), 3, "{events:?}");
     let last = events.last().unwrap();
-    assert_eq!(last["type"], "error", "{events:?}");
+    assert_eq!(
+        (last["type"].clone(), last["status"].clone()),
+        (json!("result"), json!("error")),
+        "{events:?}"
+    );
     assert_eq!(last["error"]["code"], "limit.buffered_bytes", "{last}");
 
     // The acknowledged events gave their bytes back: a session that fits runs to the end.
@@ -165,7 +169,7 @@ async fn duplex_sequence_rules_through_the_library() {
     assert_eq!(data, vec![json!("hi"), json!("there")]);
     let terminal: Vec<_> = items.iter().filter(|e| e["type"] != "data").collect();
     assert_eq!(terminal.len(), 1);
-    assert_eq!(terminal[0]["result"], 2, "exactly two items were relayed");
+    assert_eq!(terminal[0]["data"], 2, "exactly two items were relayed");
 }
 
 // vhco:test sessions.read_events -- cursors: future cursor conflicts, evicted cursor is stream.cursor_expired, re-reading a cursor replays; producers wait for acknowledgement
@@ -272,7 +276,7 @@ async fn session_operations_through_the_dispatcher() {
     };
     let r = call(
         "rivet.sessions.open",
-        json!({"id":"demo.relay","params":{}}),
+        json!({"operation":"demo.relay","data":{}}),
     )
     .await
     .unwrap();
@@ -317,7 +321,7 @@ async fn session_operations_through_the_dispatcher() {
         }
     }
     assert_eq!(
-        (last["type"].clone(), last["result"].clone()),
+        (last["type"].clone(), last["data"].clone()),
         (json!("result"), json!(1))
     );
     let c = call("rivet.sessions.cancel", json!({"session_id":sid}))
@@ -328,16 +332,19 @@ async fn session_operations_through_the_dispatcher() {
         "succeeded",
         "cancel after terminal keeps its state"
     );
-    let r = call("rivet.request", json!({"id":"demo.count","params":{"n":1}}))
-        .await
-        .unwrap();
+    let r = call(
+        "rivet.request",
+        json!({"operation":"demo.count","data":{"n":1}}),
+    )
+    .await
+    .unwrap();
     assert!(
         r.result.get("session_id").is_some(),
         "rivet.request opens a session for streaming ops"
     );
     let r = call(
         "rivet.request",
-        json!({"id":"demo.add","params":{"a":2,"b":3}}),
+        json!({"operation":"demo.add","data":{"a":2,"b":3}}),
     )
     .await
     .unwrap();
@@ -352,12 +359,12 @@ async fn polling_routes_drive_a_duplex_session() {
     let r = post(
         a,
         "/v1/requests",
-        json!({"id":"demo.relay","params":{}}),
+        json!({"operation":"demo.relay","data":{}}),
         &[],
     )
     .await;
     assert_eq!(r.status, 202);
-    let sid = r.json()["session_id"].as_str().unwrap().to_string();
+    let sid = r.json()["data"]["session_id"].as_str().unwrap().to_string();
     let base = format!("/v1/requests/{sid}");
     let r = post(
         a,
@@ -399,7 +406,7 @@ async fn polling_routes_drive_a_duplex_session() {
         }
     }
     assert_eq!(events[0]["data"], "hi");
-    assert_eq!(events.last().unwrap()["result"], 1);
+    assert_eq!(events.last().unwrap()["data"], 1);
     let r = post(a, &format!("{base}/cancel"), json!({}), &[]).await;
     assert_eq!(
         (r.status, r.json()["state"].clone()),

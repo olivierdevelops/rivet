@@ -4,21 +4,23 @@
 //!
 //! ```text
 //!  Runtime::builder().file(..).build()?
-//!     ├─ request / request_as / dispatch_request ─▶ execution.request_operation
+//!     ├─ call(InputEnvelope) / call_json(JSON) ─▶ serve.parse_input ─▶ execution.request_operation ─▶ ResponseEnvelope
+//!     ├─ request / request_as / dispatch_request ─▶ execution.request_operation (Completion or RivetError)
 //!     ├─ scope(|scope| …): scope.stream / scope.duplex ─▶ execution.request_operation (owned, joined)
 //!     ├─ list / describe / outputs               ─▶ registry use cases
 //!     └─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
 //! ```
 
-// vhco:surface library kind library calls language/compile_program, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
-// vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", PARAMS, None)
-// vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", PARAMS, None)
-// vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", PARAMS, None)
-// vhco:trigger library auth/disconnect_account = Runtime::request("rivet.auth.disconnect", PARAMS, None)
-// vhco:trigger library auth/cancel_authorization = Runtime::request("rivet.auth.cancel", PARAMS, None)
+// vhco:surface library kind library calls language/compile_program, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", DATA, None)
+// vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", DATA, None)
+// vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", DATA, None)
+// vhco:trigger library auth/disconnect_account = Runtime::request("rivet.auth.disconnect", DATA, None)
+// vhco:trigger library auth/cancel_authorization = Runtime::request("rivet.auth.cancel", DATA, None)
+// vhco:trigger library serve/parse_input = Runtime::call_json(INPUT_JSON)
 // vhco:trigger library language/compile_program = Runtime::builder().file(PATH).build()
 // vhco:trigger library policy/load_policy = Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)
-// vhco:trigger library execution/request_operation = Runtime::request(ID, PARAMS, sink) | Runtime::scope(|scope| …) scope.stream(ID, PARAMS) | scope.duplex(ID, PARAMS)
+// vhco:trigger library execution/request_operation = Runtime::call(InputEnvelope) | Runtime::request(ID, DATA, sink) | Runtime::scope(|scope| …) scope.stream(ID, DATA) | scope.duplex(ID, DATA)
 // vhco:trigger library registry/describe_operations = Runtime::list() | Runtime::describe(IDS)
 // vhco:trigger library registry/inspect_outputs = Runtime::outputs(ID, all)
 // vhco:trigger library sessions/open_session = Runtime::open_session(SessionOpenInput)
@@ -28,15 +30,16 @@
 // vhco:trigger library sessions/cancel_session = Runtime::cancel_session(SessionRef)
 // vhco:trigger library serve/authorize_operation = Runtime::dispatch_request(Request) (principal check at depth 0)
 // vhco:trigger library serve/start_serve = orchestrator::setup_serve::serve(runtime, options)
-// vhco:api library execution/request_operation Runtime::request(id, params, on_data) -- invoke one operation in-process; returns Completion or RivetError
-// vhco:request { "id": "string — operation ID", "params": "Value object", "on_data": "Option<Arc<dyn DataSink>>" }
-// vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
+// vhco:api library execution/request_operation Runtime::call(InputEnvelope) -- invoke one operation in-process and always get a ResponseEnvelope (errors included; to_json / to_json_pretty); Runtime::request(id, data, on_data) stays for `?`-style use and returns Completion or RivetError
+// vhco:request { "operation": "string — operation ID", "data": "Value object (default {})", "deadline_ms": "int?", "restrict": "{grants:[…]}?" }
+// vhco:response { "request_id": "string", "trace_id": "string", "operation": "string", "type": "result", "status": "ok|error|cancelled", "data": "Value|null", "error": "RivetError object|null", "effects": "none|committed|partial|unknown", "data_count": "int" }
 // vhco:api library sessions/open_session Runtime::open_session(SessionOpenInput) -- open a live session (duplex or server-streaming) owned by the principal
 // vhco:request { "id": "string", "params": "Value", "principal": "Principal", "connection_owned": "bool" }
 // vhco:response { "session_id": "string", "request_id": "string", "catalog_version": "string", "input_schema": "json|null", "emits_schema": "json|null", "next_send_seq": "int", "expires_at": "RFC 3339" }
 
 use super::runtime::Runtime;
 use crate::domain::contracts::{Completion, DataEvent, Envelope, Principal};
+use crate::domain::envelope::{InputEnvelope, RawInput, ResponseEnvelope};
 use crate::domain::ports::DataSink;
 use crate::domain::sessions::{
     CancelReceipt, SessionAck, SessionBatch, SessionLimits, SessionOpenInput, SessionReadInput,
@@ -44,6 +47,7 @@ use crate::domain::sessions::{
 };
 use crate::domain::{RivetError, RivetResult, Value};
 use crate::features::execution::request_operation::validate_params;
+use crate::features::serve::parse_input::parse_input;
 use crate::features::sessions::{
     cancel_session, finish_input, open_session, read_events, send_input,
 };
@@ -100,6 +104,53 @@ pub fn session_host(
 }
 
 impl Runtime {
+    /// Invoke one operation from an [`InputEnvelope`] as the local principal and
+    /// always get a [`ResponseEnvelope`] (errors included) — the same record every
+    /// other surface writes. `Runtime::request` stays for `?`-style Rust use.
+    pub async fn call(&self, input: InputEnvelope) -> ResponseEnvelope {
+        let mut req = self.new_request(&input.operation, input.data, Principal::local());
+        if let Some(ms) = input.deadline_ms {
+            req.deadline_ms = ms;
+        }
+        req.restrict = input.restrict;
+        self.note_deprecated_input(
+            &req.request_id,
+            &req.trace_id,
+            &input.operation,
+            &input.aliases,
+        );
+        let operation = req.operation_id.clone();
+        let outcome = self.dispatch_request(req, None).await;
+        ResponseEnvelope::from_outcome(&operation, &outcome)
+    }
+
+    /// [`Runtime::call`] from input-envelope JSON text (`serve.parse_input`):
+    /// the same file works with `rivet request --input`, `POST /v1/request` and
+    /// the FFI. Malformed JSON or a bad envelope is an error envelope.
+    pub async fn call_json(&self, input_json: &str) -> ResponseEnvelope {
+        let body = match serde_json::from_str::<serde_json::Value>(input_json) {
+            Ok(j) => j,
+            Err(e) => {
+                return ResponseEnvelope::from_error(
+                    None,
+                    &RivetError::validation(
+                        crate::domain::envelope::INPUT_ENVELOPE,
+                        format!("the input envelope is not valid JSON: {e}"),
+                    ),
+                );
+            }
+        };
+        let hint = body
+            .get("operation")
+            .or_else(|| body.get("id"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        match parse_input(RawInput::new(body)) {
+            Ok(input) => self.call(input).await,
+            Err(e) => ResponseEnvelope::from_error(hint.as_deref(), &e),
+        }
+    }
+
     /// `rivet.sessions.open` for library hosts.
     pub async fn open_session(&self, input: SessionOpenInput) -> RivetResult<SessionReceipt> {
         open_session::open_session(input, self.sessions().as_ref()).await
@@ -216,9 +267,13 @@ impl Scope {
         let rt = self.rt.clone();
         let task = tokio::spawn(async move {
             let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink { tx: tx.clone() });
-            let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
+            let (rid, tid, op) = (
+                req.request_id.clone(),
+                req.trace_id.clone(),
+                req.operation_id.clone(),
+            );
             let out = rt.dispatch_request(req, Some(sink)).await;
-            let _ = tx.send(terminal(out, rid, tid)).await;
+            let _ = tx.send(terminal(out, rid, tid, op)).await;
         });
         self.own(request_id.clone(), task);
         Ok(StreamHandle {
@@ -248,9 +303,13 @@ impl Scope {
         let rt = self.rt.clone();
         let task = tokio::spawn(async move {
             let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink { tx: tx.clone() });
-            let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
+            let (rid, tid, op) = (
+                req.request_id.clone(),
+                req.trace_id.clone(),
+                req.operation_id.clone(),
+            );
             let out = rt.dispatch_session(req, sink, in_rx).await;
-            let _ = tx.send(terminal(out, rid, tid)).await;
+            let _ = tx.send(terminal(out, rid, tid, op)).await;
         });
         self.own(request_id.clone(), task);
         Ok(DuplexHandle {
@@ -275,12 +334,18 @@ impl Scope {
     }
 }
 
-fn terminal(out: RivetResult<Completion>, request_id: String, trace_id: String) -> Envelope {
+fn terminal(
+    out: RivetResult<Completion>,
+    request_id: String,
+    trace_id: String,
+    operation: String,
+) -> Envelope {
     match out {
         Ok(c) => Envelope::Result(c),
         Err(e) => Envelope::Error {
             request_id,
             trace_id,
+            operation,
             seq: 0,
             error: Box::new(e),
         },

@@ -1,4 +1,4 @@
-{"type":"request","ref":"chat1","id":"chat.exchange","params":{}}
+{"type":"request","ref":"chat1","operation":"chat.exchange","data":{}}
 {"type":"input","ref":"chat1","seq":1,"data":{"text":"hello"}}
 {"type":"input","ref":"chat1","seq":2,"data":{"text":"goodbye"}}
 {"type":"finish_input","ref":"chat1"}

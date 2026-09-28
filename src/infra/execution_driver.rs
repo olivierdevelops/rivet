@@ -1605,6 +1605,7 @@ impl<'a> Machine<'a> {
             sink.send(DataEvent {
                 request_id: frame.request.request_id.clone(),
                 trace_id: frame.request.trace_id.clone(),
+                operation: frame.request.operation_id.clone(),
                 seq,
                 data: v,
             })
@@ -2682,7 +2683,14 @@ impl ResourceHandle for RequestStreamHandle {
                 self.finish().await?;
                 Ok(match &self.completion {
                     Some(c) if name == "result" => c.result.clone(),
-                    Some(c) => Value::from_json(&c.to_json()),
+                    // The script-level completion object (language API, not wire output).
+                    Some(c) => Value::object([
+                        ("request_id", Value::text(&c.request_id)),
+                        ("trace_id", Value::text(&c.trace_id)),
+                        ("result", c.result.clone()),
+                        ("data_count", Value::Int(c.data_count as i64)),
+                        ("effects", Value::text(c.effects.as_str())),
+                    ]),
                     None => Value::Null,
                 })
             }

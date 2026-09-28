@@ -7,6 +7,7 @@
 //! ```
 
 use super::contracts::{Completion, Principal};
+use super::envelope::{EnvelopeStatus, InputEnvelope, RecordType, ResponseEnvelope};
 use super::errors::RivetError;
 use super::policy::{ServeAuth, ServePolicy};
 use super::value::Value;
@@ -196,24 +197,23 @@ impl WsFrameType {
     }
 }
 
-// vhco:domain WsFrame { type: WsFrameType; ref: string; id?: string; params?: Value; seq?: int; data?: Value; completion?: Completion; error?: RivetError; request_id?: string; trace_id?: string; restrict?: Value }
-/// One JSON text frame on `/v1/ws` (client or server direction).
+// vhco:domain WsFrame { type: WsFrameType; ref: string; input?: InputEnvelope; seq?: int; data?: Value; record?: ResponseEnvelope }
+/// One JSON text frame on `/v1/ws` (client or server direction). Client
+/// request frames carry an [`InputEnvelope`] (`{type:"request", ref,
+/// operation, data}`), input frames `seq` + `data`; server frames carry one
+/// [`ResponseEnvelope`] record, written with `ref` first.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WsFrame {
     pub kind: WsFrameType,
     pub r#ref: String,
-    pub id: Option<String>,
-    pub params: Option<Value>,
+    /// Request frames: the parsed input envelope.
+    pub input: Option<InputEnvelope>,
+    /// Input frames: the send sequence.
     pub seq: Option<u64>,
+    /// Input frames: the item.
     pub data: Option<Value>,
-    pub completion: Option<Completion>,
-    pub error: Option<RivetError>,
-    /// Server data/error frames name the request they belong to (the result
-    /// frame carries them inside its Completion).
-    pub request_id: Option<String>,
-    pub trace_id: Option<String>,
-    /// Request frames only: per-request restriction `{grants:[…]}` (narrows, never widens).
-    pub restrict: Option<Value>,
+    /// Server frames: the record (data item or terminal result).
+    pub record: Option<ResponseEnvelope>,
 }
 
 impl WsFrame {
@@ -221,84 +221,73 @@ impl WsFrame {
         WsFrame {
             kind,
             r#ref: r#ref.to_string(),
-            id: None,
-            params: None,
+            input: None,
             seq: None,
             data: None,
-            completion: None,
-            error: None,
-            request_id: None,
-            trace_id: None,
-            restrict: None,
+            record: None,
         }
     }
 
-    /// Stamp the request this data/error frame belongs to.
-    pub fn for_request(mut self, request_id: &str, trace_id: &str) -> WsFrame {
-        self.request_id = Some(request_id.to_string());
-        self.trace_id = Some(trace_id.to_string());
-        self
+    /// A server frame for one record: `data` items stay `data`, a terminal
+    /// `ok` result is `result`, an error or cancelled result is `error`.
+    pub fn from_record(r#ref: &str, record: ResponseEnvelope) -> WsFrame {
+        let kind = match (record.record_type, record.status()) {
+            (RecordType::Data, _) => WsFrameType::Data,
+            (_, EnvelopeStatus::Ok) | (_, EnvelopeStatus::Accepted) => WsFrameType::Result,
+            _ => WsFrameType::Error,
+        };
+        WsFrame {
+            record: Some(record.with_ref(r#ref)),
+            ..WsFrame::empty(kind, r#ref)
+        }
     }
 
-    /// An error frame; it carries the error's request/trace ids when known.
+    /// A terminal error frame for `operation` (when known); it carries the
+    /// error's request/trace ids when the error names them.
+    pub fn error_for(r#ref: &str, operation: Option<&str>, error: RivetError) -> WsFrame {
+        WsFrame::from_record(r#ref, ResponseEnvelope::from_error(operation, &error))
+    }
+
+    /// A terminal error frame (operation unknown or not relevant).
     pub fn error(r#ref: &str, error: RivetError) -> WsFrame {
-        WsFrame {
-            request_id: error.request_id.clone(),
-            trace_id: error.trace_id.clone(),
-            error: Some(error),
-            ..WsFrame::empty(WsFrameType::Error, r#ref)
-        }
+        WsFrame::error_for(r#ref, None, error)
     }
 
+    /// A data record with no request context (tests and synthetic frames).
     pub fn data(r#ref: &str, seq: u64, data: Value) -> WsFrame {
-        WsFrame {
-            seq: Some(seq),
-            data: Some(data),
-            ..WsFrame::empty(WsFrameType::Data, r#ref)
-        }
+        WsFrame::from_record(
+            r#ref,
+            ResponseEnvelope::from_data(&super::contracts::DataEvent {
+                request_id: String::new(),
+                trace_id: String::new(),
+                operation: String::new(),
+                seq,
+                data,
+            }),
+        )
     }
 
+    /// A terminal ok result.
     pub fn result(r#ref: &str, completion: Completion) -> WsFrame {
-        WsFrame {
-            completion: Some(completion),
-            ..WsFrame::empty(WsFrameType::Result, r#ref)
-        }
+        WsFrame::from_record(r#ref, ResponseEnvelope::from_completion(&completion))
+    }
+
+    /// The error a terminal error frame carries.
+    pub fn error_ref(&self) -> Option<&RivetError> {
+        self.record.as_ref().and_then(|r| r.error.as_ref())
     }
 
     pub fn is_terminal(&self) -> bool {
         matches!(self.kind, WsFrameType::Result | WsFrameType::Error)
     }
 
-    /// Server frame JSON: `{type, ref, request_id?, trace_id?, seq?, data?, completion?, error?}`.
+    /// Server frame JSON: the record with `ref` first. A frame without a
+    /// record (never sent by the server) renders `{type, ref}`.
     pub fn to_json(&self) -> Json {
-        let mut m = serde_json::Map::new();
-        m.insert("type".into(), json!(self.kind.as_str()));
-        m.insert("ref".into(), json!(self.r#ref));
-        if let Some(r) = &self.request_id {
-            m.insert("request_id".into(), json!(r));
+        match &self.record {
+            Some(r) => r.to_json(),
+            None => json!({"type": self.kind.as_str(), "ref": self.r#ref}),
         }
-        if let Some(t) = &self.trace_id {
-            m.insert("trace_id".into(), json!(t));
-        }
-        if let Some(id) = &self.id {
-            m.insert("id".into(), json!(id));
-        }
-        if let Some(p) = &self.params {
-            m.insert("params".into(), p.to_json());
-        }
-        if let Some(s) = self.seq {
-            m.insert("seq".into(), json!(s));
-        }
-        if let Some(d) = &self.data {
-            m.insert("data".into(), d.to_json());
-        }
-        if let Some(c) = &self.completion {
-            m.insert("completion".into(), c.to_json());
-        }
-        if let Some(e) = &self.error {
-            m.insert("error".into(), e.to_value().to_json());
-        }
-        Json::Object(m)
     }
 }
 

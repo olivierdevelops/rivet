@@ -157,6 +157,8 @@ struct Session {
     id: String,
     request_id: String,
     trace_id: String,
+    /// The operation the session runs (named by its terminal record).
+    operation: String,
     owner: String,
     connection_owned: bool,
     receives: Option<ValueSpec>,
@@ -210,7 +212,8 @@ impl Session {
                 }
                 (None, other) => other,
             };
-            let envelope = terminal_envelope(&self.request_id, &self.trace_id, outcome);
+            let envelope =
+                terminal_envelope(&self.request_id, &self.trace_id, &self.operation, outcome);
             st.log.push(envelope);
             st.terminal_state = st.log.terminal_event().map(terminal_state);
             st.terminal_at = Some(Instant::now());
@@ -447,6 +450,7 @@ impl SessionDriver for SessionHost {
         let session = Arc::new(Session {
             id: session_id.clone(),
             request_id: req.request_id.clone(),
+            operation: req.operation_id.clone(),
             trace_id: req.trace_id.clone(),
             owner: input.principal.name.clone(),
             connection_owned: input.connection_owned,
@@ -787,6 +791,7 @@ mod tests {
                 Ok(Completion {
                     request_id: req.request_id,
                     trace_id: req.trace_id,
+                    operation: req.operation_id,
                     result: Value::Int(1),
                     data_count: 0,
                     effects: crate::domain::errors::EffectsStatus::Committed,
@@ -849,6 +854,8 @@ mod tests {
             .unwrap();
         let t = b.events[0].to_json();
         assert_eq!(t["error"]["code"], "cancelled.session", "{t}");
-        assert_eq!(t["error"]["effects"], "committed");
+        assert_eq!(t["status"], "cancelled", "{t}");
+        // 0.2 envelope: `effects` is reported at the top level of the record.
+        assert_eq!(t["effects"], "committed");
     }
 }

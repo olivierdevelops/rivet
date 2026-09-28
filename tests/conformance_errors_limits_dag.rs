@@ -253,17 +253,13 @@ async fn cli_exit_codes_for_real_failures() {
     let d = b.dir.path();
     let ok = rivet_async(
         d,
-        &["--file", "app.rivet", "request", "t.ok", "--params", "{}"],
+        &["--file", "app.rivet", "request", "t.ok", "--data", "{}"],
     )
     .await;
     assert_eq!(ok.code, 0, "{}", ok.stderr);
-    assert_eq!(ok.json()["result"], 1);
+    assert_eq!(ok.json()["data"], 1);
     for (id, params, kind, code, exit, _) in CASES {
-        let r = rivet_async(
-            d,
-            &["--file", "app.rivet", "request", id, "--params", params],
-        )
-        .await;
+        let r = rivet_async(d, &["--file", "app.rivet", "request", id, "--data", params]).await;
         assert_eq!(r.code, *exit, "{id} {params}: {}", r.stderr);
         check_envelope(id, &r.error(), kind, code);
     }
@@ -275,7 +271,7 @@ async fn cli_exit_codes_for_real_failures() {
             "app.rivet",
             "request",
             "t.conflict",
-            "--params",
+            "--data",
             "{}",
         ],
     )
@@ -288,7 +284,7 @@ async fn cli_exit_codes_for_real_failures() {
             "app.rivet",
             "request",
             "t.conflict",
-            "--params",
+            "--data",
             "{}",
         ],
     )
@@ -308,7 +304,7 @@ async fn cli_exit_codes_for_real_failures() {
             "app.rivet",
             "request",
             "t.slow",
-            "--params",
+            "--data",
             r#"{"ms":5000}"#,
             "--timeout",
             "300ms",
@@ -333,7 +329,7 @@ async fn cli_exit_codes_for_real_failures() {
             "bad.json",
             "request",
             "t.ok",
-            "--params",
+            "--data",
             "{}",
         ],
     )
@@ -349,14 +345,7 @@ async fn output_invalid_preserves_effects() {
     let d = b.dir.path();
     let r = rivet_async(
         d,
-        &[
-            "--file",
-            "app.rivet",
-            "request",
-            "t.brief",
-            "--params",
-            "{}",
-        ],
+        &["--file", "app.rivet", "request", "t.brief", "--data", "{}"],
     )
     .await;
     assert_eq!(r.code, 5, "{}", r.stderr);
@@ -364,7 +353,8 @@ async fn output_invalid_preserves_effects() {
     assert_eq!(e["kind"], "output_invalid");
     assert_eq!(e["code"], "output.invalid");
     assert_eq!(e["operation_id"], "t.brief");
-    assert_eq!(e["effects"], "committed");
+    assert_eq!(r.envelope()["effects"], "committed");
+    assert_eq!(r.envelope()["status"], "error");
     assert_eq!(e["details"]["missing"], json!(["name"]));
     assert_eq!(e["details"]["unexpected"], json!(["display"]));
     assert_eq!(
@@ -394,15 +384,20 @@ async fn http_status_for_real_failures() {
     .unwrap();
     let addr = h.addr.unwrap();
     for (id, params, kind, code, _, status) in CASES {
-        let body =
-            json!({"id": id, "params": serde_json::from_str::<serde_json::Value>(params).unwrap()});
+        let body = json!({"operation": id, "data": serde_json::from_str::<serde_json::Value>(params).unwrap()});
         let r = serve_support::post(addr, "/v1/request", body, &[]).await;
         assert_eq!(r.status, *status, "{id}: {}", r.text);
         let env = r.json();
         check_envelope(id, &env["error"], kind, code);
     }
-    let r = serve_support::post(addr, "/v1/request", json!({"id":"t.ok","params":{}}), &[]).await;
-    assert_eq!((r.status, r.json()["result"].clone()), (200, json!(1)));
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"operation":"t.ok","data":{}}),
+        &[],
+    )
+    .await;
+    assert_eq!((r.status, r.json()["data"].clone()), (200, json!(1)));
     h.shutdown().await;
 }
 
@@ -430,14 +425,20 @@ async fn auth_failure_on_http_and_cli() {
     .await
     .unwrap();
     let addr = h.addr.unwrap();
-    let r = serve_support::post(addr, "/v1/request", json!({"id":"t.ok","params":{}}), &[]).await;
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"operation":"t.ok","data":{}}),
+        &[],
+    )
+    .await;
     assert_eq!(r.status, 401, "{}", r.text);
     assert_eq!(r.json()["error"]["kind"], "auth");
     let dir = tempfile::tempdir().unwrap();
     let url = format!("http://{addr}");
     let cli = rivet_async(
         dir.path(),
-        &["--endpoint", &url, "request", "t.ok", "--params", "{}"],
+        &["--endpoint", &url, "request", "t.ok", "--data", "{}"],
     )
     .await;
     assert_eq!(cli.code, 3, "{}", cli.stderr);
@@ -451,7 +452,7 @@ async fn auth_failure_on_http_and_cli() {
             "token",
             "request",
             "t.ok",
-            "--params",
+            "--data",
             "{}",
         ],
     )
@@ -628,7 +629,7 @@ async fn sigint_cancels_with_exit_130() {
             "app.rivet",
             "request",
             "t.slow",
-            "--params",
+            "--data",
             r#"{"ms":10000}"#,
         ])
         .current_dir(b.dir.path())

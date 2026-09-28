@@ -18,15 +18,15 @@ async fn same_operation_on_every_surface() {
     );
     let a = s.addr;
     // REST
-    let add = json!({"id":"demo.add","params":{"a":2,"b":3}});
+    let add = json!({"operation":"demo.add","data":{"a":2,"b":3}});
     let r = post(a, "/v1/request", add.clone(), &[]).await;
     assert_eq!(r.status, 200, "{}", r.text);
-    assert_eq!(r.json()["result"], 5);
+    assert_eq!(r.json()["data"], 5);
     assert_eq!(r.json()["effects"], "none");
     let r = post(
         a,
         "/v1/request",
-        json!({"id":"demo.add","params":{"b":3}}),
+        json!({"operation":"demo.add","data":{"b":3}}),
         &[],
     )
     .await;
@@ -35,7 +35,7 @@ async fn same_operation_on_every_surface() {
     let r = post(
         a,
         "/v1/request",
-        json!({"id":"demo.secret","params":{}}),
+        json!({"operation":"demo.secret","data":{}}),
         &[],
     )
     .await;
@@ -43,7 +43,7 @@ async fn same_operation_on_every_surface() {
     let r = post(
         a,
         "/v1/request",
-        json!({"id":"demo.count","params":{"n":2}}),
+        json!({"operation":"demo.count","data":{"n":2}}),
         &[],
     )
     .await;
@@ -52,7 +52,7 @@ async fn same_operation_on_every_surface() {
     let r = http(a, "POST", "/v1/request", &[], "{nope").await;
     assert_eq!(r.status, 400);
     let r = http(a, "GET", "/v1/operations", &[], "").await;
-    let ids: Vec<_> = r.json()["operations"]
+    let ids: Vec<_> = r.json()["data"]["operations"]
         .as_array()
         .unwrap()
         .iter()
@@ -60,21 +60,21 @@ async fn same_operation_on_every_surface() {
         .collect();
     assert!(ids.contains(&"demo.add".to_string()) && !ids.contains(&"demo.secret".to_string()));
     let r = http(a, "GET", "/v1/operations/demo.add", &[], "").await;
-    assert_eq!(r.json()["output"]["description"], "Sum of a and b.");
+    assert_eq!(r.json()["data"]["output"]["description"], "Sum of a and b.");
     let r = http(a, "GET", "/v1/operations/demo.add/outputs", &[], "").await;
     assert_eq!(
-        r.json(),
+        r.json()["data"],
         json!({"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]})
     );
     // built-in through the same route (S06)
     let r = post(
         a,
         "/v1/request",
-        json!({"id":"rivet.describe","params":{"id":"demo.add"}}),
+        json!({"operation":"rivet.describe","data":{"id":"demo.add"}}),
         &[],
     )
     .await;
-    assert_eq!(r.json()["result"]["id"], "demo.add");
+    assert_eq!(r.json()["data"]["id"], "demo.add");
 
     // SSE (S133)
     let r = http(
@@ -82,7 +82,7 @@ async fn same_operation_on_every_surface() {
         "POST",
         "/v1/request",
         &[("accept", "text/event-stream")],
-        &json!({"id":"demo.count","params":{"n":2}}).to_string(),
+        &json!({"operation":"demo.count","data":{"n":2}}).to_string(),
     )
     .await;
     assert_eq!(r.status, 200);
@@ -98,7 +98,7 @@ async fn same_operation_on_every_surface() {
         (2, "data", &json!(2))
     );
     assert_eq!((ev[2].0, ev[2].1.as_str()), (3, "result"));
-    assert_eq!(ev[2].2["result"], 2);
+    assert_eq!(ev[2].2["data"], 2);
     assert_eq!(ev[2].2["seq"], 3);
     // unary over SSE: one terminal result event; validation before headers keeps 422
     let r = http(
@@ -110,13 +110,13 @@ async fn same_operation_on_every_surface() {
     )
     .await;
     let ev = sse_events(&r.text);
-    assert_eq!((ev.len(), ev[0].2["result"].clone()), (1, json!(5)));
+    assert_eq!((ev.len(), ev[0].2["data"].clone()), (1, json!(5)));
     let r = http(
         a,
         "POST",
         "/v1/request",
         &[("accept", "text/event-stream")],
-        &json!({"id":"demo.add","params":{}}).to_string(),
+        &json!({"operation":"demo.add","data":{}}).to_string(),
     )
     .await;
     assert_eq!(r.status, 422);
@@ -125,12 +125,12 @@ async fn same_operation_on_every_surface() {
     let r = post(
         a,
         "/v1/requests",
-        json!({"id":"demo.count","params":{"n":2}}),
+        json!({"operation":"demo.count","data":{"n":2}}),
         &[],
     )
     .await;
     assert_eq!(r.status, 202, "{}", r.text);
-    let url = r.json()["events_url"].as_str().unwrap().to_string();
+    let url = r.json()["data"]["events_url"].as_str().unwrap().to_string();
     let r = http(
         a,
         "GET",
@@ -157,10 +157,10 @@ async fn same_operation_on_every_surface() {
     }
     let kinds: Vec<_> = events.iter().map(|e| e["type"].as_str().unwrap()).collect();
     assert_eq!(kinds, vec!["data", "data", "result"]);
-    assert_eq!(events[2]["result"], 2);
+    assert_eq!(events[2]["data"], 2);
     // unary job: a single terminal result event
     let r = post(a, "/v1/requests", add.clone(), &[]).await;
-    let url = r.json()["events_url"].as_str().unwrap().to_string();
+    let url = r.json()["data"]["events_url"].as_str().unwrap().to_string();
     let b = http(
         a,
         "GET",
@@ -171,7 +171,7 @@ async fn same_operation_on_every_surface() {
     .await
     .json();
     assert_eq!(b["terminal"], true);
-    assert_eq!(b["events"][0]["result"], 5);
+    assert_eq!(b["events"][0]["data"], 5);
 
     // WebSocket (docs/demos/01-catalog/requests/ws-frames.jsonl)
     let mut ws = ws_connect(a, &[]).await.unwrap();
@@ -190,7 +190,7 @@ async fn same_operation_on_every_surface() {
             .collect::<Vec<_>>()
     };
     assert_eq!(of("c1").len(), 1);
-    assert_eq!(of("c1")[0]["completion"]["result"], 5);
+    assert_eq!(of("c1")[0]["data"], 5);
     let c2: Vec<_> = of("c2");
     assert_eq!(
         c2.iter()
@@ -199,11 +199,11 @@ async fn same_operation_on_every_surface() {
         vec!["data", "data", "data", "result"]
     );
     assert_eq!(c2[0]["data"], 3);
-    assert_eq!(c2[3]["completion"]["result"], json!({"count": 3}));
+    assert_eq!(c2[3]["data"], json!({"count": 3}));
     assert_eq!(of("c3")[0]["error"]["code"], "validation.required");
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"c4","id":"demo.missing","params":{}}),
+        json!({"type":"request","ref":"c4","operation":"demo.missing","data":{}}),
     )
     .await;
     let f = ws_recv(&mut ws).await;
@@ -218,7 +218,7 @@ async fn same_operation_on_every_surface() {
     let sid = mcp_init(a, &[]).await;
     let res = mcp_call(a, &sid, &[], "demo.add", json!({"a":2,"b":3})).await;
     assert_eq!(res["isError"], false);
-    assert_eq!(res["structuredContent"]["result"], 5);
+    assert_eq!(res["structuredContent"]["data"], 5);
     s.handle.shutdown().await;
 }
 
@@ -228,7 +228,7 @@ async fn bearer_auth_and_principals() {
     let team = std::fs::read_to_string("docs/demos/01-catalog/policies/team.json").unwrap();
     let s = serve(Some(&team)).await;
     let a = s.addr;
-    let add = json!({"id":"demo.add","params":{"a":2,"b":3}});
+    let add = json!({"operation":"demo.add","data":{"a":2,"b":3}});
     let r = post(
         a,
         "/v1/request",
@@ -236,7 +236,7 @@ async fn bearer_auth_and_principals() {
         &[("authorization", "Bearer dev-token-ada")],
     )
     .await;
-    assert_eq!((r.status, r.json()["result"].clone()), (200, json!(5)));
+    assert_eq!((r.status, r.json()["data"].clone()), (200, json!(5)));
     let r = post(
         a,
         "/v1/request",
@@ -267,7 +267,7 @@ async fn bearer_auth_and_principals() {
         "",
     )
     .await;
-    let ids: Vec<_> = r.json()["operations"]
+    let ids: Vec<_> = r.json()["data"]["operations"]
         .as_array()
         .unwrap()
         .iter()
@@ -278,7 +278,7 @@ async fn bearer_auth_and_principals() {
     let ada = [("authorization", "Bearer dev-token-ada")];
     let sid = mcp_init(a, &ada).await;
     let res = mcp_call(a, &sid, &ada, "demo.add", json!({"a":2,"b":3})).await;
-    assert_eq!(res["structuredContent"]["result"], 5);
+    assert_eq!(res["structuredContent"]["data"], 5);
     let r = mcp_raw(
         a,
         &sid,
@@ -300,11 +300,11 @@ async fn bearer_auth_and_principals() {
     let r = post(
         a,
         "/v1/requests",
-        json!({"id":"demo.countdown","params":{}}),
+        json!({"operation":"demo.countdown","data":{}}),
         &ada,
     )
     .await;
-    let url = r.json()["events_url"].as_str().unwrap().to_string();
+    let url = r.json()["data"]["events_url"].as_str().unwrap().to_string();
     let q = format!("{url}?after_seq=0&wait_ms=2000");
     let r = http(
         a,
@@ -329,10 +329,10 @@ async fn bearer_auth_and_principals() {
         .unwrap();
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"a","id":"demo.add","params":{"a":1,"b":1}}),
+        json!({"type":"request","ref":"a","operation":"demo.add","data":{"a":1,"b":1}}),
     )
     .await;
-    assert_eq!(ws_recv(&mut ws).await["completion"]["result"], 2);
+    assert_eq!(ws_recv(&mut ws).await["data"], 2);
     s.handle.shutdown().await;
 }
 
@@ -371,14 +371,14 @@ async fn non_loopback_without_auth_refuses() {
 async fn disabled_surfaces_answer_404() {
     let s = serve(Some(r#"{"version":1,"serve":{"surfaces":["http","mcp"]}}"#)).await;
     let a = s.addr;
-    let add = json!({"id":"demo.add","params":{"a":2,"b":3}});
+    let add = json!({"operation":"demo.add","data":{"a":2,"b":3}});
     assert_eq!(post(a, "/v1/requests", add.clone(), &[]).await.status, 404);
     let r = http(
         a,
         "POST",
         "/v1/request",
         &[("accept", "text/event-stream")],
-        &json!({"id":"demo.count","params":{}}).to_string(),
+        &json!({"operation":"demo.count","data":{}}).to_string(),
     )
     .await;
     assert_eq!(r.status, 404);
@@ -396,13 +396,13 @@ async fn ninth_ws_ref_is_rejected() {
     for i in 0..8 {
         ws_send(
             &mut ws,
-            json!({"type":"request","ref":format!("r{i}"),"id":"demo.relay","params":{}}),
+            json!({"type":"request","ref":format!("r{i}"),"operation":"demo.relay","data":{}}),
         )
         .await;
     }
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r8","id":"demo.relay","params":{}}),
+        json!({"type":"request","ref":"r8","operation":"demo.relay","data":{}}),
     )
     .await;
     let f = ws_recv(&mut ws).await;
@@ -411,7 +411,7 @@ async fn ninth_ws_ref_is_rejected() {
     // duplicate in-flight ref
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r0","id":"demo.add","params":{"a":1}}),
+        json!({"type":"request","ref":"r0","operation":"demo.add","data":{"a":1}}),
     )
     .await;
     assert_eq!(ws_recv(&mut ws).await["error"]["code"], "conflict.ref");
@@ -429,7 +429,7 @@ async fn ninth_ws_ref_is_rejected() {
     ws_send(&mut ws, json!({"type":"finish_input","ref":"r1"})).await;
     let f = ws_recv(&mut ws).await;
     assert_eq!(
-        (f["ref"].clone(), f["completion"]["result"].clone()),
+        (f["ref"].clone(), f["data"].clone()),
         (json!("r1"), json!(1))
     );
     // cancel ends r0 with exactly one cancelled error frame
@@ -442,12 +442,12 @@ async fn ninth_ws_ref_is_rejected() {
     // a slot is free again
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r9","id":"demo.add","params":{"a":1,"b":2}}),
+        json!({"type":"request","ref":"r9","operation":"demo.add","data":{"a":1,"b":2}}),
     )
     .await;
     let f = ws_recv(&mut ws).await;
     assert_eq!(
-        (f["ref"].clone(), f["completion"]["result"].clone()),
+        (f["ref"].clone(), f["data"].clone()),
         (json!("r9"), json!(3))
     );
     s.handle.shutdown().await;
@@ -464,7 +464,7 @@ async fn socket_close_cancels_refs() {
     let mut ws = ws_connect(a, &[]).await.unwrap();
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"live","id":"demo.relay","params":{}}),
+        json!({"type":"request","ref":"live","operation":"demo.relay","data":{}}),
     )
     .await;
     ws_send(
@@ -477,7 +477,7 @@ async fn socket_close_cancels_refs() {
     let r = post(
         a,
         "/v1/request",
-        json!({"id":"demo.add","params":{"a":1}}),
+        json!({"operation":"demo.add","data":{"a":1}}),
         &[],
     )
     .await;
@@ -489,7 +489,7 @@ async fn socket_close_cancels_refs() {
         let r = post(
             a,
             "/v1/request",
-            json!({"id":"demo.add","params":{"a":1}}),
+            json!({"operation":"demo.add","data":{"a":1}}),
             &[],
         )
         .await;
@@ -530,7 +530,7 @@ async fn io_manifest_exposure_requires_explicit_listing() {
     )
     .await;
     assert_eq!(r.status, 200, "{}", r.text);
-    assert!(r.json()["sites"].is_array());
+    assert!(r.json()["data"]["sites"].is_array());
     let r = http(
         s.addr,
         "GET",
@@ -548,7 +548,7 @@ async fn io_manifest_exposure_requires_explicit_listing() {
     )
     .await;
     assert_eq!(r.status, 200, "{}", r.text);
-    assert_eq!(r.json()["policy"]["version"], 1);
+    assert_eq!(r.json()["data"]["policy"]["version"], 1);
     let r = post(
         s.addr,
         "/v1/policy/generate",
@@ -662,18 +662,18 @@ async fn mcp_tools_list_includes_callable_builtins() {
     s.handle.shutdown().await;
 }
 
-// vhco:test serve.start_serve -- G12: GET /v1/health answers {status:"ok", catalog_version} unauthenticated on loopback, and every request produces one access-log line (time, surface, method, route, principal, operation, status, duration_ms) that never contains params or tokens
+// vhco:test serve.start_serve -- G12: GET /v1/health answers an envelope whose data is {status:"ok", catalog_version, version} unauthenticated on loopback, and every request produces one access-log line (time, surface, method, route, principal, operation, status, duration_ms) that never contains params or tokens
 #[tokio::test]
 async fn health_and_access_log() {
     let (s, lines) = serve_logged(None).await;
     let r = http(s.addr, "GET", "/v1/health", &[], "").await;
     assert_eq!(r.status, 200, "{}", r.text);
-    assert_eq!(r.json()["status"], "ok");
-    assert_eq!(r.json()["catalog_version"], s.rt.catalog_version());
+    assert_eq!(r.json()["data"]["status"], "ok");
+    assert_eq!(r.json()["data"]["catalog_version"], s.rt.catalog_version());
     let r = post(
         s.addr,
         "/v1/request",
-        json!({"id":"demo.greet","params":{"person":"S3CRET-PARAM"}}),
+        json!({"operation":"demo.greet","data":{"person":"S3CRET-PARAM"}}),
         &[],
     )
     .await;
@@ -727,7 +727,7 @@ async fn traceparent_is_accepted_and_emitted() {
     let r = post(
         s.addr,
         "/v1/request",
-        json!({"id":"demo.add","params":{"a":2,"b":3}}),
+        json!({"operation":"demo.add","data":{"a":2,"b":3}}),
         &[("traceparent", tp)],
     )
     .await;
@@ -745,7 +745,7 @@ async fn traceparent_is_accepted_and_emitted() {
     let r = post(
         s.addr,
         "/v1/request",
-        json!({"id":"rivet.request","params":{"id":"demo.add","params":{"a":1}}}),
+        json!({"operation":"rivet.request","data":{"operation":"demo.add","data":{"a":1}}}),
         &[("traceparent", tp)],
     )
     .await;
@@ -754,7 +754,7 @@ async fn traceparent_is_accepted_and_emitted() {
     let r = post(
         s.addr,
         "/v1/request",
-        json!({"id":"demo.add","params":{"a":1}}),
+        json!({"operation":"demo.add","data":{"a":1}}),
         &[("traceparent", "00-zz-00f067aa0ba902b7-01")],
     )
     .await;
@@ -765,7 +765,7 @@ async fn traceparent_is_accepted_and_emitted() {
     let r = post(
         s.addr,
         "/v1/requests",
-        json!({"id":"demo.add","params":{"a":1}}),
+        json!({"operation":"demo.add","data":{"a":1}}),
         &[("traceparent", tp)],
     )
     .await;
@@ -793,19 +793,19 @@ async fn traceparent_is_accepted_and_emitted() {
     s.handle.shutdown().await;
 }
 
-// vhco:test audit.inspect_effects -- G26: GET /v1/io returns the bare IoManifest JSON (also for format=json); format=table|markdown|csv returns the rendered report
+// vhco:test audit.inspect_effects -- G26: GET /v1/io returns an envelope whose data is the bare IoManifest (also for format=json); format=table|markdown|csv puts the rendered report in data
 #[tokio::test]
 async fn io_route_returns_the_bare_manifest() {
     let s = serve(None).await;
     for q in ["/v1/io", "/v1/io?format=json"] {
         let r = http(s.addr, "GET", q, &[], "").await;
         assert_eq!(r.status, 200, "{}", r.text);
-        let j = r.json();
+        let j = r.json()["data"].clone();
         assert!(j["sites"].is_array(), "{q}: {j}");
         assert!(j.get("rendered").is_none(), "{q}");
     }
     let r = http(s.addr, "GET", "/v1/io?format=table", &[], "").await;
-    let j = r.json();
+    let j = r.json()["data"].clone();
     assert!(j["rendered"].is_string(), "{j}");
     assert!(j["manifest"]["sites"].is_array());
     s.handle.shutdown().await;
@@ -818,7 +818,7 @@ async fn ws_refused_input_sends_the_specific_error() {
     let mut ws = ws_connect(s.addr, &[]).await.unwrap();
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r1","id":"demo.relay","params":{}}),
+        json!({"type":"request","ref":"r1","operation":"demo.relay","data":{}}),
     )
     .await;
     ws_send(
@@ -833,13 +833,17 @@ async fn ws_refused_input_sends_the_specific_error() {
     )
     .await;
     let f = ws_recv(&mut ws).await;
-    assert_eq!(f["type"], "error", "{f}");
+    assert_eq!(
+        (f["type"].clone(), f["status"].clone()),
+        (json!("result"), json!("error")),
+        "{f}"
+    );
     assert_eq!(f["ref"], "r1");
     assert_eq!(f["error"]["code"], "conflict.input_sequence", "{f}");
     // No second terminal frame for r1; a new ref still works on the socket.
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r2","id":"demo.add","params":{"a":1}}),
+        json!({"type":"request","ref":"r2","operation":"demo.add","data":{"a":1}}),
     )
     .await;
     let frames = ws_until_terminal(&mut ws, &["r2"]).await;
@@ -850,7 +854,7 @@ async fn ws_refused_input_sends_the_specific_error() {
     // A schema-invalid input item is refused with validation.input and its seq.
     ws_send(
         &mut ws,
-        json!({"type":"request","ref":"r3","id":"demo.relay","params":{}}),
+        json!({"type":"request","ref":"r3","operation":"demo.relay","data":{}}),
     )
     .await;
     ws_send(&mut ws, json!({"type":"input","ref":"r3","seq":1,"data":7})).await;
@@ -885,7 +889,7 @@ async fn sigterm_drains_and_exits_zero() {
         post(
             addr,
             "/v1/request",
-            json!({"id":"slow.op","params":{"note":"PARAM-VALUE"}}),
+            json!({"operation":"slow.op","data":{"note":"PARAM-VALUE"}}),
             &[],
         )
         .await

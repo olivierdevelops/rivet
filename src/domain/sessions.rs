@@ -12,6 +12,7 @@
 //! MCP, library) shares one implementation.
 
 use super::contracts::{Completion, Envelope, Principal, TraceContext};
+use super::envelope::ResponseEnvelope;
 use super::errors::{ErrorKind, RivetError, RivetResult};
 use super::value::Value;
 use serde_json::{Value as Json, json};
@@ -174,11 +175,20 @@ impl SessionEvent {
         !matches!(self.envelope, Envelope::Data(_))
     }
 
-    /// `{request_id, trace_id, seq, type, data|result|error}`.
+    /// The event's ResponseEnvelope record with its session `seq`: `type: data`
+    /// items, then one `type: result` record (status ok, error or cancelled)
+    /// whose `data_count` is the number of items before it.
+    pub fn record(&self) -> ResponseEnvelope {
+        let r = self.envelope.record().with_seq(self.seq);
+        match &self.envelope {
+            Envelope::Error { .. } => r.with_data_count(self.seq.saturating_sub(1)),
+            _ => r,
+        }
+    }
+
+    /// Compact JSON of [`SessionEvent::record`].
     pub fn to_json(&self) -> Json {
-        let mut j = self.envelope.to_json();
-        j["seq"] = json!(self.seq);
-        j
+        self.record().to_json()
     }
 }
 
@@ -381,6 +391,7 @@ pub fn terminal_state(ev: &SessionEvent) -> &'static str {
 pub fn terminal_envelope(
     request_id: &str,
     trace_id: &str,
+    operation: &str,
     outcome: RivetResult<Completion>,
 ) -> Envelope {
     match outcome {
@@ -388,6 +399,7 @@ pub fn terminal_envelope(
         Err(error) => Envelope::Error {
             request_id: request_id.to_string(),
             trace_id: trace_id.to_string(),
+            operation: operation.to_string(),
             seq: 0,
             error: Box::new(error),
         },
@@ -403,6 +415,7 @@ mod tests {
         Envelope::Data(DataEvent {
             request_id: "r".into(),
             trace_id: "t".into(),
+            operation: "demo.count".into(),
             seq: 0,
             data: Value::Int(n),
         })
@@ -442,6 +455,7 @@ mod tests {
         log.push(Envelope::Result(Completion {
             request_id: "r".into(),
             trace_id: "t".into(),
+            operation: "demo.count".into(),
             result: Value::Int(3),
             data_count: 2,
             effects: Default::default(),

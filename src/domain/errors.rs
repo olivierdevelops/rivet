@@ -285,7 +285,7 @@ impl RivetError {
         self.kind.http_status()
     }
 
-    /// Decode the `error` object of an ErrorEnvelope (the inverse of
+    /// Decode the `error` object of an error envelope (the inverse of
     /// [`RivetError::to_value`]); a remote client rebuilds the same error, so
     /// its registry exit code and rendering match a local run. An unknown kind
     /// decodes as `internal`.
@@ -315,7 +315,8 @@ impl RivetError {
         e
     }
 
-    /// The `error` object of an ErrorEnvelope.
+    /// The error object with `effects` (surfaces write it through
+    /// `envelope::error_object`, which moves `effects` to the envelope top level).
     pub fn to_value(&self) -> Value {
         let mut v = Value::object([
             ("kind", Value::text(self.kind.as_str())),

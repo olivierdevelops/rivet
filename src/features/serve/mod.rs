@@ -3,6 +3,7 @@
 pub mod authenticate_principal;
 pub mod authorize_operation;
 pub mod multiplex_ws;
+pub mod parse_input;
 pub mod ports;
 pub mod project_polling;
 pub mod start_serve;

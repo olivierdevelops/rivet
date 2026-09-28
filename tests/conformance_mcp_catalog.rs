@@ -13,7 +13,7 @@ fn tool<'a>(tools: &'a [Json], name: &str) -> Option<&'a Json> {
     tools.iter().find(|t| t["name"] == name)
 }
 
-// vhco:test registry.describe_operations -- tools/list mirrors the catalog: name=id, title, description, inputSchema = describe input, outputSchema = Completion{result: declared output}
+// vhco:test registry.describe_operations -- tools/list mirrors the catalog: name=id, title, description, inputSchema = describe input, outputSchema = ResponseEnvelope{data: declared output}
 #[tokio::test]
 async fn tools_list_matches_the_catalog() {
     let s = serve(None).await;
@@ -30,9 +30,15 @@ async fn tools_list_matches_the_catalog() {
         assert_eq!(t["inputSchema"], d["input"]);
         if e.streaming() {
             assert_eq!(t["_meta"], json!({"rivet/delivery":"session"}));
-            assert!(t["outputSchema"]["properties"]["session_id"].is_object());
+            assert!(
+                t["outputSchema"]["properties"]["data"]["anyOf"][0]["properties"]["session_id"]
+                    .is_object()
+            );
         } else {
-            assert_eq!(t["outputSchema"]["properties"]["result"], d["output"]);
+            assert_eq!(
+                t["outputSchema"]["properties"]["data"]["anyOf"][0],
+                d["output"]
+            );
             assert!(t.get("_meta").is_none());
         }
     }
@@ -61,7 +67,7 @@ async fn tools_list_matches_the_catalog() {
     s.handle.shutdown().await;
 }
 
-// vhco:test execution.request_operation -- tools/call runs the shared dispatcher: Completion for unary, SessionReceipt then rivet.sessions.read for streaming, isError for invalid arguments, protocol error for unknown/private tools
+// vhco:test execution.request_operation -- tools/call runs the shared dispatcher: envelope (status ok) for unary, an accepted envelope with the SessionReceipt then rivet.sessions.read for streaming, isError for invalid arguments, protocol error for unknown/private tools
 #[tokio::test]
 async fn tools_call_unary_streaming_and_errors() {
     let s = serve(None).await;
@@ -74,7 +80,7 @@ async fn tools_call_unary_streaming_and_errors() {
     assert_eq!(r["id"], 3);
     let res = &r["result"];
     assert_eq!(res["isError"], false);
-    assert_eq!(res["structuredContent"]["result"], 5);
+    assert_eq!(res["structuredContent"]["data"], 5);
     let text: Json = serde_json::from_str(res["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(text, res["structuredContent"]);
     let outputs =
@@ -83,7 +89,7 @@ async fn tools_call_unary_streaming_and_errors() {
         .await
         .json();
     assert_eq!(
-        r["result"]["structuredContent"]["result"]["output"],
+        r["result"]["structuredContent"]["data"]["output"],
         json!({"type":"integer","description":"Sum of a and b."})
     );
     // invalid arguments: tool error with the ErrorEnvelope, operation not run
@@ -101,7 +107,8 @@ async fn tools_call_unary_streaming_and_errors() {
     // streaming tool → SessionReceipt, then read with the session tools
     let res = mcp_call(a, &sid, &[], "demo.count", json!({"n":2})).await;
     assert_eq!(res["isError"], false);
-    let receipt = res["structuredContent"].clone();
+    assert_eq!(res["structuredContent"]["status"], "accepted");
+    let receipt = res["structuredContent"]["data"].clone();
     let session = receipt["session_id"].as_str().unwrap().to_string();
     assert_eq!(receipt["next_send_seq"], 1);
     let mut after = 0;
@@ -114,7 +121,7 @@ async fn tools_call_unary_streaming_and_errors() {
             "rivet.sessions.read",
             json!({"session_id":session,"after_seq":after,"wait_ms":2000}),
         )
-        .await["structuredContent"]["result"]
+        .await["structuredContent"]["data"]
             .clone();
         for e in b["events"].as_array().unwrap() {
             kinds.push(e["type"].as_str().unwrap().to_string());
@@ -137,7 +144,7 @@ async fn tools_call_unary_streaming_and_errors() {
     assert_eq!(r.status, 200);
     // duplex tool through the built-in session tools
     let res = mcp_call(a, &sid, &[], "demo.relay", json!({})).await;
-    let session = res["structuredContent"]["session_id"]
+    let session = res["structuredContent"]["data"]["session_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -149,7 +156,7 @@ async fn tools_call_unary_streaming_and_errors() {
         json!({"session_id":session,"send_seq":1,"data":"hi"}),
     )
     .await;
-    assert_eq!(ack["structuredContent"]["result"]["accepted_seq"], 1);
+    assert_eq!(ack["structuredContent"]["data"]["accepted_seq"], 1);
     let bad = mcp_call(
         a,
         &sid,
@@ -220,7 +227,7 @@ async fn unauthorized_tools_are_hidden() {
         &sid,
         &ci,
         "rivet.request",
-        json!({"id":"demo.add","params":{"a":1}}),
+        json!({"operation":"demo.add","data":{"a":1}}),
     )
     .await;
     assert_eq!(r["isError"], true);
@@ -271,7 +278,7 @@ fn stdio_serves_the_same_catalog() {
         assert!(tool(tools, id).is_some(), "{id}");
     }
     let add = rpc(&read("add.mcp.json")).unwrap();
-    assert_eq!(add["result"]["structuredContent"]["result"], 5);
+    assert_eq!(add["result"]["structuredContent"]["data"], 5);
     drop(stdin);
     assert!(child.wait().unwrap().success());
 }

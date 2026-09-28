@@ -1,18 +1,26 @@
 //! WebSocket surface decoding (`/v1/ws`, subprotocol `rivet.v1`): client text
-//! frames → [`WsFrame`]. Server frames encode with `WsFrame::to_json`.
+//! frames → [`WsFrame`]. Server frames encode with `WsFrame::to_json` (one
+//! ResponseEnvelope record with `ref` first).
 //!
 //! ```text
-//!  {"type":"request","ref":"c1","id":"demo.add","params":{…}}   {"type":"input","ref":"c1","seq":1,"data":…}
-//!  {"type":"finish_input","ref":"c1"}                           {"type":"cancel","ref":"c1"}
+//!  {"type":"request","ref":"c1","operation":"demo.add","data":{…}}   {"type":"input","ref":"c1","seq":1,"data":…}
+//!  {"type":"finish_input","ref":"c1"}                                {"type":"cancel","ref":"c1"}
+//!  (0.1.0 request frames {"id","params"} are deprecated aliases through 0.2.x)
 //! ```
 
+use crate::domain::envelope::InputEnvelope;
 use crate::domain::serve::{WsFrame, WsFrameType};
 use crate::domain::{RivetError, Value};
 use serde_json::Value as Json;
 
-/// Parse one client frame. Failures carry the ref when it could be read so the
-/// error frame can be correlated.
-pub fn parse_client_frame(text: &str) -> Result<WsFrame, (String, RivetError)> {
+/// Parse one client frame. A request frame's envelope keys are decoded by
+/// `parse_input` (the `serve.parse_input` use case, injected by the
+/// orchestrator). Failures carry the ref when it could be read so the error
+/// frame can be correlated.
+pub fn parse_client_frame(
+    text: &str,
+    parse_input: impl Fn(&Json) -> Result<InputEnvelope, RivetError>,
+) -> Result<WsFrame, (String, RivetError)> {
     let bad = |r: &str, msg: String| {
         (
             r.to_string(),
@@ -45,15 +53,8 @@ pub fn parse_client_frame(text: &str) -> Result<WsFrame, (String, RivetError)> {
     let mut f = WsFrame::empty(kind, &r);
     match kind {
         WsFrameType::Request => {
-            f.id = Some(
-                j.get("id")
-                    .and_then(Json::as_str)
-                    .filter(|s| !s.is_empty())
-                    .ok_or_else(|| bad(&r, "request frame needs `id`".into()))?
-                    .to_string(),
-            );
-            f.params = j.get("params").map(Value::from_json);
-            f.restrict = j.get("restrict").map(Value::from_json);
+            // `type` and `ref` sit beside the envelope keys and are ignored by the parser.
+            f.input = Some(parse_input(&j).map_err(|e| (r.clone(), e))?);
         }
         WsFrameType::Input => {
             f.seq = Some(
@@ -72,17 +73,32 @@ pub fn parse_client_frame(text: &str) -> Result<WsFrame, (String, RivetError)> {
 mod tests {
     use super::*;
 
+    /// A stand-in for serve.parse_input: `operation` only.
+    fn op_only(j: &Json) -> Result<InputEnvelope, RivetError> {
+        j.get("operation")
+            .and_then(Json::as_str)
+            .map(InputEnvelope::new)
+            .ok_or_else(|| RivetError::validation("validation.required", "needs operation"))
+    }
+
     #[test]
     fn parses_demo_frames() {
         for line in include_str!("../../../docs/demos/01-catalog/requests/ws-frames.jsonl").lines()
         {
-            let f = parse_client_frame(line).unwrap();
+            let f = parse_client_frame(line, op_only).unwrap();
             assert_eq!(f.kind, WsFrameType::Request);
+            assert!(f.input.is_some());
         }
-        let (r, e) = parse_client_frame(r#"{"type":"bogus","ref":"x"}"#).unwrap_err();
+        let (r, e) = parse_client_frame(r#"{"type":"bogus","ref":"x"}"#, op_only).unwrap_err();
         assert_eq!((r.as_str(), e.code.as_str()), ("x", "validation.frame"));
-        assert!(parse_client_frame("nope").is_err());
-        let f = parse_client_frame(r#"{"type":"input","ref":"c3","seq":1,"data":"hi"}"#).unwrap();
+        assert!(parse_client_frame("nope", op_only).is_err());
+        let (r, e) = parse_client_frame(r#"{"type":"request","ref":"c9"}"#, op_only).unwrap_err();
+        assert_eq!((r.as_str(), e.code.as_str()), ("c9", "validation.required"));
+        let f = parse_client_frame(
+            r#"{"type":"input","ref":"c3","seq":1,"data":"hi"}"#,
+            op_only,
+        )
+        .unwrap();
         assert_eq!(f.seq, Some(1));
     }
 }

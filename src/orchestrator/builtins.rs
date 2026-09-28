@@ -5,7 +5,8 @@
 //! ```text
 //!  rivet.capabilities               ─▶ registry.describe_capabilities (build facts, no I/O)
 //!  rivet.list / describe / outputs ─▶ registry use cases, filtered by serve.authorize_operation
-//!  rivet.request {id, params}       ─▶ unary: nested dispatch │ streaming: sessions.open receipt
+//!  rivet.request {operation, data}  ─▶ serve.parse_input ─▶ unary: nested dispatch │ streaming: sessions.open receipt
+//!                                     (deprecated {id, params} accepted, noted in the trace)
 //!  rivet.sessions.*                 ─▶ sessions use cases ─▶ SessionHost
 //!  rivet.trace.show {request_id}   ─▶ audit.read_trace (explicit listing for network principals)
 //!  rivet.connectors.sync {name, output} ─▶ connectors.invoke_mcp discover + exclusive snapshot create
@@ -20,6 +21,7 @@ use crate::domain::auth::{
 };
 use crate::domain::capabilities::BuildProbe;
 use crate::domain::contracts::{Completion, Request};
+use crate::domain::envelope::{InputEnvelope, RawInput};
 use crate::domain::errors::EffectsStatus;
 use crate::domain::ports::DataSink;
 use crate::domain::serve::OperationAccess;
@@ -32,6 +34,7 @@ use crate::features::auth::credential_status::credential_status;
 use crate::features::auth::disconnect_account::disconnect_account;
 use crate::features::registry::describe_capabilities::describe_capabilities;
 use crate::features::serve::authorize_operation::{authorize_operation, require_operation};
+use crate::features::serve::parse_input::parse_input;
 use crate::features::sessions::cancel_session::cancel_session;
 use crate::features::sessions::finish_input::finish_input;
 use crate::features::sessions::open_session::open_session;
@@ -173,6 +176,23 @@ fn build_probe() -> BuildProbe {
     }
 }
 
+/// The arguments of `rivet.request` / `rivet.sessions.open` as an input
+/// envelope (`serve.parse_input`); a deprecated alias leaves a trace note.
+fn envelope_args(rt: &Runtime, req: &Request) -> RivetResult<InputEnvelope> {
+    let input = parse_input(RawInput::new(req.params.to_json()))?;
+    if input.is_legacy() {
+        // Over HTTP (MCP POST /mcp, /v1/request) the answer gets `Deprecation: true`.
+        super::setup_serve::note_access(|n| n.deprecated = true);
+    }
+    rt.note_deprecated_input(
+        &req.request_id,
+        &req.trace_id,
+        &req.operation_id,
+        &input.aliases,
+    );
+    Ok(input)
+}
+
 fn hidden(id: &str) -> RivetError {
     RivetError::not_found("not_found.operation", format!("no operation `{id}`"))
 }
@@ -201,6 +221,7 @@ async fn dispatch_builtin_inner(
     let done = |result: Json| Completion {
         request_id: req.request_id.clone(),
         trace_id: req.trace_id.clone(),
+        operation: req.operation_id.clone(),
         result: Value::from_json(&result),
         data_count: 0,
         effects: EffectsStatus::None,
@@ -367,8 +388,9 @@ async fn dispatch_builtin_inner(
                 }))
             }
             "rivet.request" => {
-                let id = text(p, "id")?;
-                let params = p.get("params").cloned().unwrap_or(Value::Null);
+                // The arguments are an input envelope {operation, data} (serve.parse_input).
+                let input = envelope_args(rt, &req)?;
+                let (id, params) = (input.operation, input.data);
                 if id.starts_with("rivet.") && id != "rivet.request" {
                     let inner = rt
                         .dispatch_request(rt.follow_request(&req, &id, params), sink.clone())
@@ -411,7 +433,9 @@ async fn dispatch_builtin_inner(
                 })
             }
             "rivet.sessions.open" => {
-                let id = text(p, "id")?;
+                // {operation, data, deadline_ms?} (serve.parse_input; {id, params} deprecated).
+                let input = envelope_args(rt, &req)?;
+                let id = input.operation.clone();
                 require_operation(&OperationAccess {
                     principal: who.clone(),
                     operation_id: id.clone(),
@@ -420,11 +444,11 @@ async fn dispatch_builtin_inner(
                 let r = open_session(
                     SessionOpenInput {
                         id,
-                        params: p.get("params").cloned().unwrap_or(Value::Null),
+                        params: input.data,
                         principal: who.clone(),
                         connection_owned: false,
                         // Requested total deadline; the driver caps it at 600000 ms.
-                        deadline_ms: uint(p, "deadline_ms")?,
+                        deadline_ms: input.deadline_ms,
                         trace: outer_trace(&req),
                         restrict: req.restrict.clone(),
                     },

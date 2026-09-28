@@ -159,7 +159,7 @@ fn cli(dir: &Path, id: &str, params: &str) -> Outcome {
             "--json",
             "request",
             id,
-            "--params",
+            "--data",
             params,
         ])
         .output()
@@ -171,8 +171,8 @@ fn cli(dir: &Path, id: &str, params: &str) -> Outcome {
         let j: Json =
             serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {stdout}"));
         Ok(
-            if j.get("request_id").is_some() && j.get("result").is_some() {
-                j["result"].clone()
+            if j.get("request_id").is_some() && j.get("type").is_some() {
+                j["data"].clone()
             } else {
                 j
             },
@@ -195,7 +195,7 @@ async fn library(rt: &Runtime, id: &str, params: &str) -> Outcome {
     let p: Json = serde_json::from_str(params).unwrap();
     match rt.request(id, Value::from_json(&p), None).await {
         Ok(c) => {
-            assert!(!c.to_json().to_string().contains("CANARY"));
+            assert!(!c.envelope().to_json().to_string().contains("CANARY"));
             Ok(c.result.to_json())
         }
         Err(e) => {
@@ -207,11 +207,17 @@ async fn library(rt: &Runtime, id: &str, params: &str) -> Outcome {
 
 async fn http(addr: SocketAddr, id: &str, params: &str) -> Outcome {
     let p: Json = serde_json::from_str(params).unwrap();
-    let r = serve_support::post(addr, "/v1/request", json!({"id": id, "params": p}), &[]).await;
+    let r = serve_support::post(
+        addr,
+        "/v1/request",
+        json!({"operation": id, "data": p}),
+        &[],
+    )
+    .await;
     assert!(!r.text.contains("CANARY"));
     let j = r.json();
     if r.status == 200 {
-        Ok(j["result"].clone())
+        Ok(j["data"].clone())
     } else {
         Err(j["error"]["code"]
             .as_str()
@@ -232,7 +238,7 @@ async fn mcp(addr: SocketAddr, sid: &str, id: &str, params: &str) -> Outcome {
             .unwrap_or_else(|| panic!("{res}"));
         Err(code.to_string())
     } else {
-        Ok(res["structuredContent"]["result"].clone())
+        Ok(res["structuredContent"]["data"].clone())
     }
 }
 

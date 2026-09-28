@@ -369,7 +369,7 @@ async fn secret_destination_binding() {
 
     let ok = rt.request("account.use", Value::Null, None).await.unwrap();
     assert_eq!(ok.result.get("name"), Some(&Value::text("Ada")));
-    assert!(!ok.to_json().to_string().contains(CANARY));
+    assert!(!ok.envelope().to_json().to_string().contains(CANARY));
     assert_eq!(bound.requests.lock().unwrap().len(), 1);
 
     let e = rt

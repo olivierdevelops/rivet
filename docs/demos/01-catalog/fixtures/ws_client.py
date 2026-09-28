@@ -3,8 +3,11 @@
 Usage: python3 fixtures/ws_client.py ws://127.0.0.1:8080/v1/ws < requests/ws-frames.jsonl
 
 Sends every JSONL line from stdin as one text frame, then prints each server
-frame on its own line until every ref it sent has received a terminal frame
-(type "result" or "error"). Optional: --token-file PATH adds a bearer token.
+record on its own line until every ref it sent has received its terminal record
+(a 0.2 ResponseEnvelope with "type": "result" and "status" ok, error or
+cancelled; a 0.1.0 server's "error" frame also ends a ref). Request frames use
+the 0.2 input envelope {"type":"request","ref","operation","data"}.
+Optional: --token-file PATH adds a bearer token.
 """
 import json
 import sys

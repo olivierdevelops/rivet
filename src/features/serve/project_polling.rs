@@ -1,19 +1,27 @@
 use super::authorize_operation::require_operation;
 use super::ports::SessionDriver;
 use crate::domain::RivetError;
-use crate::domain::contracts::error_envelope;
+use crate::domain::envelope::ResponseEnvelope;
 use crate::domain::serve::{OperationAccess, PollAction, PollResponse, PollRoute};
 use crate::domain::sessions::{SessionOpenInput, SessionReadInput, SessionRef, SessionSendInput};
 
 // vhco:usecase serve.project_polling(input: PollRoute) -> PollResponse needs SessionDriver
 // vhco:label Project polling
-// vhco:about The HTTP polling routes are a projection of the session operations: open → 202 SessionReceipt with events_url, events → SessionBatch, input/finish_input/cancel → SessionAck / CancelReceipt, all bound to the authenticated principal.
-// vhco:example input={action:{open:{id:"demo.countdown"}}} => { "status": 202, "body": {"session_id": "ses_…", "events_url": "/v1/requests/ses_…/events"} }
+// vhco:about The HTTP polling routes are a projection of the session operations: open → 202 ResponseEnvelope (status accepted) whose data is the SessionReceipt with events_url, events → SessionBatch whose events are ResponseEnvelope records, input/finish_input/cancel → SessionAck / CancelReceipt, all bound to the authenticated principal; every failure is an error envelope.
+// vhco:example input={action:{open:{id:"demo.countdown"}}} => { "status": 202, "body": {"request_id": "req_…", "trace_id": "tr_…", "operation": "demo.countdown", "type": "result", "status": "accepted", "data": {"session_id": "ses_…", "events_url": "/v1/requests/ses_…/events"}, "error": null, "effects": "none", "data_count": 0} }
 pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> PollResponse {
     let principal = input.principal.clone();
     let limits = driver.limits();
+    // The operation each route answers for (named by its error envelope).
+    let operation = match &input.action {
+        PollAction::Open { id, .. } => id.clone(),
+        PollAction::Events { .. } => "rivet.sessions.read".to_string(),
+        PollAction::Input { .. } => "rivet.sessions.send".to_string(),
+        PollAction::FinishInput { .. } => "rivet.sessions.finish_input".to_string(),
+        PollAction::Cancel { .. } => "rivet.sessions.cancel".to_string(),
+    };
     let result: Result<(u16, serde_json::Value), RivetError> = match input.action {
-        // vhco:todo open -- POST /v1/requests {id, params, deadline_ms?}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event
+        // vhco:todo open -- POST /v1/requests {operation, data, deadline_ms?} (id/params: deprecated aliases, parsed by serve.parse_input): authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 with an accepted ResponseEnvelope whose data is the SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event
         // vhco:error denied -- the principal may not call the operation => permission.denied (403) body
         PollAction::Open {
             id,
@@ -42,7 +50,14 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
                     .await
                     .map(|mut r| {
                         r.events_url = Some(format!("/v1/requests/{}/events", r.session_id));
-                        (202, r.to_json())
+                        // vhco:step accept ResponseEnvelope::accepted -- 202 envelope, status accepted, data = the receipt
+                        let env = ResponseEnvelope::accepted(
+                            &r.request_id,
+                            &r.trace_id,
+                            &operation,
+                            r.to_json(),
+                        );
+                        (202, env.to_json())
                     }),
             }
         }
@@ -94,17 +109,13 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
             .await
             .map(|c| (200, c.to_json())),
     };
-    // vhco:todo ownership -- every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the ErrorEnvelope with the registry status (404/409/422/429)
-    // vhco:step encode error_envelope -- error → {request_id, trace_id, error} with its registry HTTP status
+    // vhco:todo ownership -- every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the error ResponseEnvelope (status error, data null) with the registry status (404/409/422/429)
+    // vhco:step encode ResponseEnvelope::from_error -- error → envelope (status error|cancelled, data null) with its registry HTTP status
     match result {
         Ok((status, body)) => PollResponse { status, body },
         Err(e) => PollResponse {
             status: e.http_status(),
-            body: error_envelope(
-                e.request_id.as_deref().unwrap_or(""),
-                e.trace_id.as_deref().unwrap_or(""),
-                &e,
-            ),
+            body: ResponseEnvelope::from_error(Some(&operation), &e).to_json(),
         },
     }
 }

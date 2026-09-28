@@ -97,7 +97,14 @@ fn cli_json(dir: &std::path::Path, args: &[&str]) -> Json {
     all.extend_from_slice(args);
     let r = rivet(dir, &all);
     assert_eq!(r.code, 0, "{args:?}: {}", r.stderr);
-    r.json()
+    // 0.2: every --json output is a ResponseEnvelope; the payload is `data`.
+    let env = r.json();
+    assert_eq!(
+        (env["type"].clone(), env["status"].clone()),
+        (json!("result"), json!("ok")),
+        "{env}"
+    );
+    env["data"].clone()
 }
 
 // vhco:test registry.describe_operations -- S103/S104/S105: one multi-operation file publishes identical metadata through the library, CLI list/describe/outputs, HTTP /v1/operations and MCP tools/list
@@ -192,7 +199,7 @@ async fn metadata_is_identical_on_every_surface() {
         let http = serve_support::http(addr, "GET", &format!("/v1/operations/{id}"), &[], "").await;
         assert_eq!(http.status, 200);
         assert_eq!(
-            http.json(),
+            http.json()["data"],
             cli_describe[i],
             "{id}: HTTP describe == CLI describe"
         );
@@ -206,7 +213,7 @@ async fn metadata_is_identical_on_every_surface() {
         .await;
         assert_eq!(http.status, 200);
         assert_eq!(
-            http.json(),
+            http.json()["data"],
             cli_outputs[i],
             "{id}: HTTP outputs == CLI outputs --json"
         );
@@ -218,7 +225,7 @@ async fn metadata_is_identical_on_every_surface() {
         assert_eq!(tool["description"], cli_describe[i]["description"], "{id}");
         assert_eq!(tool["inputSchema"], cli_describe[i]["input"], "{id}");
         assert_eq!(
-            tool["outputSchema"]["properties"]["result"], cli_describe[i]["output"],
+            tool["outputSchema"]["properties"]["data"]["anyOf"][0], cli_describe[i]["output"],
             "{id}"
         );
     }
@@ -228,17 +235,17 @@ async fn metadata_is_identical_on_every_surface() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id":"demo.average","params":{"a":2,"b":5}}),
+        json!({"operation":"demo.average","data":{"a":2,"b":5}}),
         &[],
     )
     .await;
-    assert_eq!(r.json()["result"], 3.5);
+    assert_eq!(r.json()["data"], 3.5);
     let r = serve_support::mcp_call(addr, &sid, &[], "demo.add", json!({"a":2,"b":3})).await;
-    assert_eq!(r["structuredContent"]["result"], 5);
+    assert_eq!(r["structuredContent"]["data"], 5);
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id":"demo.add","params":{"b":3}}),
+        json!({"operation":"demo.add","data":{"b":3}}),
         &[],
     )
     .await;
@@ -417,7 +424,7 @@ async fn private_helper_is_hidden_but_callable_in_bundle() {
     let r = serve_support::post(
         addr,
         "/v1/request",
-        json!({"id": helper, "params": {"value": "x"}}),
+        json!({"operation": helper, "data": {"value": "x"}}),
         &[],
     )
     .await;
@@ -440,7 +447,7 @@ async fn private_helper_is_hidden_but_callable_in_bundle() {
             "catalog.rivet",
             "request",
             helper,
-            "--params",
+            "--data",
             r#"{"value":"x"}"#,
         ],
     )
@@ -531,12 +538,12 @@ fn capabilities_builtin_reports_this_build() {
             "app.rivet",
             "request",
             "rivet.capabilities",
-            "--params",
+            "--data",
             "{}",
         ],
     );
     assert_eq!(r.code, 0, "{}", r.stderr);
-    let v = &r.json()["result"];
+    let v = &r.json()["data"];
     assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
     let feature = |n: &str| {
         v["features"]

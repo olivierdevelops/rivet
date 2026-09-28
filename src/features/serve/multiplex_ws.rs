@@ -7,14 +7,14 @@ use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
 // vhco:usecase serve.multiplex_ws(input: WsInbound) -> WsOutcome needs WsConnection, SessionDriver
 // vhco:label Multiplex ws
 // vhco:about Handles one client frame on /v1/ws (subprotocol rivet.v1): opens a connection-owned ref, routes input/finish_input/cancel to that ref's session, and answers malformed or refused frames with an error frame without closing the socket; a refused input ends its ref with that specific error.
-// vhco:example input={frame:{type:"request", ref:"c1", id:"demo.add", params:{a:2,b:3}}} => { "opened": ["c1", "ses_…"] }
+// vhco:example input={frame:{type:"request", ref:"c1", input:{operation:"demo.add", data:{a:2,b:3}}}} => { "opened": ["c1", "ses_…"] }
 pub async fn multiplex_ws(
     input: WsInbound,
     conn: &dyn WsConnection,
     driver: &dyn SessionDriver,
 ) -> RivetResult<WsOutcome> {
     let reply = |r: &str, e: RivetError| WsFrame::error(r, e);
-    // vhco:todo parse_frame -- the surface parses JSON text frames; a malformed frame (bad JSON, unknown type, missing ref) arrives here as an error and is answered with {type:error, ref, error} (validation, 422 semantics) without closing the socket
+    // vhco:todo parse_frame -- the surface parses JSON text frames (request frames through serve.parse_input: {operation, data}, deprecated {id, params}); a malformed frame (bad JSON, unknown type, missing ref, bad envelope) arrives here as an error and is answered with an error record {ref, …, type:"result", status:"error", error} (validation, 422 semantics) without closing the socket
     // vhco:step malformed conn.reply -- parse failure → error frame for the ref if it could be read
     let frame = match input.frame {
         Ok(f) => f,
@@ -54,7 +54,11 @@ pub async fn multiplex_ws(
                         format!("at most {MAX_WS_REFS} refs may be in flight per connection"),
                     ));
                 }
-                let id = frame.id.clone().unwrap_or_default();
+                let request = frame
+                    .input
+                    .clone()
+                    .unwrap_or_else(|| crate::domain::envelope::InputEnvelope::new(""));
+                let id = request.operation.clone();
                 // vhco:step authorize require_operation -- same principal rules as every surface
                 require_operation(&OperationAccess {
                     principal: input.principal.clone(),
@@ -65,12 +69,12 @@ pub async fn multiplex_ws(
                 let receipt = driver
                     .open(SessionOpenInput {
                         id,
-                        params: frame.params.clone().unwrap_or(Value::Null),
+                        params: request.data,
                         principal: input.principal.clone(),
                         connection_owned: true,
-                        deadline_ms: None,
+                        deadline_ms: request.deadline_ms,
                         trace: input.trace.clone(),
-                        restrict: frame.restrict.clone(),
+                        restrict: request.restrict,
                     })
                     .await?;
                 Ok(receipt.session_id)
@@ -83,7 +87,8 @@ pub async fn multiplex_ws(
                 },
                 Err(e) => {
                     // The ref never opened: this error is its only frame.
-                    conn.reply(reply(&r, e)).await?;
+                    let op = frame.input.as_ref().map(|i| i.operation.as_str());
+                    conn.reply(WsFrame::error_for(&r, op, e)).await?;
                     WsOutcome {
                         replied: true,
                         ..WsOutcome::default()
@@ -141,7 +146,7 @@ pub async fn multiplex_ws(
             }
         }
     };
-    // vhco:todo stream_out -- the host's per-ref pump reads the session with a bounded wait and forwards {type:data, ref, seq, data}, then exactly one {type:result, ref, completion} or {type:error, ref, error}; a full 16-event log blocks the producer (backpressure)
+    // vhco:todo stream_out -- the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:"data", seq, data, error:null}, then exactly one terminal record {ref, …, type:"result", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)
     // vhco:todo close_cancels -- on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations
     Ok(outcome)
 }
@@ -168,12 +173,12 @@ mod tests {
     #[async_trait]
     impl WsConnection for Log {
         async fn send(&self, f: WsFrame) -> RivetResult<()> {
-            let code = f.error.map(|e| e.code).unwrap_or_default();
+            let code = f.error_ref().map(|e| e.code.clone()).unwrap_or_default();
             self.push(format!("send:{}:{code}", f.r#ref));
             Ok(())
         }
         async fn reply(&self, f: WsFrame) -> RivetResult<()> {
-            let code = f.error.map(|e| e.code).unwrap_or_default();
+            let code = f.error_ref().map(|e| e.code.clone()).unwrap_or_default();
             self.push(format!("reply:{}:{code}", f.r#ref));
             Ok(())
         }

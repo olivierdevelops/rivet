@@ -344,7 +344,9 @@ fn graph_cli() {
     assert!(text.contains("└── node b after a"), "{text}");
     let out = run(&["--file", "app.rivet", "graph", "users.snapshot", "--json"]);
     assert_eq!(out.status.code(), Some(0));
-    let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let env: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(env["operation"], "rivet.graph");
+    let j = &env["data"];
     assert_eq!(j["operation_id"], "users.snapshot");
     assert_eq!(j["root"], "n0");
     let out = run(&["--file", "app.rivet", "graph", "nope.op"]);

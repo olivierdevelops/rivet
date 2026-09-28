@@ -20,9 +20,12 @@ pub struct Cli {
     /// Use this policy file instead of the discovered policy.json (a path, never grants).
     #[arg(long, global = true)]
     pub policy: Option<String>,
-    /// Print JSON instead of tables.
+    /// Print JSON instead of tables (every JSON output is a ResponseEnvelope).
     #[arg(long, global = true)]
     pub json: bool,
+    /// Pretty-print JSON output (2-space indent, same key order); refused with --stream.
+    #[arg(long, global = true)]
+    pub pretty: bool,
     /// Send request/list/describe/outputs/io/trace/auth to a running `rivet serve`
     /// at this URL instead of loading a bundle (cannot be combined with --file).
     #[arg(long, global = true)]
@@ -154,11 +157,19 @@ pub enum TraceCommand {
 
 #[derive(Args, Debug)]
 pub struct RequestArgs {
-    pub id: String,
-    /// Parameters as a JSON object.
-    #[arg(long, default_value = "{}")]
-    pub params: String,
-    /// Print NDJSON envelopes for streamed data.
+    /// Operation ID (optional with --input, whose envelope names it).
+    pub id: Option<String>,
+    /// Operation input as a JSON object (the envelope's `data`; default {}).
+    #[arg(long)]
+    pub data: Option<String>,
+    /// Deprecated alias of --data (removed in 0.3.0; prints warning[deprecated.params]).
+    #[arg(long)]
+    pub params: Option<String>,
+    /// Read a whole input envelope {operation, data, deadline_ms?, restrict?, stream?}
+    /// from FILE, or from stdin with `-`.
+    #[arg(long, value_name = "FILE|-")]
+    pub input: Option<String>,
+    /// Print NDJSON records for streamed data (one record per line).
     #[arg(long)]
     pub stream: bool,
     /// Request deadline, e.g. "5s" (default 30s).

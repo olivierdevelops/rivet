@@ -430,7 +430,7 @@ fn cli_renders_the_exact_location() {
             "app.rivet",
             "request",
             "t.run",
-            "--params",
+            "--data",
             "{}",
         ],
     );

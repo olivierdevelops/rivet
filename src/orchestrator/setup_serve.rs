@@ -9,28 +9,30 @@
 //!        ├─ bind once ─▶ mount http, sse, poll, ws, mcp (policy serve.surfaces; others 404)
 //!        │              + GET /v1/health (loopback: open; otherwise authenticated per serve.auth)
 //!        ├─ every request: authenticate_principal ─▶ authorize_operation ─▶ shared dispatcher
+//!        │    ├─ every JSON answer is a ResponseEnvelope; `?pretty=true` re-renders it 2-space indented
+//!        │    ├─ a deprecated input alias (id/params) adds `Deprecation: true` to the response
 //!        │    └─ one access-log line on stderr: time surface method route principal operation status duration_ms
-//!        │       (never params, bodies, queries or tokens); W3C traceparent accepted and emitted
+//!        │       [deprecated=1] (never params, bodies, queries or tokens); W3C traceparent accepted and emitted
 //!        └─ SIGINT / SIGTERM ─▶ stop accepting ─▶ cancel in-flight requests and sessions
 //!                              (each closes its resources within the 5 s grace) ─▶ exit 0
 //! ```
 
-// vhco:api http serve/start_serve GET /v1/health -- liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth
-// vhco:request { "headers": "Authorization: Bearer TOKEN (non-loopback binds with bearer auth)" }
-// vhco:response { "status": "ok", "catalog_version": "sha256:…" }
+// vhco:api http serve/start_serve GET /v1/health -- liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth; a ResponseEnvelope (operation rivet.health) whose data carries the server version so a client can tell 0.2 servers apart
+// vhco:request { "headers": "Authorization: Bearer TOKEN (non-loopback binds with bearer auth)", "query": "pretty=true? — 2-space indented JSON" }
+// vhco:response { "request_id": "string", "trace_id": "string", "operation": "rivet.health", "type": "result", "status": "ok", "data": "{status: ok, catalog_version: sha256:…, version: string}", "error": "null", "effects": "none", "data_count": "0" }
 
 use super::runtime::Runtime;
-use crate::domain::contracts::{
-    Principal, TraceContext, error_envelope, rfc3339_millis, traceparent_header,
-};
+use crate::domain::contracts::{Principal, TraceContext, rfc3339_millis, traceparent_header};
+use crate::domain::envelope::{InputEnvelope, OutputFormat, RawInput, ResponseEnvelope};
 use crate::domain::policy::ServePolicy;
 use crate::domain::ports::Authenticator;
 use crate::domain::serve::{AuthnInput, ServeReceipt, ServeStartInput};
 use crate::domain::{RivetError, RivetResult};
 use crate::features::serve::authenticate_principal::authenticate_principal;
+use crate::features::serve::parse_input::parse_input;
 use crate::features::serve::start_serve::start_serve;
 use crate::infra::serve_listener::AxumListener;
-use crate::io::http::{error_body, error_status};
+use crate::io::http::{error_body, error_status, parse_json_body, wants_pretty};
 use axum::Router;
 use axum::extract::{ConnectInfo, MatchedPath, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -78,6 +80,10 @@ pub struct AccessNote {
     pub surface: String,
     pub principal: Option<String>,
     pub operation: Option<String>,
+    /// `?pretty=true` was on the request (JSON answers are re-rendered indented).
+    pub pretty: bool,
+    /// The input used a deprecated alias (`id`/`params`): `Deprecation: true` and `deprecated=1`.
+    pub deprecated: bool,
 }
 
 /// Record the served operation (or refine the surface) for the access log.
@@ -87,6 +93,33 @@ pub fn note_access(update: impl FnOnce(&mut AccessNote)) {
             update(&mut g);
         }
     });
+}
+
+/// The operation recorded for the request being served (errors name it).
+pub fn noted_operation() -> Option<String> {
+    ACCESS
+        .try_with(|n| n.lock().ok().and_then(|g| g.operation.clone()))
+        .ok()
+        .flatten()
+}
+
+/// Whether the request being served asked for `?pretty=true`.
+pub fn noted_pretty() -> bool {
+    ACCESS
+        .try_with(|n| n.lock().map(|g| g.pretty).unwrap_or(false))
+        .unwrap_or(false)
+}
+
+/// Decode a request body into the one InputEnvelope (`serve.parse_input`). A
+/// deprecated alias marks the answer (`Deprecation: true`, `deprecated=1`).
+pub fn read_input(bytes: &[u8]) -> RivetResult<InputEnvelope> {
+    let body = parse_json_body(bytes)?;
+    let input = parse_input(RawInput::new(body))?;
+    note_access(|n| n.operation = Some(input.operation.clone()));
+    if input.is_legacy() {
+        note_access(|n| n.deprecated = true);
+    }
+    Ok(input)
 }
 
 /// The caller's valid W3C `traceparent`, if any.
@@ -107,9 +140,37 @@ pub fn with_traceparent(mut r: Response, trace_id: &str, request_id: &str) -> Re
     r
 }
 
+/// Largest JSON answer re-rendered for `?pretty=true` (larger ones stay compact).
+const PRETTY_LIMIT: usize = 64 * 1024 * 1024;
+
+/// `?pretty=true`: re-render a JSON answer 2-space indented, keys in the same
+/// order. Streams (SSE) never get here: the request handler refuses them.
+async fn prettify(resp: Response) -> Response {
+    let is_json = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|c| c.starts_with("application/json"));
+    if !is_json {
+        return resp;
+    }
+    let (mut parts, body) = resp.into_parts();
+    let bytes = match axum::body::to_bytes(body, PRETTY_LIMIT).await {
+        Ok(b) => b,
+        Err(_) => return (parts, axum::body::Body::empty()).into_response(),
+    };
+    let text = match serde_json::from_slice::<Json>(&bytes) {
+        Ok(j) => OutputFormat::Pretty.render(&j),
+        Err(_) => return (parts, axum::body::Body::from(bytes)).into_response(),
+    };
+    parts.headers.remove(header::CONTENT_LENGTH);
+    (parts, axum::body::Body::from(text)).into_response()
+}
+
 /// One access-log line per request: `{time, surface, method, route, principal,
-/// operation, status, duration_ms}`. The route is the matched pattern (never
-/// the query string); params, bodies and credentials are never logged.
+/// operation, status, duration_ms[, deprecated: 1]}`. The route is the matched
+/// pattern (never the query string); params, bodies and credentials are never
+/// logged. The same layer applies `?pretty=true` and the `Deprecation` header.
 async fn access_log(
     State((surface, sink)): State<(&'static str, AccessLogSink)>,
     req: Request,
@@ -124,11 +185,19 @@ async fn access_log(
         .unwrap_or_else(|| req.uri().path().to_string());
     let note = Arc::new(Mutex::new(AccessNote {
         surface: surface.to_string(),
+        pretty: wants_pretty(req.uri().query()),
         ..AccessNote::default()
     }));
-    let resp = ACCESS.scope(Arc::clone(&note), next.run(req)).await;
+    let mut resp = ACCESS.scope(Arc::clone(&note), next.run(req)).await;
     let n = note.lock().map(|g| g.clone()).unwrap_or_default();
-    let line = json!({
+    if n.deprecated {
+        resp.headers_mut()
+            .insert("deprecation", HeaderValue::from_static("true"));
+    }
+    if n.pretty {
+        resp = prettify(resp).await;
+    }
+    let mut line = json!({
         "time": rfc3339_millis(SystemTime::now()),
         "surface": n.surface,
         "method": method,
@@ -138,6 +207,9 @@ async fn access_log(
         "status": resp.status().as_u16(),
         "duration_ms": started.elapsed().as_millis() as u64,
     });
+    if n.deprecated {
+        line["deprecated"] = json!(1);
+    }
     sink(&line.to_string());
     resp
 }
@@ -150,22 +222,51 @@ fn logged(router: Router, surface: &'static str, sink: &AccessLogSink) -> Router
     ))
 }
 
-/// `GET /v1/health` → `{status:"ok", catalog_version}`.
+/// `GET /v1/health` → envelope (operation `rivet.health`) with data
+/// `{status:"ok", catalog_version, version}`.
 async fn health(
     State(st): State<Arc<ServeState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Response {
-    note_access(|n| n.operation = Some("health".into()));
+    note_access(|n| n.operation = Some("rivet.health".into()));
     // Unauthenticated on a loopback bind; otherwise the usual serve.auth applies.
-    if !st.loopback.load(Ordering::SeqCst)
-        && let Err(e) = st.authenticate("http", &headers, peer)
-    {
-        return error_response(&e);
-    }
-    json_response(
-        200,
-        json!({"status": "ok", "catalog_version": st.runtime.catalog_version()}),
+    let who = if st.loopback.load(Ordering::SeqCst) {
+        Principal::local()
+    } else {
+        match st.authenticate("http", &headers, peer) {
+            Ok(p) => p,
+            Err(e) => return error_response(&e),
+        }
+    };
+    let data = json!({
+        "status": "ok",
+        "catalog_version": st.runtime.catalog_version(),
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    payload_response(&st, &headers, who, "rivet.health", data)
+}
+
+/// A 200 envelope for a payload produced without a dispatched run (GET
+/// routes): IDs are minted like a request's so `traceparent` is emitted.
+pub fn payload_response(
+    st: &ServeState,
+    headers: &HeaderMap,
+    who: Principal,
+    operation: &str,
+    data: Json,
+) -> Response {
+    let req = st.runtime.new_request_traced(
+        operation,
+        crate::domain::Value::Object(Vec::new()),
+        who,
+        trace_context(headers).as_ref(),
+    );
+    let env = ResponseEnvelope::payload(&req.request_id, &req.trace_id, operation, data);
+    with_traceparent(
+        json_response(200, env.to_json()),
+        &req.trace_id,
+        &req.request_id,
     )
 }
 
@@ -227,10 +328,11 @@ pub fn json_response(status: u16, body: Json) -> Response {
         .into_response()
 }
 
-/// ErrorEnvelope with the registry status (401 adds `WWW-Authenticate`).
+/// Error envelope with the registry status (401 adds `WWW-Authenticate`); it
+/// names the operation the handler noted, when one is known.
 pub fn error_response(e: &RivetError) -> Response {
     let status = error_status(e);
-    let mut r = json_response(status, error_body(e));
+    let mut r = json_response(status, error_body(noted_operation().as_deref(), e));
     if status == 401 {
         r.headers_mut().insert(
             header::WWW_AUTHENTICATE,
@@ -243,9 +345,8 @@ pub fn error_response(e: &RivetError) -> Response {
 async fn not_mounted() -> Response {
     json_response(
         404,
-        error_envelope(
-            "",
-            "",
+        error_body(
+            None,
             &RivetError::not_found("not_found.route", "no such route on this listener"),
         ),
     )

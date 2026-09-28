@@ -1,6 +1,7 @@
 //! Request, completion, stream and catalog contracts shared by every surface.
 
 use super::cancel::CancelToken;
+use super::envelope::{RecordType, ResponseEnvelope};
 use super::errors::{EffectsStatus, RivetError};
 use super::ir::OperationKind;
 use super::outputs::{DeclaredError, OutputSpec, ParamSpec, ValueSpec, params_schema};
@@ -157,64 +158,67 @@ pub fn rfc3339_millis(t: std::time::SystemTime) -> String {
     )
 }
 
-// vhco:domain Completion { request_id: string; trace_id: string; result: Value; data_count: int; effects: EffectsStatus }
+// vhco:domain Completion { request_id: string; trace_id: string; operation: string; result: Value; data_count: int; effects: EffectsStatus }
+/// A finished request. Every surface writes it as a [`ResponseEnvelope`]
+/// (`result` becomes the envelope's `data`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Completion {
     pub request_id: String,
     pub trace_id: String,
+    /// The operation this completion answers (the envelope's `operation`).
+    pub operation: String,
     pub result: Value,
     pub data_count: u64,
     pub effects: EffectsStatus,
 }
 
 impl Completion {
-    /// Decode a Completion (or a `type: result` envelope) received from a
-    /// remote `rivet serve`; `None` when the object is not a Completion.
+    /// Decode a `type: result, status: ok` envelope received from a remote
+    /// `rivet serve`; `None` when the object is not such an envelope.
     pub fn from_json(j: &Json) -> Option<Completion> {
-        let s = |k: &str| j.get(k).and_then(Json::as_str).map(str::to_string);
-        Some(Completion {
-            request_id: s("request_id")?,
-            trace_id: s("trace_id").unwrap_or_default(),
-            result: j.get("result").map(Value::from_json).unwrap_or(Value::Null),
-            data_count: j.get("data_count").and_then(Json::as_u64).unwrap_or(0),
-            effects: EffectsStatus::parse(&s("effects").unwrap_or_default()),
-        })
+        ResponseEnvelope::from_json(j)
+            .filter(|e| e.record_type == RecordType::Result)
+            .and_then(|e| e.into_outcome().ok())
     }
 
-    pub fn to_json(&self) -> Json {
-        json!({
-            "request_id": self.request_id,
-            "trace_id": self.trace_id,
-            "result": self.result.to_json(),
-            "data_count": self.data_count,
-            "effects": self.effects.as_str(),
-        })
+    /// This completion as an envelope.
+    pub fn envelope(&self) -> ResponseEnvelope {
+        ResponseEnvelope::from_completion(self)
     }
 }
 
-// vhco:domain DataEvent { request_id: string; trace_id: string; seq: int; data: Value }
+// vhco:domain DataEvent { request_id: string; trace_id: string; operation: string; seq: int; data: Value }
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataEvent {
     pub request_id: String,
     pub trace_id: String,
+    /// The operation that emitted the item.
+    pub operation: String,
     pub seq: u64,
     pub data: Value,
 }
 
 impl DataEvent {
-    /// Decode a `type: data` envelope (SSE event or NDJSON line).
+    /// Decode a `type: data` record (SSE event, NDJSON line or WS frame).
     pub fn from_json(j: &Json) -> Option<DataEvent> {
-        let s = |k: &str| j.get(k).and_then(Json::as_str).map(str::to_string);
+        let e = ResponseEnvelope::from_json(j).filter(|e| e.record_type == RecordType::Data)?;
         Some(DataEvent {
-            request_id: s("request_id").unwrap_or_default(),
-            trace_id: s("trace_id").unwrap_or_default(),
-            seq: j.get("seq").and_then(Json::as_u64)?,
-            data: j.get("data").map(Value::from_json).unwrap_or(Value::Null),
+            request_id: e.request_id,
+            trace_id: e.trace_id,
+            operation: e.operation.unwrap_or_default(),
+            seq: e.seq?,
+            data: e.data.as_ref().map(Value::from_json).unwrap_or(Value::Null),
         })
+    }
+
+    /// This item as a `type: data` record.
+    pub fn envelope(&self) -> ResponseEnvelope {
+        ResponseEnvelope::from_data(self)
     }
 }
 
 // vhco:domain Envelope { data: DataEvent | result: Completion | error: RivetError }
+/// One stream event in Rust form; [`Envelope::record`] is its wire record.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Envelope {
     Data(DataEvent),
@@ -222,33 +226,38 @@ pub enum Envelope {
     Error {
         request_id: String,
         trace_id: String,
+        /// The operation the failed request ran.
+        operation: String,
         seq: u64,
         error: Box<RivetError>,
     },
 }
 
 impl Envelope {
-    pub fn to_json(&self) -> Json {
+    /// The wire record: `type: data` for items, `type: result` (status ok,
+    /// error or cancelled) for the terminal event.
+    pub fn record(&self) -> ResponseEnvelope {
         match self {
-            Envelope::Data(d) => json!({
-                "request_id": d.request_id, "trace_id": d.trace_id, "seq": d.seq,
-                "type": "data", "data": d.data.to_json()
-            }),
-            Envelope::Result(c) => {
-                let mut j = c.to_json();
-                j["type"] = json!("result");
-                j
-            }
+            Envelope::Data(d) => ResponseEnvelope::from_data(d),
+            Envelope::Result(c) => ResponseEnvelope::from_completion(c),
             Envelope::Error {
                 request_id,
                 trace_id,
-                seq,
+                operation,
                 error,
-            } => json!({
-                "request_id": request_id, "trace_id": trace_id, "seq": seq,
-                "type": "error", "error": error.to_value().to_json()
-            }),
+                ..
+            } => {
+                let mut e = (**error).clone();
+                e.request_id = Some(request_id.clone());
+                e.trace_id = Some(trace_id.clone());
+                ResponseEnvelope::from_error(Some(operation), &e)
+            }
         }
+    }
+
+    /// Compact JSON of [`Envelope::record`].
+    pub fn to_json(&self) -> Json {
+        self.record().to_json()
     }
 }
 
@@ -259,11 +268,6 @@ fn item_schema(spec: Option<&ValueSpec>, description: Option<&str>) -> Option<Js
         m.insert("description".into(), Json::String(d.to_string()));
     }
     Some(schema)
-}
-
-/// ErrorEnvelope body for unary surfaces.
-pub fn error_envelope(request_id: &str, trace_id: &str, error: &RivetError) -> Json {
-    json!({"request_id": request_id, "trace_id": trace_id, "error": error.to_value().to_json()})
 }
 
 // vhco:domain RegistryEntry { id: string; name: string; description?: string; kind: OperationKind; private: bool; params: ParameterSpec[]; output: OutputSpec; emits?: ValueSpec; receives?: ValueSpec; emits_description?: string; receives_description?: string; errors: DeclaredError[]; source: SourceSpan; raw_input_schema?: Json; raw_output_schema?: Json }
