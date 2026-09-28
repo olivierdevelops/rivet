@@ -3,7 +3,7 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling.",
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling. PLAN-2026-0002 (v0.2.0, PROP-2026-0002 / ADR-0004) contract delta applied at P1 (TASK-004): one ResponseEnvelope and one InputEnvelope on every surface (serve.parse_input, legacy id/params aliases with deprecation signals), opt-in pretty JSON, immutable `global` constants (language.compile_globals), syntax highlighting (language.highlight_source), the `ffi` surface (C ABI through orchestrator/setup_ffi.rs) and the capability report's build features and ABI version.",
     "status": "Runtime and Perch developer commands implemented. Perch command set approved by the maintainer on 2026-09-28; installation changed to bman add at the maintainer's explicit request; verified with the installed CLI, real release build/install, Rust checks, documentation checks and VHCO gates.",
     "why": "Provide a root commands.perch that wraps existing Cargo, Python and VHCO workflows. Each command runs from ${script_dir}, declares cargo/bman/python3/vhco as optional binaries and CARGO_TARGET_DIR/CARGO_HOME/RUSTUP_HOME as optional environment variables, propagates failures, and uses the checked-in Cargo.lock for Cargo build/check/test/clippy/install. build produces the release binary; build_debug produces the debug binary; install first builds with cargo build --locked --release --bin rivet --target-dir ${script_dir}/target, then runs bman add with the quoted absolute ${script_dir}/target/release/rivet path (rivet.exe on Windows). The explicit target directory prevents CARGO_TARGET_DIR from selecting a different artifact; installation stops if the build fails and propagates bman failures. bman manages the global command destination. The main command prints available tasks (perch main, or the script-file invocation perch commands.perch); perch --help lists descriptions. Bare perch displays the installed CLI usage. The test wrapper is named tests because test is a reserved Perch built-in. gates runs fmt_check, check, clippy, tests, docs_check and architecture sequentially and stops on the first failure. Architecture runs vhco validate, sync and check; model/explorer generation remains explicit. clean removes Cargo build artifacts only when explicitly requested. No runtime feature, use case, port, surface, flow or domain delta is needed: these are developer wrappers outside the runtime model. Verification covers perch --check and --help, command dispatch from paths with spaces, Cargo environment forwarding, fail-fast gate behavior, release build/install, Rust formatting/type/lint/tests, documentation links and VHCO architecture/sync/guarantees. README.md and installation/contributor documentation describe the implemented tasks.",
     "quickstart": [
@@ -1840,6 +1840,114 @@
                 "snippet": "if !lowerer.errors.is_empty() {"
               }
             ]
+          },
+          {
+            "name": "compile_globals",
+            "label": "Compile global constants",
+            "about": "Evaluates the bundle's top-level `global NAME = EXPR` declarations once at load, in declaration order, into a frozen read-only GlobalScope shared by every operation (PROP-2026-0002 R7-R9).",
+            "in": [
+              {
+                "name": "input",
+                "type": "CompiledProgram"
+              }
+            ],
+            "out": "GlobalScope",
+            "examples": [
+              {
+                "input": "input={globals:[api = \"https://api.example.com\", users_url = \"${api}/users\"]}",
+                "result": "{ \"names\": [\"api\", \"users_url\"], \"values\": {\"api\": \"https://api.example.com\", \"users_url\": \"https://api.example.com/users\"} }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "declaration_order",
+                "todo": "Walk GlobalDecl in source order; a name declared twice is check.global_duplicate at the second declaration; a reference to a global declared later (or to itself) is check.global_forward_ref with the reference span."
+              },
+              {
+                "id": "constant_only",
+                "todo": "Evaluate EXPR with the pure constant subset: literals, lists, objects, arithmetic, comparisons, ${…} interpolation and pure built-ins over earlier globals; any effect, `request`, env, secret, param or local reference is check.global_not_constant (exit 2) with the offending span and a hint to move it into the operation."
+              },
+              {
+                "id": "freeze_scope",
+                "todo": "Return GlobalScope{names in order, values} frozen behind an Arc; frames look it up after locals and params; a param, local, loop variable, binding or `as NAME` reusing a global name is check.global_shadow, and assigning to a global is check.global_assign (both at compile time)."
+              }
+            ],
+            "failures": [
+              {
+                "id": "not_constant",
+                "when": "EXPR reads an effect, env, secret, param or local",
+                "code": "check.global_not_constant (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "forward_ref",
+                "when": "EXPR names a later or the same global",
+                "code": "check.global_forward_ref (exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "duplicate",
+                "when": "a global name is declared twice",
+                "code": "check.global_duplicate (exit 2)",
+                "propagates": "returns"
+              }
+            ]
+          },
+          {
+            "name": "highlight_source",
+            "label": "Highlight source",
+            "about": "Tokenizes one .rivet source into classified HighlightTokens from the real Capy parser spans (keyword, option, type, effect, string, interpolation, number, comment, operation id, global, variable, operator) for `rivet highlight`, rivet::highlight::tokens and rivet_highlight (PROP-2026-0002 R17).",
+            "in": [
+              {
+                "name": "input",
+                "type": "SourceFile"
+              }
+            ],
+            "out": "HighlightToken[]",
+            "needs": [
+              {
+                "name": "Parser",
+                "functions": [
+                  {
+                    "name": "parse",
+                    "in": [
+                      {
+                        "type": "SourceBundle"
+                      }
+                    ],
+                    "out": "SyntaxTree"
+                  }
+                ]
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={path:\"app.rivet\", text:\"global api = \\\"https://api.example.com\\\"\"}",
+                "result": "[{\"line\":1,\"col\":1,\"len\":6,\"class\":\"keyword\",\"text\":\"global\"}, {\"line\":1,\"col\":8,\"len\":3,\"class\":\"global\",\"text\":\"api\"}, …]"
+              }
+            ],
+            "todos": [
+              {
+                "id": "parse_spans",
+                "todo": "Parse the source through the Parser port and walk the syntax tree; every token's line/col/len comes from a real parser span and lies inside the source."
+              },
+              {
+                "id": "classify",
+                "todo": "Classify each token with the keyword table derived from rivet.capy (declaration, control, option, type, effect) plus literals, comments, operation ids, globals, variables and operators; no token is left unclassified."
+              },
+              {
+                "id": "partial_on_error",
+                "todo": "On a syntax error return the tokens up to the error plus the diagnostic (exit 2 on the CLI) instead of nothing."
+              }
+            ],
+            "failures": [
+              {
+                "id": "syntax",
+                "when": "the source does not parse",
+                "code": "syntax.* (exit 2) with the tokens before the error",
+                "propagates": "returns"
+              }
+            ]
           }
         ]
       },
@@ -2815,6 +2923,74 @@
                 "snippet": "let receipt = listener"
               }
             ]
+          },
+          {
+            "name": "parse_input",
+            "label": "Parse input envelope",
+            "about": "Turns one JSON request body (HTTP /v1/request and /v1/requests, a WebSocket request frame, the MCP rivet.request and rivet.sessions.open arguments, `rivet request --input FILE|-` / `--data`, the library's Runtime::call_json and the FFI) into the one InputEnvelope {operation, data, deadline_ms?, restrict?, stream?}; the 0.1.0 keys id/params are deprecated aliases through 0.2.x and are reported so each surface can emit its deprecation signal.",
+            "in": [
+              {
+                "name": "input",
+                "type": "RawInput"
+              }
+            ],
+            "out": "InputEnvelope",
+            "examples": [
+              {
+                "input": "input={body:{operation:\"users.get\", data:{id:42}}, legacy_ok:true}",
+                "result": "{ \"operation\": \"users.get\", \"data\": {\"id\": 42}, \"aliases\": [] }"
+              },
+              {
+                "input": "input={body:{id:\"users.get\", params:{id:42}}, legacy_ok:true}",
+                "result": "{ \"operation\": \"users.get\", \"data\": {\"id\": 42}, \"aliases\": [\"id\", \"params\"] }"
+              },
+              {
+                "input": "input={body:{operation:\"users.get\", id:\"users.get\"}, legacy_ok:true}",
+                "result": "validation.input_envelope (exit 2, HTTP 422): use `operation` or the deprecated `id`, not both"
+              }
+            ],
+            "todos": [
+              {
+                "id": "object_only",
+                "todo": "The body must be a JSON object; any other JSON value is validation.input_envelope. An `error` key is refused with validation.input_envelope (an input envelope never carries an error). Unknown keys are ignored as in 0.1.0 (WS frames keep type/ref beside the envelope)."
+              },
+              {
+                "id": "operation_alias",
+                "todo": "`operation` (non-empty string) names the operation. The deprecated alias `id` is read only when legacy_ok (always true in 0.2.x, false from 0.3.0); `operation` and `id` together is validation.input_envelope `use `operation` or the deprecated `id`, not both`; neither is validation.required with details.field = \"operation\" (0.1.0 code and exit status kept); a non-string value is validation.input_envelope."
+              },
+              {
+                "id": "data_alias",
+                "todo": "`data` is the operation input and defaults to {} when absent or null; the deprecated alias `params` is read only when legacy_ok; `data` and `params` together is validation.input_envelope `use `data` or the deprecated `params`, not both`."
+              },
+              {
+                "id": "options",
+                "todo": "Optional deadline_ms (non-negative integer, clamped to 1..=600000 as in 0.1.0), restrict (passed through; the runtime validates it as policy grants), stream (bool) and pretty (bool, honoured by the FFI); a wrong type for any of them is validation.input_envelope naming the key."
+              },
+              {
+                "id": "report_aliases",
+                "todo": "Return InputEnvelope with `aliases` listing every deprecated key that was used (\"id\", \"params\"), so the surface emits its deprecation signal: HTTP `Deprecation: true` plus `deprecated=1` in the access log, a CLI `warning[deprecated.input]` line on stderr, and a trace note. Pure: no ports, no I/O."
+              }
+            ],
+            "failures": [
+              {
+                "id": "not_object",
+                "when": "the body is not a JSON object or carries an `error` key",
+                "code": "validation.input_envelope (422, exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "mixed_keys",
+                "when": "`operation` with `id`, or `data` with `params`",
+                "code": "validation.input_envelope (422, exit 2)",
+                "propagates": "returns"
+              },
+              {
+                "id": "no_operation",
+                "when": "neither `operation` nor `id`",
+                "code": "validation.required (422, exit 2)",
+                "propagates": "returns"
+              }
+            ]
           }
         ]
       },
@@ -3621,7 +3797,9 @@
           "policy/load_policy",
           "registry/describe_operations",
           "registry/inspect_outputs",
-          "serve/start_serve"
+          "serve/start_serve",
+          "serve/parse_input",
+          "language/highlight_source"
         ]
       },
       {
@@ -3646,7 +3824,8 @@
           "sessions/finish_input",
           "sessions/open_session",
           "sessions/read_events",
-          "sessions/send_input"
+          "sessions/send_input",
+          "serve/parse_input"
         ]
       },
       {
@@ -3667,7 +3846,8 @@
           "sessions/finish_input",
           "sessions/open_session",
           "sessions/read_events",
-          "sessions/send_input"
+          "sessions/send_input",
+          "serve/parse_input"
         ]
       },
       {
@@ -3676,7 +3856,8 @@
         "calls": [
           "serve/authenticate_principal",
           "serve/authorize_operation",
-          "serve/multiplex_ws"
+          "serve/multiplex_ws",
+          "serve/parse_input"
         ]
       },
       {
@@ -3699,7 +3880,8 @@
           "sessions/finish_input",
           "sessions/open_session",
           "sessions/read_events",
-          "sessions/send_input"
+          "sessions/send_input",
+          "serve/parse_input"
         ]
       },
       {
@@ -3708,7 +3890,25 @@
         "calls": [
           "serve/authenticate_principal",
           "serve/authorize_operation",
-          "serve/project_polling"
+          "serve/project_polling",
+          "serve/parse_input"
+        ]
+      },
+      {
+        "name": "ffi",
+        "kind": "ffi",
+        "calls": [
+          "language/compile_program",
+          "policy/load_policy",
+          "serve/parse_input",
+          "execution/request_operation",
+          "execution/cancel_request",
+          "sessions/open_session",
+          "sessions/send_input",
+          "sessions/finish_input",
+          "sessions/read_events",
+          "sessions/cancel_session",
+          "language/highlight_source"
         ]
       }
     ],
@@ -3974,7 +4174,7 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.trace.show\",\"params\":{\"request_id\":\"…\"}} (local principal or explicit listing)"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.trace.show\",\"data\":{\"request_id\":\"…\"}} (local principal or explicit listing)"
         }
       ],
       "input": [
@@ -4044,15 +4244,15 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --params JSON"
+          "invocation": "rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON"
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.begin\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.begin\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.begin\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.begin\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -4109,11 +4309,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.cancel\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.cancel\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.cancel\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.cancel\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -4160,11 +4360,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.complete\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.complete\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.complete\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.complete\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -4221,11 +4421,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.status\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.status\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.status\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.status\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -4277,11 +4477,11 @@
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.auth.disconnect\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.auth.disconnect\"}"
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(\"rivet.auth.disconnect\", PARAMS, None)"
+          "invocation": "Runtime::request(\"rivet.auth.disconnect\", DATA, None)"
         },
         {
           "surface": "mcp",
@@ -4329,11 +4529,11 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON"
+          "invocation": "rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --data JSON"
         },
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.connectors.sync\",\"params\":{\"name\":\"…\",\"output\":\"./…\"}} | POST /v1/request {\"id\":\"CONNECTOR.tools.NAME\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.connectors.sync\",\"data\":{\"name\":\"…\",\"output\":\"./…\"}} | POST /v1/request {\"operation\":\"CONNECTOR.tools.NAME\"}"
         }
       ],
       "input": [
@@ -4502,7 +4702,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet request ID --params JSON [--stream] [--input-jsonl - --stream] | rivet --endpoint URL [--token-file PATH] request ID …"
+          "invocation": "rivet request ID --data JSON [--stream] [--input-jsonl - --stream] | rivet request --input FILE|- | rivet --endpoint URL [--token-file PATH] request ID …"
         },
         {
           "surface": "http",
@@ -4510,11 +4710,11 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(ID, PARAMS, sink) | Runtime::scope(|scope| …) scope.stream(ID, PARAMS) | scope.duplex(ID, PARAMS)"
+          "invocation": "Runtime::call(InputEnvelope) | Runtime::request(ID, DATA, sink) | Runtime::scope(|scope| …) scope.stream(ID, DATA) | scope.duplex(ID, DATA)"
         },
         {
           "surface": "mcp",
-          "invocation": "tools/call {name: ID} | tools/call {name: \"rivet.request\"}"
+          "invocation": "tools/call {name: ID} | tools/call {name: \"rivet.request\", arguments: {operation, data}}"
         }
       ],
       "input": [
@@ -5246,7 +5446,7 @@
       "triggers": [
         {
           "surface": "ws",
-          "invocation": "GET /v1/ws (Sec-WebSocket-Protocol: rivet.v1) text frames request|input|finish_input|cancel"
+          "invocation": "GET /v1/ws (Sec-WebSocket-Protocol: rivet.v1) text frames request {operation, data}|input|finish_input|cancel"
         }
       ],
       "input": [
@@ -5303,7 +5503,7 @@
       "triggers": [
         {
           "surface": "poll",
-          "invocation": "POST /v1/requests | GET /v1/requests/{id}/events | POST /v1/requests/{id}/input | POST /v1/requests/{id}/finish_input | POST /v1/requests/{id}/cancel"
+          "invocation": "POST /v1/requests {operation, data} | GET /v1/requests/{id}/events | POST /v1/requests/{id}/input | POST /v1/requests/{id}/finish_input | POST /v1/requests/{id}/cancel"
         }
       ],
       "input": [
@@ -5398,7 +5598,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.cancel\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.cancel\"}"
         },
         {
           "surface": "library",
@@ -5433,7 +5633,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.finish_input\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.finish_input\"}"
         },
         {
           "surface": "library",
@@ -5468,7 +5668,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.open\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.open\"}"
         },
         {
           "surface": "library",
@@ -5513,7 +5713,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.read\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.read\"}"
         },
         {
           "surface": "library",
@@ -5554,7 +5754,7 @@
       "triggers": [
         {
           "surface": "http",
-          "invocation": "POST /v1/request {\"id\":\"rivet.sessions.send\"}"
+          "invocation": "POST /v1/request {\"operation\":\"rivet.sessions.send\"}"
         },
         {
           "surface": "library",
@@ -5730,6 +5930,130 @@
           "ref": "codec.decode",
           "role": "stdout/stderr per `decode stdout|stderr T`",
           "lane": "codec"
+        }
+      ]
+    },
+    {
+      "action": "serve.parse_input",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet request --input FILE|- | rivet request ID --data JSON (--params: deprecated alias, warning[deprecated.params])"
+        },
+        {
+          "surface": "http",
+          "invocation": "POST /v1/request {operation, data, deadline_ms?, restrict?} (id/params: deprecated aliases, Deprecation: true)"
+        },
+        {
+          "surface": "poll",
+          "invocation": "POST /v1/requests {operation, data, deadline_ms?, restrict?}"
+        },
+        {
+          "surface": "ws",
+          "invocation": "request frame {type:\"request\", ref, operation, data}"
+        },
+        {
+          "surface": "mcp",
+          "invocation": "tools/call {name: \"rivet.request\"|\"rivet.sessions.open\", arguments: {operation, data}}"
+        },
+        {
+          "surface": "library",
+          "invocation": "Runtime::call_json(INPUT_JSON)"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "RawInput"
+        }
+      ],
+      "through": [],
+      "output": "InputEnvelope",
+      "handling": [
+        {
+          "layer": "shape",
+          "ref": "InputEnvelope::parse",
+          "role": "object only; no `error` key; unknown keys ignored"
+        },
+        {
+          "layer": "aliases",
+          "ref": "alias",
+          "role": "operation|id and data|params: one of each, mixing is validation.input_envelope; aliases are reported"
+        },
+        {
+          "layer": "options",
+          "ref": "options",
+          "role": "deadline_ms clamped to 1..=600000; restrict passed through; stream and pretty booleans"
+        }
+      ]
+    },
+    {
+      "action": "language.compile_globals",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet check (globals are evaluated when the bundle loads)"
+        },
+        {
+          "surface": "library",
+          "invocation": "Runtime::builder().file(PATH).build()"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "CompiledProgram"
+        }
+      ],
+      "through": [],
+      "output": "GlobalScope",
+      "handling": [
+        {
+          "layer": "order",
+          "ref": "GlobalDecl",
+          "role": "declaration order; duplicates and forward references refused"
+        },
+        {
+          "layer": "evaluate",
+          "ref": "eval_constant",
+          "role": "pure constant subset only; effects, env, secrets, params and locals refused"
+        },
+        {
+          "layer": "freeze",
+          "ref": "GlobalScope",
+          "role": "Arc-frozen, read-only, looked up after locals and params"
+        }
+      ]
+    },
+    {
+      "action": "language.highlight_source",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet highlight FILE [--format ansi|html|json]"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "SourceFile"
+        }
+      ],
+      "through": [
+        "Parser"
+      ],
+      "output": "HighlightToken[]",
+      "handling": [
+        {
+          "layer": "parse",
+          "ref": "parser.parse",
+          "role": "real parser spans",
+          "lane": "parser"
+        },
+        {
+          "layer": "classify",
+          "ref": "classify",
+          "role": "keyword table from rivet.capy"
         }
       ]
     }
@@ -6388,6 +6712,10 @@
           "type": "string"
         },
         {
+          "name": "operation",
+          "type": "string"
+        },
+        {
           "name": "result",
           "type": "Value"
         },
@@ -6410,6 +6738,10 @@
         },
         {
           "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "operation",
           "type": "string"
         },
         {
@@ -9175,12 +9507,8 @@
           "type": "string"
         },
         {
-          "name": "id?",
-          "type": "string"
-        },
-        {
-          "name": "params?",
-          "type": "Value"
+          "name": "input?",
+          "type": "InputEnvelope"
         },
         {
           "name": "seq?",
@@ -9191,24 +9519,8 @@
           "type": "Value"
         },
         {
-          "name": "completion?",
-          "type": "Completion"
-        },
-        {
-          "name": "error?",
-          "type": "RivetError"
-        },
-        {
-          "name": "request_id?",
-          "type": "string"
-        },
-        {
-          "name": "trace_id?",
-          "type": "string"
-        },
-        {
-          "name": "restrict?",
-          "type": "Value"
+          "name": "record?",
+          "type": "ResponseEnvelope"
         }
       ]
     },
@@ -10550,6 +10862,266 @@
         {
           "name": "all",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "EnvelopeStatus",
+      "fields": [
+        {
+          "name": "ok",
+          "type": "| error | cancelled | accepted"
+        }
+      ]
+    },
+    {
+      "name": "RecordType",
+      "fields": [
+        {
+          "name": "result",
+          "type": "| data"
+        }
+      ]
+    },
+    {
+      "name": "OutputFormat",
+      "fields": [
+        {
+          "name": "compact",
+          "type": "| pretty"
+        }
+      ]
+    },
+    {
+      "name": "ResponseEnvelope",
+      "fields": [
+        {
+          "name": "ref?",
+          "type": "string"
+        },
+        {
+          "name": "request_id",
+          "type": "string"
+        },
+        {
+          "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "operation?",
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "type": "RecordType"
+        },
+        {
+          "name": "seq?",
+          "type": "int"
+        },
+        {
+          "name": "status?",
+          "type": "EnvelopeStatus"
+        },
+        {
+          "name": "data?",
+          "type": "Json"
+        },
+        {
+          "name": "error?",
+          "type": "Json"
+        },
+        {
+          "name": "effects?",
+          "type": "EffectsStatus"
+        },
+        {
+          "name": "data_count?",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "name": "InputEnvelope",
+      "fields": [
+        {
+          "name": "operation",
+          "type": "string"
+        },
+        {
+          "name": "data",
+          "type": "Value"
+        },
+        {
+          "name": "deadline_ms?",
+          "type": "int"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
+        },
+        {
+          "name": "stream?",
+          "type": "bool"
+        },
+        {
+          "name": "pretty?",
+          "type": "bool"
+        },
+        {
+          "name": "aliases",
+          "type": "string[]"
+        }
+      ]
+    },
+    {
+      "name": "RawInput",
+      "fields": [
+        {
+          "name": "body",
+          "type": "Json"
+        },
+        {
+          "name": "legacy_ok",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "GlobalDecl",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "expr",
+          "type": "Expr"
+        },
+        {
+          "name": "span",
+          "type": "SourceSpan"
+        }
+      ]
+    },
+    {
+      "name": "GlobalScope",
+      "fields": [
+        {
+          "name": "names",
+          "type": "string[]"
+        },
+        {
+          "name": "values",
+          "type": "Value"
+        }
+      ]
+    },
+    {
+      "name": "HighlightToken",
+      "fields": [
+        {
+          "name": "line",
+          "type": "int"
+        },
+        {
+          "name": "col",
+          "type": "int"
+        },
+        {
+          "name": "len",
+          "type": "int"
+        },
+        {
+          "name": "class",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "HighlightFormat",
+      "fields": [
+        {
+          "name": "ansi",
+          "type": "| html | json"
+        }
+      ]
+    },
+    {
+      "name": "FfiOptions",
+      "fields": [
+        {
+          "name": "file?",
+          "type": "string"
+        },
+        {
+          "name": "source?",
+          "type": "string"
+        },
+        {
+          "name": "path?",
+          "type": "string"
+        },
+        {
+          "name": "root?",
+          "type": "string"
+        },
+        {
+          "name": "policy_file?",
+          "type": "string"
+        },
+        {
+          "name": "policy_json?",
+          "type": "Json"
+        },
+        {
+          "name": "ceiling_json?",
+          "type": "Json"
+        },
+        {
+          "name": "pretty?",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "CapabilityReport",
+      "fields": [
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "platform",
+          "type": "Json"
+        },
+        {
+          "name": "stages",
+          "type": "Json"
+        },
+        {
+          "name": "features",
+          "type": "Json[]"
+        },
+        {
+          "name": "sandbox",
+          "type": "Json"
+        },
+        {
+          "name": "serve",
+          "type": "Json"
+        },
+        {
+          "name": "build_features",
+          "type": "string[]"
+        },
+        {
+          "name": "abi_version",
+          "type": "int"
         }
       ]
     }
