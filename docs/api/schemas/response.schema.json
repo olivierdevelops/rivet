@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/olivierdevelops/rivet/docs/api/schemas/response.schema.json",
+  "title": "Rivet ResponseEnvelope (result record)",
+  "description": "PROP-2026-0002 R1/R2: the one output shape of every surface for a unary answer or the terminal record of a stream. Keys appear in this order: ref (WebSocket only), request_id, trace_id, operation, type, seq (stream terminal only), status, data, error, effects, data_count. `data` and `error` are always present and exactly one is non-null, except status accepted (data carries the receipt).",
+  "type": "object",
+  "required": ["request_id", "trace_id", "operation", "type", "status", "data", "error", "effects", "data_count"],
+  "additionalProperties": false,
+  "properties": {
+    "ref": {"type": "string", "description": "WebSocket correlation ref (rivet.v1 frames only)."},
+    "request_id": {"type": "string", "description": "Server-assigned request ID (empty when the input could not be parsed into a request)."},
+    "trace_id": {"type": "string", "description": "Trace ID (a caller's W3C trace-id when a traceparent was sent)."},
+    "operation": {"type": ["string", "null"], "description": "The operation (or built-in ID) this record answers; null only when the input named none."},
+    "type": {"const": "result"},
+    "seq": {"type": "integer", "minimum": 1, "description": "Stream terminal records: the sequence after the last data record."},
+    "status": {"enum": ["ok", "error", "cancelled", "accepted"]},
+    "data": {"description": "The operation's result (status ok), the receipt (status accepted), or null."},
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["kind", "code", "message", "retryable"],
+          "properties": {
+            "kind": {"enum": ["syntax", "validation", "auth", "permission", "not_found", "conflict", "limit", "timeout", "cancelled", "connection", "dns", "tls", "http", "protocol", "process", "parse", "output_invalid", "consumer_failed", "cleanup", "unsupported", "internal", "application"]},
+            "code": {"type": "string", "minLength": 1},
+            "message": {"type": "string"},
+            "retryable": {"type": "boolean"},
+            "details": {},
+            "source": {"type": "object"},
+            "hint": {"type": "string"},
+            "operation_id": {"type": "string"},
+            "node_id": {"type": "string"},
+            "cause": {"type": "object"},
+            "suppressed": {"type": "array"}
+          },
+          "not": {"required": ["effects"]}
+        }
+      ]
+    },
+    "effects": {"enum": ["none", "committed", "partial", "unknown"]},
+    "data_count": {"type": "integer", "minimum": 0}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "ok"}}},
+      "then": {"properties": {"error": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["error", "cancelled"]}}},
+      "then": {"properties": {"data": {"type": "null"}, "error": {"type": "object"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "accepted"}}},
+      "then": {"properties": {"error": {"type": "null"}}}
+    }
+  ]
+}

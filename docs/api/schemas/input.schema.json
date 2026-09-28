@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/olivierdevelops/rivet/docs/api/schemas/input.schema.json",
+  "title": "Rivet InputEnvelope",
+  "description": "PROP-2026-0002 R4/R5: the one input shape of POST /v1/request and /v1/requests, WebSocket request frames (beside type and ref), the MCP rivet.request and rivet.sessions.open arguments, `rivet request --input FILE|-`, Runtime::call_json and the FFI. There is no `error` key. The 0.1.0 keys `id` and `params` are deprecated aliases through 0.2.x; sending a key together with its alias is validation.input_envelope. Unknown keys are ignored.",
+  "type": "object",
+  "not": {"required": ["error"]},
+  "properties": {
+    "operation": {"type": "string", "minLength": 1, "description": "Operation ID."},
+    "data": {"description": "The operation's input (usually an object); default {}."},
+    "deadline_ms": {"type": "integer", "minimum": 0, "description": "Requested deadline; clamped to 1..600000."},
+    "restrict": {"type": "object", "description": "{grants:[…]} in the policy.json grant format; narrows this request only."},
+    "stream": {"type": "boolean", "description": "Ask for streamed records (CLI --input, FFI)."},
+    "pretty": {"type": "boolean", "description": "FFI only: indent the returned JSON."},
+    "id": {"type": "string", "minLength": 1, "deprecated": true, "description": "Deprecated alias of `operation` (removed in 0.3.0)."},
+    "params": {"deprecated": true, "description": "Deprecated alias of `data` (removed in 0.3.0)."}
+  },
+  "oneOf": [
+    {"required": ["operation"], "not": {"required": ["id"]}},
+    {"required": ["id"], "not": {"required": ["operation"]}}
+  ],
+  "allOf": [
+    {"not": {"required": ["data", "params"]}}
+  ]
+}

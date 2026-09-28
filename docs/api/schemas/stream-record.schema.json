@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/olivierdevelops/rivet/docs/api/schemas/stream-record.schema.json",
+  "title": "Rivet stream record",
+  "description": "PROP-2026-0002 R1: one line of `rivet request --stream` (NDJSON), one SSE event's data, one polling event or one WebSocket record. Items are `type: data` records; the stream ends with exactly one `type: result` record (response.schema.json) that carries `seq`.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["request_id", "trace_id", "operation", "type", "seq", "data", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {"type": "string"},
+        "request_id": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "operation": {"type": ["string", "null"]},
+        "type": {"const": "data"},
+        "seq": {"type": "integer", "minimum": 1},
+        "data": {"description": "One emitted item."},
+        "error": {"type": "null"}
+      }
+    },
+    {
+      "allOf": [
+        {"$ref": "response.schema.json"},
+        {"required": ["seq"]}
+      ]
+    }
+  ]
+}
