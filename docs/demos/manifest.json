@@ -2,7 +2,7 @@
   "status": "per-bundle",
   "runtime_verified": "per-bundle: see each bundle",
   "source_reference": "REF-2026-0002",
-  "last_updated": "2026-09-28",
+  "last_updated": "2026-09-29",
   "policy_discovery": "policy.json beside app.rivet is auto-loaded; --policy PATH selects another file; no file = deny-by-default",
   "bundles": [
     {
@@ -23,7 +23,10 @@
         "transport.quic_gateway": "Bounded QUIC bidirectional stream.",
         "transport.grpc_health": "Unary gRPC call with a reviewed descriptor.",
         "transport.mcp_fetch": "MCP command connector using mcp-server-fetch."
-      }
+      },
+      "runtime_verified": "partial",
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64; public APIs on the day only, credentialed and private-gateway calls not run"
     },
     {
       "folder": "01-catalog",
@@ -40,8 +43,8 @@
         "demo.countdown": "Emit 3, 2, 1 and return a summary; drives SSE, polling and WebSocket."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "02-file-crud",
@@ -57,8 +60,8 @@
         "notes.list": "List output metadata."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "03-http",
@@ -72,8 +75,8 @@
         "users.search": "Encoded query parameters."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "04-streaming",
@@ -89,8 +92,8 @@
         "socket.ping": "Scoped WebSocket exchange."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "05-dag",
@@ -103,8 +106,8 @@
         "report.partial": "Independent success, failure and blocked descendant."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "06-mcp-bridge",
@@ -118,8 +121,8 @@
         "contacts.find": "Forward to the pinned crm.tools.search import."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "07-oauth2",
@@ -131,8 +134,8 @@
         "contacts.list": "Use client credentials and call the protected contacts endpoint."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "08-udp",
@@ -147,8 +150,8 @@
         "telemetry.receive": "Bind, receive and authorize a reply."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "09-quic",
@@ -163,8 +166,8 @@
         "items.http3": "Explicit HTTP3 request."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "10-grpc",
@@ -179,8 +182,8 @@
         "chat.exchange": "Live bidirectional Chat."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "11-sandbox",
@@ -199,8 +202,8 @@
         "data.snapshot": "Transitive read plus exclusive write."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
     },
     {
       "folder": "12-library",
@@ -215,9 +218,92 @@
         "events.count": "Scoped stream consumed with next()."
       },
       "runtime_verified": true,
-      "verified_against": "0.1.0",
-      "verified_at": "2026-09-28, commit 829ca43 (0.1.0-dev release candidate), macOS 26.4.1 arm64"
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
+    },
+    {
+      "folder": "14-globals",
+      "title": "Global constants shared by every operation",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "users.get": "Read one user; URL built from the users_url global.",
+        "users.page": "Read the first page; exact target from globals.",
+        "catalog.read": "Read data/catalog.json under the data_dir global.",
+        "settings.show": "Return the globals as seen from an operation (pure)."
+      },
+      "runtime_verified": true,
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64"
+    },
+    {
+      "folder": "15-ffi",
+      "title": "Rivet from C and Python through librivet",
+      "stage": "A",
+      "policy": null,
+      "alternate_policies": [],
+      "operations": {
+        "demo.add": "Add two integers (rivet_request).",
+        "events.count": "Emit 1, 2, 3 then a summary (rivet_call_start/next).",
+        "chat.echo": "Echo live input (rivet_call_send/finish_input)."
+      },
+      "runtime_verified": true,
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 8031baa (0.2.0-dev release candidate), macOS 26.4.1 arm64; steps 3-5 at commit 166a98b"
+    },
+    {
+      "folder": "17-modules",
+      "title": "Files as modules: import, namespaces and one policy",
+      "stage": "A",
+      "policy": "policy.json",
+      "alternate_policies": [],
+      "operations": {
+        "report.user": "A user and their invoice, composed from both modules.",
+        "report.remote": "Fetch one user through the internal users module."
+      },
+      "imports": {
+        "users": {
+          "file": "users.rivet",
+          "public": false
+        },
+        "billing": {
+          "file": "billing.rivet",
+          "public": true
+        }
+      },
+      "public_imported_operations": {
+        "billing.invoice": "Invoice a user (billing.rivet).",
+        "billing.rates": "Read rates.json (billing.rivet)."
+      },
+      "internal_operations": [
+        "users.get",
+        "users.list",
+        "users.fetch"
+      ],
+      "runtime_verified": true,
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 166a98b (0.2.0-dev release candidate; source = 8031baa), macOS 26.4.1 arm64"
     }
   ],
-  "release_verification_guide": "demo-2026-0015-v0-1-0-release-verification.md"
+  "release_verification_guide": "demo-2026-0020-v0-2-0-release-verification.md",
+  "guides": [
+    {
+      "folder": "16-editor",
+      "document_id": "DEMO-2026-0018",
+      "title": "Editor support and syntax highlighting",
+      "bundle": false,
+      "files": [
+        "sample.rivet",
+        "broken.rivet"
+      ],
+      "runtime_verified": true,
+      "verified_against": "0.2.0",
+      "verified_at": "2026-09-29, commit 166a98b (0.2.0-dev release candidate; source = 8031baa), macOS 26.4.1 arm64, VS Code 1.108.1"
+    }
+  ],
+  "release_verification_guides": {
+    "0.1.0": "demo-2026-0015-v0-1-0-release-verification.md",
+    "0.2.0": "demo-2026-0020-v0-2-0-release-verification.md"
+  }
 }

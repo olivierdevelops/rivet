@@ -4,41 +4,41 @@ title: "Rivet sample folders"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 6
+last_updated: 2026-09-29
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
-components: [registry, cli, serve, library, policy, audit]
+components: [registry, cli, serve, library, policy, audit, ffi, highlight_source]
 affected_versions:
   from: "0.1.0"
   to: null
 applicable_environments: [development]
 audience: [developers, reviewers]
-scope: Overview, conventions and inspection summary for the sample folders; folders 01–12 are executed against the 0.1.0 release candidate, 13-real-world-apis is a separately owned draft cookbook.
-reason: User requested sample files in folders with READMEs showing usage; UQ-17 (2026-09-28) adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 (2026-09-28) adds the generated I/O manifest and policy generate; TASK-067 executed folders 01–12 against the 0.1.0 release candidate.
+scope: Overview, conventions and inspection summary for the sample folders; folders 01–12 and the 0.2.0 folders 14–17 are executed against the 0.2.0 release candidate, 13-real-world-apis is a separately owned draft cookbook.
+reason: User requested sample files in folders with READMEs showing usage; UQ-17 (2026-09-28) adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 (2026-09-28) adds the generated I/O manifest and policy generate; TASK-067 executed folders 01–12 against the 0.1.0 release candidate; PLAN-2026-0002 TASK-075…077 added 14–17 and re-verified 01–13 against 0.2.0.
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: [PROP-2026-0001, REF-2026-0002, PLAN-2026-0001, DEMO-2026-0015]
+related_documents: [PROP-2026-0001, PROP-2026-0002, REF-2026-0002, PLAN-2026-0001, PLAN-2026-0002, DEMO-2026-0015, DEMO-2026-0020]
 supersedes: null
 superseded_by: null
 tags: [rivet, examples, demos]
 confidentiality: internal
 review_cycle: on-release
 next_review_date: 2026-10-27
-verified_against: "0.1.0"
+verified_against: "0.2.0"
 ---
 
 # Rivet sample folders
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
-> **Affected Components:** registry, cli, serve, library, policy, audit
+> **Affected Components:** registry, cli, serve, library, policy, audit, ffi, highlight_source
 
-These folders contain `.rivet` source files, policy files, local JSON/JSONL/text inputs, request bodies, local fixture scripts and READMEs. **Folders 01–12 are runnable demos, executed step by step against the 0.1.0 release candidate (0.1.0-dev at commit 829ca43, 2026-09-28)**; each README carries its own Verification Record. Protocol folders ship small loopback fixtures under `fixtures/` (ports 18800–18899) and run them in a scratch copy, so nothing is contacted on the internet and nothing is written into the repository. The release-wide checklist is the [v0.1.0 release verification guide](demo-2026-0015-v0-1-0-release-verification.md).
+These folders contain `.rivet` source files, policy files, local JSON/JSONL/text inputs, request bodies, local fixture scripts and READMEs. **Folders 01–12 and 14–17 are runnable demos, executed step by step against the 0.2.0 release candidate (0.2.0-dev: source commit 8031baa, 16-editor and 17-modules re-run at 166a98b, 2026-09-29)**; each README carries its own Verification Record. Folders 01–12 were first executed against 0.1.0 (829ca43, 2026-09-28). Protocol folders ship small loopback fixtures under `fixtures/` (ports 18800–18899) and run them in a scratch copy, so nothing is contacted on the internet and nothing is written into the repository. The release-wide checklists are the [v0.2.0 release verification guide](demo-2026-0020-v0-2-0-release-verification.md) and, for 0.1.0, [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md).
 
 Start with [01-catalog](01-catalog/README.md). Its single [app.rivet](01-catalog/app.rivet) defines four pure operations, each with a name, description, parameters and a **declared, described output**. One `rivet serve` then exposes them through REST, SSE, polling, WebSocket and MCP at once. [12-library](12-library/README.md) shows the corresponding Rust library interface. Together they demonstrate one operation catalog across every access point.
 
@@ -73,6 +73,10 @@ Start with [01-catalog](01-catalog/README.md). Its single [app.rivet](01-catalog
 | [11-sandbox](11-sandbox/README.md) | Deny-by-default policy, the I/O manifest and `policy generate` | `policy.json` · alt `policies/empty.json`, `policies/read-only.json`, `policies/create-only.json` | Included JSON inputs; create out directory |
 | [12-library](12-library/README.md) | Embed Rivet as a Rust library | `policy.json` (grant-free; loaded by the sketch) | Rust toolchain; embedding.rs.txt compiled in a scratch crate |
 | [13-real-world-apis](13-real-world-apis/README.md) | Open-Meteo, JSONPlaceholder, GitHub, OpenAI, Ollama, Binance WebSocket, MCP and private UDP/QUIC/gRPC shapes | `policy.json` | Optional API key, Ollama, `uvx`, reviewed gRPC descriptor, or user-owned gateways |
+| [14-globals](14-globals/README.md) | **0.2.0:** `global` constants, exact manifest targets, one-line retarget, the six global diagnostics | `policy.json` | `python3 -m http.server` for the retarget step |
+| [15-ffi](15-ffi/README.md) | **0.2.0:** `librivet` from C (shared and static) and Python; streams, live input, cancel, module objects, misuse | none (pure) | C compiler, `make`; Python 3 (ctypes) |
+| [16-editor](16-editor/README.md) | **0.2.0:** VS Code `.vsix`, token classes, `rivet highlight` ansi/html/json, grammar drift, syntax-error highlighting | none (no bundle) | Python 3; optional `code` launcher (scratch profile) |
+| [17-modules](17-modules/README.md) | **0.2.0:** `import … as ALIAS [public]`, one catalog and one policy across files, import errors, `rt.load` | `policy.json` | `python3 -m http.server` for the retarget step; Rust toolchain for the example |
 
 ## Folder conventions
 
@@ -103,11 +107,11 @@ Run each README's `cd` command once, from the repository root. Do not load all f
 ```sh
 cd docs/demos/01-catalog
 rivet --file app.rivet check --strict-docs
-rivet --file app.rivet request demo.add --params '{"a":2,"b":3}'
+rivet --file app.rivet request demo.add --data '{"a":2,"b":3}'
 rivet --file app.rivet outputs demo.add
 ```
 
-The expected `Completion.result` is `5`. No policy file is needed, because the operation is pure and absence means deny-by-default. `outputs` prints the declared output `integer  Sum of a and b.` The same ID is discoverable through `list` and `describe` and is published as a direct MCP tool.
+The expected ResponseEnvelope has `"status":"ok"` and `"data":5`. No policy file is needed, because the operation is pure and absence means deny-by-default. `outputs` prints the declared output `integer  Sum of a and b.` The same ID is discoverable through `list` and `describe` and is published as a direct MCP tool.
 
 To expose the same catalog on every surface at once:
 
@@ -179,10 +183,13 @@ Each site records a **kind**, one or more **access verbs**, the **capability** t
 | 09-quic | quic connect + http3 connect | `items.http3` denied, exit 3 |
 | 10-grpc | 4 endpoint connects + 4 calls (one per mode) | all allowed, exit 0 |
 | 11-sandbox | 3 file sites | `data.private` denied by design, exit 3 |
+| 14-globals | 1 file read + 2 `connect GET` sites built from globals | all allowed, exit 0 |
+| 15-ffi | none (pure) | exit 0 |
+| 17-modules | `file read ./rates.json` in billing.rivet + `connect GET` in users.rivet, from one policy.json | 2 allowed, exit 0 |
 
 [11-sandbox](11-sandbox/README.md) walks through every view (`--by capability`, `--kind file --access delete`, `--format json`), compares `policy generate` output with its hand-written policy.json, and narrows a grant with `"access": ["create"]` in `policies/create-only.json`. policy.json grants and deny entries may carry an optional `access` list; without it, a grant covers every verb of its capability. A verb from another capability is `policy.invalid` (exit 2).
 
-`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: bundle and imports, policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. Connector-level `descriptor` (10-grpc) and `schema` (06-mcp-bridge) files stay bootstrap reads with phase `load`: never granted, and `io --needs --include-bootstrap` lists them under `bundle load needs`. Sandbox guarantees apply to script-initiated effects through brokered adapters. `--strict` exits 7 when any site is dynamic or opaque. `--check-policy` exits 3 when any reachable site is denied or partial. Use `policy explain ID --params JSON --json` to see missing grants for one call. Runtime permits are still checked at each actual effect. Runtime traces must be fetched from the same live host or an explicitly configured persistent store.
+`--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key: the entry file and every imported module by name (0.2.0), policy.json, the CA bundle, resolv.conf or the system resolver, tzdata, descriptor/schema files, and stdin/stdout/stderr. Connector-level `descriptor` (10-grpc) and `schema` (06-mcp-bridge) files stay bootstrap reads with phase `load`: never granted, and `io --needs --include-bootstrap` lists them under `bundle load needs`. Sandbox guarantees apply to script-initiated effects through brokered adapters. `--strict` exits 7 when any site is dynamic or opaque. `--check-policy` exits 3 when any reachable site is denied or partial. Use `policy explain ID --params JSON --json` to see missing grants for one call. Runtime permits are still checked at each actual effect. Runtime traces must be fetched from the same live host or an explicitly configured persistent store.
 
 | Exit | Meaning |
 |---|---|
@@ -200,17 +207,17 @@ Each site records a **kind**, one or more **access verbs**, the **capability** t
 - `06-mcp-bridge` ships no reviewed snapshot on purpose: in the folder, `check` fails with `not_found.mcp_snapshot` (exit 4, asserted by `tests/conformance_mcp.rs`). Its README creates `schemas/crm.json` (`"format": "rivet.mcp.snapshot/1"`) with `connectors sync` against the fixture, then approves its sha256 in `approved.snapshots`, in a scratch copy.
 - `10-grpc` includes `schemas/users.proto`. The README gives the explicit `protoc` command to generate `users.pb`; no hidden build process or reflection is permitted during execution. The generated file is not committed.
 - `12-library/embedding.rs.txt` is a complete host program, compiled and run in a scratch crate that depends on this repository by path; it is not yet a `[[example]]` target.
-- Steps that need a platform other than macOS (Linux Landlock/seccomp process sandbox, Windows) are not part of these folders; see the release guide's caveats.
+- Every folder was executed on macOS arm64. Linux is covered by CI (run 36483001760, including `conformance_ffi`); the Linux Landlock/seccomp process sandbox stays gated; Windows is unsupported in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)). See the [v0.2.0 release guide](demo-2026-0020-v0-2-0-release-verification.md#platform-coverage).
 
 ## Ownership, lifecycle and verification
 
-Owner: project maintainer. DEMO-2026-0001–0012 (folders 01–12) and this README are **active**, verified against 0.1.0 (release candidate 829ca43, macOS 26.4.1 arm64); [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) is the release verification guide. DEMO-2026-0014 (13-real-world-apis) is a separately owned **draft**. Numbered folders give a reading order, and `README.md` is each folder's entry point. The [demo template](../../DOCUMENTATION.md#1214-demo--demo-templatemd) governs metadata, expected results and verification records. No demos are deprecated or archived.
+Owner: project maintainer. DEMO-2026-0001–0012 (folders 01–12), DEMO-2026-0016–0019 (folders 14–17) and this README are **active**, verified against 0.2.0 (release candidate 8031baa; 16-editor and 17-modules at 166a98b, same source; macOS 26.4.1 arm64); [DEMO-2026-0020](demo-2026-0020-v0-2-0-release-verification.md) is the 0.2.0 release verification guide and [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) the 0.1.0 one. DEMO-2026-0014 (13-real-world-apis) is a separately owned **draft**, re-checked on 0.2.0 where it does not need credentials or private gateways. `manifest.json` records `runtime_verified` per folder. Numbered folders give a reading order, and `README.md` is each folder's entry point. The [demo template](../../DOCUMENTATION.md#1214-demo--demo-templatemd) governs metadata, expected results and verification records. No demos are deprecated or archived.
 
-These are sample assets under docs, not new Rust architecture buckets or runtime implementations. On 2026-09-28 (TASK-067) this directory held 87 files; a static script checked JSON/JSONL syntax, policy keys and `access` verbs, local links and anchors, manifest IDs against declared public IDs, and the absence of removed flags, f-call syntax and bare durations. The real-world cookbook is intentionally not run during documentation checks: public APIs have availability/quotas, credentials must remain user-owned, and private transports require a peer. Static checks should include its JSON policy, local links, manifest IDs and source conventions. These checks are not a Capy parse or a Rust/runtime test.
+These are sample assets under docs, not new Rust architecture buckets or runtime implementations. On 2026-09-29 (PLAN-2026-0002 TASK-075…077) this directory held 123 files (87 on 2026-09-28, TASK-067); a static script checked JSON/JSONL syntax, policy keys and `access` verbs, local links and anchors, manifest IDs against declared public IDs, and the absence of removed flags, f-call syntax and bare durations. The real-world cookbook is intentionally not run during documentation checks: public APIs have availability/quotas, credentials must remain user-owned, and private transports require a peer. Static checks should include its JSON policy, local links, manifest IDs and source conventions. These checks are not a Capy parse or a Rust/runtime test.
 
 ## Related documents
 
-- [Release verification guide (DEMO-2026-0015)](demo-2026-0015-v0-1-0-release-verification.md) · [demos index](index.md)
+- [v0.2.0 release verification guide (DEMO-2026-0020)](demo-2026-0020-v0-2-0-release-verification.md) · [v0.1.0 release verification guide (DEMO-2026-0015)](demo-2026-0015-v0-1-0-release-verification.md) · [demos index](index.md)
 - [Current project state](../../README.md)
 - [153-example language reference](../references/ref-2026-0002-language-and-usage.md)
 - [Runtime proposal](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
@@ -225,4 +232,5 @@ These are sample assets under docs, not new Rust architecture buckets or runtime
 | 2 | 2026-09-28 | Claude | UQ-17: recounted files/operations by script (replacing the stale 49/37 claim); walkthrough table lists policy files; policy.json discovery convention replaces `--sandbox`/intersection text; shortest usage uses `outputs` and one `serve`; strict-docs, bootstrap list and exit-code table updated; users.get collision resolved. |
 | 1 | 2026-09-28 | Codex | Added twelve independent sample bundles with per-folder usage READMEs and explicit verification limits. |
 | 5 | 2026-09-28 | Codex | Added 13-real-world-apis with public API, OpenAI, Ollama and cross-transport integration examples. |
+| 7 | 2026-09-29 | Claude | PLAN-2026-0002 TASK-075…077: folders 14-globals, 15-ffi, 16-editor and 17-modules added to the walkthrough and `io --check-policy` tables; 01–12 re-verified against the 0.2.0 release candidate (8031baa); shortest usage uses `--data` and the ResponseEnvelope; bootstrap names imported modules; ownership lists DEMO-2026-0016…0020; file count 123; verified_against 0.2.0. |
 | 6 | 2026-09-28 | Claude | TASK-067/068: folders 01–12 executed against 0.1.0 (829ca43); status active, verified_against 0.1.0, §7 header; intro, preparation column, preparation gaps and lifecycle text describe the shipped local fixtures and the verification; linked DEMO-2026-0015; fixed the 11-sandbox anchor. |
