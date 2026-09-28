@@ -362,7 +362,16 @@ async fn run(cli: Cli) -> i32 {
             };
             if cli.json {
                 let p = runtime.policy();
-                let mut v = serde_json::json!({"present": p.present, "file": p.file, "sha256": p.sha256, "grants": p.grants.len(), "deny": p.deny.len()});
+                // `"*"` is an explicit broad target; flag every grant that uses it (S67).
+                let broad: Vec<serde_json::Value> = p
+                    .grants
+                    .iter()
+                    .filter(|g| g.targets.iter().any(|t| t == "*"))
+                    .map(
+                        |g| serde_json::json!({"capability": g.capability.as_str(), "target": "*"}),
+                    )
+                    .collect();
+                let mut v = serde_json::json!({"present": p.present, "file": p.file, "sha256": p.sha256, "grants": p.grants.len(), "deny": p.deny.len(), "broad": broad});
                 if let Some(r) = &report {
                     v["sites"] = r.manifest.to_json()["sites"].clone();
                 }

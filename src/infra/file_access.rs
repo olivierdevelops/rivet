@@ -212,33 +212,65 @@ fn read_all(dir: &Dir, rel_path: &Path, path: &str) -> RivetResult<Vec<u8>> {
     Ok(buf)
 }
 
-fn ensure_parent(dir: &Dir, rel_path: &Path, path: &str) -> RivetResult<()> {
-    if let Some(parent) = rel_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        dir.create_dir_all(parent).map_err(|e| io_err(path, e))?;
+/// Refuse a path whose directory components (and, with `include_last`, the
+/// final component) are symbolic links. cap-std keeps resolution inside the
+/// bundle root, but a link that stays inside it would still carry a write
+/// granted on `./out/**` into an ungranted sibling such as `./data`.
+fn refuse_symlink_components(
+    dir: &Dir,
+    rel_path: &Path,
+    path: &str,
+    include_last: bool,
+) -> RivetResult<()> {
+    let comps: Vec<Component> = rel_path.components().collect();
+    let n = if include_last {
+        comps.len()
+    } else {
+        comps.len().saturating_sub(1)
+    };
+    let mut cur = PathBuf::new();
+    for c in comps.iter().take(n) {
+        cur.push(c);
+        match dir.symlink_metadata(&cur) {
+            Ok(m) if m.file_type().is_symlink() => {
+                return Err(RivetError::permission(format!(
+                    "{path}: symbolic link component `{}` refused (no-follow)",
+                    cur.display()
+                )));
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
     }
     Ok(())
 }
 
-/// Write via a temporary sibling then rename (atomic replacement where supported).
+/// Write via a fresh temporary sibling then rename (atomic replacement where
+/// supported). The temporary file is removed on every failure path.
 fn atomic_write(dir: &Dir, rel_path: &Path, path: &str, bytes: &[u8]) -> RivetResult<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
     let tmp = rel_path.with_file_name(format!(
-        ".{}.rivet-tmp",
+        ".{}.{}-{}.rivet-tmp",
         rel_path
             .file_name()
             .map(|n| n.to_string_lossy())
-            .unwrap_or_default()
+            .unwrap_or_default(),
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
     ));
-    {
+    let written = (|| {
         let mut f = dir
-            .open_with(
-                &tmp,
-                OpenOptions::new().write(true).create(true).truncate(true),
-            )
+            .open_with(&tmp, OpenOptions::new().write(true).create_new(true))
             .map_err(|e| io_err(path, e))?;
         f.write_all(bytes).map_err(|e| io_err(path, e))?;
         f.sync_all().map_err(|e| io_err(path, e))?;
+        dir.rename(&tmp, dir, rel_path).map_err(|e| io_err(path, e))
+    })();
+    if written.is_err() {
+        let _ = dir.remove_file(&tmp);
     }
-    dir.rename(&tmp, dir, rel_path).map_err(|e| io_err(path, e))
+    written
 }
 
 fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
@@ -251,6 +283,7 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
     })?;
     let path = op.path.as_str();
     let r = rel(path)?;
+    refuse_symlink_components(&dir, &r, path, op.verb == FileVerb::List)?;
     match op.verb {
         FileVerb::Read => decode(read_all(&dir, &r, path)?, op.codec, path),
         FileVerb::Stat => {
@@ -310,7 +343,6 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
             Ok(Value::List(entries))
         }
         FileVerb::Create => {
-            ensure_parent(&dir, &r, path)?;
             let bytes = encode(&op.content, op.codec, path)?;
             let mut f = dir
                 .open_with(&r, OpenOptions::new().write(true).create_new(true))
@@ -340,7 +372,6 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
                 }
             }
             refuse_hardlink(&dir, &r, path)?;
-            ensure_parent(&dir, &r, path)?;
             let bytes = encode(&op.content, op.codec, path)?;
             atomic_write(&dir, &r, path, &bytes)?;
             Ok(Value::object([
@@ -357,11 +388,11 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
             ]))
         }
         FileVerb::Append => {
+            // Append requires an existing file; it never creates one (S37).
             refuse_hardlink(&dir, &r, path)?;
-            ensure_parent(&dir, &r, path)?;
             let bytes = encode(&op.content, op.codec.or(Some(Codec::Text)), path)?;
             let mut f = dir
-                .open_with(&r, OpenOptions::new().append(true).create(true))
+                .open_with(&r, OpenOptions::new().append(true))
                 .map_err(|e| io_err(path, e))?;
             f.write_all(&bytes).map_err(|e| io_err(path, e))?;
             Ok(Value::object([
@@ -401,11 +432,15 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
                     format!("{to} already exists (overwrite false)"),
                 ));
             }
+            refuse_symlink_components(&dir, &rt, &to, false)?;
             refuse_hardlink(&dir, &rt, &to)?;
-            ensure_parent(&dir, &rt, &to)?;
-            atomic_write(&dir, &rt, &to, &bytes)?;
+            // Check the source before the destination is written, so a refused
+            // move leaves no copy behind.
             if op.verb == FileVerb::Move {
                 refuse_hardlink(&dir, &r, path)?;
+            }
+            atomic_write(&dir, &rt, &to, &bytes)?;
+            if op.verb == FileVerb::Move {
                 dir.remove_file(&r).map_err(|e| io_err(path, e))?;
             }
             Ok(Value::object([
@@ -478,6 +513,7 @@ mod tests {
     #[tokio::test]
     async fn crud_round_trip_with_exclusive_create_and_version_guard() {
         let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("out")).unwrap();
         let files = ConfinedFiles::new(tmp.path().to_str().unwrap());
         let mut c = op(FileVerb::Create, "./out/a.json");
         c.content = Some(Value::object([("n", Value::Int(1))]));
