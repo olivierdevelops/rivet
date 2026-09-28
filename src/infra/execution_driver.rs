@@ -459,80 +459,207 @@ fn origin_key(u: &str) -> Option<(String, String, u16)> {
     ))
 }
 
-fn value_carries(v: &Value, secret: &str) -> bool {
+// ------------------------------------------------------------ secret taint (G23b)
+//
+//  secret NAME from env "E" for ORIGIN…  ─▶ taint forms = [value]
+//        │ explicit flows keep the value recognisable:
+//        │   assignment, interpolation, string/list/object construction → the value (or a
+//        │   derived form) appears as a substring of the new value;
+//        │   encoding/transform helpers (base64, hex, json, text, …) → their OUTPUT is
+//        │   recorded as a new derived form when any input carries a form
+//        ▼
+//  sinks: every effect form (head, options, child parts), `with` opens, handle member calls
+//  (socket/stream sends), nested `(request …)` params (MCP/gRPC/local calls), return, emit
+//        allowed only when the sink is a NETWORK destination whose scheme://host:port is one
+//        of the secret's bound origins; files, processes, unix sockets, pipes and nested
+//        requests never; return/emit always an error.
+//
+// Implicit flows (`if secret == x`, branching or loop counts on a secret, timing, lengths)
+// are OUT OF SCOPE (proposal Increment 5: best-effort explicit-flow tracking). Derived forms
+// shorter than MIN_DERIVED bytes are not recorded (they would taint unrelated values).
+
+/// Shortest derived (encoded/transformed) form that is tracked.
+const MIN_DERIVED: usize = 4;
+/// Upper bound of tracked forms per secret (the original plus derived ones).
+const MAX_FORMS: usize = 64;
+
+/// `scheme://host:port` destination of a sink.
+type Origin = (String, String, u16);
+
+/// One `secret` declaration: every recognisable form of its value and its bound origins.
+#[derive(Clone, Debug)]
+struct SecretTaint {
+    forms: Vec<Vec<u8>>,
+    origins: Vec<String>,
+}
+
+fn contains_bytes(hay: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty()
+        && hay.len() >= needle.len()
+        && hay.windows(needle.len()).any(|w| w == needle)
+}
+
+fn value_carries(v: &Value, form: &[u8]) -> bool {
     match v {
-        Value::Text(t) => t.contains(secret),
-        Value::Bytes(b) => b.windows(secret.len()).any(|w| w == secret.as_bytes()),
-        Value::List(items) => items.iter().any(|i| value_carries(i, secret)),
+        Value::Text(t) => contains_bytes(t.as_bytes(), form),
+        Value::Bytes(b) => contains_bytes(b, form),
+        Value::List(items) => items.iter().any(|i| value_carries(i, form)),
         Value::Object(pairs) => pairs
             .iter()
-            .any(|(k, v)| k.contains(secret) || value_carries(v, secret)),
+            .any(|(k, v)| contains_bytes(k.as_bytes(), form) || value_carries(v, form)),
         _ => false,
     }
 }
 
-fn args_carry(args: &[EvalArg], secret: &str) -> bool {
+fn args_carry(args: &[EvalArg], form: &[u8]) -> bool {
     args.iter().any(|a| match a {
-        EvalArg::Value(v) => value_carries(v, secret),
+        EvalArg::Value(v) => value_carries(v, form),
         EvalArg::Word(_) => false,
     })
 }
 
-/// S140: a secret bound with `for ORIGIN` may only travel (by explicit flow:
-/// interpolation, object construction) to those origins. The destination is the
-/// first URL in the effect head; forms whose destination is not a URL literal
-/// in the head (connectors, sockets without a scheme) are not checked here.
-fn secret_guard(frame: &Frame, f: &EvaluatedForm, span: &SourceSpan) -> RivetResult<()> {
-    if frame.secrets.is_empty() {
-        return Ok(());
+impl Frame {
+    /// Names (sorted) of the secrets `pred` finds in some form.
+    fn tainting(&self, pred: impl Fn(&[u8]) -> bool) -> Option<String> {
+        let mut names: Vec<&String> = self.secrets.keys().collect();
+        names.sort();
+        names
+            .into_iter()
+            .find(|n| self.secrets[*n].forms.iter().any(|f| pred(f)))
+            .cloned()
     }
-    let Some(key) = f.head.iter().find_map(|a| match a {
-        EvalArg::Value(Value::Text(t)) => origin_key(t),
+
+    fn taint_of_value(&self, v: &Value) -> Option<String> {
+        if self.secrets.is_empty() {
+            return None;
+        }
+        self.tainting(|f| value_carries(v, f))
+    }
+
+    fn taint_of_args(&self, args: &[EvalArg]) -> Option<String> {
+        if self.secrets.is_empty() {
+            return None;
+        }
+        self.tainting(|f| args_carry(args, f))
+    }
+
+    fn taint_of_form(&self, f: &EvaluatedForm) -> Option<String> {
+        if self.secrets.is_empty() {
+            return None;
+        }
+        self.tainting(|form| {
+            args_carry(&f.head, form)
+                || f.options.iter().any(|(_, a)| args_carry(a, form))
+                || f.children
+                    .iter()
+                    .flatten()
+                    .any(|(_, a)| args_carry(a, form))
+        })
+    }
+
+    /// An encoding/transform helper consumed a tainted input: its output is a new form.
+    fn derive_taint(&mut self, inputs: &[String], out: &Value) {
+        let bytes = match out {
+            Value::Text(t) => t.as_bytes().to_vec(),
+            Value::Bytes(b) => b.clone(),
+            _ => return,
+        };
+        if bytes.len() < MIN_DERIVED {
+            return;
+        }
+        for name in inputs {
+            if let Some(t) = self.secrets.get_mut(name)
+                && t.forms.len() < MAX_FORMS
+                && !t.forms.iter().any(|f| contains_bytes(&bytes, f))
+            {
+                t.forms.push(bytes.clone());
+            }
+        }
+    }
+}
+
+/// `scheme://host:port` of a URL (default port filled in), for secret bindings.
+fn origin_of(u: &str) -> Option<Origin> {
+    origin_key(u)
+}
+
+/// The network destination of an effect form, if it has one: the first text in
+/// its head as a URL, or `KIND://HOST:PORT` for bare `HOST:PORT` transports.
+/// Files, processes, unix sockets and pipes have none (a secret never reaches them).
+fn dest_of(kind: &EffectKind, head: &[EvalArg]) -> Option<Origin> {
+    let scheme = match kind {
+        EffectKind::File | EffectKind::Command | EffectKind::Unix | EffectKind::Pipe => {
+            return None;
+        }
+        EffectKind::Tcp => "tcp",
+        EffectKind::Udp => "udp",
+        EffectKind::Quic => "quic",
+        EffectKind::WebSocket => "ws",
+        EffectKind::Http => "https",
+        EffectKind::Grpc => "https",
+        EffectKind::RequestStream | EffectKind::Connection => return None,
+        EffectKind::Other(k) => k.as_str(),
+    };
+    let t = head.iter().find_map(|a| match a {
+        EvalArg::Value(Value::Text(t)) => Some(t.as_str()),
         _ => None,
-    }) else {
+    })?;
+    if t.contains("://") {
+        origin_of(t)
+    } else {
+        origin_of(&format!("{scheme}://{t}"))
+    }
+}
+
+/// G23b sink rule: a tainted value may reach only a network destination bound by
+/// `secret … for ORIGIN`; anything else (no destination, other origin) is denied.
+fn sink_guard(
+    frame: &Frame,
+    tainted: Option<String>,
+    dest: Option<&Origin>,
+    sink: &str,
+    span: &SourceSpan,
+) -> RivetResult<()> {
+    let Some(name) = tainted else {
         return Ok(());
     };
-    let mut names: Vec<&String> = frame.secrets.keys().collect();
-    names.sort();
-    for name in names {
-        let (value, origins) = &frame.secrets[name];
-        if value.is_empty() {
-            continue;
-        }
-        let carried = args_carry(&f.head, value)
-            || f.options.iter().any(|(_, a)| args_carry(a, value))
-            || f.children
-                .iter()
-                .flatten()
-                .any(|(_, a)| args_carry(a, value));
-        if carried && !origins.iter().any(|o| origin_key(o).as_ref() == Some(&key)) {
-            let (scheme, host, port) = &key;
-            return Err(RivetError::permission(format!(
+    let origins = &frame.secrets[&name].origins;
+    if let Some(d) = dest
+        && origins.iter().any(|o| origin_of(o).as_ref() == Some(d))
+    {
+        return Ok(());
+    }
+    let (message, target) = match dest {
+        Some((scheme, host, port)) => (
+            format!(
                 "secret `{name}` is bound to {}; it may not be sent to {scheme}://{host}:{port}",
                 origins.join(", ")
-            ))
-            .with_span(Some(span.clone()))
-            .with_details(Value::object([
-                ("secret", Value::text(name)),
-                ("origin", Value::text(format!("{scheme}://{host}:{port}"))),
-            ])));
-        }
-    }
-    Ok(())
+            ),
+            format!("{scheme}://{host}:{port}"),
+        ),
+        None => (
+            format!(
+                "secret `{name}` may not reach {sink}; secrets travel only to their bound network origins ({})",
+                origins.join(", ")
+            ),
+            sink.to_string(),
+        ),
+    };
+    Err(RivetError::permission(message)
+        .with_span(Some(span.clone()))
+        .with_details(Value::object([
+            ("secret", Value::text(&name)),
+            ("origin", Value::text(target)),
+        ])))
 }
 
 /// Returning or emitting a secret value is an error (explicit flows only).
 fn secret_output_guard(frame: &Frame, v: &Value, how: &str) -> RivetResult<()> {
-    let mut names: Vec<&String> = frame.secrets.keys().collect();
-    names.sort();
-    for name in names {
-        let (value, _) = &frame.secrets[name];
-        if !value.is_empty() && value_carries(v, value) {
-            return Err(RivetError::permission(format!(
-                "secret `{name}` cannot be {how}; secrets may only reach their bound origins"
-            ))
-            .with_details(Value::object([("secret", Value::text(name))])));
-        }
+    if let Some(name) = frame.taint_of_value(v) {
+        return Err(RivetError::permission(format!(
+            "secret `{name}` cannot be {how}; secrets may only reach their bound origins"
+        ))
+        .with_details(Value::object([("secret", Value::text(name))])));
     }
     Ok(())
 }
@@ -542,11 +669,13 @@ struct Frame {
     scopes: Vec<HashMap<String, Value>>,
     request: Request,
     run: Arc<RunState>,
-    /// `secret NAME … for ORIGIN…`: name → (value, bound origins). The value is
-    /// kept only to recognise explicit flows (S140); it is never rendered.
-    secrets: HashMap<String, (String, Vec<String>)>,
+    /// `secret NAME … for ORIGIN…`: name → recognisable forms + bound origins. The
+    /// values are kept only to recognise explicit flows (S140, G23b); never rendered.
+    secrets: HashMap<String, SecretTaint>,
     /// Open resource handles, innermost last.
     handles: Vec<(String, SharedHandle)>,
+    /// Network destination of each open handle (secret sink rule for member calls).
+    dests: Vec<(SharedHandle, Option<Origin>)>,
 }
 
 impl Frame {
@@ -557,7 +686,16 @@ impl Frame {
             run,
             secrets: HashMap::new(),
             handles: Vec::new(),
+            dests: Vec::new(),
         }
+    }
+
+    fn dest_of_handle(&self, h: &SharedHandle) -> Option<Origin> {
+        self.dests
+            .iter()
+            .rev()
+            .find(|(x, _)| Arc::ptr_eq(x, h))
+            .and_then(|(_, d)| d.clone())
     }
 
     fn handle(&self, name: &str) -> Option<SharedHandle> {
@@ -910,9 +1048,17 @@ impl<'a> Machine<'a> {
                         )
                         .with_span(Some(span.clone()))
                     })?;
-                    frame
-                        .secrets
-                        .insert(name.clone(), (value.clone(), origins.clone()));
+                    frame.secrets.insert(
+                        name.clone(),
+                        SecretTaint {
+                            forms: if value.is_empty() {
+                                Vec::new()
+                            } else {
+                                vec![value.as_bytes().to_vec()]
+                            },
+                            origins: origins.clone(),
+                        },
+                    );
                     frame.define(name, Value::Text(value));
                     Ok(Flow::Normal)
                 }
@@ -995,6 +1141,14 @@ impl<'a> Machine<'a> {
         for a in &call.args {
             args.push(self.eval_arg(frame, a).await?);
         }
+        // Socket/stream sends carry data to the handle's destination (G23b).
+        sink_guard(
+            frame,
+            frame.taint_of_args(&args),
+            frame.dest_of_handle(&handle).as_ref(),
+            &format!("`{name}.{method}`"),
+            span,
+        )?;
         let ctx = self.ctx(frame, span);
         let r = if let Some(s) = shared_of(&handle).await {
             s.call(&ctx, &method, args).await
@@ -1029,6 +1183,22 @@ impl<'a> Machine<'a> {
     ) -> RivetResult<Flow> {
         let evaluated = self.evaluate_form(frame, form).await?;
         let ctx = self.ctx(frame, span);
+        // Destination of the new handle: its own head, or the parent's for a child stream.
+        let dest = match (&form.kind, source) {
+            (EffectKind::Connection, Some(Expr::Path(path, _))) => frame
+                .handle(&path[0])
+                .and_then(|h| frame.dest_of_handle(&h)),
+            _ => dest_of(&form.kind, &evaluated.head),
+        };
+        if form.kind != EffectKind::RequestStream {
+            sink_guard(
+                frame,
+                frame.taint_of_form(&evaluated),
+                dest.as_ref(),
+                &format!("`with {}`", form.kind.as_str()),
+                span,
+            )?;
+        }
         let opened: RivetResult<Box<dyn ResourceHandle>> = match (&form.kind, source) {
             (
                 EffectKind::RequestStream,
@@ -1072,7 +1242,6 @@ impl<'a> Machine<'a> {
             },
             _ => match self.interp.adapters.get(form.kind.as_str()) {
                 Some(adapter) => {
-                    secret_guard(frame, &evaluated, span)?;
                     super::trace_store::with_effect_scope(
                         self.effect_scope(frame, span),
                         adapter.open(&ctx, form, evaluated),
@@ -1087,6 +1256,7 @@ impl<'a> Machine<'a> {
         )));
         let name = bind.unwrap_or("_").to_string();
         frame.handles.push((name.clone(), Arc::clone(&handle)));
+        frame.dests.push((Arc::clone(&handle), dest));
         let result = self.scoped(frame, body).await;
         if let Some(pos) = frame
             .handles
@@ -1094,6 +1264,13 @@ impl<'a> Machine<'a> {
             .rposition(|(n, h)| n == &name && Arc::ptr_eq(h, &handle))
         {
             frame.handles.remove(pos);
+        }
+        if let Some(pos) = frame
+            .dests
+            .iter()
+            .rposition(|(h, _)| Arc::ptr_eq(h, &handle))
+        {
+            frame.dests.remove(pos);
         }
         // Always close, after success, error, break or return; the primary error wins.
         let taken = handle.lock().await.take();
@@ -1148,6 +1325,13 @@ impl<'a> Machine<'a> {
             })?
             .to_string();
         let params = vals.get(1).cloned().unwrap_or(Value::Object(vec![]));
+        sink_guard(
+            frame,
+            frame.taint_of_value(&params),
+            None,
+            "another operation's params (the callee cannot enforce the binding)",
+            span,
+        )?;
         let dispatcher = Arc::clone(
             self.interp
                 .dispatcher
@@ -1367,7 +1551,13 @@ impl<'a> Machine<'a> {
         span: &SourceSpan,
     ) -> RivetResult<Value> {
         let evaluated = self.evaluate_form(frame, form).await?;
-        secret_guard(frame, &evaluated, span)?;
+        sink_guard(
+            frame,
+            frame.taint_of_form(&evaluated),
+            dest_of(&form.kind, &evaluated.head).as_ref(),
+            &format!("`{}`", form.kind.as_str()),
+            span,
+        )?;
         let scope = self.effect_scope(frame, span);
         let result = super::trace_store::with_effect_scope(scope, async {
             if form.kind == EffectKind::File {
@@ -1770,6 +1960,33 @@ impl<'a> Machine<'a> {
         for a in args {
             vals.push(self.eval(frame, a).await?);
         }
+        // G23b: a helper fed a tainted input yields a derived form (base64, hex, …).
+        let tainted: Vec<String> = if frame.secrets.is_empty() || func == "request" {
+            Vec::new()
+        } else {
+            let mut names: Vec<String> = frame.secrets.keys().cloned().collect();
+            names.retain(|n| {
+                frame.secrets[n]
+                    .forms
+                    .iter()
+                    .any(|f| vals.iter().any(|v| value_carries(v, f)))
+            });
+            names
+        };
+        let out = self.call_values(frame, func, vals, span).await?;
+        if !tainted.is_empty() {
+            frame.derive_taint(&tainted, &out);
+        }
+        Ok(out)
+    }
+
+    async fn call_values(
+        &self,
+        frame: &mut Frame,
+        func: &str,
+        vals: Vec<Value>,
+        span: &SourceSpan,
+    ) -> RivetResult<Value> {
         let arity = |n: usize| -> RivetResult<()> {
             if vals.len() != n {
                 return Err(runtime_err(
@@ -1800,6 +2017,15 @@ impl<'a> Machine<'a> {
                     })?
                     .to_string();
                 let params = vals.get(1).cloned().unwrap_or(Value::Object(vec![]));
+                // MCP / gRPC / local operation params: the callee cannot enforce the
+                // secret's origin binding, so a tainted value never crosses (G23b).
+                sink_guard(
+                    frame,
+                    frame.taint_of_value(&params),
+                    None,
+                    "another operation's params (the callee cannot enforce the binding)",
+                    span,
+                )?;
                 let dispatcher = self
                     .interp
                     .dispatcher

@@ -404,3 +404,166 @@ async fn secret_destination_binding() {
     let t = rt.trace(&ok.request_id).unwrap().to_json().to_string();
     assert!(!t.contains(CANARY), "trace leaked the secret: {t}");
 }
+
+/// A TCP/UDP sink that records every byte it receives.
+async fn byte_sinks() -> (u16, u16, Arc<std::sync::Mutex<Vec<u8>>>) {
+    use tokio::io::AsyncReadExt;
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let tcp_port = tcp.local_addr().unwrap().port();
+    let s = Arc::clone(&seen);
+    tokio::spawn(async move {
+        while let Ok((mut c, _)) = tcp.accept().await {
+            let s = Arc::clone(&s);
+            tokio::spawn(async move {
+                let mut buf = [0u8; 4096];
+                while let Ok(n) = c.read(&mut buf).await {
+                    if n == 0 {
+                        break;
+                    }
+                    s.lock().unwrap().extend_from_slice(&buf[..n]);
+                }
+            });
+        }
+    });
+    let udp = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let udp_port = udp.local_addr().unwrap().port();
+    let s = Arc::clone(&seen);
+    tokio::spawn(async move {
+        let mut buf = [0u8; 65536];
+        while let Ok((n, _)) = udp.recv_from(&mut buf).await {
+            s.lock().unwrap().extend_from_slice(&buf[..n]);
+        }
+    });
+    (tcp_port, udp_port, seen)
+}
+
+// vhco:test transports.exchange_http -- G23b secret taint reaches every sink: assignment, interpolation, list/object construction and (chained) base64 encoding are tracked; http headers/body toward an unbound origin, file writes, process args, TCP/UDP sends and nested request params are denied (files/processes always), a bound TCP origin and the bound HTTP origin (even base64-encoded) are allowed, returning an encoded secret is an error, and the canary never reaches a sink, result, error or trace
+#[tokio::test]
+async fn secret_taint_covers_every_sink() {
+    use base64::Engine;
+    set_secret_env();
+    let (bound_port, bound) = support::http_server().await;
+    let (other_port, other) = support::http_server().await;
+    let (tcp_port, udp_port, seen) = byte_sinks().await;
+    let bound_origin = format!("http://127.0.0.1:{bound_port}");
+    let other_origin = format!("http://127.0.0.1:{other_port}");
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join("out")).unwrap();
+    let policy = format!(
+        r#"{{"version":1,"grants":[
+            {{"capability":"allow_env","targets":["{SECRET_VAR}"]}},
+            {{"capability":"allow_write","targets":["./out/**"]}},
+            {{"capability":"allow_exec","targets":["/bin/echo"]}},
+            {{"capability":"allow_network","targets":["{bound_origin}","{other_origin}","tcp://127.0.0.1:{tcp_port}","udp://127.0.0.1:{udp_port}"]}}]}}"#
+    );
+    let secret = format!("    secret K from env \"{SECRET_VAR}\" for \"{bound_origin}\"\n");
+    let op =
+        |id: &str, body: &str| format!("operation {id}\n    output json\n{secret}{body}end\n\n");
+    let mut src = String::new();
+    src += &op(
+        "s.bound_b64",
+        &format!(
+            "    enc = (base64.encode \"u:${{K}}\")\n    r = http get \"{bound_origin}/users/42\"\n        header \"Authorization\" \"Basic ${{enc}}\"\n        decode json\n    end\n    return r.body\n"
+        ),
+    );
+    src += &op(
+        "s.header_b64_other",
+        &format!(
+            "    enc = (base64.encode \"u:${{K}}\")\n    r = http get \"{other_origin}/users/42\"\n        header \"X-Key\" enc\n    end\n    return r.status\n"
+        ),
+    );
+    src += &op(
+        "s.chain_other",
+        &format!(
+            "    a = K\n    b = (base64.encode a)\n    c = (base64.encode b)\n    r = http get \"{other_origin}/users/42\"\n        header \"X-Key\" \"v=${{c}}\"\n    end\n    return r.status\n"
+        ),
+    );
+    src += &op(
+        "s.body_other",
+        &format!(
+            "    payload = {{items: [\"x\", K]}}\n    r = http post \"{other_origin}/users\"\n        body json payload\n    end\n    return r.status\n"
+        ),
+    );
+    src += &op(
+        "s.query_other",
+        &format!("    r = http get \"{other_origin}/search?q=${{K}}\"\n    return r.status\n"),
+    );
+    src += &op(
+        "s.file",
+        "    file write \"./out/k.txt\" text \"k=${K}\"\n    return 1\n",
+    );
+    src += &op(
+        "s.process",
+        "    r = command \"/bin/echo\"\n        args [\"x\", K]\n    end\n    return r.exit\n",
+    );
+    src += &op(
+        "s.tcp",
+        &format!(
+            "    with tcp \"127.0.0.1:{tcp_port}\" as c\n        framing newline\n        c.send text \"k=${{K}}\"\n    end\n    return 1\n"
+        ),
+    );
+    src += &op(
+        "s.udp",
+        &format!(
+            "    enc = (base64.encode K)\n    with udp \"127.0.0.1:{udp_port}\" as u\n        u.send text enc\n    end\n    return 1\n"
+        ),
+    );
+    src += &op("s.nested", "    return (request \"s.echo\" {v: K})\n");
+    src += "operation s.echo\n    param v text required\n    output json\n    return v\nend\n\n";
+    src += &op("s.return_b64", "    return {v: (base64.encode K)}\n");
+    src += &format!(
+        "operation s.tcp_bound\n    output json\n    secret T from env \"{SECRET_VAR}\" for \"tcp://127.0.0.1:{tcp_port}\"\n    with tcp \"127.0.0.1:{tcp_port}\" as c\n        framing newline\n        c.send text \"t=${{T}}\"\n    end\n    return 1\nend\n"
+    );
+    let rt = support::runtime(&src, &p(tmp.path()), &policy);
+
+    // Bound origin: the (encoded) secret travels.
+    let ok = rt.request("s.bound_b64", Value::Null, None).await.unwrap();
+    assert_eq!(ok.result.get("name"), Some(&Value::text("Ada")));
+    assert_eq!(bound.requests.lock().unwrap().len(), 1);
+
+    let mut errors = Vec::new();
+    for id in [
+        "s.header_b64_other",
+        "s.chain_other",
+        "s.body_other",
+        "s.query_other",
+        "s.file",
+        "s.process",
+        "s.tcp",
+        "s.udp",
+        "s.nested",
+        "s.return_b64",
+    ] {
+        let e = rt.request(id, Value::Null, None).await.unwrap_err();
+        assert_eq!(e.code, "permission.denied", "{id}: {e:?}");
+        assert!(e.message.contains("secret `K`"), "{id}: {}", e.message);
+        errors.push(e);
+    }
+    assert!(
+        other.requests.lock().unwrap().is_empty(),
+        "nothing reached the unbound origin"
+    );
+    assert!(!tmp.path().join("out/k.txt").exists(), "file never written");
+
+    // A secret bound to the TCP origin may be sent there.
+    rt.request("s.tcp_bound", Value::Null, None).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let got = seen.lock().unwrap().clone();
+    let text = String::from_utf8_lossy(&got).to_string();
+    assert!(text.contains(&format!("t={CANARY}")), "{text}");
+    assert!(!text.contains(&format!("k={CANARY}")), "{text}");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(CANARY);
+    assert!(!text.contains(&b64), "udp leak: {text}");
+
+    for e in errors {
+        let text = format!("{} {e:?}", e.to_value().to_json());
+        assert!(!text.contains(CANARY) && !text.contains(&b64), "{text}");
+        if let Some(req) = &e.request_id
+            && let Ok(t) = rt.trace(req)
+        {
+            let t = t.to_json().to_string();
+            assert!(!t.contains(CANARY), "trace leaked the secret: {t}");
+        }
+    }
+}

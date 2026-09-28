@@ -130,7 +130,7 @@ pub fn parse_policy(bytes: &[u8], file: &str, base_dir: &str) -> RivetResult<Pol
                     Some(n) if n > 0 && n <= max => Ok(n),
                     Some(n) if n > max => Err(invalid(
                         &format!("/limits/{k}"),
-                        &format!("must be at most {max}"),
+                        format!("must be at most {max}"),
                     )),
                     _ => Err(invalid(
                         &format!("/limits/{k}"),
