@@ -139,20 +139,17 @@ impl Value {
             Json::Array(items) => Value::List(items.iter().map(Value::from_json).collect()),
             Json::Object(map) => {
                 if let (Some(Json::String(t)), 2) = (map.get("$type"), map.len()) {
-                    if t == "bytes" {
-                        if let Some(Json::String(b64)) = map.get("base64") {
-                            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64)
-                            {
-                                return Value::Bytes(bytes);
-                            }
-                        }
+                    if t == "bytes"
+                        && let Some(Json::String(b64)) = map.get("base64")
+                        && let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(b64)
+                    {
+                        return Value::Bytes(bytes);
                     }
-                    if t == "integer" {
-                        if let Some(Json::String(d)) = map.get("decimal") {
-                            if let Ok(i) = d.parse::<i64>() {
-                                return Value::Int(i);
-                            }
-                        }
+                    if t == "integer"
+                        && let Some(Json::String(d)) = map.get("decimal")
+                        && let Ok(i) = d.parse::<i64>()
+                    {
+                        return Value::Int(i);
                     }
                 }
                 Value::Object(

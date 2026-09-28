@@ -111,7 +111,7 @@ pub fn sse_error(request_id: &str, trace_id: &str, e: &RivetError, seq: u64) -> 
         request_id: request_id.to_string(),
         trace_id: trace_id.to_string(),
         seq,
-        error: e.clone(),
+        error: Box::new(e.clone()),
     }
     .to_json();
     sse_event(seq, "error", &j)

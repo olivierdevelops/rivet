@@ -36,7 +36,7 @@ async fn run(src: &str, policy: &str) -> Result<Value, rivet::domain::RivetError
 async fn http_one_shot_methods() {
     let (port, stats) = http_server().await;
     let base = format!("http://127.0.0.1:{port}");
-    let policy = net_policy(&[base.clone()]);
+    let policy = net_policy(std::slice::from_ref(&base));
     let v = run(
         &op(&format!(
             "r = http get \"{base}/users/42\"\n    decode json\nend\nreturn r"
@@ -155,7 +155,7 @@ async fn http_interpolation_keeps_segments() {
 async fn http_status_retry_redirect() {
     let (port, stats) = http_server().await;
     let base = format!("http://127.0.0.1:{port}");
-    let policy = net_policy(&[base.clone()]);
+    let policy = net_policy(std::slice::from_ref(&base));
     let e = run(
         &op(&format!(
             "r = http get \"{base}/users/500\"\n    decode json\nend\nreturn r"
@@ -249,7 +249,7 @@ async fn http_authorization() {
     // `localhost` is the loopback literal: a hostname grant does not name 127.0.0.1.
     let e = run(
         &op(&format!("r = http get \"http://localhost:{port}/users/42\"\nreturn r.status")),
-        &r#"{"version":1,"grants":[{"capability":"allow_network","targets":["http://example.test:80"]}]}"#.to_string(),
+        r#"{"version":1,"grants":[{"capability":"allow_network","targets":["http://example.test:80"]}]}"#,
     )
     .await
     .unwrap_err();
@@ -276,7 +276,7 @@ async fn https_with_ca_file() {
     let c = rt.request("t.run", Value::Null, None).await.unwrap();
     assert_eq!(c.result, Value::object([("secure", Value::Bool(true))]));
     // The CA file is an I/O site of its own: without allow_read it fails before connecting.
-    let rt = runtime(&with_ca, root, &net_policy(&[base.clone()]));
+    let rt = runtime(&with_ca, root, &net_policy(std::slice::from_ref(&base)));
     let e = rt.request("t.run", Value::Null, None).await.unwrap_err();
     assert_eq!(e.code, "permission.denied");
     let rt = runtime(
@@ -528,9 +528,7 @@ async fn process_sandbox_confines_reads() {
     std::fs::write(tmp.path().join("data/pub.txt"), "public").unwrap();
     std::fs::write(tmp.path().join("secret/s.txt"), "secret").unwrap();
     let policy = exec_policy(r#",{"capability":"allow_read","targets":["./data/**"]}"#);
-    let src = format!(
-        "operation t.run\n    param path text required\n    output json\n    r = command \"/bin/cat\"\n        args [path]\n    end\n    return r.stdout\nend\n"
-    );
+    let src = "operation t.run\n    param path text required\n    output json\n    r = command \"/bin/cat\"\n        args [path]\n    end\n    return r.stdout\nend\n".to_string();
     let rt = runtime(&src, &root, &policy);
     let ok = rt
         .request(

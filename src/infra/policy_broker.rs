@@ -35,10 +35,10 @@ impl PolicyBroker {
 impl PolicyEvaluator for PolicyBroker {
     fn evaluate(&self, intent: &EffectIntent) -> Permit {
         let permit = (self.decide)(intent, &self.policy, &self.bundle_root);
-        if let Ok(mut d) = self.decisions.lock() {
-            if d.len() < 10_000 {
-                d.push(permit.clone());
-            }
+        if let Ok(mut d) = self.decisions.lock()
+            && d.len() < 10_000
+        {
+            d.push(permit.clone());
         }
         permit
     }

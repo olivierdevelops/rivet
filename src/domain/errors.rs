@@ -294,22 +294,21 @@ impl RivetError {
                 "\n  --> {}:{}:{}",
                 span.file, span.start_line, span.start_col
             ));
-            if let Some(text) = source_text {
-                if let Some(line) = text.lines().nth(span.start_line.saturating_sub(1) as usize) {
-                    let width = if span.end_line == span.start_line && span.end_col > span.start_col
-                    {
-                        (span.end_col - span.start_col) as usize
-                    } else {
-                        1
-                    };
-                    out.push_str(&format!(
-                        "\n   |\n{:>3}| {}\n   | {}{}",
-                        span.start_line,
-                        line,
-                        " ".repeat(span.start_col.saturating_sub(1) as usize),
-                        "^".repeat(width.max(1))
-                    ));
-                }
+            if let Some(text) = source_text
+                && let Some(line) = text.lines().nth(span.start_line.saturating_sub(1) as usize)
+            {
+                let width = if span.end_line == span.start_line && span.end_col > span.start_col {
+                    (span.end_col - span.start_col) as usize
+                } else {
+                    1
+                };
+                out.push_str(&format!(
+                    "\n   |\n{:>3}| {}\n   | {}{}",
+                    span.start_line,
+                    line,
+                    " ".repeat(span.start_col.saturating_sub(1) as usize),
+                    "^".repeat(width.max(1))
+                ));
             }
         }
         if let Some(h) = &self.hint {

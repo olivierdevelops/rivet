@@ -620,44 +620,44 @@ impl<'a> Machine<'a> {
                     body,
                     span,
                 } => {
-                    if let Expr::Path(path, _) = iter {
-                        if !path.is_empty() && frame.get(&path[0]).is_none() {
-                            if let Some(handle) = frame.handle(&path[0]) {
-                                loop {
-                                    let ctx = self.ctx(frame, span);
-                                    let item = if let Some(s) = shared_of(&handle).await {
-                                        s.next(&ctx)
-                                            .await
-                                            .map_err(|e| e.with_span(Some(span.clone())))?
-                                    } else {
-                                        let mut guard = handle.lock().await;
-                                        let h = guard.as_mut().ok_or_else(|| {
-                                            RivetError::new(
-                                                ErrorKind::Cleanup,
-                                                "cleanup.closed",
-                                                format!("`{}` is already closed", path[0]),
-                                            )
-                                        })?;
-                                        let pulled = if path.len() == 1 {
-                                            h.next(&ctx).await
-                                        } else {
-                                            h.next_of(&ctx, &path[1..].join(".")).await
-                                        };
-                                        pulled.map_err(|e| e.with_span(Some(span.clone())))?
-                                    };
-                                    let Some(item) = item else { break };
-                                    frame.scopes.push(HashMap::from([(var.clone(), item)]));
-                                    let r = self.exec_block(frame, body).await;
-                                    frame.scopes.pop();
-                                    match r? {
-                                        Flow::Break => break,
-                                        Flow::Normal => {}
-                                        other => return Ok(other),
-                                    }
-                                }
-                                return Ok(Flow::Normal);
+                    if let Expr::Path(path, _) = iter
+                        && !path.is_empty()
+                        && frame.get(&path[0]).is_none()
+                        && let Some(handle) = frame.handle(&path[0])
+                    {
+                        loop {
+                            let ctx = self.ctx(frame, span);
+                            let item = if let Some(s) = shared_of(&handle).await {
+                                s.next(&ctx)
+                                    .await
+                                    .map_err(|e| e.with_span(Some(span.clone())))?
+                            } else {
+                                let mut guard = handle.lock().await;
+                                let h = guard.as_mut().ok_or_else(|| {
+                                    RivetError::new(
+                                        ErrorKind::Cleanup,
+                                        "cleanup.closed",
+                                        format!("`{}` is already closed", path[0]),
+                                    )
+                                })?;
+                                let pulled = if path.len() == 1 {
+                                    h.next(&ctx).await
+                                } else {
+                                    h.next_of(&ctx, &path[1..].join(".")).await
+                                };
+                                pulled.map_err(|e| e.with_span(Some(span.clone())))?
+                            };
+                            let Some(item) = item else { break };
+                            frame.scopes.push(HashMap::from([(var.clone(), item)]));
+                            let r = self.exec_block(frame, body).await;
+                            frame.scopes.pop();
+                            match r? {
+                                Flow::Break => break,
+                                Flow::Normal => {}
+                                other => return Ok(other),
                             }
                         }
+                        return Ok(Flow::Normal);
                     }
                     let items = match self.eval(frame, iter).await? {
                         Value::List(items) => items,
@@ -1655,44 +1655,40 @@ impl<'a> Machine<'a> {
                     Ok(Value::Text(s))
                 }
                 Expr::Path(path, span) => {
-                    if frame.get(&path[0]).is_none() {
-                        if let Some(handle) = frame.handle(&path[0]) {
-                            if path.len() < 2 {
-                                return Err(runtime_err(
-                                    "value.handle",
-                                    format!(
-                                        "`{}` is an open resource, not a value; read a property such as `{}.result`",
-                                        path[0], path[0]
-                                    ),
-                                    span,
-                                ));
-                            }
-                            let ctx = self.ctx(frame, span);
-                            let mut v = if let Some(s) = shared_of(&handle).await {
-                                s.property(&ctx, &path[1]).await
-                            } else {
-                                let mut guard = handle.lock().await;
-                                let h = guard.as_mut().ok_or_else(|| {
-                                    RivetError::new(
-                                        ErrorKind::Cleanup,
-                                        "cleanup.closed",
-                                        format!("`{}` is already closed", path[0]),
-                                    )
-                                })?;
-                                h.property(&ctx, &path[1]).await
-                            }
-                            .map_err(|e| e.with_span(Some(span.clone())))?;
-                            for seg in &path[2..] {
-                                v = v.get(seg).cloned().ok_or_else(|| {
-                                    runtime_err(
-                                        "value.missing_key",
-                                        format!("no key `{seg}`"),
-                                        span,
-                                    )
-                                })?;
-                            }
-                            return Ok(v);
+                    if frame.get(&path[0]).is_none()
+                        && let Some(handle) = frame.handle(&path[0])
+                    {
+                        if path.len() < 2 {
+                            return Err(runtime_err(
+                                "value.handle",
+                                format!(
+                                    "`{}` is an open resource, not a value; read a property such as `{}.result`",
+                                    path[0], path[0]
+                                ),
+                                span,
+                            ));
                         }
+                        let ctx = self.ctx(frame, span);
+                        let mut v = if let Some(s) = shared_of(&handle).await {
+                            s.property(&ctx, &path[1]).await
+                        } else {
+                            let mut guard = handle.lock().await;
+                            let h = guard.as_mut().ok_or_else(|| {
+                                RivetError::new(
+                                    ErrorKind::Cleanup,
+                                    "cleanup.closed",
+                                    format!("`{}` is already closed", path[0]),
+                                )
+                            })?;
+                            h.property(&ctx, &path[1]).await
+                        }
+                        .map_err(|e| e.with_span(Some(span.clone())))?;
+                        for seg in &path[2..] {
+                            v = v.get(seg).cloned().ok_or_else(|| {
+                                runtime_err("value.missing_key", format!("no key `{seg}`"), span)
+                            })?;
+                        }
+                        return Ok(v);
                     }
                     lookup(frame, path, Some(span))
                 }

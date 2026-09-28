@@ -717,31 +717,31 @@ impl Lowerer {
                     format!("`{value_text}(…)` is function-call style; Rivet uses prefix calls"),
                     &node.capture_span("rest"),
                 );
-                self.errors.last_mut().map(|e| {
+                if let Some(e) = self.errors.last_mut() {
                     e.hint = Some(format!(
                         "write ({value_text} arg …) — for example (request \"id\" {{k: v}})"
                     ));
-                });
+                }
                 return None;
             }
             let expr = self.expr(node, "value")?;
-            if let Expr::Path(segs, _) = &expr {
-                if segs.len() >= 2 {
-                    let args = self.args(node, "rest");
-                    let (object, method) = (
-                        segs[..segs.len() - 1].to_vec(),
-                        segs[segs.len() - 1].clone(),
-                    );
-                    return Some((
-                        Rhs::Member(MemberCall {
-                            object,
-                            method,
-                            args,
-                            span: node.span.clone(),
-                        }),
-                        options,
-                    ));
-                }
+            if let Expr::Path(segs, _) = &expr
+                && segs.len() >= 2
+            {
+                let args = self.args(node, "rest");
+                let (object, method) = (
+                    segs[..segs.len() - 1].to_vec(),
+                    segs[segs.len() - 1].clone(),
+                );
+                return Some((
+                    Rhs::Member(MemberCall {
+                        object,
+                        method,
+                        args,
+                        span: node.span.clone(),
+                    }),
+                    options,
+                ));
             }
             self.syntax(
                 "syntax.trailing",
@@ -1284,20 +1284,19 @@ impl Lowerer {
             let mut read = Vec::new();
             n.expr.paths(&mut read);
             for p in read {
-                if let Some(first) = p.first() {
-                    if names.contains(&first.as_str())
-                        && first != &n.name
-                        && !n.after.contains(first)
-                    {
-                        self.syntax(
-                            "syntax.dag",
-                            format!(
-                                "node `{}` reads `{first}` without declaring `after [{first}]`",
-                                n.name
-                            ),
-                            &n.span,
-                        );
-                    }
+                if let Some(first) = p.first()
+                    && names.contains(&first.as_str())
+                    && first != &n.name
+                    && !n.after.contains(first)
+                {
+                    self.syntax(
+                        "syntax.dag",
+                        format!(
+                            "node `{}` reads `{first}` without declaring `after [{first}]`",
+                            n.name
+                        ),
+                        &n.span,
+                    );
                 }
             }
         }
@@ -1388,10 +1387,10 @@ pub fn unquote(s: &str) -> String {
         && (s.starts_with('"') && s.ends_with('"') || s.starts_with('\'') && s.ends_with('\''))
     {
         let map = SpanMap::new(SourceSpan::default(), s);
-        if let Ok(e) = parse_expr(s, &map) {
-            if let Some(t) = e.const_text() {
-                return t;
-            }
+        if let Ok(e) = parse_expr(s, &map)
+            && let Some(t) = e.const_text()
+        {
+            return t;
         }
         return s[1..s.len() - 1].to_string();
     }
@@ -1457,10 +1456,10 @@ pub fn collect_calls(body: &[Stmt], out: &mut Vec<String>) {
     fn expr(e: &Expr, out: &mut Vec<String>) {
         match e {
             Expr::Call { func, args, .. } => {
-                if func == "request" || func == "request.stream" {
-                    if let Some(id) = args.first().and_then(Expr::const_text) {
-                        out.push(id);
-                    }
+                if (func == "request" || func == "request.stream")
+                    && let Some(id) = args.first().and_then(Expr::const_text)
+                {
+                    out.push(id);
                 }
                 args.iter().for_each(|a| expr(a, out));
             }

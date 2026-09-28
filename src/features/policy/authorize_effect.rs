@@ -46,19 +46,18 @@ pub fn authorize_effect(intent: &EffectIntent, policy: &Policy, bundle_root: &st
 
     // vhco:todo check_target -- validate the resolved target of every attempt (redirects, DNS results, replacements); with deny_private_ranges refuse RFC1918, loopback, link-local, 169.254.169.254, fc00::/7 and fe80::/10 unless a grant names that IP/CIDR literally
     // vhco:step private private_ip -- a literal private address needs a grant that names it
-    if let Some(ip) = target_ip(&target, intent.capability) {
-        if policy.network.deny_private_ranges
-            && is_private(ip)
-            && !names_ip_literally(policy, intent.capability, ip, &target)
-        {
-            return permit(
-                Decision::Denied,
-                format!(
-                    "{ip} is a private/loopback/link-local address; grant it literally (e.g. \"{}\") to allow it",
-                    target.display
-                ),
-            );
-        }
+    if let Some(ip) = target_ip(&target, intent.capability)
+        && policy.network.deny_private_ranges
+        && is_private(ip)
+        && !names_ip_literally(policy, intent.capability, ip, &target)
+    {
+        return permit(
+            Decision::Denied,
+            format!(
+                "{ip} is a private/loopback/link-local address; grant it literally (e.g. \"{}\") to allow it",
+                target.display
+            ),
+        );
     }
 
     // vhco:todo check_access -- a grant matches only when capability and selector match and, if the grant lists `access`, the intent's verb is listed; absent access = every verb of the capability
@@ -190,10 +189,10 @@ fn selector_matches(
     }
     if cap.is_path_like() {
         let norm = normalize_path(base_dir, selector);
-        if let Some(prefix) = norm.strip_suffix("/**") {
-            if target.key == prefix {
-                return true;
-            }
+        if let Some(prefix) = norm.strip_suffix("/**")
+            && target.key == prefix
+        {
+            return true;
         }
         return globset::GlobBuilder::new(&norm)
             .literal_separator(true)

@@ -77,7 +77,7 @@ pub enum PolicySource {
     /// `--policy PATH`.
     File(String),
     /// Library host: an already-parsed policy.
-    Given(Policy),
+    Given(Box<Policy>),
 }
 
 /// Builder for a runtime over one bundle.
@@ -121,7 +121,7 @@ impl RuntimeBuilder {
     }
 
     pub fn policy(mut self, policy: Policy) -> Self {
-        self.policy = PolicySource::Given(policy);
+        self.policy = PolicySource::Given(Box::new(policy));
         self
     }
 
@@ -146,7 +146,7 @@ impl RuntimeBuilder {
         let parser = CapyParser::new()?;
         let program = Arc::new(compile_program(&bundle, &parser)?);
         let policy = match self.policy {
-            PolicySource::Given(p) => p,
+            PolicySource::Given(p) => *p,
             PolicySource::Discover if self.entry.is_none() => Policy::deny_all(&bundle.root),
             PolicySource::Discover => load_policy(
                 &PolicyLocator {

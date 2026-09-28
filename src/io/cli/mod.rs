@@ -271,7 +271,7 @@ fn spec_line(label: &str, spec: Option<&ValueSpec>, description: Option<&str>, o
         None => out.push_str(&format!("{}{DASH}\n", pad(label, 9))),
         Some(s) => {
             out.push_str(
-                &format!(
+                format!(
                     "{}{}{}\n",
                     pad(label, 8),
                     pad(&s.name(), 9),
@@ -286,10 +286,10 @@ fn spec_line(label: &str, spec: Option<&ValueSpec>, description: Option<&str>, o
                     out.push_str("  (open: extra fields allowed)\n");
                 }
             }
-            if let ValueSpec::List(inner) = s {
-                if let ValueSpec::Object { fields, .. } = inner.as_ref() {
-                    field_rows(fields, 2, out);
-                }
+            if let ValueSpec::List(inner) = s
+                && let ValueSpec::Object { fields, .. } = inner.as_ref()
+            {
+                field_rows(fields, 2, out);
             }
         }
     }

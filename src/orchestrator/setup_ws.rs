@@ -186,7 +186,7 @@ async fn pump(
             let frame = match &ev.envelope {
                 Envelope::Data(d) => WsFrame::data(&r, ev.seq, d.data.clone()),
                 Envelope::Result(c) => WsFrame::result(&r, c.clone()),
-                Envelope::Error { error, .. } => WsFrame::error(&r, error.clone()),
+                Envelope::Error { error, .. } => WsFrame::error(&r, (**error).clone()),
             };
             done |= frame.is_terminal();
             if out.send(frame).await.is_err() {

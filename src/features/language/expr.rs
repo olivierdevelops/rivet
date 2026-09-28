@@ -152,7 +152,8 @@ fn lex(text: &str, map: &SpanMap) -> RivetResult<Vec<Token>> {
             let len: usize = rest
                 .char_indices()
                 .find(|(_, ch)| {
-                    !(ch.is_alphanumeric() || *ch == '_' || (!ch.is_ascii() && !ch.is_whitespace()))
+                    // identifier characters: letters, digits, `_` and any non-ASCII, non-space rune
+                    (ch.is_whitespace() || ch.is_ascii()) && *ch != '_' && !ch.is_alphanumeric()
                 })
                 .map(|(k, _)| k)
                 .unwrap_or(rest.len());

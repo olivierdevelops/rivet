@@ -113,7 +113,7 @@ fn sent_error(what: &str, e: impl std::fmt::Display) -> RivetError {
 /// One HTTP/3 request at the checked address in `wire.target`.
 pub async fn send(wire: &HttpWire) -> RivetResult<H3Response> {
     // HTTP/3 needs https and a TCP-style host:port target (the same checked address, dialed over UDP)
-    let url = url::Url::parse(&wire.url).map_err(|e| unavailable(e))?;
+    let url = url::Url::parse(&wire.url).map_err(unavailable)?;
     if url.scheme() != "https" {
         return Err(unavailable("HTTP/3 needs an https:// URL"));
     }
@@ -155,7 +155,7 @@ pub async fn send(wire: &HttpWire) -> RivetResult<H3Response> {
     // QUIC handshake to exactly the checked address, bounded by H3_HANDSHAKE_TIMEOUT; no answer or ALPN refusal => http.version_unavailable (request_sent=false)
     let connecting = endpoint
         .connect_with(config, peer, &name)
-        .map_err(|e| unavailable(e))?;
+        .map_err(unavailable)?;
     let conn = match tokio::time::timeout(H3_HANDSHAKE_TIMEOUT, connecting).await {
         Err(_) => {
             endpoint.close(0u32.into(), b"handshake timeout");

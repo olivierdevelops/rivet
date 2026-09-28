@@ -208,14 +208,9 @@ pub async fn http_server() -> (u16, Arc<HttpStats>) {
                             .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n")
                             .await;
                         let chunk = format!("data: {{\"pad\":\"{}\"}}\n\n", "x".repeat(1000));
-                        loop {
-                            match sock.write_all(chunk.as_bytes()).await {
-                                Ok(()) => {
-                                    st.streamed_bytes
-                                        .fetch_add(chunk.len() as u64, Ordering::SeqCst);
-                                }
-                                Err(_) => break,
-                            }
+                        while let Ok(()) = sock.write_all(chunk.as_bytes()).await {
+                            st.streamed_bytes
+                                .fetch_add(chunk.len() as u64, Ordering::SeqCst);
                         }
                         st.stream_closed.fetch_add(1, Ordering::SeqCst);
                         return;

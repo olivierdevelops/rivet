@@ -182,14 +182,14 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
             };
             for f in forms {
                 for o in f.options_named("auth") {
-                    if let Some(name) = o.first_word() {
-                        if program.auth_profile(name).is_none() {
-                            errors.push(RivetError::syntax(
-                                "check.unknown_auth_profile",
-                                format!("unknown auth profile `{name}`"),
-                                Some(o.span.clone()),
-                            ));
-                        }
+                    if let Some(name) = o.first_word()
+                        && program.auth_profile(name).is_none()
+                    {
+                        errors.push(RivetError::syntax(
+                            "check.unknown_auth_profile",
+                            format!("unknown auth profile `{name}`"),
+                            Some(o.span.clone()),
+                        ));
                     }
                 }
                 let grpc_connector = (f.kind == EffectKind::Grpc)
@@ -214,14 +214,14 @@ fn check_references(program: &CompiledProgram, errors: &mut Vec<RivetError>) {
     }
     for c in &program.connectors {
         for o in c.options.iter().filter(|o| o.key == "auth") {
-            if let Some(name) = o.first_word() {
-                if program.auth_profile(name).is_none() {
-                    errors.push(RivetError::syntax(
-                        "check.unknown_auth_profile",
-                        format!("unknown auth profile `{name}`"),
-                        Some(o.span.clone()),
-                    ));
-                }
+            if let Some(name) = o.first_word()
+                && program.auth_profile(name).is_none()
+            {
+                errors.push(RivetError::syntax(
+                    "check.unknown_auth_profile",
+                    format!("unknown auth profile `{name}`"),
+                    Some(o.span.clone()),
+                ));
             }
         }
     }

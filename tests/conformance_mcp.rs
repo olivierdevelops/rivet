@@ -15,6 +15,7 @@
 //! Stdio fixtures run inside the OS sandbox (Seatbelt on macOS, Landlock on
 //! Linux). Where the platform has no sandbox backend the stdio tests assert the
 //! typed `unsupported.sandbox_backend` refusal instead.
+#![allow(clippy::result_large_err)]
 
 use axum::Router;
 use axum::body::Bytes;

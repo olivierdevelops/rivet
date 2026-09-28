@@ -9,9 +9,12 @@ use tokio::sync::Notify;
 const RECENT: usize = 1024;
 
 // vhco:infra request_control satisfies RequestControl
+/// (owner principal, cancellation signal, cancelling) per running request.
+type Running = HashMap<String, (String, Arc<Notify>, bool)>;
+
 #[derive(Default)]
 pub struct RunningRequests {
-    running: Mutex<HashMap<String, (String, Arc<Notify>, bool)>>,
+    running: Mutex<Running>,
     recent: Mutex<Vec<(String, RequestState)>>,
 }
 

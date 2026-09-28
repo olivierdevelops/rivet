@@ -383,7 +383,7 @@ pub fn terminal_envelope(
             request_id: request_id.to_string(),
             trace_id: trace_id.to_string(),
             seq: 0,
-            error,
+            error: Box::new(error),
         },
     }
 }

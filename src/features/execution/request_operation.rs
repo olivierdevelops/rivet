@@ -201,33 +201,33 @@ fn check_param(p: &ParamSpec, v: Value) -> RivetResult<Value> {
         Value::Float(f) => Some(*f),
         _ => None,
     };
-    if let (Some(n), Some(min)) = (num, p.min) {
-        if n < min {
-            return Err(RivetError::validation(
-                "validation.min",
-                format!("parameter `{}` must be ≥ {min}", p.name),
-            ));
-        }
+    if let (Some(n), Some(min)) = (num, p.min)
+        && n < min
+    {
+        return Err(RivetError::validation(
+            "validation.min",
+            format!("parameter `{}` must be ≥ {min}", p.name),
+        ));
     }
-    if let (Some(n), Some(max)) = (num, p.max) {
-        if n > max {
-            return Err(RivetError::validation(
-                "validation.max",
-                format!("parameter `{}` must be ≤ {max}", p.name),
-            ));
-        }
+    if let (Some(n), Some(max)) = (num, p.max)
+        && n > max
+    {
+        return Err(RivetError::validation(
+            "validation.max",
+            format!("parameter `{}` must be ≤ {max}", p.name),
+        ));
     }
-    if let Some(allowed) = &p.enum_values {
-        if !allowed.contains(&v) {
-            return Err(RivetError::validation(
-                "validation.enum",
-                format!(
-                    "parameter `{}` must be one of {}",
-                    p.name,
-                    Value::List(allowed.clone())
-                ),
-            ));
-        }
+    if let Some(allowed) = &p.enum_values
+        && !allowed.contains(&v)
+    {
+        return Err(RivetError::validation(
+            "validation.enum",
+            format!(
+                "parameter `{}` must be one of {}",
+                p.name,
+                Value::List(allowed.clone())
+            ),
+        ));
     }
     Ok(v)
 }

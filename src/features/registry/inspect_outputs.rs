@@ -36,13 +36,13 @@ pub fn inspect_outputs(
         include_private: false,
     })?;
     // vhco:error unknown_id -- selected id is absent or private => not_found (exit 4) returns
-    if let Some(id) = ids.first() {
-        if catalog.entries.is_empty() {
-            return Err(RivetError::not_found(
-                "not_found.operation",
-                format!("no operation `{id}`"),
-            ));
-        }
+    if let Some(id) = ids.first()
+        && catalog.entries.is_empty()
+    {
+        return Err(RivetError::not_found(
+            "not_found.operation",
+            format!("no operation `{id}`"),
+        ));
     }
     // vhco:todo shape_report -- one OutputReport per operation ordered by id: output spec (type, description, fields), emits|null, receives|null and declared errors
     let mut reports: Vec<OutputReport> = catalog

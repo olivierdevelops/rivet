@@ -1,4 +1,5 @@
 //! T-01 — language: compilation, header rules, duplicates, prefix-call and cycle checks.
+#![allow(clippy::result_large_err)]
 
 use rivet::domain::RivetResult;
 use rivet::domain::ir::CompiledProgram;

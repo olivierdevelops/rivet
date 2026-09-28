@@ -103,16 +103,17 @@ impl Parser for CapyParser {
                     .push(convert_diagnostic(d, file, &self.keywords()));
             }
         }
-        if let Some(errors) = json.pointer("/tree/errors").and_then(Json::as_array) {
-            if tree.diagnostics.is_empty() && !errors.is_empty() {
-                for e in errors {
-                    tree.diagnostics.push(SyntaxDiagnostic {
-                        code: "syntax.unparsed".into(),
-                        message: "this region did not parse".into(),
-                        span: span_of(e.get("span"), &file.path).unwrap_or_default(),
-                        help: None,
-                    });
-                }
+        if let Some(errors) = json.pointer("/tree/errors").and_then(Json::as_array)
+            && tree.diagnostics.is_empty()
+            && !errors.is_empty()
+        {
+            for e in errors {
+                tree.diagnostics.push(SyntaxDiagnostic {
+                    code: "syntax.unparsed".into(),
+                    message: "this region did not parse".into(),
+                    span: span_of(e.get("span"), &file.path).unwrap_or_default(),
+                    help: None,
+                });
             }
         }
         tree.diagnostics.extend(indentation_diagnostics(file));

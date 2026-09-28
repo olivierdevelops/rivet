@@ -81,7 +81,7 @@ pub enum Envelope {
         request_id: String,
         trace_id: String,
         seq: u64,
-        error: RivetError,
+        error: Box<RivetError>,
     },
 }
 

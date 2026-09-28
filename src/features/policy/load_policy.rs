@@ -263,16 +263,15 @@ fn validate_selector(cap: Capability, target: &str, pointer: &str) -> RivetResul
     if target.trim().is_empty() {
         return Err(invalid(pointer, "empty target"));
     }
-    if cap == Capability::Network || cap == Capability::Listen {
-        if !target.contains("://")
-            && target.parse::<std::net::IpAddr>().is_err()
-            && !target.contains('/')
-        {
-            return Err(invalid(
-                pointer,
-                format!("`{target}` must be a URL such as https://host:443, an IP or a CIDR"),
-            ));
-        }
+    if (cap == Capability::Network || cap == Capability::Listen)
+        && !target.contains("://")
+        && target.parse::<std::net::IpAddr>().is_err()
+        && !target.contains('/')
+    {
+        return Err(invalid(
+            pointer,
+            format!("`{target}` must be a URL such as https://host:443, an IP or a CIDR"),
+        ));
     }
     if cap.is_path_like() && (target.contains('\0')) {
         return Err(invalid(pointer, "path contains a NUL byte"));
