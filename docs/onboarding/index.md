@@ -4,8 +4,8 @@ title: "Rivet onboarding"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 3
+last_updated: 2026-09-29
+document_revision: 4
 authors: [Claude, Codex]
 owner: Project maintainer
 systems: [Rivet]
@@ -26,7 +26,7 @@ tags: [rivet, index]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, execution, policy, transports
@@ -60,6 +60,7 @@ Naming: `onb-<year>-<nnnn>-<slug>.md`, document type `onboarding`.
 
 ## Recently added or updated
 
+- 2026-09-29: ONB-2026-0001 revision 4 for 0.2.0 (PLAN-2026-0002 D-39). It covers the workspace and Cargo features, `cbindgen` and a C compiler, Python-only editor tooling (Node is not needed), building librivet before `cargo test` (TRBL-2026-0006) and the new suites (476 tests pass). It also covers reading CI failures from annotations (TRBL-2026-0007) and grammar regeneration. The Perch tasks are updated. Development is supported on macOS and Linux only.
 - 2026-09-28: `perch install` now builds and installs globally with `bman add`.
 
 - 2026-09-28: ONB-2026-0001 now documents the complete Perch development command set.
@@ -76,7 +77,7 @@ authoritative.
 
 ## Unresolved work
 
-Add a Linux/Windows setup section once CI results on those platforms are recorded.
+Linux is a supported development platform (CI green on ubuntu-latest); Windows is not supported in 0.2.0 (INC-2026-0011).
 
 ## Reading order
 
@@ -95,3 +96,4 @@ Add a Linux/Windows setup section once CI results on those platforms are recorde
 | 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
 | 2 | 2026-09-28 | Codex | ONB-2026-0001 now documents the complete Perch development command set. |
 | 1 | 2026-09-28 | Claude | Created. |
+| 4 | 2026-09-29 | Claude | Recorded ONB-2026-0001 revision 4 (0.2.0 setup, D-39). |
