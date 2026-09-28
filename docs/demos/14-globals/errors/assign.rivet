@@ -1,0 +1,8 @@
+global page_size = 50
+
+operation demo.bump
+    description "A global is read-only inside every operation."
+    output integer description "Never returned: the bundle does not load."
+    page_size = page_size + 1
+    return page_size
+end

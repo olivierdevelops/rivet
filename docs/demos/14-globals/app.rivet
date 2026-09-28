@@ -1,0 +1,56 @@
+# Global constants: one place for the values every operation shares.
+# Evaluated once at load, read-only everywhere (PROP-2026-0002 UC-04, R7-R9).
+global api        = "https://api.example.com"
+global users_url  = "${api}/users"
+global page_size  = 50
+global retry_on   = [429, 503]
+global headers    = {accept: "application/json"}
+global data_dir   = "./data"
+global max_page   = page_size * 2
+
+operation users.get
+    name "Get a user"
+    description "Read one user; the URL is built from the users_url global."
+    param id integer required min 1 description "The user ID."
+    output json description "The user object returned by the API."
+    r = http get "${users_url}/${id}.json"
+        header "accept" headers.accept
+        decode json
+    end
+    return r.body
+end
+
+operation users.page
+    name "List a page of users"
+    description "Read the first page; every part of the URL comes from globals, so the target is exact."
+    output json description "The page object returned by the API."
+    r = http get "${users_url}/index.json?limit=${page_size}"
+        header "accept" headers.accept
+        decode json
+    end
+    return r.body
+end
+
+operation catalog.read
+    name "Read the local catalog"
+    description "Read a JSON file whose directory is the data_dir global."
+    output json description "The decoded content of data/catalog.json."
+    value = file read "${data_dir}/catalog.json" as json
+    return value
+end
+
+operation settings.show
+    name "Show the shared settings"
+    description "Return the globals as seen from inside an operation (pure, no I/O)."
+    param page integer default 1 description "Page number combined with the page_size global."
+    output object description "The global values and two values computed from them."
+        field api text required description "The api global."
+        field users_url text required description "The users_url global, built with interpolation."
+        field page_size integer required description "The page_size global."
+        field first_retry integer required description "The first entry of the retry_on list global."
+        field accept text required description "The accept key of the headers object global."
+        field max_page integer required description "The max_page global (page_size * 2)."
+        field offset integer required description "(page - 1) * page_size, mixing a param and a global."
+    end
+    return {api: api, users_url: users_url, page_size: page_size, first_retry: retry_on.0, accept: headers.accept, max_page: max_page, offset: (page - 1) * page_size}
+end

@@ -1,0 +1,38 @@
+# The bundle the 15-ffi demo loads from C and Python through librivet.
+# Pure operations only: no policy grant is needed (deny-by-default is fine).
+
+operation demo.add
+    name "Add two integers"
+    description "Add two signed integers and return their sum."
+    param a integer required description "First operand."
+    param b integer default 0 description "Second operand; defaults to zero."
+    output integer description "Sum of a and b."
+    return a + b
+end
+
+operation events.count
+    name "Emit a finite sequence"
+    description "Emit three values, then return how many were emitted."
+    output object description "Summary returned after the last item."
+        field count integer required description "Number of items emitted."
+    end
+    emits integer description "One of 1, 2, 3, in order."
+    for value in [1, 2, 3]
+        emit value
+    end
+    return {count: 3}
+end
+
+operation chat.echo
+    name "Echo live input"
+    description "Emit each received text item back, then return how many were echoed."
+    output integer description "Number of items echoed."
+    emits text description "The received item."
+    receives text description "One line of chat."
+    count = 0
+    for item in incoming
+        emit item
+        count = count + 1
+    end
+    return count
+end

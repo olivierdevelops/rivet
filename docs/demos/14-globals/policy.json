@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_network", "targets": ["https://api.example.com:443"]},
+    {"capability": "allow_read", "targets": ["./data/catalog.json"]}
+  ]
+}

@@ -1,0 +1,2 @@
+global users_url = "${api}/users"
+global api = "https://api.example.com"

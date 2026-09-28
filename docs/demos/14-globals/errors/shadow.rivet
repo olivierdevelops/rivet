@@ -1,0 +1,8 @@
+global page_size = 50
+
+operation demo.page
+    description "A parameter may not reuse a global name."
+    param page_size integer default 10 description "Clashes with the global."
+    output integer description "Never returned: the bundle does not load."
+    return page_size
+end
