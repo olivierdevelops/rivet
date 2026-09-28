@@ -5,7 +5,7 @@ document_type: decision
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 approval:
@@ -68,6 +68,14 @@ ensure plan contains all docs documentation to add"*.
  PLAN        PLAN-2026-0002 is the execution ledger for v0.2.0
 ```
 
+### Amendment (revision 2, 2026-09-28): file modules
+
+The maintainer added UQ-09 (*"we need to be able to execute from path to load the file as an object with many
+operations"*) and answered the design questions: work **inside `.rivet` (import)** and in **host APIs
+(Rust / C / Python)**, with names **namespaced by alias** and the **loader's policy only**. PROP-2026-0002
+revision 3 adds R19–R24 (UC-10, UC-11). This amendment approves them as part of v0.2.0 (PLAN-2026-0002
+increment P2f). CLI run-from-path and shebang execution were not selected and stay out of scope.
+
 ## Rationale
 
 The design reuses the 0.1.0 dispatcher, policy and adapters. The only breaking change (the envelope) is allowed
@@ -114,4 +122,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Amendment: file modules (UQ-09, R19–R24) approved with the maintainer's answers (import + host APIs, namespaced by alias, loader's policy only). |
 | 1 | 2026-09-28 | Claude | Recorded the approval of PROP-2026-0002, its contract delta and the resolutions of Q-01…Q-06. |

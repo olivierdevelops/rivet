@@ -5,7 +5,7 @@ document_type: proposal
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -19,20 +19,24 @@ audience: [maintainers, developers, reviewers]
 scope: >-
   Design for Rivet 0.2.0: one output envelope and one input envelope on every surface, an opt-in pretty JSON
   format, immutable top-level global constants, Rivet as a dependency of other Rust projects, a C ABI shared and
-  static library, and syntax highlighting. Non-goals: mutable or shared global state, tree-sitter grammars,
+  static library, syntax highlighting, and file modules (`import` in `.rivet`, and loading a file as an object
+  of operations from Rust, C and Python). Non-goals: mutable or shared global state, tree-sitter grammars,
   editor marketplace publishing, language bindings beyond examples, and changing exit codes or HTTP statuses.
 reason: The maintainer asked for these capabilities after v0.1.0 (UQ-01…UQ-08, 2026-09-28).
 dependencies: [PROP-2026-0001, PLAN-2026-0001, DOCUMENTATION.md, AGENTS.md]
 related_documents: [PROP-2026-0001, REL-0.1.0, ADR-0001, ADR-0002, API-2026-0001, API-2026-0004, MAN-2026-0003]
 supersedes: null
 superseded_by: null
-tags: [rivet, envelope, json, globals, library, ffi, c-abi, syntax-highlighting]
+tags: [rivet, envelope, json, globals, library, ffi, c-abi, syntax-highlighting, modules, import]
 confidentiality: internal
 review_cycle: on-design-change
 next_review_date: 2026-10-28
 ---
 
 # Standard envelopes, pretty JSON, global constants, embeddable library, C ABI and syntax highlighting
+
+> **Revision 3 amendment (2026-09-28):** the approved scope now also includes file modules. They add UQ-09,
+> G-08, R19–R24, UC-10, UC-11, C-14, C-15, F-19–F-24 and T-16–T-20 (ADR-0004 revision 2).
 
 > **Status:** Approved
 > **Created:** 2026-09-28
@@ -68,6 +72,7 @@ This proposal makes Rivet 0.2.0 regular and embeddable.
   app.rivet:  global api = "https://api.example.com"      ← immutable, shared by every operation
   editors:    rivet.tmLanguage.json + VS Code extension    ← highlighting from the real keyword table
   terminal:   rivet highlight app.rivet                    ← exact tokens from the Capy parser
+  modules:    import "./users.rivet" as users  ·  (users.get {id: 1})  ·  rt.load("./users.rivet")?.call("get", …)
 ```
 
 ## Decision Requested
@@ -88,6 +93,9 @@ Approve the following design as the scope of a new plan (PLAN-2026-0002) targeti
    generated `rivet.h` and a JSON-in/JSON-out API.
 7. **Syntax highlighting**: a generated TextMate grammar, a local VS Code extension, `rivet highlight`, and a
    `rivet::highlight` tokenizer.
+8. **File modules** (revision 3): `import "PATH" as ALIAS` in `.rivet`, and `Runtime::load` / `rivet_load`
+   return a module object whose operations are namespaced `ALIAS.ID`. Loaded modules run under the loader's
+   policy only.
 
 Approval does **not** authorize:
 - publishing to crates.io, which needs the owner to publish Capy under a free name first (gate G-PUB);
@@ -107,6 +115,7 @@ Approval does **not** authorize:
 | UQ-06 | "i prefer input {"operation", ..., "data": {...}, ...}" (the example also showed `error`) | Conversation, 2026-09-28; clarified: drop `error` from input | `operation` replaces `id`, and `data` replaces `params`. Input has no `error`. |
 | UQ-07 | "also allow global vars for better reuse of vars" | Conversation, 2026-09-28; clarified: immutable constants | Top-level read-only values shared by the file's operations. |
 | UQ-08 | "also so shared static library with c abi that can be imported through ffi" | Conversation, 2026-09-28 | Both a shared (`.so`/`.dylib`/`.dll`) and a static (`.a`/`.lib`) library with a C header. |
+| UQ-09 | "also we need to be able to execute from path to load the file as an object with many operations" | Conversation, 2026-09-28; clarified: inside `.rivet` (import) and host APIs (Rust, C, Python); names namespaced by alias; loader's policy only | A file is a module: loading it by path gives an object whose members are its operations. CLI run-from-path was not selected. |
 
 ## Problem and Evidence
 
@@ -132,6 +141,7 @@ Approval does **not** authorize:
 | P-05 Library is not a clean dependency | Rust hosts | `src/lib.rs` makes all five internal modules `pub`; there are no Cargo features, so every dependent builds clap and axum; the crate name `rivet` on crates.io is owned by another project; `capy-core` is a git dependency, and crates.io `capy-core` is a different project | No stable API, heavy builds, not publishable | UQ-02 |
 | P-06 No C ABI | C, C++, Python, Go, Node, Swift hosts | No `cdylib`/`staticlib` target, no header | Must shell out to the binary | UQ-08 |
 | P-07 Repetition across operations | Script authors | 0.1.0 has no top-level value declarations (the grammar's top-level forms are `operation`, `pipeline`, `connector`, `auth`) | Drift between copies; URLs only visible per operation | UQ-07 |
+| P-08 Single-file bundles | Script authors, Rust/C/Python hosts | 0.1.0 has no import form (limitation L1 in MAN-2026-0001); a runtime is built from exactly one entry file; `io --include-bootstrap` prints a `(+ imports)` placeholder | Large catalogs live in one file; hosts cannot load several files as separate objects | UQ-09 |
 
 ## Goals and Non-Goals
 
@@ -144,6 +154,7 @@ Approval does **not** authorize:
 | G-05 | Add Rivet to any Rust project with one Cargo line | P-05 | Facade API, Cargo features, `cli` opt-in, package rename | A fresh crate builds `use rivet::Runtime` with `default-features = false` |
 | G-06 | Call Rivet from any language with a C FFI | P-06 | `librivet` cdylib + staticlib + `rivet.h` | C and Python examples run from the release artifacts |
 | G-07 | Coloured `.rivet` sources | P-01 | Generated TextMate grammar and VS Code extension; `rivet highlight` | Every REF-2026-0002 example is tokenized with no unknown keywords |
+| G-08 | Split catalogs across files and load a file as an object | P-08 | `import … as ALIAS`; `Runtime::load`/`rivet_load` return a module object; `ALIAS.ID` namespacing; one policy | `users.rivet` loaded as `users` exposes `users.get`; `rivet io` covers every loaded file |
 
 Explicit non-goals and boundaries:
 - no mutable globals and no state shared between requests (G-04 is read-only by design);
@@ -151,7 +162,9 @@ Explicit non-goals and boundaries:
 - no tree-sitter grammar (possible follow-up) and no Marketplace or Open VSX publishing;
 - no official Python, Go or Node packages (only examples over the C ABI);
 - no change to exit codes, HTTP status codes, error codes, policy semantics or the MCP JSON-RPC framing;
-- no JSON colourization (open question Q-03).
+- no JSON colourization (open question Q-03);
+- no remote or URL imports, package registry, hot reload or unload of modules, and no CLI run-from-path or
+  shebang execution (not selected for UQ-09).
 
 ## Proposed User Journey
 
@@ -195,6 +208,12 @@ Explicit non-goals and boundaries:
 | R16 | One keyword table, derived from `rivet.capy`, generates `editors/rivet.tmLanguage.json`. A local VS Code extension (`editors/vscode`) associates `.rivet` files, defines `#` comments, brackets and `end`-based indentation, and is packaged as a `.vsix` | UX / docs | UQ-01 | Drift test: grammar keywords == `rivet.capy` literals; snapshot tests over all REF examples | G-07 |
 | R17 | `rivet highlight FILE [--format ansi\|html\|json]` and `rivet::highlight::tokens(src)` emit tokens from real parser spans (keyword, option, type, effect, string, interpolation, number, comment, operation id, global, variable, operator) | CLI / API | UQ-01 | Golden outputs; every token span lies inside the source | G-07 |
 | R18 | Docs follow: API-2026-0001…0005, MAN-2026-0003/0004/0007, a new FFI manual, a migration guide (MIG) for the envelope change, demos `14-globals`, `15-ffi`, `16-editor`, and all 0.1.0 demos re-verified on the new envelopes | docs / release | DOCUMENTATION §§29–31 | T-31 check_docs 0 problems; every demo executed | G-01…G-07 |
+| R19 | Top-level `import "PATH" as ALIAS [public]` in `.rivet`, before the first declaration. PATH is a string literal relative to the importing file and must resolve inside the runtime root (no `..` escape, no symlinks); ALIAS is an identifier. Imported files are bootstrap reads and are listed by `rivet io --include-bootstrap` (replacing the `(+ imports)` placeholder) | functional / language | UQ-09 | `rivet check` compiles a bundle across files; every imported file appears as a bootstrap site | G-08 |
+| R20 | A module's public operations are addressed `ALIAS.ID` and callable as `(ALIAS.ID {…})` or `(request "ALIAS.ID" {…})`. Its private operations, globals, connectors and auth profiles stay inside the module. Imported operations are internal to the importing bundle unless the import is marked `public`, which adds them to the catalog (CLI, HTTP, MCP, WS, polling, library, FFI). One file imported under two aliases compiles once. Nested imports namespace transitively (`a.b.get`). Effect paths inside a module resolve against the runtime root | functional | UQ-09 (namespaced by alias) | Visibility and namespacing tests; `rivet list` shows only `public` imports | G-08 |
+| R21 | Import errors are reported at `rivet check`/load time with spans in the importing file: `syntax.import` (malformed or after a declaration), `not_found.import` (exit 4), `permission.import_outside_root` (exit 3), `check.import_cycle` (with the cycle path), `check.import_duplicate` (alias reused), `check.import_collision` (a namespaced ID collides with a local ID), `limit.imports` (more than 256 files or depth over 16) | functional / UX | UQ-09 | One negative test per code | G-08 |
+| R22 | Rust host API: `Runtime::load(path)` and `Runtime::load_as(path, alias)` (default alias = file stem) return a `Module` with `alias()`, `operations()`, `describe(id)`, `outputs(id)`, `call(id, data) -> ResponseEnvelope`, `stream(id, data)` and `duplex(id, data)`. `Runtime::builder().build()` may start with no entry file. Loading swaps in a new immutable catalog snapshot; in-flight requests keep their snapshot. Loaded modules are public in the runtime's catalog under their alias | API | UQ-09 (host APIs) | Library tests: load two files, call both, concurrent load while requests run | G-08 |
+| R23 | C ABI: `rivet_load(rt, path, alias_or_null, &module, &error_json)`, `rivet_module_operations(module)` (JSON list), `rivet_module_call(module, id, data_json)` (envelope), `rivet_module_call_start(module, id, data_json)` (a `RivetCall`), `rivet_module_free(module)`. The Python example wraps a module as an object whose attributes are operations (`users.get(id=42)`) | API | UQ-09 (host APIs) | C and Python module examples run | G-06, G-08 |
+| R24 | Loaded modules run under the **loader's policy only** (the entry bundle's `policy.json`, `--policy`, or the host `policy`/`ceiling`). A `policy.json` beside an imported or loaded file is ignored with the warning `check.module_policy_ignored`. `rivet io`, `policy generate`, `policy explain` and `rivet graph` cover every loaded file, with module source spans (`users.rivet:12`) and namespaced operation IDs | security | UQ-09 (loader's policy only) | Manifest and policy tests across modules; the warning test | G-08 |
 
 ## Use Cases
 
@@ -211,6 +230,8 @@ Explicit non-goals and boundaries:
 | UC-07 | Edit `.rivet` with colours | Script author | VS Code (or any TextMate host) | Extension installed from `.vsix` | `.rivet` file | Coloured tokens, comment toggling, bracket matching | Unknown future keyword → drift test fails in CI, not in the editor | G-07 | R16 | T-13 |
 | UC-08 | Highlight on terminal or HTML | Author, docs pipeline | `rivet highlight` / `rivet::highlight` | — | Source | ANSI, HTML or JSON tokens | Syntax error → tokens up to the error plus the diagnostic (exit 2) | G-07 | R17 | T-14 |
 | UC-09 | Migrate a 0.1.0 client | Existing client | Any surface | 0.1.0 client code | `{id, params}` | Works in 0.2.x with deprecation signals | Both `id` and `operation` → validation.input_envelope | G-02 | R5 | T-15 |
+| UC-10 | Split a catalog across files with `import` | Script author | `.rivet` + `rivet check`/`request` | Files under the runtime root | `import "./users.rivet" as users` | `users.*` callable inside the bundle; `public` imports on every surface; `rivet io` covers modules | Missing file, outside root, cycle, duplicate alias, collision, limits → typed errors at check | G-08 | R19–R21, R24 | T-16, T-17, T-20 |
+| UC-11 | Load a file as an object from a host | Rust / C / Python developer | `rt.load(path)`, `rivet_load`, Python wrapper | Runtime with a policy | Path (+ optional alias) | A module object; `call`, `operations`, streams | Same load errors as envelopes/`Err`; calls denied by the loader's policy | G-06, G-08 | R22–R24 | T-18, T-19 |
 
 ### UC-01 — Call an operation (normal and error journeys)
 
@@ -512,6 +533,112 @@ $ rivet highlight app.rivet --format html > app.html      # <span class="rv-keyw
 $ code --install-extension editors/vscode/rivet-0.2.0.vsix
 ```
 
+### UC-10 — `import` inside `.rivet` (revision 3)
+
+```rivet
+# users.rivet (a module: its IDs are short; the importer namespaces them)
+global api = "https://api.example.com"
+
+operation get
+    param id integer required min 1
+    output json
+    r = http get "${api}/users/${id}"
+        decode json
+    end
+    return r.body
+end
+
+operation list
+    output json
+    return (get {id: 1})              # calls inside a module use the module's own IDs
+end
+```
+
+```rivet
+# app.rivet (the entry bundle)
+import "./users.rivet" as users            # internal to this bundle
+import "./billing.rivet" as billing public # also listed on every surface as billing.*
+
+operation report.user
+    param id integer required
+    output json
+    u = (users.get {id: id})                # same as (request "users.get" {id: id})
+    inv = (billing.invoices {user: id})
+    return {user: u, invoices: inv}
+end
+```
+
+```text
+ app.rivet ──import──▶ users.rivet ──(its own imports…)
+     │         └─────▶ billing.rivet (public)
+     ▼
+ resolve (relative to importing file, inside runtime root) ─▶ compile each file once ─▶ namespace IDs by alias
+     ─▶ one immutable catalog: report.user · users.get* · users.list* · billing.invoices · billing.pay
+                                   (* internal: callable from app.rivet, not listed on surfaces)
+     ─▶ one policy (the loader's) ─▶ one manifest covering every file
+```
+
+```text
+$ rivet --file app.rivet list
+ID                NAME              DESCRIPTION
+billing.invoices  billing.invoices  …
+billing.pay       billing.pay       …
+report.user       report.user       …
+
+$ rivet --file app.rivet io --by target
+TARGET                              KIND     ACCESS       KNOWLEDGE  OPERATIONS
+https://api.example.com/users/{id}  network  connect GET  exact      users.get (users.rivet:6)
+
+$ rivet --file app.rivet io --include-bootstrap | grep bootstrap
+bootstrap  file  read  ./app.rivet      exact  load
+bootstrap  file  read  ./users.rivet    exact  load
+bootstrap  file  read  ./billing.rivet  exact  load
+
+$ rivet --file cyc.rivet check
+error[check.import_cycle]: import cycle: cyc.rivet → a.rivet → cyc.rivet
+  --> cyc.rivet:1:1
+$ echo $?
+2
+```
+
+### UC-11 — Load a file as an object from a host (revision 3)
+
+```rust
+// illustrative
+use rivet::{Policy, Runtime};
+let rt = Runtime::builder().policy(Policy::from_file("policy.json")?).root(".").build()?;   // no entry file needed
+let users = rt.load("./users.rivet")?;                  // alias "users" (file stem)
+for op in users.operations() { println!("{} — {:?}", op.id, op.description); }   // get, list
+let out = users.call("get", serde_json::json!({"id": 42})).await;               // ResponseEnvelope
+assert_eq!(out.operation, "users.get");
+let billing = rt.load_as("./lib/billing.rivet", "billing")?;
+let same = rt.call(rivet::InputEnvelope::new("users.get").data(serde_json::json!({"id": 42}))).await;
+```
+
+```c
+/* illustrative */
+RivetModule *users = NULL; char *err = NULL;
+if (rivet_load(rt, "./users.rivet", NULL, &users, &err) != RIVET_OK) { puts(err); rivet_string_free(err); }
+char *ops = rivet_module_operations(users);            /* ["get","list"] with descriptions, as JSON */
+char *out = rivet_module_call(users, "get", "{\"id\":42}");   /* envelope, operation "users.get" */
+rivet_string_free(ops); rivet_string_free(out); rivet_module_free(users);
+```
+
+```python
+# illustrative wrapper shipped as an example (examples/python/rivet.py), not a package
+rt = Rivet(policy_file="policy.json")
+users = rt.load("./users.rivet")        # Module object
+users.get(id=42)                        # → {'request_id': …, 'operation': 'users.get', 'status': 'ok', 'data': {…}, …}
+users.operations()                      # ['get', 'list']
+```
+
+```text
+ host ──load(path)──▶ read file (+ imports) under root ──▶ compile ──▶ namespace by alias ──▶ new catalog snapshot (Arc swap)
+   │                                                                          │
+   │                                         in-flight requests keep the old snapshot; new calls see the module
+   └──module.call("get", data)──▶ dispatcher("users.get") ──▶ loader's policy ──▶ ResponseEnvelope
+```
+
 ## Project Standards Baseline
 
 | Standards Index | Revision | Validated At |
@@ -572,7 +699,7 @@ The dispatcher, error registry, policy broker and effect analysis stay as they a
 edges (input parsing and output shaping), adds one language form (`global`) and adds packaging. Evidence:
 [REL-0.1.0](../../releases/rel-0.1.0-release-notes.md), [SYS-2026-0004](../../system/components/sys-2026-0004-surfaces-and-serve.md).
 
-## Complexity: 3/5
+## Complexity: 3/5 (modules: 4/5)
 
 | Dimension | Rating and reason |
 |---|---|
@@ -583,7 +710,8 @@ edges (input parsing and output shaping), adds one language form (`global`) and 
 | Unknowns | Symbol export of `#[no_mangle]` functions through a workspace crate; static-link system library lists per OS; vhco acceptance of a second crate; the Cargo feature split touching the runtime assembly |
 
 Verdict: the envelope is long but easy (mechanical, and well covered by existing tests). Globals are short and
-moderately hard (scope rules and the static manifest). The feature split and FFI are medium (build and linking
+moderately hard (scope rules and the static manifest). Modules (revision 3) are the hardest part: they touch the compiler and catalog identity
+(namespacing, visibility, cycle detection) and add a runtime catalog swap, so they rate 4/5. The feature split and FFI are medium (build and linking
 unknowns, but a small API). Highlighting is a safe addition. **Difficulty is not effort.**
 
 ## Implementation Design
@@ -617,6 +745,8 @@ unknowns, but a small API). Highlighting is a safe addition. **Difficulty is not
 | C-11 | UC-07 | `editors/gen_grammar` step from `rivet.capy` literals; VS Code extension files; `.vsix` via `vsce package` (dev tool) | Coloured files | Drift test fails the build | R16 | proven |
 | C-12 | UC-08 | `features/language/highlight_source.rs` (pure) over the parser port; CLI `highlight` | ANSI/HTML/JSON | Syntax error → partial tokens + diagnostic | R17 | proven |
 | C-13 | all | Docs, demos, migration guide, re-verification of 0.1.0 demos | — | — | R18 | proven |
+| C-14 | UC-10 | Grammar `import` rule; use case `features/language/resolve_imports.rs` over a source-loader port (bounded, root-confined, no symlinks); compile each file once; namespace IDs; visibility and `public`; bootstrap sites; module spans in diagnostics, manifest and graph | Multi-file catalog | Typed import errors (R21); cycle path in the message | R19–R21, R24 | proven (the loader port exists; the compiler already carries a file per span) |
+| C-15 | UC-11 | `Runtime::load/load_as` (`features/registry/load_module.rs` + catalog snapshot swap); `Module` facade type; FFI `rivet_load`/`rivet_module_*`; Python wrapper example | Module objects | Load errors → `Err`/error envelopes; loader policy denies | R22–R24 | experiment needed (catalog snapshot swap under concurrent requests) |
 
 ### Added, Changed and Removed Contracts
 
@@ -640,6 +770,11 @@ unknowns, but a small API). Highlighting is a safe addition. **Difficulty is not
 | Package | UPDATE | build | `rivet` → `rivet-runtime` (lib name `rivet`, bin name `rivet`) | — | Release | Rust hosts | R10 |
 | `librivet` | CREATE | artifact | `.so/.dylib/.dll`, `.a/.lib`, `rivet.h`, `rivet.pc` | ABI 1 | Release | C hosts | R13 |
 | `rivet.capabilities` | UPDATE | built-in | + `features: [...]`, `abi_version` | — | — | Hosts | R11, R13 |
+| `import` | CREATE | language form | `import "PATH" as ALIAS [public]` | top level, before declarations | Bundle | Scripts | R19, R20 |
+| `ALIAS.ID` operation IDs | CREATE | naming | namespaced module operations | — | Catalog | All surfaces | R20 |
+| `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports`, `check.module_policy_ignored` (warning) | CREATE | error | exit 2 / 4 / 3 / 2 / 2 / 2 / 5 / warning | — | load / check | Authors | R21, R24 |
+| `Runtime::load`, `load_as`, `Module` | CREATE | Rust API | module object | — | Runtime lifetime | Rust hosts | R22 |
+| `rivet_load`, `rivet_module_operations`, `rivet_module_call`, `rivet_module_call_start`, `rivet_module_free` | CREATE | C ABI | module handle | — | Runtime lifetime | C hosts | R23 |
 
 ### C ABI surface (ABI version 1)
 
@@ -661,6 +796,13 @@ char       *rivet_call_finish_input(RivetCall *call);
 void        rivet_call_cancel(RivetCall *call);
 void        rivet_call_free(RivetCall *call);
 char       *rivet_highlight(const char *source, const char *format);        /* tokens as JSON/HTML/ANSI */
+typedef struct RivetModule RivetModule;   /* revision 3: a loaded file as an object; thread-safe */
+RivetStatus rivet_load(RivetRuntime *rt, const char *path, const char *alias_or_null,
+                       RivetModule **out, char **error_json);
+char       *rivet_module_operations(RivetModule *m);                        /* JSON array of summaries */
+char       *rivet_module_call(RivetModule *m, const char *id, const char *data_json);   /* envelope */
+RivetCall  *rivet_module_call_start(RivetModule *m, const char *id, const char *data_json);
+void        rivet_module_free(RivetModule *m);                              /* the module stays loaded in rt */
 void        rivet_string_free(char *s);
 ```
 
@@ -716,8 +858,14 @@ rivet/                       package rivet-runtime  (lib "rivet", bin "rivet" re
 | F-16 | `vhco-contract.json` | UPDATE | see Contract Delta | contract first | AGENTS | all | all | — | `vhco sync` 0 |
 | F-17 | `docs/api/*`, `docs/manuals/*`, `docs/system/*`, new MAN (FFI), `docs/migrations/mig-2026-0001-*`, `docs/demos/{14-globals,15-ffi,16-editor}`, REF-2026-0002 | CREATE / UPDATE | docs | current-state docs, migration guide, demos | DOCUMENTATION §§29–31 | C-13 | R18 | all | T-31, T-30 |
 | F-18 | `.github/workflows/ci.yml`, `commands.perch` | UPDATE | feature matrix, FFI build, `--features cli` for install/build | build | Release | C-08, C-10 | R11, R13 | F-10, F-12 | T-10, T-11 |
+| F-19 | `src/infra/rivet.capy`, `lowering/lower.rs`, `domain/ir.rs` | UPDATE | `import` form, `ImportDecl` | grammar + lowering | Modules | C-14 | R19 | — | T-16 |
+| F-20 | `src/features/language/resolve_imports.rs`, `compile_program.rs`, `src/infra/source_loader.rs` | CREATE / UPDATE | resolution, namespacing, visibility, errors, bootstrap sites | — | Modules | C-14 | R19–R21, R24 | F-19 | T-16, T-17 |
+| F-21 | `src/features/audit/inspect_effects.rs`, `domain/call_graph.rs`, `features/policy/*` | UPDATE | module spans and namespaced IDs in manifest, graph, explain, generate | — | Modules | C-14 | R24 | F-20 | T-20 |
+| F-22 | `src/features/registry/load_module.rs`, `src/orchestrator/runtime.rs`, facade `Module` | CREATE / UPDATE | load/load_as, catalog snapshot swap, builder without entry file | — | Modules | C-15 | R22 | F-20 | T-18 |
+| F-23 | `src/orchestrator/setup_ffi.rs`, `ffi/src/lib.rs`, `ffi/include/rivet.h` | UPDATE | `rivet_load`, `rivet_module_*` | — | Modules | C-15 | R23 | F-22, F-11 | T-19 |
+| F-24 | `examples/python/rivet.py`, `examples/c/modules.c`, `examples/modules.rs` | CREATE | module examples | — | Modules | C-15 | R22, R23 | F-22, F-23 | T-18, T-19 |
 
-Counts: 7 created areas (F-01, F-11, F-12, F-13, F-14, new tests, new docs); 11 updated; 0 deleted (0.1.0 serializers
+Counts (revision 3): 10 created areas (F-01, F-11–F-14, F-20, F-22, F-24, new tests, new docs); 14 updated; 0 deleted (0.1.0 serializers
 are replaced in place).
 
 ## Alternatives Considered
@@ -732,6 +880,9 @@ are replaced in place).
 | cdylib/staticlib in the main crate | One crate | Every `cargo build` builds three artifacts; symbol and LTO issues | Rejected: separate `rivet-ffi` crate | R13 |
 | Tree-sitter grammar first | Better editors beyond VS Code | Second grammar to maintain | Deferred (Q-02) | R16 |
 | Keep package name `rivet` | No rename | Taken on crates.io | Rejected; lib name stays `rivet` | R10 |
+| Keep original IDs for imports | No renaming | Collisions across files; unclear origin | Rejected by the maintainer (namespaced by alias) | R20 |
+| Each module under its own policy.json | Module authors control I/O | Several authorities per runtime; harder audit | Rejected by the maintainer (loader's policy only) | R24 |
+| All imported operations public by default | Less syntax | Silently widens every surface's catalog | Rejected: internal by default, `public` to expose | R20 |
 
 ## Risks and Rollback
 
@@ -744,6 +895,8 @@ are replaced in place).
 | Static linking fails on some OS | CI link test per OS | No static artifact there | Generated `Libs.private`; document | Ship the shared library only on that OS | Implementer |
 | crates.io blocked | G-PUB not met | Git dependency only | Documented | — | Maintainer |
 | vhco rejects a second crate | T-10 in plan P1 | Architecture gate red | Keep FFI logic in the main crate (F-11) | Move the shims into the main crate behind an `ffi` feature | Implementer |
+| Catalog swap races with running requests | T-18 concurrent load test | Wrong operation resolved mid-request | Immutable `Arc` snapshots; a request resolves once at dispatch | Disable `load` after `build` (static catalogs only) | Implementer |
+| Import graphs blow up load time | `limit.imports` (256 files, depth 16) | Slow start | Compile each file once (dedup by canonical path) | Lower the limits | Implementer |
 
 ## Security Impact
 
@@ -756,6 +909,9 @@ are replaced in place).
   never become bundle-wide state. Secret taint rules (G23b) are unchanged.
 - The pretty format changes whitespace only; redaction and the secret sink rules apply before formatting.
 - `rivet highlight` reads only the named file (bootstrap I/O, like `check`).
+- Imports and `load` are bootstrap reads confined to the runtime root: no `..` escape, no symlinks, no URLs.
+  Every loaded module runs under the loader's single policy, and a module's own `policy.json` is ignored with a
+  warning. A module cannot widen authority, and `rivet io` shows every file's effects before anything runs.
 
 ## Operational Impact
 
@@ -775,6 +931,7 @@ are replaced in place).
 | Exit codes / HTTP statuses / error codes | — | unchanged | unchanged |
 | Rust API | internal modules public | facade; internals hidden | facade |
 | `rivet --endpoint` | talks to 0.1 servers | talks to 0.2 servers; a 0.1 server gives `protocol.endpoint` with a version hint | — |
+| Bundles | single file | `import` supported; single-file bundles unchanged | — |
 
 ## Migration Requirements
 
@@ -801,6 +958,11 @@ rollback plan (pin `v0.1.0`).
 | T-13 | regression | UC-07, R16 | Grammar keyword drift vs `rivet.capy`; TextMate snapshots over REF examples | Node (dev) | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test` | No drift; snapshots stable | `editors/tests/` |
 | T-14 | integration | UC-08, R17 | `rivet highlight` ansi/html/json golden; syntax-error partial tokens | Bundles | `cargo test --test conformance_highlight` | Goldens match; spans inside the source | `tests/conformance_highlight.rs` |
 | T-15 | compatibility | UC-09, R5 | Legacy `{id, params}` accepted with deprecation signals; mixed keys refused | — | conformance_envelope | Deprecation header/warning; 422 on mix | same |
+| T-16 | integration | UC-10, R19, R20 | Imports compile once; namespacing; internal vs `public`; `(alias.id …)` and `request`; nested imports | Multi-file bundles | `cargo test --test conformance_modules` | Catalog and calls as specified | `tests/conformance_modules.rs` |
+| T-17 | failure | UC-10, R21 | Each import error code with its span; cycle path | Bad bundles | same | Exact codes and exits | same |
+| T-18 | integration | UC-11, R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | Temp files | same | Envelopes; no race | same |
+| T-19 | integration | UC-11, R23 | C module example and the Python wrapper | Release artifacts | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | `tests/conformance_ffi.rs` |
+| T-20 | security | UC-10, UC-11, R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest, graph and generate cover modules | Bundles with a module-local policy.json | conformance_modules | Denied as by the loader; warning shown; spans point at module files | same |
 | T-30 | manual / e2e | all | Re-execute all demos (0.1.0 set + 14/15/16) | Release candidate | follow READMEs | Every step matches | TEST document |
 | T-31 | documentation | R18 | `check_docs`, `vhco docs check` | — | `python3 scripts/check_docs.py` | 0 problems | TEST document |
 
@@ -835,7 +997,10 @@ per response (the new keys). That is stated as a cost, not measured as a claim.
 - **Surfaces:** new `ffi` surface (`orchestrator/setup_ffi.rs`); `cli` gains `highlight`, `--data`, `--input`,
   `--pretty`; `http` routes document the `pretty` query and the `Deprecation` header. The
   `api.every_route_has_request_response` guarantee is updated with the new request and response shapes.
-- **Infra:** none new (highlighting uses the existing Capy parser port).
+- **Revision 3 (modules):** domain `ImportDecl`, `ModuleRef`, `ModuleSummary`; use cases `language.resolve_imports`
+  and `registry.load_module`; `CatalogSnapshot` swap in the runtime; the `library` and `ffi` surfaces gain the
+  `load`/`rivet_load` triggers.
+- **Infra:** none new (highlighting uses the existing Capy parser port; imports use the existing source loader).
 
 ## Documentation, Demo and Release Impact
 
@@ -848,6 +1013,9 @@ per response (the new keys). That is stated as a cost, not measured as a claim.
 | Migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` | CREATE | Before/after, timeline, rollback | Implementer | T-31 |
 | Demos | `docs/demos/14-globals`, `15-ffi`, `16-editor`; re-verify 01–13 | CREATE / UPDATE | Executed literally | Implementer | T-30 |
 | Reference | `docs/references/ref-2026-0002` | UPDATE | `global` syntax row and examples | Implementer | conformance_samples |
+| Manual (modules) | `docs/manuals/man-2026-0003` (imports chapter), `0007` (`load`), `0009` (`rivet_load`), `0001` (L1 limitation removed; feature catalogue) | UPDATE | Verified examples | Implementer | T-30 |
+| System (modules) | `docs/system/components/sys-2026-0001` (import resolution), `sys-2026-0003` (manifest across modules) | UPDATE | Current state | Implementer | review |
+| Demo (modules) | `docs/demos/17-modules` | CREATE | import + host load, executed | Implementer | T-30 |
 | README | `README.md` | UPDATE | Envelope quickstart, dependency snippet, FFI and editor pointers | Implementer | — |
 | Version source | `Cargo.toml` (both packages) | UPDATE | 0.2.0; `scripts/check_version.py` also checks the FFI version | Implementer | T-33 |
 | Release | `docs/releases/rel-0.2.0-release-notes.md` | CREATE | §33 | Implementer | §34 |
@@ -874,6 +1042,12 @@ per response (the new keys). That is stated as a cost, not measured as a claim.
 | R16 | UQ-01 | G-07 | UC-07 | C-11 | F-14 | T-13 | demo 16 |
 | R17 | UQ-01 | G-07 | UC-08 | C-12 | F-13 | T-14 | MAN-0004 |
 | R18 | all | all | DOCUMENTATION §§29–31 | C-13 | F-17 | T-30, T-31 | REL-0.2.0 |
+| R19 | UQ-09 | G-08 | UC-10 | C-14 | F-19, F-20 | T-16 | MAN-0003, demo 17 |
+| R20 | UQ-09 | G-08 | UC-10 | C-14 | F-20 | T-16 | MAN-0003 |
+| R21 | UQ-09 | G-08 | UC-10 | C-14 | F-20 | T-17 | API-2026-0005 |
+| R22 | UQ-09 | G-08 | UC-11 | C-15 | F-22, F-24 | T-18 | MAN-0007, API-2026-0004 |
+| R23 | UQ-09 | G-06, G-08 | UC-11 | C-15 | F-23, F-24 | T-19 | MAN-0009, API-2026-0007 |
+| R24 | UQ-09 | G-08 | UC-10, UC-11 | C-14 | F-21 | T-20 | MAN-0005, SEC-2026-0001 |
 
 Reverse check: every C-01…C-13 and F-01…F-18 maps to at least one requirement above. F-15 (tests) and F-16
 (contract) serve all requirements.
@@ -887,7 +1061,8 @@ everything built later (FFI, examples, docs) uses the final shapes.
  P1 contract + experiments (vhco workspace, symbol export, static libs) ─┐
  P2a envelopes + input + pretty (R1–R6) ──────────────────────────────────┼─▶ P2c facade + features (R10–R12) ─▶ P2d C ABI (R13–R15)
  P2b globals (R7–R9) ──────────────── independent ────────────────────────┤
- P2e highlighting (R16–R17) ────────── independent ───────────────────────┘
+ P2e highlighting (R16–R17) ────────── independent ───────────────────────┤
+ P2f modules (R19–R24) ─ after P2b (globals scoping) and before P2d's module ABI ┘
  P3 tests / validation ─▶ P4 docs, migration guide, demos 14–16, re-verify 01–13 ─▶ P5 release v0.2.0
 ```
 
@@ -901,6 +1076,7 @@ everything built later (FFI, examples, docs) uses the final shapes.
 | Q-04 | Default Cargo features: all runtime features (proposed) or minimal? | All runtime features on and `cli` off: embedders opt out, and the CLI opts in |
 | Q-05 | Publish Capy as `capy-lang` (the owner's decision, G-PUB)? | Yes, if crates.io publication of Rivet is wanted |
 | Q-06 | Should `global` values appear in `rivet describe` or a `rivet globals` command? | Not in 0.2.0; they are visible in `rivet io` targets |
+| Q-07 | Unload or hot-reload modules; URL or registry imports? | Not in 0.2.0 (non-goals); `load` only adds modules |
 
 ## Approval
 
@@ -924,5 +1100,6 @@ Open questions Q-01…Q-06 are resolved with the recommendations in the table ab
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-28 | Claude | Amendment (UQ-09): file modules — `import … as ALIAS [public]` in `.rivet` and `Runtime::load`/`rivet_load` module objects; namespaced by alias; loader's policy only. Added P-08, G-08, R19–R24, UC-10/UC-11, C-14/C-15, F-19–F-24, T-16–T-20, Q-07. |
 | 2 | 2026-09-28 | Claude | Approved (ADR-0004); moved to approved/; Q-01…Q-06 resolved with the recommendations; PLAN-2026-0002 created. |
 | 1 | 2026-09-28 | Claude | Initial draft from UQ-01…UQ-08, with the maintainer's clarifications: library = Cargo dependency, globals = immutable constants, no `error` in input. |

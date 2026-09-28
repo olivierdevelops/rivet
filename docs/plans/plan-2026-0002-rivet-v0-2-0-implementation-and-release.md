@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 1
+document_revision: 2
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -19,7 +19,7 @@ affected_versions:
 applicable_environments: [development, embedded, server]
 audience: [maintainers, implementers, reviewers]
 scope: >-
-  Everything required to implement PROP-2026-0002 (R1–R18, UC-01–UC-09, C-01–C-13), test and validate it, create
+  Everything required to implement PROP-2026-0002 revision 3 (R1–R24, UC-01–UC-11, C-01–C-15), test and validate it, create
   and update every user, operator, system, API, migration and release document it affects, and release v0.2.0.
 reason: The maintainer approved PROP-2026-0002 and asked for a plan, then implementation, tests and release, with
   every documentation deliverable included ("ensure plan contains all docs documentation to add", 2026-09-28).
@@ -27,7 +27,7 @@ dependencies: [PROP-2026-0002, ADR-0004, PLAN-2026-0001, REL-0.1.0, vhco-contrac
 related_documents: [PROP-2026-0002, ADR-0004, REL-0.1.0, RPT-2026-0001, DEMO-2026-0015]
 supersedes: null
 superseded_by: null
-tags: [rivet, plan, v0.2.0, envelope, globals, library, ffi, highlighting, documentation]
+tags: [rivet, plan, v0.2.0, envelope, globals, library, ffi, highlighting, modules, documentation]
 confidentiality: internal
 review_cycle: on-change
 next_review_date: 2026-10-28
@@ -50,27 +50,28 @@ This is the live execution ledger for turning the approved
 It has five gated phases, like PLAN-2026-0001:
 
 1. contract and experiments;
-2. implementation, in five increments;
+2. implementation, in six increments (P2f file modules was added by PROP-2026-0002 revision 3 / ADR-0004 revision 2);
 3. tests and validation;
 4. documentation and demos;
 5. release.
 
 Every requirement traces to tasks, files, tests, documents and a release-verification row. The
 [Documentation and Demo Checklist](#documentation-and-demo-checklist) lists **every** document to create or update
-(D-01…D-70), including each of the 62 current-state files whose examples change with the new envelope.
+(D-01…D-72), including each of the 62 current-state files whose examples change with the new envelope.
 
 ```text
  PROP-2026-0002 ──► ADR-0004 ──► PLAN-2026-0002 (this) ──► P1 contract delta + RES-2026-0004 experiments
                                                                │
         ┌──────────────────────────────┬───────────────────────┼───────────────────────┬──────────────────────┐
         ▼                              ▼                       ▼                       ▼                      ▼
-  P2a envelopes + input          P2b globals            P2c facade + features   P2d C ABI (librivet)   P2e highlighting
-  + pretty (R1–R6, breaking)     (R7–R9)                + rivet-runtime (R10–12) (R13–R15)              (R16–R17)
+  P2a envelopes + input          P2b globals ─► P2f     P2c facade + features   P2d C ABI (librivet)   P2e highlighting
+  + pretty (R1–R6, breaking)     (R7–R9)  modules       + rivet-runtime (R10–12) (R13–R15, R23)         (R16–R17)
+                                          (R19–R24)
         └──────────────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
                                                                │
-                             P3 tests: TEST-2026-0034…0048 + regression re-run ─► RPT-2026-0015
+                             P3 tests: TEST-2026-0034…0053 + regression re-run ─► RPT-2026-0015
                                                                │
-     P4 docs: MIG-2026-0001 · API-0006/0007 · MAN-0009/0010 · SYS-0010/0011 · 62 files re-shaped · demos 14–16 · DEMO-2026-0019
+     P4 docs: MIG-2026-0001 · API-0006/0007 · MAN-0009/0010 · SYS-0010/0011 · 62 files re-shaped · demos 14–16 · DEMO-2026-0020
                                                                │
                          P5 Cargo.toml 0.2.0 ─► release: v0.2.0 ─► tag v0.2.0 ─► REL-0.2.0 ─► §34 gate
 ```
@@ -83,21 +84,23 @@ Every requirement traces to tasks, files, tests, documents and a release-verific
 - immutable `global` constants;
 - Rivet usable as a Cargo dependency (package `rivet-runtime`, lib `rivet`, Cargo features, the `cli` feature);
 - a C ABI shared and static library (`librivet`, `rivet.h`);
-- syntax highlighting (a TextMate grammar, a VS Code extension and `rivet highlight`).
+- syntax highlighting (a TextMate grammar, a VS Code extension and `rivet highlight`);
+- file modules: `import "PATH" as ALIAS [public]` in `.rivet`, and `Runtime::load` / `rivet_load` module objects
+  (namespaced `ALIAS.ID`, loader's policy only).
 
 Everything ships with the current-state documentation set required by DOCUMENTATION.md.
 
-**Proposal baseline.** PROP-2026-0002 revision 2 (approved 2026-09-28), with Q-01…Q-06 resolved per its
+**Proposal baseline.** PROP-2026-0002 revision 3 (approved 2026-09-28; the revision 3 modules amendment was approved in ADR-0004 revision 2), with Q-01…Q-06 resolved per its
 recommendations (ADR-0004).
 
 | Owned by this plan | IDs |
 |---|---|
-| Goals | G-01 – G-07 |
-| Requirements | R1 – R18 |
-| Use cases | UC-01 – UC-09 |
-| Proposed changes | C-01 – C-13 |
-| Proposal file rows | F-01 – F-18 (mapped to PF-IDs below) |
-| Proposal tests | T-01 – T-15 (same IDs); plan-level checks T-27 – T-34 |
+| Goals | G-01 – G-08 |
+| Requirements | R1 – R24 |
+| Use cases | UC-01 – UC-11 |
+| Proposed changes | C-01 – C-15 |
+| Proposal file rows | F-01 – F-24 (mapped to PF-IDs below) |
+| Proposal tests | T-01 – T-20 (same IDs); plan-level checks T-27 – T-34 |
 
 **Not owned by this plan** (per ADR-0004):
 - crates.io publication (G-PUB, the owner's decision);
@@ -114,15 +117,16 @@ recommendations (ADR-0004).
  │ packaging rivet-runtime (lib rivet, bin rivet[cli]) · features · facade        │
  │ C ABI     rivet-ffi → librivet .so/.dylib/.dll + .a/.lib · rivet.h · rivet.pc  │
  │ editors   keywords.json → rivet.tmLanguage.json → VS Code .vsix · highlight    │
+ │ modules   import "PATH" as ALIAS [public] · rt.load(path) · rivet_load          │
  └───────────────────────────────────────────────────────────────────────────────┘
-   outside: crates.io (G-PUB) · tree-sitter · JSON colour · push/CI (no remote)
+   outside: crates.io (G-PUB) · tree-sitter · JSON colour · URL imports · hot reload · run-from-path · push/CI
 ```
 
 ## Live Status Summary
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 59 | P1 remainder – P5 |
+| NOT STARTED | 68 | P1 remainder – P5 |
 | IN PROGRESS | 0 | |
 | BLOCKED | 2 | TASK-095 push and TASK-096 CI (no git remote) |
 | DONE | 3 | TASK-001, TASK-002, TASK-003 (approval, plan, indexes) |
@@ -158,6 +162,12 @@ recommendations (ADR-0004).
 | R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | NOT STARTED |
 | R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | NOT STARTED |
 | R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
+| R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | NOT STARTED |
+| R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | NOT STARTED |
+| R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | NOT STARTED |
+| R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | NOT STARTED |
+| R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | NOT STARTED |
+| R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | NOT STARTED |
 
 ## Applicable Project Standards
 
@@ -170,8 +180,8 @@ recommendations (ADR-0004).
 | README and docs current | AGENTS rule 9; DOCUMENTATION §§30–31 | P4 checklist, including the 62-file envelope sweep | T-31 |
 | Live ledger | DOCUMENTATION §4.5 | Seven status values; evidence on every DONE/FAILED/BLOCKED/DEFERRED | Phase exits |
 | Incidents and troubleshooting | DOCUMENTATION §§25–26 | Every unexpected defect → INC-2026-0009+; reusable problems → TRBL-2026-0004+ | T-31 |
-| Tests and validation recorded | DOCUMENTATION §§27–28 | TEST-2026-0034…0048 (new) + regression re-records; RPT-2026-0015 | T-32 |
-| Release verification guide | DOCUMENTATION §29 | DEMO-2026-0019 + demos 01–16 executed | T-30 |
+| Tests and validation recorded | DOCUMENTATION §§27–28 | TEST-2026-0034…0053 (new) + regression re-records; RPT-2026-0015 | T-32 |
+| Release verification guide | DOCUMENTATION §29 | DEMO-2026-0020 + demos 01–16 executed | T-30 |
 | Migrations documented | DOCUMENTATION §4.21 | MIG-2026-0001 with a rollback plan | T-31 |
 | One version source, tag = commit | DOCUMENTATION §32 | Both packages share one version (workspace `version`); `check_version.py` also checks `rivet_version()` | T-33 |
 | Release completion gate | DOCUMENTATION §34 | Walked in REL-0.2.0 | TASK-094 |
@@ -201,7 +211,7 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 
 ```text
  P1 contract + experiments ─► P2a envelopes ─► P2c facade/features ─► P2d C ABI ─┐
-                              P2b globals  ───────────────────────────────────────┼─► P3 test+validate ─► P4 docs+demos ─► P5 release
+                              P2b globals ─► P2f modules ──────────────▲──────────┼─► P3 test+validate ─► P4 docs+demos ─► P5 release
                               P2e highlighting ───────────────────────────────────┘
  Sequential execution by agents in the main checkout (disk); each increment ends green and committed.
 ```
@@ -212,9 +222,10 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 | P2a | Envelopes, input, pretty (breaking) | P1 exit | T-01–T-05, T-15 green; all 0.1.0 suites updated and green | P1 | NOT STARTED |
 | P2b | Globals | P1 exit | T-06–T-08 green | P1 | NOT STARTED |
 | P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | NOT STARTED |
-| P2d | C ABI | P2c exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
+| P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
 | P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | NOT STARTED |
-| P3 | Full test and validation | P2a–P2e exit | T-01–T-15 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
+| P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | NOT STARTED |
+| P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
 | P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
 | P5 | Version, release commit, tag, REL | P4 exit | §34 gate walked; T-33 | P4 | NOT STARTED |
 
@@ -283,6 +294,7 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-042 | P2d | Examples: `examples/c/demo.c` + `Makefile` (shared and static), `examples/python/demo.py` (ctypes); stream, input and cancel shown | R13, R15 | examples | T-11 | TASK-041 | I | NOT STARTED | |
 | TASK-043 | P2d | Tests: `ffi/tests/` (Rust calling the extern functions: null, bad UTF-8, bad JSON, panic probe, double free, free-while-running) and `tests/conformance_ffi.rs` driving the C example; ASan build on Linux when CI exists | R14 | tests | T-11, T-12 | TASK-041 | I | NOT STARTED | |
 | TASK-044 | P2d | `rivet.capabilities.abi_version`; `rivet_version()` equals the crate version (T-33) | R13 | PF-11 | T-11, T-33 | TASK-040 | I | NOT STARTED | |
+| TASK-045 | P2d | Module ABI (R23): `rivet_load`, `rivet_module_operations`, `rivet_module_call`, `rivet_module_call_start`, `rivet_module_free`; `examples/c/modules.c`; `examples/python/rivet.py` wrapper (module object with operation attributes) + `modules.py` | R23 / C-15 | PF-11, PF-12, PF-17 | T-19 | TASK-040, TASK-105 | I | NOT STARTED | |
 
 ### P2e — Highlighting
 
@@ -293,12 +305,25 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-052 | P2e | Use case `features/language/highlight_source.rs` (pure, over the parser port) + ANSI/HTML/JSON renderers; CLI `rivet highlight FILE [--format …]` (ansi on a TTY, json otherwise); library `rivet::highlight::tokens` | R17 / C-12 | PF-13 | T-14 | TASK-004 | I | NOT STARTED | |
 | TASK-053 | P2e | Tests: keyword drift (`editors/check_keywords.py` in `cargo test` via a small Rust test or CI step); `vscode-tmgrammar-test` snapshots over REF-2026-0002 blocks and demo sources (Node optional job); `tests/conformance_highlight.rs` goldens | R16, R17 | tests | T-13, T-14 | TASK-050–052 | I | NOT STARTED | |
 
+### P2f — File modules (PROP-2026-0002 revision 3)
+
+| Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
+|---|---|---|---|---|---|---|---|---|---|
+| TASK-100 | P2f | Contract delta for modules: domain `ImportDecl`, `ModuleRef`, `ModuleSummary`, `CatalogSnapshot`; use cases `language.resolve_imports`, `registry.load_module`; library/ffi triggers `load`/`rivet_load` | R19–R24 / C-14, C-15 | `vhco-contract.json` | `vhco sync .` | TASK-004 | I | NOT STARTED | |
+| TASK-101 | P2f | Grammar: top-level `import "PATH" as ALIAS [public]` before declarations; lowering to `ImportDecl`; `syntax.import` | R19 / C-14 | PF-19 | T-16, T-17 | TASK-100 | I | NOT STARTED | |
+| TASK-102 | P2f | Use case `features/language/resolve_imports.rs` over the source-loader port: path relative to the importing file, confined to the runtime root (no `..`, no symlinks), canonical dedup (compile once), cycle detection with the path, limits (256 files, depth 16), alias uniqueness, namespacing `ALIAS.ID` (transitive), visibility (internal vs `public`), collisions, per-module globals/connectors/auth, bootstrap sites for each file, warning `check.module_policy_ignored` | R19–R21, R24 | PF-20 | T-16, T-17, T-20 | TASK-101, P2b | I | NOT STARTED | |
+| TASK-103 | P2f | Calls: `(ALIAS.ID {…})` and `(request "ALIAS.ID" …)` resolve to the namespaced operation; calls inside a module use its own IDs; `check.unknown_function` knows imported names | R20 | PF-20 | T-16 | TASK-102 | I | NOT STARTED | |
+| TASK-104 | P2f | Manifest, call graph, `policy explain`, `policy generate` and `io --include-bootstrap` cover modules with module spans (`users.rivet:12`) and namespaced IDs; replaces the `(+ imports)` placeholder (INC-2026-0008 known issue) | R24 / C-14 | PF-21 | T-20 | TASK-102 | I | NOT STARTED | |
+| TASK-105 | P2f | Host API: `Runtime::load(path)`, `load_as(path, alias)` → `Module` (`alias`, `operations`, `describe`, `outputs`, `call`, `stream`, `duplex`); `Runtime::builder().root(dir)` without an entry file; `features/registry/load_module.rs`; immutable catalog snapshot swap (`Arc`), with in-flight requests keeping theirs; loaded modules public under their alias | R22 / C-15 | PF-22 | T-18 | TASK-102, TASK-015 | I | NOT STARTED | |
+| TASK-106 | P2f | `examples/modules.rs` (Rust host loading two files) | R22 | PF-17 | T-18 | TASK-105 | I | NOT STARTED | |
+| TASK-107 | P2f | `tests/conformance_modules.rs` (T-16, T-17, T-18, T-20), including concurrent `load` during requests | R19–R24 | PF-T09 | T-16–T-18, T-20 | TASK-102–105 | I | NOT STARTED | |
+
 ### P3 — Tests and validation
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-060 | P3 | Full gates: `cargo fmt --check`, `clippy --workspace --all-targets --all-features -D warnings`, `cargo test --workspace --all-features`, feature matrix, `cargo deny check`, release build of both crates, `vhco assure` | all | — | T-27, T-28, T-34 | P2* | I | NOT STARTED | |
-| TASK-061 | P3 | TEST documents for new tests TEST-2026-0034…0048 (T-01…T-15) and re-record the regression suites TEST-2026-0001…0033 at the RC commit (revision bump; results for v0.2.0) | all | docs | T-32 | TASK-060 | I | NOT STARTED | |
+| TASK-061 | P3 | TEST documents for new tests TEST-2026-0034…0053 (T-01…T-20) and re-record the regression suites TEST-2026-0001…0033 at the RC commit (revision bump; results for v0.2.0) | all | docs | T-32 | TASK-060 | I | NOT STARTED | |
 | TASK-062 | P3 | Validation report RPT-2026-0015 (R1–R18 PASS/PARTIAL/FAIL; deviations; unintended behaviour; limitations) | all | docs | T-32 | TASK-061 | I | NOT STARTED | |
 | TASK-063 | P3 | Record every unexpected defect as INC-2026-0009+ and reusable problems as TRBL-2026-0004+ | — | docs | T-31 | ongoing | I | NOT STARTED | |
 | TASK-064 | P3 | Security checks: secret-canary scan of all test output (`--nocapture`), FFI misuse suite, confirmation that a global cannot hold a secret | R14, R8 | — | T-12 | TASK-060 | I | NOT STARTED | |
@@ -312,9 +337,9 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-072 | P4 | New manuals: MAN-2026-0009 (C ABI and FFI), MAN-2026-0010 (editor support and highlighting); chapter updates listed in D-20…D-29 | R7–R17 | docs | T-30 | P3 | I | NOT STARTED | |
 | TASK-073 | P4 | New system docs: SYS-2026-0010 (FFI surface and packaging), SYS-2026-0011 (highlighting and grammar generation); updates D-30…D-39 | R10–R17 | docs | review | P3 | I | NOT STARTED | |
 | TASK-074 | P4 | Migration guide MIG-2026-0001 + new `docs/migrations/index.md` | R5 | docs | T-31 | P3 | I | NOT STARTED | |
-| TASK-075 | P4 | New demos 14-globals (DEMO-2026-0016), 15-ffi (DEMO-2026-0017), 16-editor (DEMO-2026-0018), executed literally; demos index/README/manifest | R7–R17 | docs/demos | T-30 | P3 | I | NOT STARTED | |
+| TASK-075 | P4 | New demos 14-globals (DEMO-2026-0016), 15-ffi (DEMO-2026-0017), 16-editor (DEMO-2026-0018), 17-modules (DEMO-2026-0019), executed literally; demos index/README/manifest | R7–R17 | docs/demos | T-30 | P3 | I | NOT STARTED | |
 | TASK-076 | P4 | Re-execute demos 01–13 against the RC and update their READMEs (verification records, `verified_against: "0.2.0"`) | R18 | docs/demos | T-30 | TASK-070 | I | NOT STARTED | |
-| TASK-077 | P4 | Release verification guide DEMO-2026-0019 (U-01…U-18, one per requirement; per-surface success and failure; FFI and editor rows; verification record) | R18 | docs/demos | T-30 | TASK-075, 076 | I | NOT STARTED | |
+| TASK-077 | P4 | Release verification guide DEMO-2026-0020 (U-01…U-24, one per requirement; per-surface success and failure; FFI and editor rows; verification record) | R18 | docs/demos | T-30 | TASK-075, 076 | I | NOT STARTED | |
 | TASK-078 | P4 | REF-2026-0002: `global` syntax row and examples; CLI mapping `--data`/`--input`/`--pretty`/`highlight`; envelope examples; status lines re-verified | R7, R4 | docs | T-29 | P3 | I | NOT STARTED | |
 | TASK-079 | P4 | Architecture, security, operations, runbooks, onboarding updates (D-30…D-39) | R10–R14 | docs | T-31 | P3 | I | NOT STARTED | |
 | TASK-080 | P4 | README.md, `docs/README.md`, `docs/index.md`, and `AGENTS.md` project facts (workspace, `ffi` surface, features) | R18 | docs | T-31 | all P4 | I | NOT STARTED | |
@@ -331,7 +356,7 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | NOT STARTED | |
 | TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | NOT STARTED | |
 | TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | BLOCKED | no git remote |
-| TASK-096 | P5 | CI on Linux and Windows; post-release verification of DEMO-2026-0019 on the published artifacts | release | — | CI | TASK-095 | M/I | BLOCKED | no git remote |
+| TASK-096 | P5 | CI on Linux and Windows; post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | BLOCKED | no git remote |
 
 ## File and Artifact Checklist
 
@@ -351,14 +376,18 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-08 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/generate_policy.rs` | UPDATE | Global substitution | R9 / 023 | F-08 | NOT STARTED | T-08 |
 | PF-09 | production | `src/lib.rs`, module visibility across `src/**` | UPDATE | Facade; internals hidden | R10 / 031 | F-09 | NOT STARTED | T-09 |
 | PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | NOT STARTED | T-10 |
-| PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic | R13–R15 / 040, 044 | F-11 | NOT STARTED | T-11, T-12 |
+| PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic, including module handles (R23) | R13–R15, R23 / 040, 044, 045 | F-11, F-23 | NOT STARTED | T-11, T-12, T-19 |
 | PF-12 | production | `ffi/Cargo.toml`, `ffi/src/lib.rs`, `ffi/cbindgen.toml`, `ffi/include/rivet.h`, `ffi/rivet.pc.in` | CREATE | Shims, header, pkg-config | R13 / 041 | F-12 | NOT STARTED | T-11 |
 | PF-13 | production | `src/features/language/highlight_source.rs`, `src/io/cli/**` (`highlight`) | CREATE / UPDATE | Tokenizer, renderers, command | R17 / 052 | F-13 | NOT STARTED | T-14 |
 | PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | NOT STARTED | T-13 |
 | PF-15 | production | `vhco-contract.json` | UPDATE | Contract Delta | all / 004 | F-16 | NOT STARTED | T-28 |
 | PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | NOT STARTED | T-10, T-33 |
-| PF-17 | examples | `examples/embed.rs`, `examples/c/{demo.c,Makefile}`, `examples/python/demo.py`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples | R10, R13 / 033, 042 | — | NOT STARTED | T-09, T-11 |
+| PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | NOT STARTED | T-09, T-11, T-18, T-19 |
 | PF-18 | agent guide | `AGENTS.md` (project facts) | UPDATE | Workspace, `ffi` surface, features | R18 / 080 | — | NOT STARTED | review |
+| PF-19 | production | `src/infra/rivet.capy`, `src/features/language/lowering/lower.rs`, `src/domain/ir.rs` | UPDATE | `import` form, `ImportDecl` | R19 / 101 | F-19 | NOT STARTED | T-16 |
+| PF-20 | production | `src/features/language/resolve_imports.rs` (CREATE), `compile_program.rs`, `src/infra/source_loader.rs` (UPDATE) | CREATE / UPDATE | Resolution, namespacing, visibility, errors, bootstrap sites | R19–R21, R24 / 102, 103 | F-20 | NOT STARTED | T-16, T-17 |
+| PF-21 | production | `src/features/audit/inspect_effects.rs`, `src/domain/call_graph.rs`, `src/features/policy/*` | UPDATE | Module spans and namespaced IDs | R24 / 104 | F-21 | NOT STARTED | T-20 |
+| PF-22 | production | `src/features/registry/load_module.rs` (CREATE), `src/orchestrator/runtime.rs`, facade `Module` | CREATE / UPDATE | load/load_as, snapshot swap, builder without an entry file | R22 / 105 | F-22 | NOT STARTED | T-18 |
 
 ### Tests and fixtures
 
@@ -372,6 +401,7 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-T06 | test | every existing `tests/conformance_*.rs` + `tests/support/**` | UPDATE | Envelope/input assertions | R1 / 018 | NOT STARTED | T-34 |
 | PF-T07 | fixture | `docs/demos/**/requests/*`, `docs/demos/**/fixtures/*` | UPDATE | Input envelopes | R4 / 019 | NOT STARTED | T-30 |
 | PF-T08 | schema | `docs/api/schemas/response.schema.json`, `input.schema.json`, `stream-record.schema.json` | CREATE | JSON Schemas used by T-01 | R1, R4 / 010 | NOT STARTED | T-01 |
+| PF-T09 | test | `tests/conformance_modules.rs` (+ module fixtures under a temp dir) | CREATE | T-16–T-18, T-20 | R19–R24 / 107 | NOT STARTED | `cargo test` |
 
 ### Generated and release artifacts
 
@@ -386,8 +416,8 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 
 ## Test and Validation Checklist
 
-T-01–T-15 are the proposal's tests. T-27–T-34 are plan-level gates. New TEST documents are numbered
-TEST-2026-0034 (T-01) … TEST-2026-0048 (T-15). The regression suites keep TEST-2026-0001…0033, re-recorded for 0.2.0.
+T-01–T-20 are the proposal's tests. T-27–T-34 are plan-level gates. New TEST documents are numbered
+TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST-2026-0001…0033, re-recorded for 0.2.0.
 
 | Test ID | Type | UC / Req | Scenario (positive / negative / regression) | Exact test file or manual steps | Command / environment | Expected result | Status | Evidence |
 |---|---|---|---|---|---|---|---|---|
@@ -406,10 +436,15 @@ TEST-2026-0034 (T-01) … TEST-2026-0048 (T-15). The regression suites keep TEST
 | T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | NOT STARTED | TEST-2026-0046 |
 | T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | NOT STARTED | TEST-2026-0047 |
 | T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | NOT STARTED | TEST-2026-0048 |
+| T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | NOT STARTED | TEST-2026-0049 |
+| T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | NOT STARTED | TEST-2026-0050 |
+| T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | NOT STARTED | TEST-2026-0051 |
+| T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | NOT STARTED | TEST-2026-0052 |
+| T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | NOT STARTED | TEST-2026-0053 |
 | T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | NOT STARTED | TEST-2026-0027 (re-recorded) |
 | T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | NOT STARTED | TEST-2026-0028 (re-recorded) |
 | T-29 | corpus | R7, R16 | REF-2026-0002 and demo sources parse (with `global`) | `tests/conformance_samples.rs` | `cargo test --test conformance_samples` | All parse | NOT STARTED | TEST-2026-0029 (re-recorded) |
-| T-30 | manual / e2e | all | Demos 01–16 and DEMO-2026-0019 executed step by step against the RC | READMEs | manual | Every step matches | NOT STARTED | TEST-2026-0030 (re-recorded) |
+| T-30 | manual / e2e | all | Demos 01–16 and DEMO-2026-0020 executed step by step against the RC | READMEs | manual | Every step matches | NOT STARTED | TEST-2026-0030 (re-recorded) |
 | T-31 | documentation | R18 | `check_docs`, `vhco docs check` | `scripts/check_docs.py` | `python3 scripts/check_docs.py && vhco docs check .` | 0 problems / 0 errors | NOT STARTED | TEST-2026-0031 (re-recorded) |
 | T-32 | traceability | R1–R18 | R → task → PF → T → D → U; no orphans | script over this plan, RPT, REL | — | No orphans | NOT STARTED | TEST-2026-0032 (re-recorded) |
 | T-33 | release | release | Version sync across Cargo, `--version`, MCP serverInfo, capabilities, `rivet_version()`, vsix; tag = commit; clean tree | `scripts/check_version.py --tag` | — | All `0.2.0`; SHAs equal | NOT STARTED | TEST-2026-0033 (re-recorded) |
@@ -428,7 +463,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
  ├── research/       RES-2026-0004 P1 experiments ························· P1   D-04
  ├── incidents/      INC-2026-0009+ as found ······························ P2–P3 D-05
  ├── troubleshooting/TRBL-2026-0004+ as found ····························· P2–P3 D-06
- ├── testing/        TEST-2026-0034…0048 new · 0001…0033 re-recorded ······· P3   D-07
+ ├── testing/        TEST-2026-0034…0053 new · 0001…0033 re-recorded ······· P3   D-07
  ├── reports/        RPT-2026-0015 validation ····························· P3   D-08
  ├── migrations/     NEW DIR · MIG-2026-0001 envelopes + index ············ P4   D-09
  ├── api/            API-2026-0006 envelopes · API-2026-0007 C ABI · schemas/ ·· P4 D-10…D-12 (+ updates D-40…D-44)
@@ -436,7 +471,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
  ├── system/         SYS-2026-0010 FFI/packaging · SYS-2026-0011 highlighting ·· P4 D-15, D-16 (+ D-30…D-39)
  ├── architecture/ security/ operations/ runbooks/ onboarding/  updates ···· P4   D-30…D-39
  ├── references/     REF-2026-0002 (global, CLI mapping, envelopes) ········ P4   D-45
- ├── demos/          14-globals · 15-ffi · 16-editor · 01–13 re-verified · DEMO-2026-0019 ·· P4 D-17…D-19, D-50…D-63
+ ├── demos/          14-globals · 15-ffi · 16-editor · 17-modules · 01–13 re-verified · DEMO-2026-0020 ·· P4 D-17…D-19, D-71, D-50…D-63
  ├── proposals/      PROP-2026-0002 → implemented/ ························ P5   D-67
  └── releases/       REL-0.2.0 ··········································· P5   D-68
  editors/vscode/README.md (extension readme) ································ P2e  D-69
@@ -457,15 +492,16 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-09 | migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` + **new** `docs/migrations/index.md` (REF-2026-0037) | §4.21 | Before/after per surface (CLI, HTTP, SSE, polling, WS, MCP, library); `jq` mapping; deprecation timeline 0.2 → 0.3; client checklist; rollback (pin v0.1.0) | all surfaces | NOT STARTED | T-31 |
 | D-10 | API | `docs/api/api-2026-0006-envelopes.md` | Canonical envelope reference | Response, input, stream record; status/type tables; key order; pretty; error object; per-surface wrapping (WS `ref`, MCP `structuredContent`); JSON Schemas | all | NOT STARTED | T-01, T-31 |
 | D-11 | API schema | `docs/api/schemas/{response,input,stream-record}.schema.json` | Machine-readable contract | JSON Schema 2020-12 | all | NOT STARTED | T-01 |
-| D-12 | API | `docs/api/api-2026-0007-c-abi.md` | C ABI reference | Every `rivet_*` function, ownership, threading, status, error envelopes, ABI versioning, linking flags per OS | FFI | NOT STARTED | T-11, T-31 |
-| D-13 | manual | `docs/manuals/man-2026-0009-c-abi-and-ffi.md` | Integrator guide | Install `librivet`, compile/link (shared/static), C walkthrough, Python ctypes, Go cgo sketch, streaming/input/cancel, errors and recovery, troubleshooting | FFI | NOT STARTED | T-30 |
+| D-12 | API | `docs/api/api-2026-0007-c-abi.md` | C ABI reference | Every `rivet_*` function (incl. `rivet_load`, `rivet_module_*`), ownership, threading, status, error envelopes, ABI versioning, linking flags per OS | FFI | NOT STARTED | T-11, T-31 |
+| D-13 | manual | `docs/manuals/man-2026-0009-c-abi-and-ffi.md` | Integrator guide | Install `librivet`, compile/link (shared/static), C walkthrough, Python ctypes, Go cgo sketch, streaming/input/cancel, **module objects (`rivet_load`, Python wrapper)**, errors and recovery, troubleshooting | FFI | NOT STARTED | T-30 |
 | D-14 | manual | `docs/manuals/man-2026-0010-editor-support-and-highlighting.md` | Author guide | Install `.vsix`, other TextMate editors, `rivet highlight` (ansi/html/json), docs pipeline use, regenerating the grammar | editors, CLI | NOT STARTED | T-30 |
-| D-15 | system | `docs/system/components/sys-2026-0010-ffi-surface-and-packaging.md` | §31 | Workspace, facade, features, `setup_ffi` design, handle lifecycle state machine, artifacts | library, ffi | NOT STARTED | TASK-082 |
+| D-15 | system | `docs/system/components/sys-2026-0010-ffi-surface-and-packaging.md` | §31 | Workspace, facade, features, `setup_ffi` design, runtime/module/call handle lifecycle state machines, artifacts | library, ffi | NOT STARTED | TASK-082 |
 | D-16 | system | `docs/system/components/sys-2026-0011-highlighting-and-grammar-generation.md` | §31 | Token classes, parser-span tokenizer, generator pipeline, drift test | language | NOT STARTED | TASK-082 |
 | D-17 | demo | `docs/demos/14-globals/` (README DEMO-2026-0016, `app.rivet`, `policy.json`) | Show globals + exact manifest | Steps, success and failure (`check.global_*`), verification record | language | NOT STARTED | T-30 |
 | D-18 | demo | `docs/demos/15-ffi/` (README DEMO-2026-0017, C and Python programs) | Show the C ABI | Build, link shared and static, run, stream, cancel, misuse error | FFI | NOT STARTED | T-30 |
 | D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | NOT STARTED | T-30 |
-| D-64 | release verification | `docs/demos/demo-2026-0019-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-18; per-surface success/failure incl. FFI and editor; cleanup; verification record | all | NOT STARTED | T-30 |
+| D-71 | demo | `docs/demos/17-modules/` (README DEMO-2026-0019, `app.rivet`, `users.rivet`, `billing.rivet`, `policy.json`, host programs in Rust/C/Python) | Show modules | `import … as`, internal vs `public`, `rivet list`/`io` across files, import errors, `rt.load`, `rivet_load`, Python module object; verification record | language, library, ffi | NOT STARTED | T-30 |
+| D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | NOT STARTED | T-30 |
 | D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | NOT STARTED | T-31, T-33 |
 | D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | NOT STARTED | review |
 
@@ -473,24 +509,24 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 
 | ID | Artifact | Exact path | Why it changes | Required addition / removal | Related interfaces | Status | Verification |
 |---|---|---|---|---|---|---|---|
-| D-20 | manual (root) | `docs/manuals/man-2026-0001-rivet-manual.md` | §30 | What's New in 0.2.0; feature catalogue rows (envelopes, pretty, globals, Cargo dependency, C ABI, highlighting) with why/when and demo links; reading path adds MAN-0009/0010; limitations update | all | NOT STARTED | T-30 |
+| D-20 | manual (root) | `docs/manuals/man-2026-0001-rivet-manual.md` | §30 | What's New in 0.2.0; feature catalogue rows (envelopes, pretty, globals, modules, Cargo dependency, C ABI, highlighting) with why/when and demo links; reading path adds MAN-0009/0010; limitations update (remove L1 "no import form"; add non-goals: URL imports, hot reload) | all | NOT STARTED | T-30 |
 | D-21 | manual | `docs/manuals/man-2026-0002-installation-and-quickstart.md` | Install changes | `perch install` / `cargo install rivet-runtime --features cli --git …`; installing `librivet`; installing the `.vsix`; quickstart with envelopes | CLI | NOT STARTED | T-30 |
-| D-22 | manual | `docs/manuals/man-2026-0003-language-guide.md` | New form | **Globals chapter** (syntax, allowed expressions, lookup order, errors, examples); syntax table row | language | NOT STARTED | T-29 |
-| D-23 | manual | `docs/manuals/man-2026-0004-cli-reference.md` | New flags/command | `--data`, `--input`, `--pretty`, `--params` deprecation, `rivet highlight`, envelope output for every command; exit codes | CLI | NOT STARTED | T-02 |
-| D-24 | manual | `docs/manuals/man-2026-0005-policy-and-io-manifest-guide.md` | Globals → exact | Globals in targets, exact grants | policy, audit | NOT STARTED | T-08 |
+| D-22 | manual | `docs/manuals/man-2026-0003-language-guide.md` | New forms | **Globals chapter** (syntax, allowed expressions, lookup order, errors, examples); **Modules chapter** (`import … as ALIAS [public]`, path rules, namespacing, visibility, per-module globals, calling `(alias.id …)`, errors, policy); syntax table rows | language | NOT STARTED | T-29 |
+| D-23 | manual | `docs/manuals/man-2026-0004-cli-reference.md` | New flags/command | `--data`, `--input`, `--pretty`, `--params` deprecation, `rivet highlight`, envelope output for every command; `list`/`io --include-bootstrap` across modules; exit codes | CLI | NOT STARTED | T-02 |
+| D-24 | manual | `docs/manuals/man-2026-0005-policy-and-io-manifest-guide.md` | Globals, modules | Globals in targets, exact grants; one policy for all modules; module `policy.json` ignored; manifest across files | policy, audit | NOT STARTED | T-08 |
 | D-25 | manual | `docs/manuals/man-2026-0006-serving-and-surfaces.md` | Wire change | Envelopes per surface, `?pretty=true`, `Deprecation` monitoring, WS/poll/MCP shapes | serve | NOT STARTED | T-01 |
-| D-26 | manual | `docs/manuals/man-2026-0007-embedding-library.md` | Library change | Cargo dependency (git tag), features, facade, `Runtime::call`, envelopes, link to MAN-0009 for non-Rust | library | NOT STARTED | T-09 |
+| D-26 | manual | `docs/manuals/man-2026-0007-embedding-library.md` | Library change | Cargo dependency (git tag), features, facade, `Runtime::call`, envelopes, **`Runtime::load`/`Module` objects**, builder without an entry file, link to MAN-0009 for non-Rust | library | NOT STARTED | T-09 |
 | D-27 | manual | `docs/manuals/man-2026-0008-protocols-and-connectors.md` | Features | Which protocols need which feature; `unsupported.feature` | transports | NOT STARTED | T-10 |
 | D-28 | manual index | `docs/manuals/index.md` | New manuals | MAN-0009, MAN-0010 rows; reading order | — | NOT STARTED | T-31 |
 | D-29 | reference manual links | all manual cross-links to API-2026-0006/0007 | Navigation | Links | — | NOT STARTED | T-31 |
 | D-30 | architecture | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md` + index | §31 | Workspace crates, facade boundary, `ffi` surface, envelope edge layer, feature gates (diagrams) | all | NOT STARTED | T-31 |
-| D-31 | system | `docs/system/components/sys-2026-0001-compiler-and-catalog.md` | Globals, highlighting | `global` lowering, `compile_globals`, tokenizer link | language | NOT STARTED | TASK-082 |
+| D-31 | system | `docs/system/components/sys-2026-0001-compiler-and-catalog.md` | Globals, highlighting, modules | `global` lowering, `compile_globals`, tokenizer link; `resolve_imports` (resolution, dedup, cycles, namespacing, visibility); `load_module` and catalog snapshots | language | NOT STARTED | TASK-082 |
 | D-32 | system | `docs/system/runtime/sys-2026-0002-execution-scopes-and-dag.md` | Frame | Global scope lookup order | execution | NOT STARTED | TASK-082 |
-| D-33 | system | `docs/system/components/sys-2026-0003-policy-broker-and-io-manifest.md` | Manifest | Global substitution | audit | NOT STARTED | TASK-082 |
+| D-33 | system | `docs/system/components/sys-2026-0003-policy-broker-and-io-manifest.md` | Manifest | Global substitution; manifest and policy across modules; bootstrap reads of imported files | audit | NOT STARTED | TASK-082 |
 | D-34 | system | `docs/system/components/sys-2026-0004-surfaces-and-serve.md` | Wire | Input parser, envelope writer, pretty, Deprecation, remote client | serve | NOT STARTED | TASK-082 |
 | D-35 | system | `docs/system/integrations/sys-2026-0005-protocol-adapters.md`, `sys-2026-0006-oauth-and-credentials.md`, `sys-2026-0009-mcp-client-connectors.md` | Features | Feature gates per adapter; examples re-shaped | transports, auth, connectors | NOT STARTED | TASK-082 |
 | D-36 | system | `docs/system/runtime/sys-2026-0007-sessions.md`, `docs/system/configuration/sys-2026-0008-policy-json-reference.md`, `docs/system/index.md` | Wire | Receipts/records as envelopes; index rows for SYS-0010/0011 | sessions | NOT STARTED | TASK-082 |
-| D-37 | security | `docs/security/sec-2026-0001-policy-and-sandbox-model.md` + index | New boundary | FFI trust boundary (host = library principal), memory-safety guarantees and non-guarantees, globals cannot hold secrets | ffi, language | NOT STARTED | T-12, T-31 |
+| D-37 | security | `docs/security/sec-2026-0001-policy-and-sandbox-model.md` + index | New boundary | FFI trust boundary (host = library principal), memory-safety guarantees and non-guarantees, globals cannot hold secrets; modules: root confinement, single policy, no URL imports | ffi, language | NOT STARTED | T-12, T-31 |
 | D-38 | operations / runbooks | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/runbooks/run-2026-0001-…`, `run-2026-0002-…` + indexes | Wire / install | `cli` feature install; `Deprecation` and `deprecated=1` monitoring; envelope examples in procedures | serve | NOT STARTED | T-30 (dry run) |
 | D-39 | onboarding | `docs/onboarding/onb-2026-0001-contributor-setup.md` + index | Dev setup | Workspace, features, `cbindgen`, C compiler, Node/npx for editors, new suites, grammar regeneration | — | NOT STARTED | T-31 |
 
@@ -501,9 +537,9 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-40 | `docs/api/api-2026-0001-http-rest-sse-polling.md` | Every request/response/SSE/polling example → envelopes; `pretty`; `Deprecation`; new errors | NOT STARTED | T-31 |
 | D-41 | `docs/api/api-2026-0002-websocket-rivet-v1.md` | Frames `{type:"request",ref,operation,data}`; record frames | NOT STARTED | T-31 |
 | D-42 | `docs/api/api-2026-0003-mcp-server-tools.md` | `structuredContent` envelope; `rivet.request` `{operation,data}` | NOT STARTED | T-31 |
-| D-43 | `docs/api/api-2026-0004-rust-library.md` | Facade, features, dependency snippet, `call`, envelopes | NOT STARTED | T-09 |
-| D-44 | `docs/api/api-2026-0005-error-registry.md` + `docs/api/index.md` | New codes: `validation.input_envelope`, `validation.pretty_stream`, `syntax.global`, `check.global_*` (5), `unsupported.feature`, `validation.ffi_argument`, `internal.panic`; examples re-shaped; index rows API-0006/0007 | NOT STARTED | T-31 |
-| D-45 | `docs/references/ref-2026-0002-language-and-usage.md` | `global` syntax row + examples; CLI mapping; envelope examples; status lines re-verified | NOT STARTED | T-29 |
+| D-43 | `docs/api/api-2026-0004-rust-library.md` | Facade, features, dependency snippet, `call`, envelopes, `load`/`load_as`/`Module` | NOT STARTED | T-09, T-18 |
+| D-44 | `docs/api/api-2026-0005-error-registry.md` + `docs/api/index.md` | New codes: `validation.input_envelope`, `validation.pretty_stream`, `syntax.global`, `check.global_*` (5), `unsupported.feature`, `validation.ffi_argument`, `internal.panic`, `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports`, `check.module_policy_ignored`; examples re-shaped; index rows API-0006/0007 | NOT STARTED | T-31 |
+| D-45 | `docs/references/ref-2026-0002-language-and-usage.md` | `global` and `import` syntax rows + examples; CLI mapping; envelope examples; status lines re-verified | NOT STARTED | T-29 |
 | D-46 | `docs/manuals/man-2026-0001…0008` (all eight) | Example outputs re-shaped (in addition to D-20…D-27 content) | NOT STARTED | T-30 |
 | D-47 | `docs/system/**` (nine SYS docs + `docs/system/index.md`) | Example outputs re-shaped | NOT STARTED | TASK-082 |
 | D-48 | `docs/architecture/arch-2026-0001…`, `docs/security/sec-2026-0001…`, `docs/operations/ops-2026-0001…`, `docs/runbooks/run-2026-0002…` | Example outputs re-shaped | NOT STARTED | T-31 |
@@ -521,7 +557,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-60 | `docs/demos/11-sandbox/README.md` | Re-executed | NOT STARTED | T-30 |
 | D-61 | `docs/demos/12-library/README.md`, `embedding.rs` | Facade API, `call`, envelopes; compiled example | NOT STARTED | T-09, T-30 |
 | D-62 | `docs/demos/13-real-world-apis/README.md` (+ its report RPT-2026-0014, historical, unchanged) | Commands and outputs re-shaped where local fixtures allow; public-API steps marked as not re-verifiable offline | NOT STARTED | T-30 |
-| D-63 | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` | Rows for 14–16 and DEMO-2026-0019; `verified_against: "0.2.0"` | NOT STARTED | T-31 |
+| D-63 | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` | Rows for 14–16 and DEMO-2026-0020; `verified_against: "0.2.0"` | NOT STARTED | T-31 |
 | D-65 | `docs/demos/demo-2026-0015-v0-1-0-release-verification.md` | **Not changed**: historical verification of v0.1.0 (NOT APPLICABLE: records a past release) | NOT APPLICABLE | — |
 
 ### Lifecycle, navigation and agent guide
@@ -531,12 +567,13 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-66 | navigation | `docs/index.md`, `docs/README.md` | New dirs/docs (migrations/, API-0006/0007, MAN-0009/0010, SYS-0010/0011, demos 14–16, DEMO-0019, RPT-0015, REL-0.2.0); current release 0.2.0; risks | NOT STARTED | T-31 |
 | D-67 | proposal lifecycle | `docs/proposals/approved/prop-2026-0002-…` → `docs/proposals/implemented/` + indexes | Status `implemented` at P5 | NOT STARTED | T-31 |
 | D-70 | agent guide | `AGENTS.md` project facts | Workspace crates, `ffi` surface, features, editors dir | NOT STARTED | review |
+| D-72 | navigation (modules) | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json`, `docs/index.md` | Rows for 17-modules (DEMO-2026-0019) and the release guide DEMO-2026-0020 | NOT STARTED | T-31 |
 
 **Six post-release documentation-impact decisions** (§31), all expected `UPDATED`:
 
 | Artifact | Expected decision | Covered by |
 |---|---|---|
-| Release verification guide / demo | UPDATED | D-17…D-19, D-50…D-64 |
+| Release verification guide / demo | UPDATED | D-17…D-19, D-71, D-50…D-64 |
 | Top-level README.md | UPDATED | D-49 |
 | system/ | UPDATED | D-15, D-16, D-31…D-36, D-47 |
 | architecture/ | UPDATED | D-30 |
@@ -554,7 +591,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | Tag | repository | `git tag -a v0.2.0`; verify | TASK-093 | NOT STARTED | |
 | Artifacts | local `dist/v0.2.0/` (git-ignored) | binary, `librivet` shared + static, `rivet.h`, `rivet.pc`, `.vsix`, `SHA256SUMS` | TASK-093 | NOT STARTED | |
 | Push / publish | remote | Push branch and tags; GitHub release assets | a remote | BLOCKED | no git remote |
-| Post-release verification | DEMO-2026-0019 | On published artifacts | TASK-095 | BLOCKED | no git remote |
+| Post-release verification | DEMO-2026-0020 | On published artifacts | TASK-095 | BLOCKED | no git remote |
 
 ```text
  workspace version 0.2.0 ─► commit "release: v0.2.0" ─► SHA ─► tag v0.2.0 ─► dist/v0.2.0/{rivet, librivet.*, rivet.h, rivet.pc, *.vsix, SHA256SUMS}
@@ -567,10 +604,12 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 |---|---|---|---|---|---|---|
 | 2026-09-28 | Decision | TASK-001 | PROP-2026-0002 approved; Q-01…Q-06 resolved per recommendations | Scope fixed | Maintainer | ADR-0004 |
 | 2026-09-28 | Decision | — | Agents run sequentially in the main checkout, not in parallel worktrees: 4.3 GiB free and `target/` at 28 GiB | Longer wall-clock; no disk exhaustion | Implementer | TASK-008 |
-| 2026-09-28 | Deviation | IDs | The new release verification guide is DEMO-2026-0019 because DEMO-2026-0016…0018 go to the three new demos (DEMO-2026-0014/0015 are taken) | — | Implementer | D-17…D-19, D-64 |
+| 2026-09-28 | Deviation | IDs | The new release verification guide is DEMO-2026-0020 because DEMO-2026-0016…0018 go to the three new demos (DEMO-2026-0014/0015 are taken) | — | Implementer | D-17…D-19, D-64 |
 | 2026-09-28 | Deviation | IDs | The validation report is RPT-2026-0015 (RPT-2026-0014 belongs to the 13-real-world-apis smoke tests) | — | Implementer | D-08 |
 | 2026-09-28 | Blocker | TASK-095/096 | No git remote: push, CI and git-dependency consumers of the tag cannot be verified remotely | Local release only | Maintainer | — |
 | 2026-09-28 | Scope | TASK-038 | crates.io publication deferred (G-PUB) | Git dependency path | Maintainer | ADR-0004 |
+| 2026-09-28 | Decision | UQ-09 / P2f | Scope amendment: file modules (import in `.rivet` + host load objects in Rust/C/Python), namespaced by alias, loader's policy only; CLI run-from-path not selected | +8 tasks (TASK-045, TASK-100–107), T-16–T-20, D-71, D-72 | Maintainer | PROP-2026-0002 rev 3, ADR-0004 rev 2 |
+| 2026-09-28 | Deviation | IDs | The modules demo takes DEMO-2026-0019; the release verification guide moves to DEMO-2026-0020 | — | Implementer | D-64, D-71 |
 
 ## Rollout Strategy
 
@@ -627,10 +666,16 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | NOT STARTED |
 | R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | NOT STARTED |
 | R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | NOT STARTED |
-| R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-70 | U-18 | NOT STARTED |
+| R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | NOT STARTED |
+| R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | NOT STARTED |
+| R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | NOT STARTED |
+| R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | NOT STARTED |
+| R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | NOT STARTED |
+| R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | NOT STARTED |
+| R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | NOT STARTED |
 
 ```text
- R-n ──► TASK-0xx ──► PF-xx ──► T-nn (TEST-2026-00nn) ──► D-xx (docs/demo) ──► U-nn (DEMO-2026-0019) ──► REL-0.2.0
+ R-n ──► TASK-0xx ──► PF-xx ──► T-nn (TEST-2026-00nn) ──► D-xx (docs/demo) ──► U-nn (DEMO-2026-0020) ──► REL-0.2.0
 ```
 
 ## Post-Implementation Review
@@ -648,4 +693,5 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-28 | Claude | Scope amendment (PROP-2026-0002 rev 3, ADR-0004 rev 2): P2f file modules (TASK-100–107), TASK-045 module ABI, R19–R24, T-16–T-20 (TEST-2026-0049…0053), demo 17-modules (DEMO-2026-0019), release guide → DEMO-2026-0020, documentation rows updated (D-12, D-13, D-15, D-20, D-22–D-24, D-26, D-31, D-33, D-37, D-43–D-45, D-64, D-71, D-72). |
 | 1 | 2026-09-28 | Claude | Created from approved PROP-2026-0002 (ADR-0004): P1–P5, 65 tasks, file/test checklists, and a complete documentation checklist D-01…D-70 including the 62-file envelope sweep. |
