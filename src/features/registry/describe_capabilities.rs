@@ -23,6 +23,7 @@ fn feature(name: &str, stage: &str, supported: bool, detail: Json) -> Json {
 // vhco:about Reports what this build and platform support — protocols and their versions/modes, OAuth flows, the process sandbox backend (active, gated or unsupported), serve surfaces, Stage C features that are refused, and the version — without I/O or sensitive data, for any authenticated principal.
 // vhco:example input={version:"0.1.0-dev", os:"macos", sandbox_backend:"macos-seatbelt", sandbox_status:"active"} => { "version": "0.1.0-dev", "sandbox": { "backend": "macos-seatbelt", "status": "active" } }
 pub fn describe_capabilities(input: &BuildProbe) -> Value {
+    // vhco:todo report_build -- the report states what this build and OS actually support (protocols, OAuth flows, sandbox backend and status, serve surfaces, refused Stage C forms, version) with no I/O and no sensitive data
     // vhco:step protocols -- fixed table of this build's transports: http 1.1/2/3 (strict or fallback), websocket, tcp, unix, udp (+ multicast), quic v1 (+ datagram), grpc (4 modes), mcp (stdio, http), oauth2 (client_credentials, pkce, device, refresh)
     let features = vec![
         feature(

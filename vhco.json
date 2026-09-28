@@ -3,7 +3,7 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args."
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling."
   },
   "documentation": {
     "readme": "README.md",
@@ -12,7 +12,7 @@
         "title": "Rivet",
         "path": "README.md",
         "kind": "readme",
-        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: draft\ncreated_date: 2026-09-27\nlast_updated: 2026-09-28\ndocument_revision: 7\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, runtime, interfaces, sandbox]\naffected_versions:\n  from: not-applicable\n  to: proposed-v0.1\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Proposed Rivet behavior and design review; no implementation or release claim.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a proposed Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current state: design approved, implementation not started (design revision 8).** This repository contains the original brief, the approved proposal, the approved hand-authored contract, a reference of 159 numbered examples, twelve sample folders and the v0.1.0 plan. It has no runtime implementation, Cargo build, installed Rivet command or release. The maintainer approved the design, contract and plan on 2026-09-28 ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)); [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) is in phase P1.\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n\n## What the design proposes\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+\n      |            |           |               |           |           |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::request\n      |            |           |               |           |           |\n      +------------+-----------+-------+-------+-----------+-----------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Current design (revision 6) |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nCanonical commands (proposed, not runnable yet):\n\n```sh\nrivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'          # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --params '{\"id\":42}'\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Approval gates and risks\n\n```text\n  design review ✔ ──\u003e [G-LIC] ✔ owner authorized Capy ──\u003e [G-SPIKE] every example parses ──\u003e implementation\n  (ADR-0001)            (ADR-0001)                          gate: S01–S159 and docs/demos/*.rivet\n```\n\n| Gate / risk | State |\n|---|---|\n| G-LIC — Capy licence | **Closed 2026-09-28.** Capy's LICENSE text is source-available while its Cargo.toml says MIT; the maintainer owns Capy and authorized Rivet to depend on and ship it ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)). |\n| Parser spike | Implementation starts only after every numbered example and every `docs/demos` `.rivet` file parses cleanly with Capy's public `Library::parse`. |\n| Platform enforcement | Process sandboxing and conditional file updates depend on platform support; still unproven. |\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nImplementation requires the human contract review defined by [AGENTS.md](AGENTS.md). `vhco validate`, `sync` and `check` cannot pass a Rust implementation gate before `src/` exists; they currently report that missing directory. Do not add dummy code or weaken validation to conceal this design-phase state. The examples describe proposed usage and require implementation plus fixture tests before they can be called runnable.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
+        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: draft\ncreated_date: 2026-09-27\nlast_updated: 2026-09-28\ndocument_revision: 7\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, execution, cli, http, mcp, library, policy]\naffected_versions:\n  from: not-applicable\n  to: proposed-v0.1\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Proposed Rivet behavior and design review; no implementation or release claim.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a proposed Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current state: design approved, implementation not started (design revision 8).** This repository contains the original brief, the approved proposal, the approved hand-authored contract, a reference of 159 numbered examples, twelve sample folders and the v0.1.0 plan. It has no runtime implementation, Cargo build, installed Rivet command or release. The maintainer approved the design, contract and plan on 2026-09-28 ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)); [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) is in phase P1.\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/approved/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n\n## What the design proposes\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+\n      |            |           |               |           |           |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::request\n      |            |           |               |           |           |\n      +------------+-----------+-------+-------+-----------+-----------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Current design (revision 6) |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nCanonical commands (proposed, not runnable yet):\n\n```sh\nrivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'          # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --params '{\"id\":42}'\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Approval gates and risks\n\n```text\n  design review ✔ ──\u003e [G-LIC] ✔ owner authorized Capy ──\u003e [G-SPIKE] every example parses ──\u003e implementation\n  (ADR-0001)            (ADR-0001)                          gate: S01–S159 and docs/demos/*.rivet\n```\n\n| Gate / risk | State |\n|---|---|\n| G-LIC — Capy licence | **Closed 2026-09-28.** Capy's LICENSE text is source-available while its Cargo.toml says MIT; the maintainer owns Capy and authorized Rivet to depend on and ship it ([ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md)). |\n| Parser spike | Implementation starts only after every numbered example and every `docs/demos` `.rivet` file parses cleanly with Capy's public `Library::parse`. |\n| Platform enforcement | Process sandboxing and conditional file updates depend on platform support; still unproven. |\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nImplementation requires the human contract review defined by [AGENTS.md](AGENTS.md). `vhco validate`, `sync` and `check` cannot pass a Rust implementation gate before `src/` exists; they currently report that missing directory. Do not add dummy code or weaken validation to conceal this design-phase state. The examples describe proposed usage and require implementation plus fixture tests before they can be called runnable.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
       }
     ]
   },
@@ -448,6 +448,134 @@
       ]
     },
     {
+      "name": "GraphQuery",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "all",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "GraphNodeKind",
+      "fields": [
+        {
+          "name": "operation",
+          "type": "| call | connector | effect | branch | dag | node | cycle"
+        }
+      ]
+    },
+    {
+      "name": "GraphNode",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "GraphNodeKind"
+        },
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "source",
+          "type": "string"
+        },
+        {
+          "name": "condition?",
+          "type": "string"
+        },
+        {
+          "name": "conditional",
+          "type": "bool"
+        },
+        {
+          "name": "after",
+          "type": "string[]"
+        },
+        {
+          "name": "children",
+          "type": "GraphNode[]"
+        }
+      ]
+    },
+    {
+      "name": "CallGraph",
+      "fields": [
+        {
+          "name": "operation_id",
+          "type": "string"
+        },
+        {
+          "name": "root",
+          "type": "GraphNode"
+        }
+      ]
+    },
+    {
+      "name": "CancelReason",
+      "fields": [
+        {
+          "name": "cancelled",
+          "type": "| timeout"
+        }
+      ]
+    },
+    {
+      "name": "CancelToken",
+      "fields": [
+        {
+          "name": "reason?",
+          "type": "CancelReason"
+        }
+      ]
+    },
+    {
+      "name": "SandboxStatus",
+      "fields": [
+        {
+          "name": "active",
+          "type": "| gated | unsupported"
+        }
+      ]
+    },
+    {
+      "name": "BuildProbe",
+      "fields": [
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "os",
+          "type": "string"
+        },
+        {
+          "name": "arch",
+          "type": "string"
+        },
+        {
+          "name": "sandbox_backend",
+          "type": "string"
+        },
+        {
+          "name": "sandbox_status",
+          "type": "SandboxStatus"
+        },
+        {
+          "name": "sandbox_reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "Principal",
       "fields": [
         {
@@ -488,6 +616,10 @@
           "type": "string"
         },
         {
+          "name": "parent_span_id?",
+          "type": "string"
+        },
+        {
           "name": "depth",
           "type": "int"
         },
@@ -498,6 +630,31 @@
         {
           "name": "include_private",
           "type": "bool"
+        },
+        {
+          "name": "cancel",
+          "type": "CancelToken"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
+        }
+      ]
+    },
+    {
+      "name": "TraceContext",
+      "fields": [
+        {
+          "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "parent_id",
+          "type": "string"
+        },
+        {
+          "name": "flags",
+          "type": "int"
         }
       ]
     },
@@ -771,6 +928,14 @@
         {
           "name": "error",
           "type": "Option\u003cRivetError\u003e"
+        },
+        {
+          "name": "started_at",
+          "type": "Option\u003cString\u003e"
+        },
+        {
+          "name": "ended_at",
+          "type": "Option\u003cString\u003e"
         }
       ]
     },
@@ -922,6 +1087,57 @@
         {
           "name": "overwrite",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamMode",
+      "fields": [
+        {
+          "name": "read",
+          "type": "| write | append"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamRequest",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "chunk_size?",
+          "type": "int"
+        },
+        {
+          "name": "operation_id",
+          "type": "string"
+        },
+        {
+          "name": "span?",
+          "type": "SourceSpan"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamPlan",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "FileStreamMode"
+        },
+        {
+          "name": "chunk_size",
+          "type": "int"
         }
       ]
     },
@@ -1676,6 +1892,10 @@
         {
           "name": "trace_request_id?",
           "type": "string"
+        },
+        {
+          "name": "params?",
+          "type": "Json"
         }
       ]
     },
@@ -2862,6 +3082,10 @@
         {
           "name": "serve",
           "type": "ServePolicy"
+        },
+        {
+          "name": "ceiling?",
+          "type": "Policy"
         }
       ]
     },
@@ -3239,6 +3463,10 @@
         {
           "name": "trace_id?",
           "type": "string"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
         }
       ]
     },
@@ -3260,6 +3488,10 @@
         {
           "name": "open_refs",
           "type": "string[]"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
         }
       ]
     },
@@ -3277,6 +3509,10 @@
         {
           "name": "replied",
           "type": "bool"
+        },
+        {
+          "name": "ended?",
+          "type": "string"
         }
       ]
     },
@@ -3316,6 +3552,10 @@
         {
           "name": "serve",
           "type": "ServePolicy"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
         }
       ]
     },
@@ -3395,6 +3635,14 @@
         {
           "name": "deadline_ms?",
           "type": "int"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
         }
       ]
     },
@@ -3710,6 +3958,10 @@
         {
           "name": "closer?",
           "type": "SyntaxNode"
+        },
+        {
+          "name": "sections",
+          "type": "map\u003cstring, SyntaxNode[]\u003e"
         }
       ]
     },
@@ -4717,79 +4969,142 @@
     },
     {
       "kind": "domain",
+      "name": "GraphQuery",
+      "file": "src/domain/call_graph.rs",
+      "line": 21,
+      "code": "/// `rivet graph ID [--all]`: private operations need `all`."
+    },
+    {
+      "kind": "domain",
+      "name": "GraphNodeKind",
+      "file": "src/domain/call_graph.rs",
+      "line": 29,
+      "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "GraphNode",
+      "file": "src/domain/call_graph.rs",
+      "line": 62,
+      "code": "#[derive(Clone, Debug, PartialEq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "CallGraph",
+      "file": "src/domain/call_graph.rs",
+      "line": 80,
+      "code": "#[derive(Clone, Debug, PartialEq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "CancelReason",
+      "file": "src/domain/cancel.rs",
+      "line": 20,
+      "code": "/// Why a scope is being cancelled."
+    },
+    {
+      "kind": "domain",
+      "name": "CancelToken",
+      "file": "src/domain/cancel.rs",
+      "line": 81,
+      "code": "/// A cancellation signal shared by one request scope and its children. Cheap"
+    },
+    {
+      "kind": "domain",
+      "name": "SandboxStatus",
+      "file": "src/domain/capabilities.rs",
+      "line": 3,
+      "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "BuildProbe",
+      "file": "src/domain/capabilities.rs",
+      "line": 24,
+      "code": "/// Facts only the composition root knows (crate version, compiled platform,"
+    },
+    {
+      "kind": "domain",
       "name": "Principal",
       "file": "src/domain/contracts.rs",
-      "line": 10,
+      "line": 11,
       "code": "#[derive(Clone, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "Request",
       "file": "src/domain/contracts.rs",
-      "line": 26,
+      "line": 27,
       "code": "#[derive(Clone, Debug, PartialEq)]"
+    },
+    {
+      "kind": "domain",
+      "name": "TraceContext",
+      "file": "src/domain/contracts.rs",
+      "line": 59,
+      "code": "/// A valid W3C `traceparent` (version 00): 32-hex trace-id, 16-hex parent-id."
     },
     {
       "kind": "domain",
       "name": "Completion",
       "file": "src/domain/contracts.rs",
-      "line": 44,
+      "line": 160,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "DataEvent",
       "file": "src/domain/contracts.rs",
-      "line": 79,
+      "line": 195,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "Envelope",
       "file": "src/domain/contracts.rs",
-      "line": 101,
+      "line": 217,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "RegistryEntry",
       "file": "src/domain/contracts.rs",
-      "line": 144,
+      "line": 260,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CatalogQuery",
       "file": "src/domain/contracts.rs",
-      "line": 312,
+      "line": 428,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "Catalog",
       "file": "src/domain/contracts.rs",
-      "line": 319,
+      "line": 435,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "ExecutionPlan",
       "file": "src/domain/contracts.rs",
-      "line": 325,
+      "line": 441,
       "code": "/// Validated request handed to the execution driver."
     },
     {
       "kind": "domain",
       "name": "RunOutcome",
       "file": "src/domain/contracts.rs",
-      "line": 333,
+      "line": 449,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OutputReport",
       "file": "src/domain/contracts.rs",
-      "line": 341,
+      "line": 457,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -4824,7 +5139,7 @@
       "kind": "domain",
       "name": "DagCompletion",
       "file": "src/domain/dag.rs",
-      "line": 90,
+      "line": 113,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -4852,22 +5167,43 @@
       "kind": "domain",
       "name": "FileVerb",
       "file": "src/domain/files.rs",
-      "line": 5,
+      "line": 6,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "Codec",
       "file": "src/domain/files.rs",
-      "line": 53,
+      "line": 54,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "FileOperation",
       "file": "src/domain/files.rs",
-      "line": 72,
+      "line": 73,
       "code": "/// Paths are as written in source, relative to the bundle root. The adapter"
+    },
+    {
+      "kind": "domain",
+      "name": "FileStreamMode",
+      "file": "src/domain/files.rs",
+      "line": 104,
+      "code": "/// Mode of a scoped `with file open PATH mode M as NAME` handle (G35)."
+    },
+    {
+      "kind": "domain",
+      "name": "FileStreamRequest",
+      "file": "src/domain/files.rs",
+      "line": 139,
+      "code": "/// The evaluated head/options of `with file open …` before validation."
+    },
+    {
+      "kind": "domain",
+      "name": "FileStreamPlan",
+      "file": "src/domain/files.rs",
+      "line": 151,
+      "code": "/// A validated, authorized handle plan the confined adapter opens."
     },
     {
       "kind": "domain",
@@ -5083,63 +5419,63 @@
       "kind": "domain",
       "name": "IoReport",
       "file": "src/domain/io_manifest.rs",
-      "line": 600,
+      "line": 605,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "TraceEvent",
       "file": "src/domain/io_manifest.rs",
-      "line": 613,
+      "line": 618,
       "code": "/// One broker decision/attempt recorded for a request (secret values never included)."
     },
     {
       "kind": "domain",
       "name": "TraceQuery",
       "file": "src/domain/io_manifest.rs",
-      "line": 654,
+      "line": 659,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "TraceResult",
       "file": "src/domain/io_manifest.rs",
-      "line": 672,
+      "line": 677,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "FileProbeInput",
       "file": "src/domain/io_manifest.rs",
-      "line": 695,
+      "line": 700,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "FileProbeResult",
       "file": "src/domain/io_manifest.rs",
-      "line": 703,
+      "line": 708,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyDraft",
       "file": "src/domain/io_manifest.rs",
-      "line": 710,
+      "line": 715,
       "code": "/// A least-privilege policy.json v1 draft (`policy generate`, `rt.generate_policy`)."
     },
     {
       "kind": "domain",
       "name": "PolicyDraftFile",
       "file": "src/domain/io_manifest.rs",
-      "line": 771,
+      "line": 776,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyDraftReceipt",
       "file": "src/domain/io_manifest.rs",
-      "line": 778,
+      "line": 783,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -5167,105 +5503,105 @@
       "kind": "domain",
       "name": "Arg",
       "file": "src/domain/ir.rs",
-      "line": 105,
+      "line": 150,
       "code": "/// One argument of an option line or effect head. Bare identifiers stay"
     },
     {
       "kind": "domain",
       "name": "OptionLine",
       "file": "src/domain/ir.rs",
-      "line": 143,
+      "line": 188,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "EffectKind",
       "file": "src/domain/ir.rs",
-      "line": 158,
+      "line": 203,
       "code": "#[derive(Clone, Debug, PartialEq, Eq, Hash)]"
     },
     {
       "kind": "domain",
       "name": "EffectForm",
       "file": "src/domain/ir.rs",
-      "line": 213,
+      "line": 258,
       "code": "/// `http get \"url\"`, `file create PATH json V`, `tcp \"host:port\"`, … plus the"
     },
     {
       "kind": "domain",
       "name": "MemberCall",
       "file": "src/domain/ir.rs",
-      "line": 236,
+      "line": 281,
       "code": "/// `socket.send json {…}`, `conn.receive json timeout \"5s\"`, `rpc.finish_send`."
     },
     {
       "kind": "domain",
       "name": "Rhs",
       "file": "src/domain/ir.rs",
-      "line": 246,
+      "line": 291,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "FailurePolicy",
       "file": "src/domain/ir.rs",
-      "line": 265,
+      "line": 310,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]"
     },
     {
       "kind": "domain",
       "name": "GroupOptions",
       "file": "src/domain/ir.rs",
-      "line": 273,
+      "line": 318,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "DagNode",
       "file": "src/domain/ir.rs",
-      "line": 281,
+      "line": 326,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CatchFilter",
       "file": "src/domain/ir.rs",
-      "line": 290,
+      "line": 335,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "Stmt",
       "file": "src/domain/ir.rs",
-      "line": 297,
+      "line": 342,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OperationKind",
       "file": "src/domain/ir.rs",
-      "line": 433,
+      "line": 478,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "Operation",
       "file": "src/domain/ir.rs",
-      "line": 440,
+      "line": 485,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "Declaration",
       "file": "src/domain/ir.rs",
-      "line": 460,
+      "line": 505,
       "code": "/// `connector NAME mcp|grpc … end` and `auth NAME oauth2 … end`."
     },
     {
       "kind": "domain",
       "name": "CompiledProgram",
       "file": "src/domain/ir.rs",
-      "line": 476,
+      "line": 521,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
@@ -5541,70 +5877,70 @@
       "kind": "domain",
       "name": "EffectTarget",
       "file": "src/domain/policy.rs",
-      "line": 306,
+      "line": 338,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "EffectIntent",
       "file": "src/domain/policy.rs",
-      "line": 329,
+      "line": 361,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "Decision",
       "file": "src/domain/policy.rs",
-      "line": 340,
+      "line": 372,
       "code": "#[derive(Clone, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "Permit",
       "file": "src/domain/policy.rs",
-      "line": 347,
+      "line": 379,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyLocator",
       "file": "src/domain/ports.rs",
-      "line": 91,
+      "line": 92,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyDiscovery",
       "file": "src/domain/ports.rs",
-      "line": 98,
+      "line": 99,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyBytes",
       "file": "src/domain/ports.rs",
-      "line": 106,
+      "line": 107,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CancelRequest",
       "file": "src/domain/ports.rs",
-      "line": 260,
+      "line": 268,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "RequestState",
       "file": "src/domain/ports.rs",
-      "line": 276,
+      "line": 284,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "RemoteCall",
       "file": "src/domain/ports.rs",
-      "line": 370,
+      "line": 378,
       "code": "/// One call a CLI in `--endpoint` mode sends to a running `rivet serve`."
     },
     {
@@ -5688,42 +6024,42 @@
       "kind": "domain",
       "name": "WsInbound",
       "file": "src/domain/serve.rs",
-      "line": 299,
+      "line": 302,
       "code": "/// One parsed client frame plus the connection facts the multiplexer needs."
     },
     {
       "kind": "domain",
       "name": "WsOutcome",
       "file": "src/domain/serve.rs",
-      "line": 311,
+      "line": 316,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "WsClose",
       "file": "src/domain/serve.rs",
-      "line": 320,
+      "line": 328,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollAction",
       "file": "src/domain/serve.rs",
-      "line": 327,
+      "line": 335,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollRoute",
       "file": "src/domain/serve.rs",
-      "line": 353,
+      "line": 364,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PollResponse",
       "file": "src/domain/serve.rs",
-      "line": 361,
+      "line": 374,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -5744,70 +6080,70 @@
       "kind": "domain",
       "name": "SessionReceipt",
       "file": "src/domain/sessions.rs",
-      "line": 81,
+      "line": 87,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionSendInput",
       "file": "src/domain/sessions.rs",
-      "line": 118,
+      "line": 124,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionRef",
       "file": "src/domain/sessions.rs",
-      "line": 127,
+      "line": 133,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionAck",
       "file": "src/domain/sessions.rs",
-      "line": 134,
+      "line": 140,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionReadInput",
       "file": "src/domain/sessions.rs",
-      "line": 148,
+      "line": 154,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SessionEvent",
       "file": "src/domain/sessions.rs",
-      "line": 158,
+      "line": 164,
       "code": "/// One retained event; `seq` is the session's output sequence (1-based)."
     },
     {
       "kind": "domain",
       "name": "SessionBatch",
       "file": "src/domain/sessions.rs",
-      "line": 179,
+      "line": 185,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CancelReceipt",
       "file": "src/domain/sessions.rs",
-      "line": 199,
+      "line": 205,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "InputSequencer",
       "file": "src/domain/sessions.rs",
-      "line": 223,
+      "line": 229,
       "code": "/// Input sequencing: `send_seq` starts at 1 and increases by one; the most"
     },
     {
       "kind": "domain",
       "name": "EventLog",
       "file": "src/domain/sessions.rs",
-      "line": 273,
+      "line": 279,
       "code": "/// Retained output events with an acknowledgement cursor."
     },
     {
@@ -5815,7 +6151,7 @@
       "name": "sessions.send_input",
       "note": "send_seq starts at 1, identical retry is a duplicate, changed payload or gaps conflict, closed input rejects",
       "file": "src/domain/sessions.rs",
-      "line": 405,
+      "line": 411,
       "code": "#[test]"
     },
     {
@@ -5823,7 +6159,7 @@
       "name": "sessions.read_events",
       "note": "batches are ordered, acknowledgement evicts, future and evicted cursors are typed errors",
       "file": "src/domain/sessions.rs",
-      "line": 422,
+      "line": 428,
       "code": "#[test]"
     },
     {
@@ -5865,14 +6201,14 @@
       "kind": "domain",
       "name": "SyntaxDiagnostic",
       "file": "src/domain/syntax_tree.rs",
-      "line": 56,
+      "line": 66,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "SyntaxTree",
       "file": "src/domain/syntax_tree.rs",
-      "line": 65,
+      "line": 75,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
@@ -6122,6 +6458,37 @@
     },
     {
       "kind": "usecase",
+      "name": "audit.build_graph",
+      "file": "src/features/audit/build_graph.rs",
+      "line": 19,
+      "code": "pub fn build_graph(query: \u0026GraphQuery, registry: \u0026dyn Registry) -\u003e RivetResult\u003cCallGraph\u003e {"
+    },
+    {
+      "kind": "todo",
+      "name": "select_operation",
+      "note": "the ID must name an operation, public unless `all`; a private or absent one is not_found.operation without disclosing which",
+      "file": "src/features/audit/build_graph.rs",
+      "line": 26,
+      "code": "let op = match program.operation(\u0026query.id) {"
+    },
+    {
+      "kind": "error",
+      "name": "unknown_id",
+      "note": "absent, or private without --all",
+      "file": "src/features/audit/build_graph.rs",
+      "line": 27,
+      "code": "let op = match program.operation(\u0026query.id) {"
+    },
+    {
+      "kind": "todo",
+      "name": "build_tree",
+      "note": "structure (if/else arms with their condition, dag with nodes and after lists) comes from the IR; each effect site, literal call and connector call of the operation hangs under the innermost structure whose line range contains it, in source order; a call node expands the callee's graph unless the callee is already on the chain (cycle node)",
+      "file": "src/features/audit/build_graph.rs",
+      "line": 37,
+      "code": "let mut b = Builder {"
+    },
+    {
+      "kind": "usecase",
       "name": "audit.inspect_effects",
       "file": "src/features/audit/inspect_effects.rs",
       "line": 34,
@@ -6196,7 +6563,7 @@
       "name": "join_trace",
       "note": "with trace_request_id read that request from TraceStore (absent store or request = not_found, exit 4), join events on effect_id into attempts {count, last_decision, last_phase}; events with no planned site are kept as unplanned",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 148,
+      "line": 154,
       "code": "let mut unplanned = Vec::new();"
     },
     {
@@ -6204,7 +6571,7 @@
       "name": "unknown_request",
       "note": "no trace store, or the store has no such request",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 149,
+      "line": 155,
       "code": "let mut unplanned = Vec::new();"
     },
     {
@@ -6212,7 +6579,7 @@
       "name": "group_view",
       "note": "TargetSummary per (grant target, capability): union of verbs, methods, protocols, origins, phases and operations; needs_file yes/no/`yes: verbs`/null; USED BY lists each operation, `entry (via op)` for transitive users and connector `op (via method)`; the decision is the worst site decision (denied \u003e partial \u003e unknown \u003e allowed); rows ordered by first appearance, capabilities of one target in vocabulary order",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 184,
+      "line": 190,
       "code": "let targets = group_targets(\u0026sites, \u0026program, target_key);"
     },
     {
@@ -6220,7 +6587,7 @@
       "name": "needs_view",
       "note": "with needs or check_files: one OperationNeeds per selected entry (id order) listing its requires_existing file sites and those of reachable callees (via = callee), deduplicated by path; param_dependent paths shown as templates; with include_bootstrap a leading `bundle load` group lists connector descriptor/schema files",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 194,
+      "line": 200,
       "code": "let mut needs = Vec::new();"
     },
     {
@@ -6228,7 +6595,7 @@
       "name": "check_files",
       "note": "with check_files: each distinct exact path is authorized as allow_read/stat through PolicyEvaluator first (denied = not_permitted, path untouched), then probed once through FileProbe (metadata + readability only, never opened); non-exact paths are not_checkable; statuses are shown under every operation needing the path",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 243,
+      "line": 249,
       "code": "let mut probe_counts: BTreeMap\u003c\u0026'static str, usize\u003e = BTreeMap::new();"
     },
     {
@@ -6236,7 +6603,7 @@
       "name": "render_inventory",
       "note": "render table (by operation / target / capability, or the needs listing), markdown (same tables) or csv (one row per site) from the manifest, json = the manifest itself; stderr gets decision counts, probe counts and the incompleteness list; exit 3 when check_policy found denied/partial or check_files found not_permitted/unreadable, else 4 when a needed file is missing, else 7 when strict and incomplete, else 0",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 317,
+      "line": 323,
       "code": "let opts = RenderOptions {"
     },
     {
@@ -6319,7 +6686,7 @@
       "name": "audit.inspect_effects",
       "note": "normalization helpers: derived globs, lexical paths and bundle-relative source files",
       "file": "src/features/audit/support/effect_sites.rs",
-      "line": 1318,
+      "line": 1361,
       "code": "#[test]"
     },
     {
@@ -6693,7 +7060,7 @@
       "name": "capability",
       "note": "the server did not negotiate the needed capability",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 383,
+      "line": 392,
       "code": "if !session.peer().supports(import.capability()) {"
     },
     {
@@ -6701,7 +7068,7 @@
       "name": "jsonrpc",
       "note": "a JSON-RPC error response",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 398,
+      "line": 407,
       "code": "McpReply::Error {"
     },
     {
@@ -6709,7 +7076,7 @@
       "name": "tool_failed",
       "note": "result.isError true",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 419,
+      "line": 428,
       "code": "if result.get(\"isError\").and_then(Json::as_bool) == Some(true) {"
     },
     {
@@ -6717,7 +7084,7 @@
       "name": "output_schema",
       "note": "structuredContent that violates the snapshot outputSchema",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 436,
+      "line": 445,
       "code": "let tool = conn"
     },
     {
@@ -6725,7 +7092,7 @@
       "name": "bad_listing",
       "note": "a listing that does not form a valid snapshot (missing names/schemas, duplicates)",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 555,
+      "line": 623,
       "code": "let snapshot = McpSnapshot::parse(raw.to_string().as_bytes())?;"
     },
     {
@@ -6733,7 +7100,7 @@
       "name": "connectors.invoke_mcp",
       "note": "a tool result keeps content and structuredContent, and the call carries bridge _meta",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 693,
+      "line": 777,
       "code": "#[tokio::test]"
     },
     {
@@ -6741,7 +7108,15 @@
       "name": "connectors.invoke_mcp",
       "note": "isError maps to mcp.tool_failed and a JSON-RPC error keeps its code",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 719,
+      "line": 804,
+      "code": "#[tokio::test]"
+    },
+    {
+      "kind": "test",
+      "name": "connectors.invoke_mcp",
+      "note": "G29 a live tools/list whose exposed tool changed its inputSchema or disappeared fails mcp.schema_drift and the tool call is never sent; key order alone is not drift",
+      "file": "src/features/connectors/invoke_mcp.rs",
+      "line": 839,
       "code": "#[tokio::test]"
     },
     {
@@ -6749,7 +7124,7 @@
       "name": "connectors.invoke_mcp",
       "note": "invalid params, denied allow_mcp, hop limit and recursion all fail before the session opens",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 754,
+      "line": 882,
       "code": "#[tokio::test]"
     },
     {
@@ -6877,7 +7252,7 @@
     {
       "kind": "todo",
       "name": "signal_cancel",
-      "note": "signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope is dropped",
+      "note": "signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope has closed its resources (dropped only as a last resort after the grace)",
       "file": "src/features/execution/cancel_request.rs",
       "line": 35,
       "code": "control.signal(\u0026input.request_id);"
@@ -6915,7 +7290,7 @@
       "kind": "usecase",
       "name": "execution.request_operation",
       "file": "src/features/execution/request_operation.rs",
-      "line": 10,
+      "line": 57,
       "code": "pub async fn request_operation("
     },
     {
@@ -6923,7 +7298,7 @@
       "name": "validate_request",
       "note": "resolve the ID in the pinned catalog (private IDs only for in-bundle calls), reject unknown fields and wrong types before injecting defaults, enforce limits.max_call_depth (limit.call_depth) before scheduling; concurrency/byte budgets are reserved by the host dispatcher",
       "file": "src/features/execution/request_operation.rs",
-      "line": 21,
+      "line": 68,
       "code": "let entry = resolve(\u0026input, registry)?;"
     },
     {
@@ -6931,7 +7306,7 @@
       "name": "call_depth",
       "note": "nesting deeper than limits.max_call_depth",
       "file": "src/features/execution/request_operation.rs",
-      "line": 24,
+      "line": 71,
       "code": "if input.depth \u003e limits.max_call_depth {"
     },
     {
@@ -6939,23 +7314,31 @@
       "name": "streaming_unary",
       "note": "an operation that `receives` input cannot run as a plain unary request",
       "file": "src/features/execution/request_operation.rs",
-      "line": 37,
+      "line": 84,
       "code": "if entry.receives.is_some() \u0026\u0026 sink.is_none() {"
     },
     {
       "kind": "todo",
       "name": "drive_scoped",
-      "note": "drive the compiled body through the injected driver; emitted items flow to the sink with awaited demand; cancellation propagates without replaying emitted data",
+      "note": "drive the compiled body through the injected driver; every emitted item is checked against the declared `emits` spec before it reaches the sink (first violation → output.invalid with details.seq, producer stopped); items flow to the sink with awaited demand; cancellation (the request's structured token: caller cancel or deadline) propagates without replaying emitted data",
       "file": "src/features/execution/request_operation.rs",
-      "line": 51,
-      "code": "let plan = ExecutionPlan {"
+      "line": 98,
+      "code": "let check = entry.emits.clone().map(|spec| {"
+    },
+    {
+      "kind": "error",
+      "name": "emit_invalid",
+      "note": "an emitted item violates `emits`",
+      "file": "src/features/execution/request_operation.rs",
+      "line": 116,
+      "code": "let outcome = driver.drive(plan, sink).await.map_err(|e| {"
     },
     {
       "kind": "todo",
       "name": "finish_scope",
       "note": "the scope is joined inside drive; validate the final result against the declared OutputSpec BEFORE building the Completion; mismatch → output.invalid (500, exit 5) with effects preserved; exactly one completion or primary error",
       "file": "src/features/execution/request_operation.rs",
-      "line": 59,
+      "line": 130,
       "code": "let verdict = validate_output(\u0026OutputCheck {"
     },
     {
@@ -6963,14 +7346,30 @@
       "name": "execution.request_operation",
       "note": "params are checked for unknown fields and types before defaults are injected",
       "file": "src/features/execution/request_operation.rs",
-      "line": 284,
+      "line": 358,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "execution.request_operation",
+      "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
+      "file": "src/features/execution/request_operation.rs",
+      "line": 432,
+      "code": "#[tokio::test]"
+    },
+    {
+      "kind": "test",
+      "name": "execution.request_operation",
+      "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
+      "file": "src/features/execution/request_operation.rs",
+      "line": 460,
       "code": "#[test]"
     },
     {
       "kind": "usecase",
       "name": "execution.run_dag",
       "file": "src/features/execution/run_dag.rs",
-      "line": 9,
+      "line": 10,
       "code": "pub async fn run_dag(input: DagInput, runner: \u0026dyn DagNodeRunner) -\u003e DagCompletion {"
     },
     {
@@ -6978,7 +7377,7 @@
       "name": "plan_nodes",
       "note": "cycles, unknown `after` names and undeclared node reads were rejected at compile time; here every node starts pending, the failure policy defaults to fail fast when omitted, and node identities are their declared names",
       "file": "src/features/execution/run_dag.rs",
-      "line": 16,
+      "line": 17,
       "code": "let mut state = vec![NodeState::Pending; n];"
     },
     {
@@ -6986,7 +7385,7 @@
       "name": "schedule_ready",
       "note": "a node whose dependency failed, was blocked, cancelled or skipped becomes blocked; a pending node whose dependencies all succeeded becomes running while fewer than `limit` nodes run; under fail fast no new node starts after the first failure",
       "file": "src/features/execution/run_dag.rs",
-      "line": 29,
+      "line": 32,
       "code": "let mut changed = true;"
     },
     {
@@ -6994,7 +7393,7 @@
       "name": "dag_timeout",
       "note": "the dag timeout expired",
       "file": "src/features/execution/run_dag.rs",
-      "line": 100,
+      "line": 109,
       "code": "fatal = Some(RivetError::new("
     },
     {
@@ -7002,7 +7401,7 @@
       "name": "node_failed_fast",
       "note": "under fail fast the first failure becomes the fatal error and stops scheduling",
       "file": "src/features/execution/run_dag.rs",
-      "line": 120,
+      "line": 130,
       "code": "if input.failure == FailurePolicy::Fast \u0026\u0026 fatal.is_none() {"
     },
     {
@@ -7010,7 +7409,7 @@
       "name": "report_nodes",
       "note": "still-running nodes become cancelled; never-started nodes become skipped after a fatal error and blocked otherwise; each node's envelope is {status, result (null unless succeeded), error}; the fatal error carries the node list in details",
       "file": "src/features/execution/run_dag.rs",
-      "line": 130,
+      "line": 161,
       "code": "for s in state.iter_mut() {"
     },
     {
@@ -7018,7 +7417,23 @@
       "name": "execution.run_dag",
       "note": "fail independent keeps the independent success and blocks the failed node's descendant",
       "file": "src/features/execution/run_dag.rs",
-      "line": 215,
+      "line": 247,
+      "code": "#[tokio::test]"
+    },
+    {
+      "kind": "test",
+      "name": "execution.run_dag",
+      "note": "regression: under fail fast a running sibling is cancelled at the first failure instead of awaited (S138: user cancelled, enrich skipped, summary blocked)",
+      "file": "src/features/execution/run_dag.rs",
+      "line": 293,
+      "code": "#[tokio::test]"
+    },
+    {
+      "kind": "test",
+      "name": "execution.run_dag",
+      "note": "G14: nodes that ran carry RFC 3339 started_at/ended_at in DagCompletion, the envelope and the fatal error's node list",
+      "file": "src/features/execution/run_dag.rs",
+      "line": 323,
       "code": "#[tokio::test]"
     },
     {
@@ -7026,7 +7441,7 @@
       "name": "execution.run_dag",
       "note": "fail fast (the default) makes the first failure fatal and skips never-started nodes",
       "file": "src/features/execution/run_dag.rs",
-      "line": 230,
+      "line": 349,
       "code": "#[tokio::test]"
     },
     {
@@ -7087,7 +7502,15 @@
       "name": "execution.validate_output",
       "note": "a text result for an integer output is output.invalid with effects preserved",
       "file": "src/features/execution/validate_output.rs",
-      "line": 83,
+      "line": 94,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "execution.validate_output",
+      "note": "S128: a closed object missing `name` with an extra `display` reports details.missing and details.unexpected",
+      "file": "src/features/execution/validate_output.rs",
+      "line": 113,
       "code": "#[test]"
     },
     {
@@ -7127,6 +7550,45 @@
       "file": "src/features/files/apply_file_operation.rs",
       "line": 83,
       "code": "files"
+    },
+    {
+      "kind": "usecase",
+      "name": "files.open_file_stream",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 27,
+      "code": "pub fn open_file_stream("
+    },
+    {
+      "kind": "todo",
+      "name": "validate_mode",
+      "note": "the handle mode is read, write or append and chunk_size is bounded (1 byte..8 MiB, default 64 KiB) before any policy check or I/O",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 35,
+      "code": "let span = input.span.clone();"
+    },
+    {
+      "kind": "todo",
+      "name": "authorize_mode",
+      "note": "every access verb the mode needs (read → read; write → create+update; append → append) is permitted on the path by policy.json, or nothing opens",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 60,
+      "code": "for (capability, verb) in stream_intents(mode) {"
+    },
+    {
+      "kind": "error",
+      "name": "permission_denied",
+      "note": "any intent denied",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 62,
+      "code": "for (capability, verb) in stream_intents(mode) {"
+    },
+    {
+      "kind": "test",
+      "name": "files.open_file_stream",
+      "note": "modes map to read / create+update / append intents and chunk_size is bounded",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 130,
+      "code": "#[test]"
     },
     {
       "kind": "port",
@@ -7338,6 +7800,14 @@
       "code": "if !lowerer.errors.is_empty() {"
     },
     {
+      "kind": "test",
+      "name": "language.compile_program",
+      "note": "an unknown prefix-call name (`(len x)`) is check.unknown_function at the name's span with a did-you-mean over the built-in list",
+      "file": "src/features/language/lowering/expr.rs",
+      "line": 736,
+      "code": "#[test]"
+    },
+    {
       "kind": "port",
       "name": "Parser",
       "file": "src/features/language/ports.rs",
@@ -7364,7 +7834,7 @@
       "name": "check_target",
       "note": "validate the resolved target of every attempt (redirects, DNS results, replacements); with deny_private_ranges refuse RFC1918, loopback, link-local, 169.254.169.254, fc00::/7 and fe80::/10 unless a grant names that IP/CIDR literally",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 47,
+      "line": 54,
       "code": "if let Some(ip) = target_ip(\u0026target, intent.capability)"
     },
     {
@@ -7372,7 +7842,7 @@
       "name": "check_access",
       "note": "a grant matches only when capability and selector match and, if the grant lists `access`, the intent's verb is listed; absent access = every verb of the capability",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 63,
+      "line": 70,
       "code": "let mut verb_mismatch: Option\u003c\u0026Grant\u003e = None;"
     },
     {
@@ -7380,7 +7850,7 @@
       "name": "check_auth_quic",
       "note": "auth/credential intents need allow_auth/allow_credentials in addition to endpoint permits; QUIC/UDP permits bind protocol and destination so QUIC's internal UDP never authorizes raw UDP (enforced by distinct capability/target pairs)",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 83,
+      "line": 90,
       "code": "match verb_mismatch {"
     },
     {
@@ -7388,15 +7858,23 @@
       "name": "permission_denied",
       "note": "no matching grant, a deny entry, a private address or a verb outside the grant's access",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 84,
+      "line": 91,
       "code": "match verb_mismatch {"
+    },
+    {
+      "kind": "test",
+      "name": "policy.authorize_effect",
+      "note": "G10: with a host ceiling an attempt must be allowed by both policies; a deny (or missing grant) in either wins and limits narrow to the smaller",
+      "file": "src/features/policy/authorize_effect.rs",
+      "line": 377,
+      "code": "#[test]"
     },
     {
       "kind": "test",
       "name": "policy.authorize_effect",
       "note": "no policy.json denies every effect",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 354,
+      "line": 420,
       "code": "#[test]"
     },
     {
@@ -7536,7 +8014,7 @@
       "name": "policy.load_policy",
       "note": "no policy.json yields the deny-by-default policy anchored at the entry directory",
       "file": "src/features/policy/load_policy.rs",
-      "line": 431,
+      "line": 443,
       "code": "#[test]"
     },
     {
@@ -7637,6 +8115,29 @@
       "file": "src/features/quic/ports.rs",
       "line": 3,
       "code": "pub use crate::domain::ports::PolicyEvaluator;"
+    },
+    {
+      "kind": "usecase",
+      "name": "registry.describe_capabilities",
+      "file": "src/features/registry/describe_capabilities.rs",
+      "line": 21,
+      "code": "pub fn describe_capabilities(input: \u0026BuildProbe) -\u003e Value {"
+    },
+    {
+      "kind": "todo",
+      "name": "report_build",
+      "note": "the report states what this build and OS actually support (protocols, OAuth flows, sandbox backend and status, serve surfaces, refused Stage C forms, version) with no I/O and no sensitive data",
+      "file": "src/features/registry/describe_capabilities.rs",
+      "line": 26,
+      "code": "let features = vec!["
+    },
+    {
+      "kind": "test",
+      "name": "registry.describe_capabilities",
+      "note": "S102 names are listed with support/reason and Stage C is refused",
+      "file": "src/features/registry/describe_capabilities.rs",
+      "line": 168,
+      "code": "#[test]"
     },
     {
       "kind": "usecase",
@@ -7813,7 +8314,7 @@
       "kind": "usecase",
       "name": "serve.authorize_operation",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 30,
+      "line": 34,
       "code": "pub fn authorize_operation(input: \u0026OperationAccess) -\u003e AccessDecision {"
     },
     {
@@ -7821,7 +8322,7 @@
       "name": "public_only",
       "note": "private and unknown IDs are rejected as not_found by the dispatcher/registry for every principal before or after this decision, so a denial here never reveals whether a hidden ID exists",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 42,
+      "line": 46,
       "code": "if input.principal.name == \"local\" \u0026\u0026 input.principal.authenticated_by == \"none\" {"
     },
     {
@@ -7829,7 +8330,7 @@
       "name": "principal_map",
       "note": "the loopback principal `local` (auth none, or the CLI/library host) may call everything; generic built-ins (rivet.request/list/describe/outputs/sessions.*) are allowed here because their target ID is authorized separately; otherwise with serve.principals absent every authenticated principal may call every public ID except rivet.io/rivet.policy.generate; with the map present the principal's entry must match exactly, by `*`, or by a trailing `.*` prefix pattern (demo.* matches demo.add) — sensitive IDs match only an exact entry",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 43,
+      "line": 47,
       "code": "if input.principal.name == \"local\" \u0026\u0026 input.principal.authenticated_by == \"none\" {"
     },
     {
@@ -7837,7 +8338,7 @@
       "name": "no_entry",
       "note": "the principal has no entry or no pattern matches",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 63,
+      "line": 67,
       "code": "let Some(entry) = grants.iter().find(|g| g.principal == who) else {"
     },
     {
@@ -7845,7 +8346,7 @@
       "name": "apply_everywhere",
       "note": "return AccessDecision{allowed, principal, matched_pattern}; REST, SSE, polling, WebSocket, MCP and the catalog listings (GET /v1/operations, tools/list, rivet.list, rivet.outputs --all) all call this same decision and filter or refuse with permission.denied (403)",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 85,
+      "line": 89,
       "code": "denied"
     },
     {
@@ -7853,7 +8354,15 @@
       "name": "serve.authorize_operation",
       "note": "prefix patterns, missing entries, the absent map and the explicit-only rule for rivet.io / rivet.policy.generate",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 129,
+      "line": 133,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "serve.authorize_operation",
+      "note": "rivet.capabilities is callable by any authenticated principal, even one without a serve.principals entry",
+      "file": "src/features/serve/authorize_operation.rs",
+      "line": 166,
       "code": "#[test]"
     },
     {
@@ -7898,9 +8407,9 @@
     {
       "kind": "todo",
       "name": "route_input",
-      "note": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish cancels its ref so it still ends with exactly one terminal frame",
+      "note": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 91,
+      "line": 94,
       "code": "kind =\u003e {"
     },
     {
@@ -7908,15 +8417,23 @@
       "name": "unknown_ref",
       "note": "input/finish_input/cancel for a ref not in flight",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 92,
+      "line": 95,
       "code": "kind =\u003e {"
+    },
+    {
+      "kind": "error",
+      "name": "refused_input",
+      "note": "the session refused an input/finish_input frame",
+      "file": "src/features/serve/multiplex_ws.rs",
+      "line": 128,
+      "code": "match routed {"
     },
     {
       "kind": "todo",
       "name": "stream_out",
       "note": "the host's per-ref pump reads the session with a bounded wait and forwards {type:data, ref, seq, data}, then exactly one {type:result, ref, completion} or {type:error, ref, error}; a full 16-event log blocks the producer (backpressure)",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 131,
+      "line": 144,
       "code": "Ok(outcome)"
     },
     {
@@ -7924,8 +8441,16 @@
       "name": "close_cancels",
       "note": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 132,
+      "line": 145,
       "code": "Ok(outcome)"
+    },
+    {
+      "kind": "test",
+      "name": "serve.multiplex_ws",
+      "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
+      "file": "src/features/serve/multiplex_ws.rs",
+      "line": 239,
+      "code": "#[tokio::test]"
     },
     {
       "kind": "port",
@@ -7965,10 +8490,10 @@
     {
       "kind": "todo",
       "name": "open",
-      "note": "POST /v1/requests {id, params}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
+      "note": "POST /v1/requests {id, params, deadline_ms?}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
       "file": "src/features/serve/project_polling.rs",
       "line": 16,
-      "code": "PollAction::Open { id, params } =\u003e {"
+      "code": "PollAction::Open {"
     },
     {
       "kind": "error",
@@ -7976,14 +8501,14 @@
       "note": "the principal may not call the operation",
       "file": "src/features/serve/project_polling.rs",
       "line": 17,
-      "code": "PollAction::Open { id, params } =\u003e {"
+      "code": "PollAction::Open {"
     },
     {
       "kind": "todo",
       "name": "read",
       "note": "GET /v1/requests/{id}/events?after_seq=N\u0026wait_ms=M -\u003e SessionDriver.read with wait_ms defaulting to 1000 and capped at 5000 (returns early when events arrive) and max_events capped at 16; 200 SessionBatch",
       "file": "src/features/serve/project_polling.rs",
-      "line": 42,
+      "line": 49,
       "code": "PollAction::Events {"
     },
     {
@@ -7991,7 +8516,7 @@
       "name": "input_finish_cancel",
       "note": "POST .../input {send_seq, data} -\u003e SessionDriver.send (200 SessionAck); POST .../finish_input -\u003e SessionDriver.finish_input (200 SessionAck input_closed:true); POST .../cancel -\u003e SessionDriver.cancel (200 CancelReceipt with session_id, request_id, state)",
       "file": "src/features/serve/project_polling.rs",
-      "line": 61,
+      "line": 68,
       "code": "PollAction::Input {"
     },
     {
@@ -7999,7 +8524,7 @@
       "name": "ownership",
       "note": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the ErrorEnvelope with the registry status (404/409/422/429)",
       "file": "src/features/serve/project_polling.rs",
-      "line": 90,
+      "line": 97,
       "code": "match result {"
     },
     {
@@ -8115,7 +8640,7 @@
     {
       "kind": "todo",
       "name": "cancel_and_join",
-      "note": "the driver closes input, aborts the run task and awaits it within the 5 s cleanup grace (scoped resources are dropped with it), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:\"cancelled\"}",
+      "note": "the driver records the cancel first (it wins over a completion not yet recorded), closes input, fires the run's cancellation token and joins the run within the 5 s cleanup grace while it closes its scoped resources (abort only after the grace), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:\"cancelled\"}",
       "file": "src/features/sessions/cancel_session.rs",
       "line": 18,
       "code": "driver.cancel(input).await"
@@ -8528,7 +9053,31 @@
       "name": "language.compile_program",
       "note": "the embedded grammar parses a catalog and slices exact source text",
       "file": "src/infra/capy_parser.rs",
-      "line": 344,
+      "line": 606,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "language.compile_program",
+      "note": "a transposed keyword (`retrun`) suggests `return`, not a nearer-looking option word",
+      "file": "src/infra/capy_parser.rs",
+      "line": 638,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "language.compile_program",
+      "note": "an assignment whose value fails to parse (`x = {n: }`) is syntax.expression, not \"unknown statement `x`\"",
+      "file": "src/infra/capy_parser.rs",
+      "line": 649,
+      "code": "#[test]"
+    },
+    {
+      "kind": "test",
+      "name": "language.compile_program",
+      "note": "infix inside objects, lists and call arguments parses (G30) and keeps source spans",
+      "file": "src/infra/capy_parser.rs",
+      "line": 663,
       "code": "#[test]"
     },
     {
@@ -8558,7 +9107,7 @@
       "kind": "infra",
       "name": "execution_driver",
       "file": "src/infra/execution_driver.rs",
-      "line": 250,
+      "line": 267,
       "code": "pub struct Interpreter {"
     },
     {
@@ -8580,7 +9129,7 @@
       "kind": "infra",
       "name": "file_access",
       "file": "src/infra/file_access.rs",
-      "line": 430,
+      "line": 608,
       "code": "impl crate::domain::ports::FileProbe for ConfinedFiles {"
     },
     {
@@ -8588,8 +9137,39 @@
       "name": "read stat \u003cbundle root\u003e/**",
       "note": "`io --check-files` metadata probes of needed paths (never opened or read)",
       "file": "src/infra/file_access.rs",
-      "line": 431,
+      "line": 609,
       "code": "impl crate::domain::ports::FileProbe for ConfinedFiles {"
+    },
+    {
+      "kind": "test",
+      "name": "files.apply_file_operation",
+      "note": "G32 concurrent `update … if_version V` from many threads: exactly one compare-and-replace wins per round, every other updater gets conflict.version, and the file holds the winner's bytes (no lost update)",
+      "file": "src/infra/file_access.rs",
+      "line": 698,
+      "code": "#[cfg(unix)]"
+    },
+    {
+      "kind": "test",
+      "name": "files.apply_file_operation",
+      "note": "G32 an update waits for another holder of the file lock and then re-checks the version (a writer that changed the file under the lock makes the stale guard fail)",
+      "file": "src/infra/file_access.rs",
+      "line": 742,
+      "code": "#[cfg(unix)]"
+    },
+    {
+      "kind": "infra",
+      "name": "file_stream",
+      "file": "src/infra/file_stream.rs",
+      "line": 30,
+      "code": "pub struct FileStreams {"
+    },
+    {
+      "kind": "file",
+      "name": "readwrite \u003cbundle root\u003e/**",
+      "note": "`with file open` handles on paths authorized by files.open_file_stream, resolved under the bundle root without following links",
+      "file": "src/infra/file_stream.rs",
+      "line": 31,
+      "code": "pub struct FileStreams {"
     },
     {
       "kind": "infra",
@@ -8626,7 +9206,7 @@
       "kind": "infra",
       "name": "http_adapter",
       "file": "src/infra/http_adapter.rs",
-      "line": 74,
+      "line": 75,
       "code": "pub struct HyperClient;"
     },
     {
@@ -8634,7 +9214,7 @@
       "name": "connect http+https",
       "note": "every origin (and each resolved IP / redirect hop) authorized by the transports.exchange_http use case before dialing",
       "file": "src/infra/http_adapter.rs",
-      "line": 75,
+      "line": 76,
       "code": "pub struct HyperClient;"
     },
     {
@@ -8642,7 +9222,7 @@
       "name": "connect udp",
       "note": "HTTP/3 (QUIC v1, ALPN h3, 0-RTT off) only to the same checked host:port the https origin grant covers",
       "file": "src/infra/http_adapter.rs",
-      "line": 76,
+      "line": 77,
       "code": "pub struct HyperClient;"
     },
     {
@@ -8793,7 +9373,7 @@
       "kind": "infra",
       "name": "remote_client",
       "file": "src/infra/remote_client.rs",
-      "line": 45,
+      "line": 46,
       "code": "pub struct RemoteClient {"
     },
     {
@@ -8801,7 +9381,7 @@
       "name": "connect http+https+ws",
       "note": "the `--endpoint URL` of a running `rivet serve` (REST, SSE and /v1/ws), host bootstrap only",
       "file": "src/infra/remote_client.rs",
-      "line": 46,
+      "line": 47,
       "code": "pub struct RemoteClient {"
     },
     {
@@ -8809,29 +9389,29 @@
       "name": "read \u003c--token-file PATH\u003e",
       "note": "the caller's bearer token for the server (read by setup_cli, never echoed)",
       "file": "src/infra/remote_client.rs",
-      "line": 47,
+      "line": 48,
       "code": "pub struct RemoteClient {"
     },
     {
       "kind": "infra",
       "name": "request_control",
       "file": "src/infra/request_control.rs",
-      "line": 11,
-      "code": "/// (owner principal, cancellation signal, cancelling) per running request."
+      "line": 21,
+      "code": "#[derive(Default)]"
     },
     {
       "kind": "test",
       "name": "transports.run_process",
       "note": "the Seatbelt profile names only parameters (no paths), denies by default and grants no network or fork",
       "file": "src/infra/sandbox_macos.rs",
-      "line": 151,
+      "line": 167,
       "code": "#[test]"
     },
     {
       "kind": "infra",
       "name": "serve_listener",
       "file": "src/infra/serve_listener.rs",
-      "line": 21,
+      "line": 24,
       "code": "pub struct AxumListener {"
     },
     {
@@ -8839,15 +9419,31 @@
       "name": "listen tcp --listen HOST:PORT",
       "note": "the one socket every serve surface shares (default 127.0.0.1:8080)",
       "file": "src/infra/serve_listener.rs",
-      "line": 22,
+      "line": 25,
       "code": "pub struct AxumListener {"
+    },
+    {
+      "kind": "test",
+      "name": "serve.multiplex_ws",
+      "note": "G6: each ref has its own 16-frame lane: a full lane blocks only its ref, other refs and replies still flow; the first terminal frame closes the lane so a later terminal frame for that ref is discarded",
+      "file": "src/infra/serve_listener.rs",
+      "line": 249,
+      "code": "#[tokio::test]"
     },
     {
       "kind": "infra",
       "name": "session_driver",
       "file": "src/infra/session_driver.rs",
-      "line": 46,
+      "line": 126,
       "code": "pub struct SessionHost {"
+    },
+    {
+      "kind": "test",
+      "name": "sessions.cancel_session",
+      "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
+      "file": "src/infra/session_driver.rs",
+      "line": 767,
+      "code": "#[tokio::test]"
     },
     {
       "kind": "infra",
@@ -8883,7 +9479,7 @@
       "kind": "infra",
       "name": "trace_store",
       "file": "src/infra/trace_store.rs",
-      "line": 49,
+      "line": 54,
       "code": "pub struct MemoryTraceStore {"
     },
     {
@@ -8891,7 +9487,7 @@
       "name": "audit.read_trace",
       "note": "the bounded store evicts oldest events and reports the gap instead of claiming completeness",
       "file": "src/infra/trace_store.rs",
-      "line": 140,
+      "line": 145,
       "code": "#[test]"
     },
     {
@@ -8922,7 +9518,7 @@
       "name": "execution.request_operation",
       "note": "demo.add returns 5 through the shared dispatcher, defaults apply and output is checked",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1116,
+      "line": 1441,
       "code": "#[tokio::test]"
     },
     {
@@ -8930,7 +9526,7 @@
       "name": "execution.cancel_request",
       "note": "a running top-level request is cancelled by id; its caller gets cancelled (exit 130) and the state becomes cancelled",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1240,
+      "line": 1565,
       "code": "#[tokio::test]"
     },
     {
@@ -8961,7 +9557,7 @@
       "name": " rivet connectors sync NAME --output PATH",
       "note": "authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 26,
+      "line": 27,
       "code": "use crate::domain::contracts::error_envelope;"
     },
     {
@@ -8969,7 +9565,7 @@
       "name": " rivet io [ID ...] [flags]",
       "note": "the I/O manifest; stdout in the requested format, summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 29,
+      "line": 30,
       "code": "use crate::domain::contracts::error_envelope;"
     },
     {
@@ -8977,7 +9573,7 @@
       "name": " rivet policy generate [ID ...|--all] [--output PATH]",
       "note": "least-privilege policy.json draft on stdout (or a new file); review items on stderr; exit 7 when review items exist, 4 conflict.exists",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 32,
+      "line": 33,
       "code": "use crate::domain::contracts::error_envelope;"
     },
     {
@@ -8985,7 +9581,7 @@
       "name": " rivet request ID --params JSON",
       "note": "invoke one operation; stdout is the Completion JSON, errors are an ErrorEnvelope on stderr with the registry exit code",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 35,
+      "line": 36,
       "code": "use crate::domain::contracts::error_envelope;"
     },
     {
@@ -8998,7 +9594,7 @@
     {
       "kind": "api",
       "name": "POST /v1/request",
-      "note": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream",
+      "note": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream; a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header",
       "file": "src/orchestrator/setup_http.rs",
       "line": 30,
       "code": "use super::builtins::visible;"
@@ -9006,7 +9602,7 @@
     {
       "kind": "api",
       "name": "GET /v1/io",
-      "note": "the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
+      "note": "the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
       "file": "src/orchestrator/setup_http.rs",
       "line": 33,
       "code": "use super::builtins::visible;"
@@ -9039,7 +9635,7 @@
       "kind": "surface",
       "name": "library",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 12,
+      "line": 13,
       "code": "use super::runtime::Runtime;"
     },
     {
@@ -9047,7 +9643,7 @@
       "name": " Runtime::request(id, params, on_data)",
       "note": "invoke one operation in-process; returns Completion or RivetError",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 30,
+      "line": 31,
       "code": "use super::runtime::Runtime;"
     },
     {
@@ -9055,14 +9651,14 @@
       "name": " Runtime::open_session(SessionOpenInput)",
       "note": "open a live session (duplex or server-streaming) owned by the principal",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 33,
+      "line": 34,
       "code": "use super::runtime::Runtime;"
     },
     {
       "kind": "surface",
       "name": "mcp",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 12,
+      "line": 14,
       "code": "use super::builtins::{BUILTIN_IDS, visible};"
     },
     {
@@ -9070,7 +9666,7 @@
       "name": "POST /mcp tools/call",
       "note": "call an operation as its direct named tool",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 28,
+      "line": 30,
       "code": "use super::builtins::{BUILTIN_IDS, visible};"
     },
     {
@@ -9078,7 +9674,7 @@
       "name": "poll",
       "file": "src/orchestrator/setup_poll.rs",
       "line": 9,
-      "code": "use super::setup_serve::{ServeState, error_response, json_response};"
+      "code": "use super::setup_serve::{"
     },
     {
       "kind": "api",
@@ -9086,14 +9682,22 @@
       "note": "open a principal-owned session (unary or streaming) and poll its events",
       "file": "src/orchestrator/setup_poll.rs",
       "line": 13,
-      "code": "use super::setup_serve::{ServeState, error_response, json_response};"
+      "code": "use super::setup_serve::{"
+    },
+    {
+      "kind": "api",
+      "name": "GET /v1/health",
+      "note": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth",
+      "file": "src/orchestrator/setup_serve.rs",
+      "line": 18,
+      "code": "use super::runtime::Runtime;"
     },
     {
       "kind": "surface",
       "name": "ws",
       "file": "src/orchestrator/setup_ws.rs",
       "line": 11,
-      "code": "use super::setup_serve::{ServeState, error_response};"
+      "code": "use super::setup_serve::{ServeState, error_response, trace_context};"
     },
     {
       "kind": "api",
@@ -9101,7 +9705,7 @@
       "note": "JSON text frames multiplexed by client-chosen ref (max 8 in flight, one terminal frame per ref)",
       "file": "src/orchestrator/setup_ws.rs",
       "line": 15,
-      "code": "use super::setup_serve::{ServeState, error_response};"
+      "code": "use super::setup_serve::{ServeState, error_response, trace_context};"
     }
   ],
   "effects": [
@@ -9123,7 +9727,17 @@
       "owner": "file_access",
       "provenance": "annotated",
       "file": "src/infra/file_access.rs",
-      "line": 431
+      "line": 609
+    },
+    {
+      "kind": "file",
+      "value": "\u003cbundle root\u003e/**",
+      "mode": "readwrite",
+      "note": "`with file open` handles on paths authorized by files.open_file_stream, resolved under the bundle root without following links",
+      "owner": "file_stream",
+      "provenance": "annotated",
+      "file": "src/infra/file_stream.rs",
+      "line": 31
     },
     {
       "kind": "file",
@@ -9161,7 +9775,7 @@
       "owner": "http_adapter",
       "provenance": "annotated",
       "file": "src/infra/http_adapter.rs",
-      "line": 75
+      "line": 76
     },
     {
       "kind": "net",
@@ -9170,7 +9784,7 @@
       "owner": "http_adapter",
       "provenance": "annotated",
       "file": "src/infra/http_adapter.rs",
-      "line": 76
+      "line": 77
     },
     {
       "kind": "file",
@@ -9275,7 +9889,7 @@
       "owner": "remote_client",
       "provenance": "annotated",
       "file": "src/infra/remote_client.rs",
-      "line": 46
+      "line": 47
     },
     {
       "kind": "file",
@@ -9285,7 +9899,7 @@
       "owner": "remote_client",
       "provenance": "annotated",
       "file": "src/infra/remote_client.rs",
-      "line": 47
+      "line": 48
     },
     {
       "kind": "net",
@@ -9294,7 +9908,7 @@
       "owner": "serve_listener",
       "provenance": "annotated",
       "file": "src/infra/serve_listener.rs",
-      "line": 22
+      "line": 25
     },
     {
       "kind": "net",
@@ -9363,14 +9977,14 @@
       "note": "send_seq starts at 1, identical retry is a duplicate, changed payload or gaps conflict, closed input rejects",
       "code": "#[test]",
       "file": "src/domain/sessions.rs",
-      "line": 405
+      "line": 411
     },
     {
       "subject": "sessions.read_events",
       "note": "batches are ordered, acknowledgement evicts, future and evicted cursors are typed errors",
       "code": "#[test]",
       "file": "src/domain/sessions.rs",
-      "line": 422
+      "line": 428
     },
     {
       "subject": "audit.read_trace",
@@ -9384,7 +9998,7 @@
       "note": "normalization helpers: derived globs, lexical paths and bundle-relative source files",
       "code": "#[test]",
       "file": "src/features/audit/support/effect_sites.rs",
-      "line": 1318
+      "line": 1361
     },
     {
       "subject": "auth.acquire_credential",
@@ -9433,21 +10047,28 @@
       "note": "a tool result keeps content and structuredContent, and the call carries bridge _meta",
       "code": "#[tokio::test]",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 693
+      "line": 777
     },
     {
       "subject": "connectors.invoke_mcp",
       "note": "isError maps to mcp.tool_failed and a JSON-RPC error keeps its code",
       "code": "#[tokio::test]",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 719
+      "line": 804
+    },
+    {
+      "subject": "connectors.invoke_mcp",
+      "note": "G29 a live tools/list whose exposed tool changed its inputSchema or disappeared fails mcp.schema_drift and the tool call is never sent; key order alone is not drift",
+      "code": "#[tokio::test]",
+      "file": "src/features/connectors/invoke_mcp.rs",
+      "line": 839
     },
     {
       "subject": "connectors.invoke_mcp",
       "note": "invalid params, denied allow_mcp, hop limit and recursion all fail before the session opens",
       "code": "#[tokio::test]",
       "file": "src/features/connectors/invoke_mcp.rs",
-      "line": 754
+      "line": 882
     },
     {
       "subject": "datagrams.exchange_datagrams",
@@ -9482,28 +10103,70 @@
       "note": "params are checked for unknown fields and types before defaults are injected",
       "code": "#[test]",
       "file": "src/features/execution/request_operation.rs",
-      "line": 284
+      "line": 358
+    },
+    {
+      "subject": "execution.request_operation",
+      "note": "G13: an emitted item that violates the declared `emits` spec fails the request with output.invalid carrying the item's seq (even without a consumer)",
+      "code": "#[tokio::test]",
+      "file": "src/features/execution/request_operation.rs",
+      "line": 432
+    },
+    {
+      "subject": "execution.request_operation",
+      "note": "regression (S121): an integer argument for a `number` parameter becomes a number, so arithmetic on it is not integer division",
+      "code": "#[test]",
+      "file": "src/features/execution/request_operation.rs",
+      "line": 460
     },
     {
       "subject": "execution.run_dag",
       "note": "fail independent keeps the independent success and blocks the failed node's descendant",
       "code": "#[tokio::test]",
       "file": "src/features/execution/run_dag.rs",
-      "line": 215
+      "line": 247
+    },
+    {
+      "subject": "execution.run_dag",
+      "note": "regression: under fail fast a running sibling is cancelled at the first failure instead of awaited (S138: user cancelled, enrich skipped, summary blocked)",
+      "code": "#[tokio::test]",
+      "file": "src/features/execution/run_dag.rs",
+      "line": 293
+    },
+    {
+      "subject": "execution.run_dag",
+      "note": "G14: nodes that ran carry RFC 3339 started_at/ended_at in DagCompletion, the envelope and the fatal error's node list",
+      "code": "#[tokio::test]",
+      "file": "src/features/execution/run_dag.rs",
+      "line": 323
     },
     {
       "subject": "execution.run_dag",
       "note": "fail fast (the default) makes the first failure fatal and skips never-started nodes",
       "code": "#[tokio::test]",
       "file": "src/features/execution/run_dag.rs",
-      "line": 230
+      "line": 349
     },
     {
       "subject": "execution.validate_output",
       "note": "a text result for an integer output is output.invalid with effects preserved",
       "code": "#[test]",
       "file": "src/features/execution/validate_output.rs",
-      "line": 83
+      "line": 94
+    },
+    {
+      "subject": "execution.validate_output",
+      "note": "S128: a closed object missing `name` with an extra `display` reports details.missing and details.unexpected",
+      "code": "#[test]",
+      "file": "src/features/execution/validate_output.rs",
+      "line": 113
+    },
+    {
+      "subject": "files.open_file_stream",
+      "note": "modes map to read / create+update / append intents and chunk_size is bounded",
+      "code": "#[test]",
+      "file": "src/features/files/open_file_stream.rs",
+      "line": 130
     },
     {
       "subject": "grpc.invoke_rpc",
@@ -9534,11 +10197,25 @@
       "line": 974
     },
     {
+      "subject": "language.compile_program",
+      "note": "an unknown prefix-call name (`(len x)`) is check.unknown_function at the name's span with a did-you-mean over the built-in list",
+      "code": "#[test]",
+      "file": "src/features/language/lowering/expr.rs",
+      "line": 736
+    },
+    {
+      "subject": "policy.authorize_effect",
+      "note": "G10: with a host ceiling an attempt must be allowed by both policies; a deny (or missing grant) in either wins and limits narrow to the smaller",
+      "code": "#[test]",
+      "file": "src/features/policy/authorize_effect.rs",
+      "line": 377
+    },
+    {
       "subject": "policy.authorize_effect",
       "note": "no policy.json denies every effect",
       "code": "#[test]",
       "file": "src/features/policy/authorize_effect.rs",
-      "line": 354
+      "line": 420
     },
     {
       "subject": "policy.generate_policy",
@@ -9552,7 +10229,7 @@
       "note": "no policy.json yields the deny-by-default policy anchored at the entry directory",
       "code": "#[test]",
       "file": "src/features/policy/load_policy.rs",
-      "line": 431
+      "line": 443
     },
     {
       "subject": "quic.exchange_quic",
@@ -9569,6 +10246,13 @@
       "line": 335
     },
     {
+      "subject": "registry.describe_capabilities",
+      "note": "S102 names are listed with support/reason and Stage C is refused",
+      "code": "#[test]",
+      "file": "src/features/registry/describe_capabilities.rs",
+      "line": 168
+    },
+    {
       "subject": "serve.authenticate_principal",
       "note": "none is local on loopback only; bearer matches the demo token hashes and rejects missing/wrong tokens with 401",
       "code": "#[test]",
@@ -9580,7 +10264,21 @@
       "note": "prefix patterns, missing entries, the absent map and the explicit-only rule for rivet.io / rivet.policy.generate",
       "code": "#[test]",
       "file": "src/features/serve/authorize_operation.rs",
-      "line": 129
+      "line": 133
+    },
+    {
+      "subject": "serve.authorize_operation",
+      "note": "rivet.capabilities is callable by any authenticated principal, even one without a serve.principals entry",
+      "code": "#[test]",
+      "file": "src/features/serve/authorize_operation.rs",
+      "line": 166
+    },
+    {
+      "subject": "serve.multiplex_ws",
+      "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
+      "code": "#[tokio::test]",
+      "file": "src/features/serve/multiplex_ws.rs",
+      "line": 239
     },
     {
       "subject": "serve.start_serve",
@@ -9657,7 +10355,28 @@
       "note": "the embedded grammar parses a catalog and slices exact source text",
       "code": "#[test]",
       "file": "src/infra/capy_parser.rs",
-      "line": 344
+      "line": 606
+    },
+    {
+      "subject": "language.compile_program",
+      "note": "a transposed keyword (`retrun`) suggests `return`, not a nearer-looking option word",
+      "code": "#[test]",
+      "file": "src/infra/capy_parser.rs",
+      "line": 638
+    },
+    {
+      "subject": "language.compile_program",
+      "note": "an assignment whose value fails to parse (`x = {n: }`) is syntax.expression, not \"unknown statement `x`\"",
+      "code": "#[test]",
+      "file": "src/infra/capy_parser.rs",
+      "line": 649
+    },
+    {
+      "subject": "language.compile_program",
+      "note": "infix inside objects, lists and call arguments parses (G30) and keeps source spans",
+      "code": "#[test]",
+      "file": "src/infra/capy_parser.rs",
+      "line": 663
     },
     {
       "subject": "transports.exchange_http",
@@ -9674,6 +10393,20 @@
       "line": 394
     },
     {
+      "subject": "files.apply_file_operation",
+      "note": "G32 concurrent `update … if_version V` from many threads: exactly one compare-and-replace wins per round, every other updater gets conflict.version, and the file holds the winner's bytes (no lost update)",
+      "code": "#[cfg(unix)]",
+      "file": "src/infra/file_access.rs",
+      "line": 698
+    },
+    {
+      "subject": "files.apply_file_operation",
+      "note": "G32 an update waits for another holder of the file lock and then re-checks the version (a writer that changed the file under the lock makes the stale guard fail)",
+      "code": "#[cfg(unix)]",
+      "file": "src/infra/file_access.rs",
+      "line": 742
+    },
+    {
       "subject": "policy.generate_policy",
       "note": "--output creates the draft once and refuses to overwrite it (conflict.exists)",
       "code": "#[test]",
@@ -9685,28 +10418,42 @@
       "note": "the Seatbelt profile names only parameters (no paths), denies by default and grants no network or fork",
       "code": "#[test]",
       "file": "src/infra/sandbox_macos.rs",
-      "line": 151
+      "line": 167
+    },
+    {
+      "subject": "serve.multiplex_ws",
+      "note": "G6: each ref has its own 16-frame lane: a full lane blocks only its ref, other refs and replies still flow; the first terminal frame closes the lane so a later terminal frame for that ref is discarded",
+      "code": "#[tokio::test]",
+      "file": "src/infra/serve_listener.rs",
+      "line": 249
+    },
+    {
+      "subject": "sessions.cancel_session",
+      "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
+      "code": "#[tokio::test]",
+      "file": "src/infra/session_driver.rs",
+      "line": 767
     },
     {
       "subject": "audit.read_trace",
       "note": "the bounded store evicts oldest events and reports the gap instead of claiming completeness",
       "code": "#[test]",
       "file": "src/infra/trace_store.rs",
-      "line": 140
+      "line": 145
     },
     {
       "subject": "execution.request_operation",
       "note": "demo.add returns 5 through the shared dispatcher, defaults apply and output is checked",
       "code": "#[tokio::test]",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1116
+      "line": 1441
     },
     {
       "subject": "execution.cancel_request",
       "note": "a running top-level request is cancelled by id; its caller gets cancelled (exit 130) and the state becomes cancelled",
       "code": "#[tokio::test]",
       "file": "src/orchestrator/runtime.rs",
-      "line": 1240
+      "line": 1565
     }
   ],
   "endpoints": [
@@ -9738,7 +10485,7 @@
       "request": "{ \"name\": \"string — mcp connector\", \"output\": \"string — new snapshot path inside the bundle\" }",
       "response": "{ \"connector\": \"string\", \"path\": \"string\", \"sha256\": \"sha256:…\", \"protocolVersion\": \"string\", \"tools\": \"string[]\", \"resources\": \"string[]\", \"prompts\": \"string[]\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 26
+      "line": 27
     },
     {
       "surface": "cli",
@@ -9748,7 +10495,7 @@
       "request": "{ \"ids\": \"string[]\", \"all\": \"bool\", \"by\": \"operation|target|capability\", \"kind\": \"string?\", \"access\": \"string[]\", \"format\": \"table|json|markdown|csv\", \"check_policy\": \"bool\", \"strict\": \"bool\", \"needs\": \"bool\", \"check_files\": \"bool\", \"trace\": \"string?\" }",
       "response": "{ \"bundle\": \"FileDigest\", \"policy\": \"FileDigest?\", \"complete\": \"bool\", \"sites\": \"EffectSite[]\", \"targets\": \"TargetSummary[]\", \"needs\": \"OperationNeeds[]\", \"bootstrap\": \"EffectSite[]\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 29
+      "line": 30
     },
     {
       "surface": "cli",
@@ -9758,7 +10505,7 @@
       "request": "{ \"ids\": \"string[]\", \"all\": \"bool\", \"output\": \"string?\" }",
       "response": "{ \"version\": \"1\", \"grants\": \"Grant[]\", \"network\": \"{deny_private_ranges: true}\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 32
+      "line": 33
     },
     {
       "surface": "cli",
@@ -9768,15 +10515,15 @@
       "request": "{ \"id\": \"string — operation ID\", \"params\": \"JSON object\" }",
       "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
       "file": "src/orchestrator/setup_cli.rs",
-      "line": 35
+      "line": 36
     },
     {
       "surface": "http",
       "action": "execution.request_operation",
       "verb": "POST",
       "path": "/v1/request",
-      "description": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\", \"deadline_ms\": \"int? — requested deadline, capped at 600000\" }",
+      "description": "invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream; a valid W3C traceparent header supplies the trace id, and every answer carries a traceparent header",
+      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\", \"deadline_ms\": \"int? — requested deadline, capped at 600000\", \"restrict\": \"{grants:[{capability, targets, access?}]}? — narrows this request's authority, never widens\", \"headers\": \"traceparent? — W3C 00-\u003ctrace-id\u003e-\u003cparent-id\u003e-\u003cflags\u003e\" }",
       "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
       "file": "src/orchestrator/setup_http.rs",
       "line": 30
@@ -9786,8 +10533,8 @@
       "action": "audit.inspect_effects",
       "verb": "GET",
       "path": "/v1/io",
-      "description": "the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
-      "request": "{ \"query\": \"by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv\" }",
+      "description": "the bare I/O manifest (IoManifest JSON); format=table|markdown|csv (or report=true) returns the rendered IoReport {format, by, rendered, diagnostics, exit_code, manifest} instead; needs an explicit rivet.io listing for non-local principals; check_files is refused remotely",
+      "request": "{ \"query\": \"by=operation|target|capability, kind=K, access=V,V, check_policy=bool, needs=bool, strict=bool, include_bootstrap=bool, ids=ID,ID, all=bool, trace=REQ, format=json|table|markdown|csv, report=bool\" }",
       "response": "{ \"bundle\": \"FileDigest\", \"policy\": \"FileDigest|null\", \"complete\": \"bool\", \"sites\": \"EffectSite[]\", \"targets\": \"TargetSummary[]\" }",
       "file": "src/orchestrator/setup_http.rs",
       "line": 33
@@ -9833,7 +10580,7 @@
       "request": "{ \"id\": \"string — operation ID\", \"params\": \"Value object\", \"on_data\": \"Option\u003cArc\u003cdyn DataSink\u003e\u003e\" }",
       "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"result\": \"Value\", \"data_count\": \"int\", \"effects\": \"none|committed|partial|unknown\" }",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 30
+      "line": 31
     },
     {
       "surface": "library",
@@ -9843,7 +10590,7 @@
       "request": "{ \"id\": \"string\", \"params\": \"Value\", \"principal\": \"Principal\", \"connection_owned\": \"bool\" }",
       "response": "{ \"session_id\": \"string\", \"request_id\": \"string\", \"catalog_version\": \"string\", \"input_schema\": \"json|null\", \"emits_schema\": \"json|null\", \"next_send_seq\": \"int\", \"expires_at\": \"RFC 3339\" }",
       "file": "src/orchestrator/setup_library.rs",
-      "line": 33
+      "line": 34
     },
     {
       "surface": "mcp",
@@ -9851,10 +10598,10 @@
       "verb": "POST",
       "path": "/mcp tools/call",
       "description": "call an operation as its direct named tool",
-      "request": "{ \"jsonrpc\": \"2.0\", \"id\": \"int\", \"method\": \"tools/call\", \"params\": \"{name: ID, arguments: object}\" }",
+      "request": "{ \"jsonrpc\": \"2.0\", \"id\": \"int\", \"method\": \"tools/call\", \"params\": \"{name: ID, arguments: object, restrict?: {grants:[…]} (narrows this call only)}\" }",
       "response": "{ \"content\": \"[{type:text, text: serialized Completion}]\", \"structuredContent\": \"Completion | SessionReceipt | ErrorEnvelope\", \"isError\": \"bool\" }",
       "file": "src/orchestrator/setup_mcp.rs",
-      "line": 28
+      "line": 30
     },
     {
       "surface": "poll",
@@ -9862,10 +10609,21 @@
       "verb": "POST",
       "path": "/v1/requests",
       "description": "open a principal-owned session (unary or streaming) and poll its events",
-      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\" }",
+      "request": "{ \"id\": \"string — operation ID\", \"params\": \"object\", \"deadline_ms\": \"int? — total deadline, capped at 600000\", \"headers\": \"traceparent? — W3C trace context for the session\" }",
       "response": "{ \"session_id\": \"string\", \"request_id\": \"string\", \"catalog_version\": \"string\", \"input_schema\": \"json|null\", \"emits_schema\": \"json|null\", \"next_send_seq\": \"int\", \"expires_at\": \"RFC 3339\", \"events_url\": \"/v1/requests/{session_id}/events\" }",
       "file": "src/orchestrator/setup_poll.rs",
       "line": 13
+    },
+    {
+      "surface": "http",
+      "action": "serve.start_serve",
+      "verb": "GET",
+      "path": "/v1/health",
+      "description": "liveness: unauthenticated on a loopback bind, otherwise authenticated per serve.auth",
+      "request": "{ \"headers\": \"Authorization: Bearer TOKEN (non-loopback binds with bearer auth)\" }",
+      "response": "{ \"status\": \"ok\", \"catalog_version\": \"sha256:…\" }",
+      "file": "src/orchestrator/setup_serve.rs",
+      "line": 18
     },
     {
       "surface": "ws",
@@ -9884,6 +10642,74 @@
       {
         "name": "audit",
         "use_cases": [
+          {
+            "name": "build_graph",
+            "label": "Show the static call graph",
+            "about": "Builds the static call graph of one operation from the compiled program and its effect catalog — literal (request …) calls expanded into the callee, connector calls, effect sites, DAG nodes with their after edges, and both arms of every if marked conditional; nothing is executed or evaluated.",
+            "in": [
+              {
+                "name": "input",
+                "type": "GraphQuery"
+              }
+            ],
+            "out": "CallGraph",
+            "needs": [
+              {
+                "name": "Registry",
+                "functions": [
+                  {
+                    "name": "describe",
+                    "in": [
+                      {
+                        "type": "CatalogQuery"
+                      }
+                    ],
+                    "out": "Catalog"
+                  },
+                  {
+                    "name": "effect_sites",
+                    "in": [
+                      {
+                        "type": "EffectQuery"
+                      }
+                    ],
+                    "out": "List\u003cEffectSite\u003e"
+                  }
+                ]
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={id:\"users.snapshot\"}",
+                "result": "{ \"operation_id\": \"users.snapshot\", \"nodes\": [{\"kind\": \"operation\"}, {\"kind\": \"call\", \"label\": \"call users.get\"}], \"edges\": [{\"kind\": \"contains\"}] }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "select_operation",
+                "todo": "the ID must name an operation, public unless `all`; a private or absent one is not_found.operation without disclosing which",
+                "file": "src/features/audit/build_graph.rs",
+                "line": 26
+              },
+              {
+                "id": "build_tree",
+                "todo": "structure (if/else arms with their condition, dag with nodes and after lists) comes from the IR; each effect site, literal call and connector call of the operation hangs under the innermost structure whose line range contains it, in source order; a call node expands the callee's graph unless the callee is already on the chain (cycle node)",
+                "file": "src/features/audit/build_graph.rs",
+                "line": 37
+              }
+            ],
+            "failures": [
+              {
+                "id": "unknown_id",
+                "when": "absent, or private without --all",
+                "code": "not_found.operation (exit 4)",
+                "propagates": "returns",
+                "file": "src/features/audit/build_graph.rs",
+                "line": 27,
+                "snippet": "let op = match program.operation(\u0026query.id) {"
+              }
+            ]
+          },
           {
             "name": "inspect_effects",
             "label": "Generate the I/O manifest (inspect effects)",
@@ -10009,31 +10835,31 @@
                 "id": "join_trace",
                 "todo": "with trace_request_id read that request from TraceStore (absent store or request = not_found, exit 4), join events on effect_id into attempts {count, last_decision, last_phase}; events with no planned site are kept as unplanned",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 148
+                "line": 154
               },
               {
                 "id": "group_view",
                 "todo": "TargetSummary per (grant target, capability): union of verbs, methods, protocols, origins, phases and operations; needs_file yes/no/`yes: verbs`/null; USED BY lists each operation, `entry (via op)` for transitive users and connector `op (via method)`; the decision is the worst site decision (denied \u003e partial \u003e unknown \u003e allowed); rows ordered by first appearance, capabilities of one target in vocabulary order",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 184
+                "line": 190
               },
               {
                 "id": "needs_view",
                 "todo": "with needs or check_files: one OperationNeeds per selected entry (id order) listing its requires_existing file sites and those of reachable callees (via = callee), deduplicated by path; param_dependent paths shown as templates; with include_bootstrap a leading `bundle load` group lists connector descriptor/schema files",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 194
+                "line": 200
               },
               {
                 "id": "check_files",
                 "todo": "with check_files: each distinct exact path is authorized as allow_read/stat through PolicyEvaluator first (denied = not_permitted, path untouched), then probed once through FileProbe (metadata + readability only, never opened); non-exact paths are not_checkable; statuses are shown under every operation needing the path",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 243
+                "line": 249
               },
               {
                 "id": "render_inventory",
                 "todo": "render table (by operation / target / capability, or the needs listing), markdown (same tables) or csv (one row per site) from the manifest, json = the manifest itself; stderr gets decision counts, probe counts and the incompleteness list; exit 3 when check_policy found denied/partial or check_files found not_permitted/unreadable, else 4 when a needed file is missing, else 7 when strict and incomplete, else 0",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 317
+                "line": 323
               }
             ],
             "failures": [
@@ -10061,7 +10887,7 @@
                 "code": "not_found.trace (exit 4)",
                 "propagates": "returns",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 149,
+                "line": 155,
                 "snippet": "let mut unplanned = Vec::new();"
               }
             ]
@@ -10949,7 +11775,7 @@
                 "when": "the server did not negotiate the needed capability",
                 "code": "protocol.mcp_capability",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 383,
+                "line": 392,
                 "snippet": "if !session.peer().supports(import.capability()) {"
               },
               {
@@ -10957,7 +11783,7 @@
                 "when": "a JSON-RPC error response",
                 "code": "protocol.mcp_error with details.code (the JSON-RPC identity)",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 398,
+                "line": 407,
                 "snippet": "McpReply::Error {"
               },
               {
@@ -10965,7 +11791,7 @@
                 "when": "result.isError true",
                 "code": "mcp.tool_failed (kind application, 502, exit 5) with content and structuredContent in details",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 419,
+                "line": 428,
                 "snippet": "if result.get(\"isError\").and_then(Json::as_bool) == Some(true) {"
               },
               {
@@ -10973,7 +11799,7 @@
                 "when": "structuredContent that violates the snapshot outputSchema",
                 "code": "protocol.mcp_output_schema",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 436,
+                "line": 445,
                 "snippet": "let tool = conn"
               },
               {
@@ -10981,7 +11807,7 @@
                 "when": "a listing that does not form a valid snapshot (missing names/schemas, duplicates)",
                 "code": "mcp.snapshot",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 555,
+                "line": 623,
                 "snippet": "let snapshot = McpSnapshot::parse(raw.to_string().as_bytes())?;"
               }
             ]
@@ -11087,7 +11913,7 @@
           {
             "name": "cancel_request",
             "label": "Cancel a running request",
-            "about": "Signals cancellation of a caller's own running top-level request; the request's scope then drops its tasks and handles and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.",
+            "about": "Signals cancellation of a caller's own running top-level request; the request's structured cancellation token fires, its scope closes every open handle in reverse order within the 5 s grace, reaps child processes, and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.",
             "in": [
               {
                 "name": "input",
@@ -11135,7 +11961,7 @@
               },
               {
                 "id": "signal_cancel",
-                "todo": "signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope is dropped",
+                "todo": "signal the shared cancellation for that request (idempotent) and acknowledge `cancelling`; the final `cancelled` terminal is delivered to the request's own caller after its scope has closed its resources (dropped only as a last resort after the grace)",
                 "file": "src/features/execution/cancel_request.rs",
                 "line": 35
               }
@@ -11193,19 +12019,19 @@
                 "id": "validate_request",
                 "todo": "resolve the ID in the pinned catalog (private IDs only for in-bundle calls), reject unknown fields and wrong types before injecting defaults, enforce limits.max_call_depth (limit.call_depth) before scheduling; concurrency/byte budgets are reserved by the host dispatcher",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 21
+                "line": 68
               },
               {
                 "id": "drive_scoped",
-                "todo": "drive the compiled body through the injected driver; emitted items flow to the sink with awaited demand; cancellation propagates without replaying emitted data",
+                "todo": "drive the compiled body through the injected driver; every emitted item is checked against the declared `emits` spec before it reaches the sink (first violation → output.invalid with details.seq, producer stopped); items flow to the sink with awaited demand; cancellation (the request's structured token: caller cancel or deadline) propagates without replaying emitted data",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 51
+                "line": 98
               },
               {
                 "id": "finish_scope",
                 "todo": "the scope is joined inside drive; validate the final result against the declared OutputSpec BEFORE building the Completion; mismatch → output.invalid (500, exit 5) with effects preserved; exactly one completion or primary error",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 59
+                "line": 130
               }
             ],
             "failures": [
@@ -11215,7 +12041,7 @@
                 "code": "limit.call_depth (429, exit 5) before any effect",
                 "propagates": "returns",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 24,
+                "line": 71,
                 "snippet": "if input.depth \u003e limits.max_call_depth {"
               },
               {
@@ -11224,8 +12050,17 @@
                 "code": "stream.input_required (422, exit 2)",
                 "propagates": "returns",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 37,
+                "line": 84,
                 "snippet": "if entry.receives.is_some() \u0026\u0026 sink.is_none() {"
+              },
+              {
+                "id": "emit_invalid",
+                "when": "an emitted item violates `emits`",
+                "code": "output.invalid (500, exit 5) with details.seq and the run's effects",
+                "propagates": "returns",
+                "file": "src/features/execution/request_operation.rs",
+                "line": 116,
+                "snippet": "let outcome = driver.drive(plan, sink).await.map_err(|e| {"
               }
             ]
           },
@@ -11242,7 +12077,17 @@
             "out": "DagCompletion",
             "needs": [
               {
-                "name": "DagNodeRunner"
+                "name": "DagNodeRunner",
+                "functions": [
+                  {
+                    "name": "now",
+                    "out": "SystemTime"
+                  },
+                  {
+                    "name": "cancel_nodes",
+                    "out": "()"
+                  }
+                ]
               }
             ],
             "examples": [
@@ -11256,19 +12101,19 @@
                 "id": "plan_nodes",
                 "todo": "cycles, unknown `after` names and undeclared node reads were rejected at compile time; here every node starts pending, the failure policy defaults to fail fast when omitted, and node identities are their declared names",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 16
+                "line": 17
               },
               {
                 "id": "schedule_ready",
                 "todo": "a node whose dependency failed, was blocked, cancelled or skipped becomes blocked; a pending node whose dependencies all succeeded becomes running while fewer than `limit` nodes run; under fail fast no new node starts after the first failure",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 29
+                "line": 32
               },
               {
                 "id": "report_nodes",
                 "todo": "still-running nodes become cancelled; never-started nodes become skipped after a fatal error and blocked otherwise; each node's envelope is {status, result (null unless succeeded), error}; the fatal error carries the node list in details",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 130
+                "line": 161
               }
             ],
             "failures": [
@@ -11277,14 +12122,14 @@
                 "when": "the dag timeout expired",
                 "code": "timeout.dag becomes the fatal error; running nodes are cancelled",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 100,
+                "line": 109,
                 "snippet": "fatal = Some(RivetError::new("
               },
               {
                 "id": "node_failed_fast",
                 "when": "under fail fast the first failure becomes the fatal error and stops scheduling",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 120,
+                "line": 130,
                 "snippet": "if input.failure == FailurePolicy::Fast \u0026\u0026 fatal.is_none() {"
               }
             ]
@@ -11398,6 +12243,53 @@
                 "file": "src/features/files/apply_file_operation.rs",
                 "line": 58,
                 "snippet": "for (capability, verb, path) in file_intents(\u0026input.op) {"
+              }
+            ]
+          },
+          {
+            "name": "open_file_stream",
+            "label": "Open a scoped file handle",
+            "about": "Validates `with file open PATH mode read|write|append as NAME` (+ `chunk_size N`) and authorizes the mode's access verbs on the path before the confined adapter opens a no-follow, root-relative handle that yields bytes chunks (read) or accepts `NAME.write` (write/append) and closes on scope exit.",
+            "in": [
+              {
+                "name": "input",
+                "type": "FileStreamRequest"
+              }
+            ],
+            "out": "FileStreamPlan",
+            "needs": [
+              {
+                "name": "PolicyEvaluator"
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={path:\"./data/lines.txt\", mode:\"read\", chunk_size:65536}",
+                "result": "{ \"path\": \"./data/lines.txt\", \"mode\": \"read\", \"chunk_size\": 65536 }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "validate_mode",
+                "todo": "the handle mode is read, write or append and chunk_size is bounded (1 byte..8 MiB, default 64 KiB) before any policy check or I/O",
+                "file": "src/features/files/open_file_stream.rs",
+                "line": 35
+              },
+              {
+                "id": "authorize_mode",
+                "todo": "every access verb the mode needs (read → read; write → create+update; append → append) is permitted on the path by policy.json, or nothing opens",
+                "file": "src/features/files/open_file_stream.rs",
+                "line": 60
+              }
+            ],
+            "failures": [
+              {
+                "id": "permission_denied",
+                "when": "any intent denied",
+                "code": "permission.denied (403, exit 3) with capability/access/target details and zero effects",
+                "file": "src/features/files/open_file_stream.rs",
+                "line": 62,
+                "snippet": "for (capability, verb) in stream_intents(mode) {"
               }
             ]
           }
@@ -11724,19 +12616,19 @@
                 "id": "check_target",
                 "todo": "validate the resolved target of every attempt (redirects, DNS results, replacements); with deny_private_ranges refuse RFC1918, loopback, link-local, 169.254.169.254, fc00::/7 and fe80::/10 unless a grant names that IP/CIDR literally",
                 "file": "src/features/policy/authorize_effect.rs",
-                "line": 47
+                "line": 54
               },
               {
                 "id": "check_access",
                 "todo": "a grant matches only when capability and selector match and, if the grant lists `access`, the intent's verb is listed; absent access = every verb of the capability",
                 "file": "src/features/policy/authorize_effect.rs",
-                "line": 63
+                "line": 70
               },
               {
                 "id": "check_auth_quic",
                 "todo": "auth/credential intents need allow_auth/allow_credentials in addition to endpoint permits; QUIC/UDP permits bind protocol and destination so QUIC's internal UDP never authorizes raw UDP (enforced by distinct capability/target pairs)",
                 "file": "src/features/policy/authorize_effect.rs",
-                "line": 83
+                "line": 90
               }
             ],
             "failures": [
@@ -11746,7 +12638,7 @@
                 "code": "permission.denied (exit 3) by the caller",
                 "propagates": "handled",
                 "file": "src/features/policy/authorize_effect.rs",
-                "line": 84,
+                "line": 91,
                 "snippet": "match verb_mismatch {"
               }
             ]
@@ -12019,6 +12911,32 @@
       {
         "name": "registry",
         "use_cases": [
+          {
+            "name": "describe_capabilities",
+            "label": "Describe build capabilities",
+            "about": "Reports what this build and platform support — protocols and their versions/modes, OAuth flows, the process sandbox backend (active, gated or unsupported), serve surfaces, Stage C features that are refused, and the version — without I/O or sensitive data, for any authenticated principal.",
+            "in": [
+              {
+                "name": "input",
+                "type": "BuildProbe"
+              }
+            ],
+            "out": "CapabilityReport",
+            "examples": [
+              {
+                "input": "input={version:\"0.1.0-dev\", os:\"macos\", sandbox_backend:\"macos-seatbelt\", sandbox_status:\"active\"}",
+                "result": "{ \"version\": \"0.1.0-dev\", \"sandbox\": { \"backend\": \"macos-seatbelt\", \"status\": \"active\" } }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "report_build",
+                "todo": "the report states what this build and OS actually support (protocols, OAuth flows, sandbox backend and status, serve surfaces, refused Stage C forms, version) with no I/O and no sensitive data",
+                "file": "src/features/registry/describe_capabilities.rs",
+                "line": 26
+              }
+            ]
+          },
           {
             "name": "describe_operations",
             "label": "List and describe operations",
@@ -12310,19 +13228,19 @@
                 "id": "public_only",
                 "todo": "private and unknown IDs are rejected as not_found by the dispatcher/registry for every principal before or after this decision, so a denial here never reveals whether a hidden ID exists",
                 "file": "src/features/serve/authorize_operation.rs",
-                "line": 42
+                "line": 46
               },
               {
                 "id": "principal_map",
                 "todo": "the loopback principal `local` (auth none, or the CLI/library host) may call everything; generic built-ins (rivet.request/list/describe/outputs/sessions.*) are allowed here because their target ID is authorized separately; otherwise with serve.principals absent every authenticated principal may call every public ID except rivet.io/rivet.policy.generate; with the map present the principal's entry must match exactly, by `*`, or by a trailing `.*` prefix pattern (demo.* matches demo.add) — sensitive IDs match only an exact entry",
                 "file": "src/features/serve/authorize_operation.rs",
-                "line": 43
+                "line": 47
               },
               {
                 "id": "apply_everywhere",
                 "todo": "return AccessDecision{allowed, principal, matched_pattern}; REST, SSE, polling, WebSocket, MCP and the catalog listings (GET /v1/operations, tools/list, rivet.list, rivet.outputs --all) all call this same decision and filter or refuse with permission.denied (403)",
                 "file": "src/features/serve/authorize_operation.rs",
-                "line": 85
+                "line": 89
               }
             ],
             "failures": [
@@ -12331,7 +13249,7 @@
                 "when": "the principal has no entry or no pattern matches",
                 "code": "allowed:false (callers return permission.denied, 403)",
                 "file": "src/features/serve/authorize_operation.rs",
-                "line": 63,
+                "line": 67,
                 "snippet": "let Some(entry) = grants.iter().find(|g| g.principal == who) else {"
               }
             ]
@@ -12339,7 +13257,7 @@
           {
             "name": "multiplex_ws",
             "label": "Multiplex ws",
-            "about": "Handles one client frame on /v1/ws (subprotocol rivet.v1): opens a connection-owned ref, routes input/finish_input/cancel to that ref's session, and answers malformed or refused frames with an error frame without closing the socket.",
+            "about": "Handles one client frame on /v1/ws (subprotocol rivet.v1): opens a connection-owned ref, routes input/finish_input/cancel to that ref's session, and answers malformed or refused frames with an error frame without closing the socket; a refused input ends its ref with that specific error.",
             "in": [
               {
                 "name": "input",
@@ -12353,6 +13271,15 @@
                 "functions": [
                   {
                     "name": "send",
+                    "in": [
+                      {
+                        "type": "WsFrame"
+                      }
+                    ],
+                    "out": "WsAck"
+                  },
+                  {
+                    "name": "reply",
                     "in": [
                       {
                         "type": "WsFrame"
@@ -12434,21 +13361,21 @@
               },
               {
                 "id": "route_input",
-                "todo": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish cancels its ref so it still ends with exactly one terminal frame",
+                "todo": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 91
+                "line": 94
               },
               {
                 "id": "stream_out",
                 "todo": "the host's per-ref pump reads the session with a bounded wait and forwards {type:data, ref, seq, data}, then exactly one {type:result, ref, completion} or {type:error, ref, error}; a full 16-event log blocks the producer (backpressure)",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 131
+                "line": 144
               },
               {
                 "id": "close_cancels",
                 "todo": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 132
+                "line": 145
               }
             ],
             "failures": [
@@ -12473,8 +13400,16 @@
                 "when": "input/finish_input/cancel for a ref not in flight",
                 "code": "not_found.ref error frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 92,
+                "line": 95,
                 "snippet": "kind =\u003e {"
+              },
+              {
+                "id": "refused_input",
+                "when": "the session refused an input/finish_input frame",
+                "code": "that error (e.g. conflict.input_sequence, validation.input) as the ref's terminal frame, then the session is cancelled",
+                "file": "src/features/serve/multiplex_ws.rs",
+                "line": 128,
+                "snippet": "match routed {"
               }
             ]
           },
@@ -12550,7 +13485,7 @@
             "todos": [
               {
                 "id": "open",
-                "todo": "POST /v1/requests {id, params}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
+                "todo": "POST /v1/requests {id, params, deadline_ms?}: authorize the operation for the principal (403 permission.denied), then SessionDriver.open (principal-owned, survives reconnect; deadline_ms capped by the host at 600000; the request's W3C traceparent becomes the session's trace) and answer 202 SessionReceipt with events_url=/v1/requests/{session_id}/events; unary operations work the same way and their batch holds one terminal result event",
                 "file": "src/features/serve/project_polling.rs",
                 "line": 16
               },
@@ -12558,19 +13493,19 @@
                 "id": "read",
                 "todo": "GET /v1/requests/{id}/events?after_seq=N\u0026wait_ms=M -\u003e SessionDriver.read with wait_ms defaulting to 1000 and capped at 5000 (returns early when events arrive) and max_events capped at 16; 200 SessionBatch",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 42
+                "line": 49
               },
               {
                 "id": "input_finish_cancel",
                 "todo": "POST .../input {send_seq, data} -\u003e SessionDriver.send (200 SessionAck); POST .../finish_input -\u003e SessionDriver.finish_input (200 SessionAck input_closed:true); POST .../cancel -\u003e SessionDriver.cancel (200 CancelReceipt with session_id, request_id, state)",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 61
+                "line": 68
               },
               {
                 "id": "ownership",
                 "todo": "every route passes the authenticated principal to the driver, which answers 404 not_found.session for another principal's, unknown or expired session; errors become the ErrorEnvelope with the registry status (404/409/422/429)",
                 "file": "src/features/serve/project_polling.rs",
-                "line": 90
+                "line": 97
               }
             ],
             "failures": [
@@ -12580,7 +13515,7 @@
                 "code": "permission.denied (403) body",
                 "file": "src/features/serve/project_polling.rs",
                 "line": 17,
-                "snippet": "PollAction::Open { id, params } =\u003e {"
+                "snippet": "PollAction::Open {"
               }
             ]
           },
@@ -12780,7 +13715,7 @@
               },
               {
                 "id": "cancel_and_join",
-                "todo": "the driver closes input, aborts the run task and awaits it within the 5 s cleanup grace (scoped resources are dropped with it), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:\"cancelled\"}",
+                "todo": "the driver records the cancel first (it wins over a completion not yet recorded), closes input, fires the run's cancellation token and joins the run within the 5 s cleanup grace while it closes its scoped resources (abort only after the grace), appends one terminal `cancelled` error event (committed effects are preserved, never rolled back) and returns {session_id, request_id, state:\"cancelled\"}",
                 "file": "src/features/sessions/cancel_session.rs",
                 "line": 18
               }
@@ -13524,6 +14459,7 @@
         "name": "cli",
         "kind": "cli",
         "calls": [
+          "audit/build_graph",
           "audit/inspect_effects",
           "audit/read_trace",
           "auth/begin_authorization",
@@ -13660,6 +14596,12 @@
         ]
       },
       {
+        "name": "file_stream",
+        "satisfies": [
+          "FileAccess"
+        ]
+      },
+      {
         "name": "grpc_adapter",
         "satisfies": [
           "GrpcDriver"
@@ -13791,6 +14733,32 @@
   },
   "flows": [
     {
+      "action": "audit.build_graph",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet graph ID [--all] [--json]"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "GraphQuery"
+        }
+      ],
+      "through": [
+        "Registry"
+      ],
+      "output": "CallGraph",
+      "handling": [
+        {
+          "layer": "tree",
+          "ref": "graph_of",
+          "role": "ids are assigned in preorder afterwards (n0 = root)"
+        }
+      ]
+    },
+    {
       "action": "audit.inspect_effects",
       "triggers": [
         {
@@ -13839,6 +14807,11 @@
           "lane": "policyevaluator"
         },
         {
+          "layer": "concrete",
+          "ref": "params",
+          "role": "policy explain ID --params: each entry-operation site whose placeholders are all params present in the call's params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets"
+        },
+        {
           "layer": "probe",
           "ref": "FileProbe.stat",
           "role": "only after the broker allowed stat on that path",
@@ -13851,7 +14824,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet trace show REQ | rivet --endpoint URL trace show REQ (rivet.trace.show)"
+          "invocation": "rivet trace show REQ | rivet trace export REQ --output PATH | rivet --endpoint URL trace show|export … (rivet.trace.show / rivet.trace.export)"
         },
         {
           "surface": "http",
@@ -14269,6 +15242,11 @@
           "lane": "client"
         },
         {
+          "layer": "drift",
+          "ref": "check_drift",
+          "role": "first use of the session: live tools/list vs the approved snapshot for every exposed tool (name + inputSchema); any difference is mcp.schema_drift and the call is never sent with a live schema"
+        },
+        {
           "layer": "close",
           "ref": "session.close",
           "role": "owned sessions end with the call (stdin EOF + reap, or HTTP DELETE)",
@@ -14386,7 +15364,7 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(ID, PARAMS, sink)"
+          "invocation": "Runtime::request(ID, PARAMS, sink) | Runtime::scope(|scope| …) scope.stream(ID, PARAMS) | scope.duplex(ID, PARAMS)"
         },
         {
           "surface": "mcp",
@@ -14417,9 +15395,14 @@
           "role": "unknown fields, missing required, type, min/max/enum; then defaults"
         },
         {
+          "layer": "emits",
+          "ref": "EmitCheck",
+          "role": "wrap the sink so each data item is validated (declared json items are opaque)"
+        },
+        {
           "layer": "drive",
           "ref": "driver.drive",
-          "role": "the driver owns the scope: resources close in reverse order on success, error, break and cancel",
+          "role": "the driver owns the scope: resources close in reverse order on success, error, break, cancellation and deadline expiry",
           "lane": "driver"
         },
         {
@@ -14459,9 +15442,21 @@
           "lane": "runner"
         },
         {
+          "layer": "stamp",
+          "ref": "runner.now",
+          "role": "started_at is the wall clock when the node starts running",
+          "lane": "runner"
+        },
+        {
           "layer": "wait",
           "ref": "next",
           "role": "the next finished node, bounded by the dag timeout"
+        },
+        {
+          "layer": "cancel",
+          "ref": "runner.cancel_nodes",
+          "role": "after a fatal error (fail fast or dag timeout) running nodes are signalled and joined: each unwinds its own scopes (closing handles) and reports back within the cleanup grace",
+          "lane": "runner"
         },
         {
           "layer": "settle",
@@ -14517,6 +15512,32 @@
           "ref": "files.apply",
           "role": "the adapter returns the verb's result value",
           "lane": "files"
+        }
+      ]
+    },
+    {
+      "action": "files.open_file_stream",
+      "input": [
+        {
+          "name": "input",
+          "type": "FileStreamRequest"
+        }
+      ],
+      "through": [
+        "PolicyEvaluator"
+      ],
+      "output": "FileStreamPlan",
+      "handling": [
+        {
+          "layer": "validate",
+          "ref": "mode",
+          "role": "`mode` must be read, write or append (validation.file_mode, exit 2); `chunk_size` defaults to 65536 and must be 1..=8 MiB (limit.chunk_size)"
+        },
+        {
+          "layer": "authorize",
+          "ref": "evaluator.evaluate",
+          "role": "one permit per intent of the mode; the first denial stops before any handle opens",
+          "lane": "evaluator"
         }
       ]
     },
@@ -14700,6 +15721,12 @@
           "role": "no policy.json → deny every application effect with a rule naming the missing file"
         },
         {
+          "layer": "ceiling",
+          "ref": "policy.ceiling",
+          "role": "a library host ceiling decides too: an attempt it denies is denied whatever policy.json grants (intersection)",
+          "lane": "policy"
+        },
+        {
           "layer": "deny",
           "ref": "policy.deny",
           "role": "a matching deny entry (with or without access) wins over every grant",
@@ -14763,7 +15790,7 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::builder().policy_file(PATH).build()"
+          "invocation": "Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)"
         }
       ],
       "input": [
@@ -14847,6 +15874,33 @@
           "ref": "driver.exchange",
           "role": "the driver runs the step on the scope's connection",
           "lane": "driver"
+        }
+      ]
+    },
+    {
+      "action": "registry.describe_capabilities",
+      "input": [
+        {
+          "name": "input",
+          "type": "BuildProbe"
+        }
+      ],
+      "output": "CapabilityReport",
+      "handling": [
+        {
+          "layer": "protocols",
+          "ref": "",
+          "role": "fixed table of this build's transports: http 1.1/2/3 (strict or fallback), websocket, tcp, unix, udp (+ multicast), quic v1 (+ datagram), grpc (4 modes), mcp (stdio, http), oauth2 (client_credentials, pkce, device, refresh)"
+        },
+        {
+          "layer": "stage_c",
+          "ref": "",
+          "role": "Stage C rows are listed as unsupported with the error each form raises"
+        },
+        {
+          "layer": "sandbox",
+          "ref": "",
+          "role": "the backend compiled for this OS and whether it confines (active), is implemented but gated, or does not exist (unsupported)"
         }
       ]
     },
@@ -15063,7 +16117,7 @@
       "handling": [
         {
           "layer": "malformed",
-          "ref": "conn.send",
+          "ref": "conn.reply",
           "role": "parse failure → error frame for the ref if it could be read",
           "lane": "conn"
         },
@@ -15086,8 +16140,14 @@
         },
         {
           "layer": "refuse",
+          "ref": "conn.send",
+          "role": "a refused input/finish ends the ref: its terminal error frame carries the specific code, sent before any cancellation",
+          "lane": "conn"
+        },
+        {
+          "layer": "cancel",
           "ref": "driver.cancel",
-          "role": "a refused input/finish cancels the ref (one terminal frame follows)",
+          "role": "then cancel the ref's session (its pump's own terminal frame is discarded: the lane already closed)",
           "lane": "driver"
         }
       ]

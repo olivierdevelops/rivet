@@ -3,13 +3,77 @@
   "module": "rivet",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args."
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling."
   },
   "definition": {
     "features": [
       {
         "name": "audit",
         "use_cases": [
+          {
+            "name": "build_graph",
+            "label": "Show the static call graph",
+            "about": "Builds the static call graph of one operation from the compiled program and its effect catalog — literal (request …) calls expanded into the callee, connector calls, effect sites, DAG nodes with their after edges, and both arms of every if marked conditional; nothing is executed or evaluated.",
+            "in": [
+              {
+                "name": "input",
+                "type": "GraphQuery"
+              }
+            ],
+            "out": "CallGraph",
+            "needs": [
+              {
+                "name": "Registry",
+                "functions": [
+                  {
+                    "name": "describe",
+                    "in": [
+                      {
+                        "type": "CatalogQuery"
+                      }
+                    ],
+                    "out": "Catalog"
+                  },
+                  {
+                    "name": "effect_sites",
+                    "in": [
+                      {
+                        "type": "EffectQuery"
+                      }
+                    ],
+                    "out": "List<EffectSite>"
+                  }
+                ]
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={id:\"users.snapshot\"}",
+                "result": "{ \"operation_id\": \"users.snapshot\", \"nodes\": [{\"kind\": \"operation\"}, {\"kind\": \"call\", \"label\": \"call users.get\"}], \"edges\": [{\"kind\": \"contains\"}] }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "select_operation",
+                "todo": "the ID must name an operation, public unless `all`; a private or absent one is not_found.operation without disclosing which"
+              },
+              {
+                "id": "build_tree",
+                "todo": "structure (if/else arms with their condition, dag with nodes and after lists) comes from the IR; each effect site, literal call and connector call of the operation hangs under the innermost structure whose line range contains it, in source order; a call node expands the callee's graph unless the callee is already on the chain (cycle node)"
+              }
+            ],
+            "failures": [
+              {
+                "id": "unknown_id",
+                "when": "absent, or private without --all",
+                "code": "not_found.operation (exit 4)",
+                "propagates": "returns",
+                "file": "src/features/audit/build_graph.rs",
+                "line": 27,
+                "snippet": "let op = match program.operation(&query.id) {"
+              }
+            ]
+          },
           {
             "name": "inspect_effects",
             "label": "Generate the I/O manifest (inspect effects)",
@@ -165,7 +229,7 @@
                 "code": "not_found.trace (exit 4)",
                 "propagates": "returns",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 149,
+                "line": 155,
                 "snippet": "let mut unplanned = Vec::new();"
               }
             ]
@@ -1019,7 +1083,7 @@
                 "when": "the server did not negotiate the needed capability",
                 "code": "protocol.mcp_capability",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 383,
+                "line": 392,
                 "snippet": "if !session.peer().supports(import.capability()) {"
               },
               {
@@ -1027,7 +1091,7 @@
                 "when": "a JSON-RPC error response",
                 "code": "protocol.mcp_error with details.code (the JSON-RPC identity)",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 398,
+                "line": 407,
                 "snippet": "McpReply::Error {"
               },
               {
@@ -1035,7 +1099,7 @@
                 "when": "result.isError true",
                 "code": "mcp.tool_failed (kind application, 502, exit 5) with content and structuredContent in details",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 419,
+                "line": 428,
                 "snippet": "if result.get(\"isError\").and_then(Json::as_bool) == Some(true) {"
               },
               {
@@ -1043,7 +1107,7 @@
                 "when": "structuredContent that violates the snapshot outputSchema",
                 "code": "protocol.mcp_output_schema",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 436,
+                "line": 445,
                 "snippet": "let tool = conn"
               },
               {
@@ -1051,7 +1115,7 @@
                 "when": "a listing that does not form a valid snapshot (missing names/schemas, duplicates)",
                 "code": "mcp.snapshot",
                 "file": "src/features/connectors/invoke_mcp.rs",
-                "line": 555,
+                "line": 623,
                 "snippet": "let snapshot = McpSnapshot::parse(raw.to_string().as_bytes())?;"
               }
             ]
@@ -1153,7 +1217,7 @@
           {
             "name": "cancel_request",
             "label": "Cancel a running request",
-            "about": "Signals cancellation of a caller's own running top-level request; the request's scope then drops its tasks and handles and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.",
+            "about": "Signals cancellation of a caller's own running top-level request; the request's structured cancellation token fires, its scope closes every open handle in reverse order within the 5 s grace, reaps child processes, and its caller receives one `cancelled` error (exit 130). Idempotent; never reveals other principals' requests.",
             "in": [
               {
                 "name": "input",
@@ -1271,7 +1335,7 @@
                 "code": "limit.call_depth (429, exit 5) before any effect",
                 "propagates": "returns",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 24,
+                "line": 71,
                 "snippet": "if input.depth > limits.max_call_depth {"
               },
               {
@@ -1280,8 +1344,17 @@
                 "code": "stream.input_required (422, exit 2)",
                 "propagates": "returns",
                 "file": "src/features/execution/request_operation.rs",
-                "line": 37,
+                "line": 84,
                 "snippet": "if entry.receives.is_some() && sink.is_none() {"
+              },
+              {
+                "id": "emit_invalid",
+                "when": "an emitted item violates `emits`",
+                "code": "output.invalid (500, exit 5) with details.seq and the run's effects",
+                "propagates": "returns",
+                "file": "src/features/execution/request_operation.rs",
+                "line": 116,
+                "snippet": "let outcome = driver.drive(plan, sink).await.map_err(|e| {"
               }
             ]
           },
@@ -1298,7 +1371,17 @@
             "out": "DagCompletion",
             "needs": [
               {
-                "name": "DagNodeRunner"
+                "name": "DagNodeRunner",
+                "functions": [
+                  {
+                    "name": "now",
+                    "out": "SystemTime"
+                  },
+                  {
+                    "name": "cancel_nodes",
+                    "out": "()"
+                  }
+                ]
               }
             ],
             "examples": [
@@ -1327,14 +1410,14 @@
                 "when": "the dag timeout expired",
                 "code": "timeout.dag becomes the fatal error; running nodes are cancelled",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 100,
+                "line": 109,
                 "snippet": "fatal = Some(RivetError::new("
               },
               {
                 "id": "node_failed_fast",
                 "when": "under fail fast the first failure becomes the fatal error and stops scheduling",
                 "file": "src/features/execution/run_dag.rs",
-                "line": 120,
+                "line": 130,
                 "snippet": "if input.failure == FailurePolicy::Fast && fatal.is_none() {"
               }
             ]
@@ -1438,6 +1521,49 @@
                 "file": "src/features/files/apply_file_operation.rs",
                 "line": 58,
                 "snippet": "for (capability, verb, path) in file_intents(&input.op) {"
+              }
+            ]
+          },
+          {
+            "name": "open_file_stream",
+            "label": "Open a scoped file handle",
+            "about": "Validates `with file open PATH mode read|write|append as NAME` (+ `chunk_size N`) and authorizes the mode's access verbs on the path before the confined adapter opens a no-follow, root-relative handle that yields bytes chunks (read) or accepts `NAME.write` (write/append) and closes on scope exit.",
+            "in": [
+              {
+                "name": "input",
+                "type": "FileStreamRequest"
+              }
+            ],
+            "out": "FileStreamPlan",
+            "needs": [
+              {
+                "name": "PolicyEvaluator"
+              }
+            ],
+            "examples": [
+              {
+                "input": "input={path:\"./data/lines.txt\", mode:\"read\", chunk_size:65536}",
+                "result": "{ \"path\": \"./data/lines.txt\", \"mode\": \"read\", \"chunk_size\": 65536 }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "validate_mode",
+                "todo": "the handle mode is read, write or append and chunk_size is bounded (1 byte..8 MiB, default 64 KiB) before any policy check or I/O"
+              },
+              {
+                "id": "authorize_mode",
+                "todo": "every access verb the mode needs (read → read; write → create+update; append → append) is permitted on the path by policy.json, or nothing opens"
+              }
+            ],
+            "failures": [
+              {
+                "id": "permission_denied",
+                "when": "any intent denied",
+                "code": "permission.denied (403, exit 3) with capability/access/target details and zero effects",
+                "file": "src/features/files/open_file_stream.rs",
+                "line": 62,
+                "snippet": "for (capability, verb) in stream_intents(mode) {"
               }
             ]
           }
@@ -1756,7 +1882,7 @@
                 "code": "permission.denied (exit 3) by the caller",
                 "propagates": "handled",
                 "file": "src/features/policy/authorize_effect.rs",
-                "line": 84,
+                "line": 91,
                 "snippet": "match verb_mismatch {"
               }
             ]
@@ -2003,6 +2129,30 @@
       {
         "name": "registry",
         "use_cases": [
+          {
+            "name": "describe_capabilities",
+            "label": "Describe build capabilities",
+            "about": "Reports what this build and platform support — protocols and their versions/modes, OAuth flows, the process sandbox backend (active, gated or unsupported), serve surfaces, Stage C features that are refused, and the version — without I/O or sensitive data, for any authenticated principal.",
+            "in": [
+              {
+                "name": "input",
+                "type": "BuildProbe"
+              }
+            ],
+            "out": "CapabilityReport",
+            "examples": [
+              {
+                "input": "input={version:\"0.1.0-dev\", os:\"macos\", sandbox_backend:\"macos-seatbelt\", sandbox_status:\"active\"}",
+                "result": "{ \"version\": \"0.1.0-dev\", \"sandbox\": { \"backend\": \"macos-seatbelt\", \"status\": \"active\" } }"
+              }
+            ],
+            "todos": [
+              {
+                "id": "report_build",
+                "todo": "the report states what this build and OS actually support (protocols, OAuth flows, sandbox backend and status, serve surfaces, refused Stage C forms, version) with no I/O and no sensitive data"
+              }
+            ]
+          },
           {
             "name": "describe_operations",
             "label": "List and describe operations",
@@ -2289,7 +2439,7 @@
                 "when": "the principal has no entry or no pattern matches",
                 "code": "allowed:false (callers return permission.denied, 403)",
                 "file": "src/features/serve/authorize_operation.rs",
-                "line": 63,
+                "line": 67,
                 "snippet": "let Some(entry) = grants.iter().find(|g| g.principal == who) else {"
               }
             ]
@@ -2297,7 +2447,7 @@
           {
             "name": "multiplex_ws",
             "label": "Multiplex ws",
-            "about": "Handles one client frame on /v1/ws (subprotocol rivet.v1): opens a connection-owned ref, routes input/finish_input/cancel to that ref's session, and answers malformed or refused frames with an error frame without closing the socket.",
+            "about": "Handles one client frame on /v1/ws (subprotocol rivet.v1): opens a connection-owned ref, routes input/finish_input/cancel to that ref's session, and answers malformed or refused frames with an error frame without closing the socket; a refused input ends its ref with that specific error.",
             "in": [
               {
                 "name": "input",
@@ -2311,6 +2461,15 @@
                 "functions": [
                   {
                     "name": "send",
+                    "in": [
+                      {
+                        "type": "WsFrame"
+                      }
+                    ],
+                    "out": "WsAck"
+                  },
+                  {
+                    "name": "reply",
                     "in": [
                       {
                         "type": "WsFrame"
@@ -2421,8 +2580,16 @@
                 "when": "input/finish_input/cancel for a ref not in flight",
                 "code": "not_found.ref error frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 92,
+                "line": 95,
                 "snippet": "kind => {"
+              },
+              {
+                "id": "refused_input",
+                "when": "the session refused an input/finish_input frame",
+                "code": "that error (e.g. conflict.input_sequence, validation.input) as the ref's terminal frame, then the session is cancelled",
+                "file": "src/features/serve/multiplex_ws.rs",
+                "line": 128,
+                "snippet": "match routed {"
               }
             ]
           },
@@ -2520,7 +2687,7 @@
                 "code": "permission.denied (403) body",
                 "file": "src/features/serve/project_polling.rs",
                 "line": 17,
-                "snippet": "PollAction::Open { id, params } => {"
+                "snippet": "PollAction::Open {"
               }
             ]
           },
@@ -3416,6 +3583,7 @@
         "name": "cli",
         "kind": "cli",
         "calls": [
+          "audit/build_graph",
           "audit/inspect_effects",
           "audit/read_trace",
           "auth/begin_authorization",
@@ -3552,6 +3720,12 @@
         ]
       },
       {
+        "name": "file_stream",
+        "satisfies": [
+          "FileAccess"
+        ]
+      },
+      {
         "name": "grpc_adapter",
         "satisfies": [
           "GrpcDriver"
@@ -3683,6 +3857,32 @@
   },
   "flows": [
     {
+      "action": "audit.build_graph",
+      "triggers": [
+        {
+          "surface": "cli",
+          "invocation": "rivet graph ID [--all] [--json]"
+        }
+      ],
+      "input": [
+        {
+          "name": "input",
+          "type": "GraphQuery"
+        }
+      ],
+      "through": [
+        "Registry"
+      ],
+      "output": "CallGraph",
+      "handling": [
+        {
+          "layer": "tree",
+          "ref": "graph_of",
+          "role": "ids are assigned in preorder afterwards (n0 = root)"
+        }
+      ]
+    },
+    {
       "action": "audit.inspect_effects",
       "triggers": [
         {
@@ -3731,6 +3931,11 @@
           "lane": "policyevaluator"
         },
         {
+          "layer": "concrete",
+          "ref": "params",
+          "role": "policy explain ID --params: each entry-operation site whose placeholders are all params present in the call's params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets"
+        },
+        {
           "layer": "probe",
           "ref": "FileProbe.stat",
           "role": "only after the broker allowed stat on that path",
@@ -3743,7 +3948,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet trace show REQ | rivet --endpoint URL trace show REQ (rivet.trace.show)"
+          "invocation": "rivet trace show REQ | rivet trace export REQ --output PATH | rivet --endpoint URL trace show|export … (rivet.trace.show / rivet.trace.export)"
         },
         {
           "surface": "http",
@@ -4161,6 +4366,11 @@
           "lane": "client"
         },
         {
+          "layer": "drift",
+          "ref": "check_drift",
+          "role": "first use of the session: live tools/list vs the approved snapshot for every exposed tool (name + inputSchema); any difference is mcp.schema_drift and the call is never sent with a live schema"
+        },
+        {
           "layer": "close",
           "ref": "session.close",
           "role": "owned sessions end with the call (stdin EOF + reap, or HTTP DELETE)",
@@ -4278,7 +4488,7 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::request(ID, PARAMS, sink)"
+          "invocation": "Runtime::request(ID, PARAMS, sink) | Runtime::scope(|scope| …) scope.stream(ID, PARAMS) | scope.duplex(ID, PARAMS)"
         },
         {
           "surface": "mcp",
@@ -4309,9 +4519,14 @@
           "role": "unknown fields, missing required, type, min/max/enum; then defaults"
         },
         {
+          "layer": "emits",
+          "ref": "EmitCheck",
+          "role": "wrap the sink so each data item is validated (declared json items are opaque)"
+        },
+        {
           "layer": "drive",
           "ref": "driver.drive",
-          "role": "the driver owns the scope: resources close in reverse order on success, error, break and cancel",
+          "role": "the driver owns the scope: resources close in reverse order on success, error, break, cancellation and deadline expiry",
           "lane": "driver"
         },
         {
@@ -4351,9 +4566,21 @@
           "lane": "runner"
         },
         {
+          "layer": "stamp",
+          "ref": "runner.now",
+          "role": "started_at is the wall clock when the node starts running",
+          "lane": "runner"
+        },
+        {
           "layer": "wait",
           "ref": "next",
           "role": "the next finished node, bounded by the dag timeout"
+        },
+        {
+          "layer": "cancel",
+          "ref": "runner.cancel_nodes",
+          "role": "after a fatal error (fail fast or dag timeout) running nodes are signalled and joined: each unwinds its own scopes (closing handles) and reports back within the cleanup grace",
+          "lane": "runner"
         },
         {
           "layer": "settle",
@@ -4409,6 +4636,32 @@
           "ref": "files.apply",
           "role": "the adapter returns the verb's result value",
           "lane": "files"
+        }
+      ]
+    },
+    {
+      "action": "files.open_file_stream",
+      "input": [
+        {
+          "name": "input",
+          "type": "FileStreamRequest"
+        }
+      ],
+      "through": [
+        "PolicyEvaluator"
+      ],
+      "output": "FileStreamPlan",
+      "handling": [
+        {
+          "layer": "validate",
+          "ref": "mode",
+          "role": "`mode` must be read, write or append (validation.file_mode, exit 2); `chunk_size` defaults to 65536 and must be 1..=8 MiB (limit.chunk_size)"
+        },
+        {
+          "layer": "authorize",
+          "ref": "evaluator.evaluate",
+          "role": "one permit per intent of the mode; the first denial stops before any handle opens",
+          "lane": "evaluator"
         }
       ]
     },
@@ -4592,6 +4845,12 @@
           "role": "no policy.json → deny every application effect with a rule naming the missing file"
         },
         {
+          "layer": "ceiling",
+          "ref": "policy.ceiling",
+          "role": "a library host ceiling decides too: an attempt it denies is denied whatever policy.json grants (intersection)",
+          "lane": "policy"
+        },
+        {
           "layer": "deny",
           "ref": "policy.deny",
           "role": "a matching deny entry (with or without access) wins over every grant",
@@ -4655,7 +4914,7 @@
         },
         {
           "surface": "library",
-          "invocation": "Runtime::builder().policy_file(PATH).build()"
+          "invocation": "Runtime::builder().policy_file(PATH).build() | Policy::from_file(PATH) | Policy::from_json(BYTES) | Runtime::builder().ceiling(Policy)"
         }
       ],
       "input": [
@@ -4739,6 +4998,33 @@
           "ref": "driver.exchange",
           "role": "the driver runs the step on the scope's connection",
           "lane": "driver"
+        }
+      ]
+    },
+    {
+      "action": "registry.describe_capabilities",
+      "input": [
+        {
+          "name": "input",
+          "type": "BuildProbe"
+        }
+      ],
+      "output": "CapabilityReport",
+      "handling": [
+        {
+          "layer": "protocols",
+          "ref": "",
+          "role": "fixed table of this build's transports: http 1.1/2/3 (strict or fallback), websocket, tcp, unix, udp (+ multicast), quic v1 (+ datagram), grpc (4 modes), mcp (stdio, http), oauth2 (client_credentials, pkce, device, refresh)"
+        },
+        {
+          "layer": "stage_c",
+          "ref": "",
+          "role": "Stage C rows are listed as unsupported with the error each form raises"
+        },
+        {
+          "layer": "sandbox",
+          "ref": "",
+          "role": "the backend compiled for this OS and whether it confines (active), is implemented but gated, or does not exist (unsupported)"
         }
       ]
     },
@@ -4955,7 +5241,7 @@
       "handling": [
         {
           "layer": "malformed",
-          "ref": "conn.send",
+          "ref": "conn.reply",
           "role": "parse failure → error frame for the ref if it could be read",
           "lane": "conn"
         },
@@ -4978,8 +5264,14 @@
         },
         {
           "layer": "refuse",
+          "ref": "conn.send",
+          "role": "a refused input/finish ends the ref: its terminal error frame carries the specific code, sent before any cancellation",
+          "lane": "conn"
+        },
+        {
+          "layer": "cancel",
           "ref": "driver.cancel",
-          "role": "a refused input/finish cancels the ref (one terminal frame follows)",
+          "role": "then cancel the ref's session (its pump's own terminal frame is discarded: the lane already closed)",
           "lane": "driver"
         }
       ]
@@ -5852,6 +6144,134 @@
       ]
     },
     {
+      "name": "GraphQuery",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "all",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "GraphNodeKind",
+      "fields": [
+        {
+          "name": "operation",
+          "type": "| call | connector | effect | branch | dag | node | cycle"
+        }
+      ]
+    },
+    {
+      "name": "GraphNode",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string"
+        },
+        {
+          "name": "kind",
+          "type": "GraphNodeKind"
+        },
+        {
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "name": "source",
+          "type": "string"
+        },
+        {
+          "name": "condition?",
+          "type": "string"
+        },
+        {
+          "name": "conditional",
+          "type": "bool"
+        },
+        {
+          "name": "after",
+          "type": "string[]"
+        },
+        {
+          "name": "children",
+          "type": "GraphNode[]"
+        }
+      ]
+    },
+    {
+      "name": "CallGraph",
+      "fields": [
+        {
+          "name": "operation_id",
+          "type": "string"
+        },
+        {
+          "name": "root",
+          "type": "GraphNode"
+        }
+      ]
+    },
+    {
+      "name": "CancelReason",
+      "fields": [
+        {
+          "name": "cancelled",
+          "type": "| timeout"
+        }
+      ]
+    },
+    {
+      "name": "CancelToken",
+      "fields": [
+        {
+          "name": "reason?",
+          "type": "CancelReason"
+        }
+      ]
+    },
+    {
+      "name": "SandboxStatus",
+      "fields": [
+        {
+          "name": "active",
+          "type": "| gated | unsupported"
+        }
+      ]
+    },
+    {
+      "name": "BuildProbe",
+      "fields": [
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "os",
+          "type": "string"
+        },
+        {
+          "name": "arch",
+          "type": "string"
+        },
+        {
+          "name": "sandbox_backend",
+          "type": "string"
+        },
+        {
+          "name": "sandbox_status",
+          "type": "SandboxStatus"
+        },
+        {
+          "name": "sandbox_reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "Principal",
       "fields": [
         {
@@ -5892,6 +6312,10 @@
           "type": "string"
         },
         {
+          "name": "parent_span_id?",
+          "type": "string"
+        },
+        {
           "name": "depth",
           "type": "int"
         },
@@ -5902,6 +6326,31 @@
         {
           "name": "include_private",
           "type": "bool"
+        },
+        {
+          "name": "cancel",
+          "type": "CancelToken"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
+        }
+      ]
+    },
+    {
+      "name": "TraceContext",
+      "fields": [
+        {
+          "name": "trace_id",
+          "type": "string"
+        },
+        {
+          "name": "parent_id",
+          "type": "string"
+        },
+        {
+          "name": "flags",
+          "type": "int"
         }
       ]
     },
@@ -6175,6 +6624,14 @@
         {
           "name": "error",
           "type": "Option<RivetError>"
+        },
+        {
+          "name": "started_at",
+          "type": "Option<String>"
+        },
+        {
+          "name": "ended_at",
+          "type": "Option<String>"
         }
       ]
     },
@@ -6326,6 +6783,57 @@
         {
           "name": "overwrite",
           "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamMode",
+      "fields": [
+        {
+          "name": "read",
+          "type": "| write | append"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamRequest",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "string"
+        },
+        {
+          "name": "chunk_size?",
+          "type": "int"
+        },
+        {
+          "name": "operation_id",
+          "type": "string"
+        },
+        {
+          "name": "span?",
+          "type": "SourceSpan"
+        }
+      ]
+    },
+    {
+      "name": "FileStreamPlan",
+      "fields": [
+        {
+          "name": "path",
+          "type": "string"
+        },
+        {
+          "name": "mode",
+          "type": "FileStreamMode"
+        },
+        {
+          "name": "chunk_size",
+          "type": "int"
         }
       ]
     },
@@ -7080,6 +7588,10 @@
         {
           "name": "trace_request_id?",
           "type": "string"
+        },
+        {
+          "name": "params?",
+          "type": "Json"
         }
       ]
     },
@@ -8266,6 +8778,10 @@
         {
           "name": "serve",
           "type": "ServePolicy"
+        },
+        {
+          "name": "ceiling?",
+          "type": "Policy"
         }
       ]
     },
@@ -8643,6 +9159,10 @@
         {
           "name": "trace_id?",
           "type": "string"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
         }
       ]
     },
@@ -8664,6 +9184,10 @@
         {
           "name": "open_refs",
           "type": "string[]"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
         }
       ]
     },
@@ -8681,6 +9205,10 @@
         {
           "name": "replied",
           "type": "bool"
+        },
+        {
+          "name": "ended?",
+          "type": "string"
         }
       ]
     },
@@ -8720,6 +9248,10 @@
         {
           "name": "serve",
           "type": "ServePolicy"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
         }
       ]
     },
@@ -8799,6 +9331,14 @@
         {
           "name": "deadline_ms?",
           "type": "int"
+        },
+        {
+          "name": "trace?",
+          "type": "TraceContext"
+        },
+        {
+          "name": "restrict?",
+          "type": "Value"
         }
       ]
     },
@@ -9114,6 +9654,10 @@
         {
           "name": "closer?",
           "type": "SyntaxNode"
+        },
+        {
+          "name": "sections",
+          "type": "map<string, SyntaxNode[]>"
         }
       ]
     },

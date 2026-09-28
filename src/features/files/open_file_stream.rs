@@ -32,6 +32,7 @@ pub fn open_file_stream(
     input: FileStreamRequest,
     evaluator: &dyn PolicyEvaluator,
 ) -> RivetResult<FileStreamPlan> {
+    // vhco:todo validate_mode -- the handle mode is read, write or append and chunk_size is bounded (1 byte..8 MiB, default 64 KiB) before any policy check or I/O
     // vhco:step validate mode -- `mode` must be read, write or append (validation.file_mode, exit 2); `chunk_size` defaults to 65536 and must be 1..=8 MiB (limit.chunk_size)
     let span = input.span.clone();
     let mode = FileStreamMode::parse(&input.mode).ok_or_else(|| {
@@ -56,6 +57,7 @@ pub fn open_file_stream(
             .with_span(span));
         }
     };
+    // vhco:todo authorize_mode -- every access verb the mode needs (read → read; write → create+update; append → append) is permitted on the path by policy.json, or nothing opens
     // vhco:step authorize evaluator.evaluate -- one permit per intent of the mode; the first denial stops before any handle opens
     // vhco:error permission_denied -- any intent denied => permission.denied (403, exit 3) with capability/access/target details and zero effects
     for (capability, verb) in stream_intents(mode) {
