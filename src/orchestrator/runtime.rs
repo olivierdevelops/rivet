@@ -979,6 +979,14 @@ impl Runtime {
         )
     }
 
+    /// The static call graph of one operation (`rivet graph ID [--json]`).
+    pub fn graph(
+        &self,
+        query: &crate::domain::call_graph::GraphQuery,
+    ) -> RivetResult<crate::domain::call_graph::CallGraph> {
+        crate::features::audit::build_graph::build_graph(query, self.inner.registry.as_ref())
+    }
+
     /// Least-privilege draft for `ids` (empty = every public operation). Never writes.
     pub fn generate_policy(&self, ids: &[&str]) -> RivetResult<PolicyDraft> {
         let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();

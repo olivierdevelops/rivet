@@ -353,9 +353,12 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
                 Err(e) => fail(&e, None, cli.json),
             }
         }
-        Command::Check { .. } | Command::Policy { .. } | Command::Serve(_) => fail(
+        Command::Check { .. }
+        | Command::Graph { .. }
+        | Command::Policy { .. }
+        | Command::Serve(_) => fail(
             &usage(
-                "check, policy and serve work on a local bundle (--file); they are not available with --endpoint",
+                "check, graph, policy and serve work on a local bundle (--file); they are not available with --endpoint",
             ),
             None,
             cli.json,

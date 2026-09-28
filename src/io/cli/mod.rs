@@ -60,6 +60,14 @@ pub enum Command {
     },
     /// Generate the I/O manifest (every I/O site, target and access verb).
     Io(IoArgs),
+    /// Static call graph of one operation: literal calls (expanded), connector
+    /// calls, effect sites, DAG nodes with after edges, both `if` arms marked.
+    Graph {
+        id: String,
+        /// Allow a private operation.
+        #[arg(long)]
+        all: bool,
+    },
     /// Policy tools.
     Policy {
         #[command(subcommand)]

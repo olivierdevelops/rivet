@@ -221,3 +221,139 @@ async fn trace_records_denials_with_effect_ids() {
         .collect();
     assert!(ids.contains(&"data.snapshot#1".to_string()));
 }
+
+const GRAPH_SRC: &str = r#"operation users.get
+    private true
+    param id text required
+    output json
+    secret key from env "API_KEY" for "https://api.example.com"
+    r = http get "https://api.example.com/users/${id}"
+    return r
+end
+
+operation users.snapshot
+    param id text required
+    param save boolean default false
+    output json
+    u = (request "users.get" {id: id})
+    if save
+        file create "./out/user.json" json u
+    end
+    dag
+        node a = (request "users.get" {id: "a"})
+        node b after [a] = (request "users.get" {id: "b"})
+    end
+    return u
+end
+"#;
+
+// vhco:test audit.build_graph -- G4: the static call graph expands literal calls into the callee, marks `if` arms conditional, lists DAG nodes with after edges, and renders the S63 tree; JSON carries the same nodes plus contains/after edges
+#[test]
+fn static_call_graph_tree_and_json() {
+    use rivet::domain::call_graph::GraphQuery;
+    let rt = Runtime::builder()
+        .source("app.rivet", GRAPH_SRC, ".")
+        .build()
+        .unwrap();
+    let g = rt
+        .graph(&GraphQuery {
+            id: "users.snapshot".into(),
+            all: false,
+        })
+        .unwrap();
+    let want = "\
+users.snapshot                                                            app.rivet:10
+├── call users.get                                                        app.rivet:14
+│   ├── env      read         env API_KEY                                 app.rivet:5
+│   └── network  connect GET  https://api.example.com/users/{id}          app.rivet:6
+├── if save                                                               app.rivet:15
+│   └── file     create       ./out/user.json                             app.rivet:16
+└── dag                                                                   app.rivet:18
+    ├── node a                                                            app.rivet:19
+    │   └── call users.get                                                app.rivet:19
+    │       ├── env      read         env API_KEY                         app.rivet:5
+    │       └── network  connect GET  https://api.example.com/users/{id}  app.rivet:6
+    └── node b after a                                                    app.rivet:20
+        └── call users.get                                                app.rivet:20
+            ├── env      read         env API_KEY                         app.rivet:5
+            └── network  connect GET  https://api.example.com/users/{id}  app.rivet:6
+";
+    assert_eq!(g.render(), want, "\n{}", g.render());
+    let j = g.to_json();
+    let nodes = j["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 15);
+    assert_eq!(nodes[0]["id"], "n0");
+    let by_label = |l: &str| nodes.iter().find(|n| n["label"] == l).unwrap().clone();
+    let branch = by_label("if save");
+    assert_eq!(
+        (
+            &branch["kind"],
+            &branch["condition"],
+            &branch["conditional"]
+        ),
+        (&"branch".into(), &"save".into(), &true.into())
+    );
+    let create = nodes
+        .iter()
+        .find(|n| n["label"].as_str().unwrap().contains("create"))
+        .unwrap();
+    assert_eq!(create["conditional"], true);
+    let (a, b) = (by_label("node a"), by_label("node b after a"));
+    assert_eq!(b["after"], serde_json::json!(["a"]));
+    let after: Vec<_> = j["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "after")
+        .collect();
+    assert_eq!(after.len(), 1);
+    assert_eq!((&after[0]["from"], &after[0]["to"]), (&a["id"], &b["id"]));
+    // A private operation needs --all (not_found otherwise, without disclosure).
+    let e = rt
+        .graph(&GraphQuery {
+            id: "users.get".into(),
+            all: false,
+        })
+        .unwrap_err();
+    assert_eq!(e.code, "not_found.operation");
+    assert!(
+        rt.graph(&GraphQuery {
+            id: "users.get".into(),
+            all: true,
+        })
+        .is_ok()
+    );
+}
+
+// vhco:test audit.build_graph -- `rivet graph ID [--json]` prints the tree or the JSON graph (exit 0), an unknown ID exits 4, and --endpoint mode is a usage error
+#[test]
+fn graph_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("app.rivet"), GRAPH_SRC).unwrap();
+    let run = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
+            .current_dir(dir.path())
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let out = run(&["--file", "app.rivet", "graph", "users.snapshot"]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.starts_with("users.snapshot "), "{text}");
+    assert!(text.contains("└── node b after a"), "{text}");
+    let out = run(&["--file", "app.rivet", "graph", "users.snapshot", "--json"]);
+    assert_eq!(out.status.code(), Some(0));
+    let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(j["operation_id"], "users.snapshot");
+    assert_eq!(j["root"], "n0");
+    let out = run(&["--file", "app.rivet", "graph", "nope.op"]);
+    assert_eq!(out.status.code(), Some(4));
+    let out = run(&[
+        "--endpoint",
+        "http://127.0.0.1:9",
+        "graph",
+        "users.snapshot",
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+}
