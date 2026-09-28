@@ -615,10 +615,6 @@ async fn stage_c_refusals() {
             format!("with websocket \"ws://127.0.0.1:{port}/events\" as socket\n    reconnect 2 backoff exponential max \"2s\"\n    resume none\n    for event in socket\n        return event\n    end\nend\nreturn null"),
             "unsupported.reconnect",
         ),
-        (
-            format!("r = http get \"http://127.0.0.1:{port}/x\"\n    version 3\nend\nreturn r"),
-            "unsupported.http3",
-        ),
     ];
     for (body, code) in cases {
         let e = run(&op(&body), &policy).await.unwrap_err();

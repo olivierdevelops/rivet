@@ -1210,15 +1210,33 @@ impl<'a> Walker<'a> {
 }
 
 fn http_protocol(form: &EffectForm) -> String {
-    match form
-        .option("version")
-        .and_then(|o| o.args.first())
-        .map(|a| match a {
-            Arg::Word(w, _) => w.clone(),
-            Arg::Expr(e, _) => expr_text(e).trim_matches('"').to_string(),
-        })
-        .as_deref()
-    {
+    let arg_text = |a: &Arg| match a {
+        Arg::Word(w, _) => w.clone(),
+        Arg::Expr(e, _) => expr_text(e).trim_matches('"').to_string(),
+    };
+    let version = form.option("version");
+    let first = version.and_then(|o| o.args.first()).map(arg_text);
+    if first.as_deref() == Some("prefer") {
+        // `version prefer [3, 2]`: every listed transport is inventoried.
+        let list = version
+            .and_then(|o| o.args.get(1))
+            .map(arg_text)
+            .unwrap_or_default();
+        let names: Vec<&str> = list
+            .trim_matches(['[', ']'])
+            .split(',')
+            .filter_map(|v| match v.trim() {
+                "3" => Some("http3"),
+                "2" => Some("http2"),
+                "1" | "1.1" => Some("http1"),
+                _ => None,
+            })
+            .collect();
+        if !names.is_empty() {
+            return names.join("|");
+        }
+    }
+    match first.as_deref() {
         Some("3") => "http3".into(),
         Some("2") => "http2".into(),
         Some("1") | Some("1.1") => "http1".into(),

@@ -6,6 +6,7 @@ pub mod effect_args;
 pub mod execution_driver;
 pub mod file_access;
 pub mod grpc_adapter;
+pub mod h3_client;
 pub mod http_adapter;
 pub mod net_tls;
 pub mod policy_broker;

@@ -2,8 +2,8 @@ use super::ports::{Codec, HttpClient, PolicyEvaluator};
 use crate::domain::effect_checks::{authorize, checked_addr};
 use crate::domain::policy::{AccessVerb, Capability, EffectTarget};
 use crate::domain::transports::{
-    CodecInput, CodecKind, HttpBody, HttpExchange, HttpOutcome, HttpReply, HttpResponse, HttpWire,
-    WireTarget, replay_safe,
+    CodecInput, CodecKind, HttpBody, HttpExchange, HttpOutcome, HttpReply, HttpResponse,
+    HttpVersionPolicy, HttpWire, WireTarget, replay_safe, request_unsent,
 };
 use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
 
@@ -12,7 +12,7 @@ const CREDENTIAL_HEADERS: [&str; 3] = ["authorization", "proxy-authorization", "
 
 // vhco:usecase transports.exchange_http(input: HttpExchange) -> HttpResponse needs HttpClient, Codec, PolicyEvaluator
 // vhco:label Exchange http
-// vhco:about One brokered HTTP exchange: encodes the typed body, authorizes the origin and every resolved address before dialing, sends through the connection-level client, re-authorizes each redirect hop (only when `redirect follow` is set), retries only replay-safe methods on listed statuses, then maps a non-accepted status to http.status and decodes the body.
+// vhco:about One brokered HTTP exchange: encodes the typed body, authorizes the origin and every resolved address before dialing, sends through the connection-level client at the declared HTTP version (`version 3` strict HTTP/3, `version prefer [3, 2]` falling back only before any request byte), re-authorizes each redirect hop (only when `redirect follow` is set), retries only replay-safe methods on listed statuses, then maps a non-accepted status to http.status and decodes the body.
 // vhco:example input={method:"GET", url:"https://api.example.com/users/42", decode:"json"} => { "status": 200, "headers": {"content-type": "application/json"}, "body": {"id": 42, "name": "Ada"} }
 pub async fn exchange_http(
     input: HttpExchange,
@@ -73,7 +73,7 @@ pub async fn exchange_http(
     };
     let first_origin = url.origin();
 
-    // vhco:todo send -- for each attempt: authorize allow_network connect scheme://host:port/path (or allow_unix connect PATH for `unix`), resolve the host once and dial only a checked address, send through HttpClient; a 3xx with Location is followed only under `redirect follow limit N` (each hop re-authorized, credentials stripped on origin change, 303 → GET); a status listed in `retry … on status` is retried at most N more times after the backoff (Retry-After honoured up to `max`)
+    // vhco:todo send -- for each attempt: authorize allow_network connect scheme://host:port/path (or allow_unix connect PATH for `unix`), resolve the host once and dial only a checked address, send through HttpClient at the declared version (`version 3` = HTTP/3 over QUIC to the same checked host:port, no downgrade; `version prefer [3, 2|1.1]` falls back to the TCP version only when the client proves no request byte was written, so a POST whose bytes may have left is never sent twice); a 3xx with Location is followed only under `redirect follow limit N` (each hop re-authorized, credentials stripped on origin change, 303 → GET); a status listed in `retry … on status` is retried at most N more times after the backoff (Retry-After honoured up to `max`)
     let mut hops = 0u32;
     let mut attempt = 0u32;
     let reply: HttpReply = loop {
@@ -98,7 +98,8 @@ pub async fn exchange_http(
             max_body: input.max_body,
         };
         // vhco:step send client.send -- one connection-level exchange at the checked address; the client never follows redirects
-        let reply = client.send(wire).await?;
+        // vhco:step h3 send_versioned -- `version 3` sends over HTTP/3 only (a peer without h3 => http.version_unavailable, exit 5, never a TCP retry); `version prefer [3, …]` re-sends over the listed TCP version at the SAME checked address only when the H3 failure carries request_sent=false
+        let reply = send_versioned(client, wire, input.version).await?;
         if (300..400).contains(&reply.status)
             && reply.status != 304
             && input.redirect_limit > 0
@@ -203,6 +204,36 @@ pub async fn exchange_http(
     })
 }
 
+/// One attempt under the version policy. Only an H3 failure that provably
+/// wrote no request byte (`request_unsent`) may fall back, and only when the
+/// policy lists a fallback; everything else propagates unchanged.
+async fn send_versioned(
+    client: &dyn HttpClient,
+    wire: HttpWire,
+    policy: HttpVersionPolicy,
+) -> RivetResult<HttpReply> {
+    if !policy.wants_h3() {
+        return client.send(wire).await;
+    }
+    let mut tcp = wire.clone();
+    let h3 = HttpWire {
+        version: HttpVersionPolicy::Http3,
+        ..wire
+    };
+    // vhco:error h3_unavailable -- strict `version 3` and the peer has no HTTP/3 (no QUIC answer, ALPN h3 refused, h3 setup failed) => http.version_unavailable (kind protocol, exit 5) returns
+    match client.send(h3).await {
+        Ok(reply) => Ok(reply),
+        Err(e) => match policy.h3_fallback() {
+            Some(v) if request_unsent(&e) => {
+                tcp.version = v;
+                client.send(tcp).await
+            }
+            // vhco:error ambiguous_send -- the H3 request may already have reached the server (bytes written, response lost) => its connection error returns and nothing is re-sent over TCP, whatever the method
+            _ => Err(e),
+        },
+    }
+}
+
 async fn checked_target(
     url: &url::Url,
     input: &HttpExchange,
@@ -304,7 +335,7 @@ fn decode_body(
 mod tests {
     use super::*;
     use crate::domain::policy::{Decision, EffectIntent, Grant, NetworkPolicy, Permit, Policy};
-    use crate::domain::transports::{EffectOrigin, HttpVersionPolicy, RetryPolicy, TlsMaterial};
+    use crate::domain::transports::{EffectOrigin, RetryPolicy, TlsMaterial};
     use async_trait::async_trait;
     use std::net::IpAddr;
     use std::sync::Mutex;
@@ -534,5 +565,91 @@ mod tests {
             .unwrap_err();
         assert_eq!(e.code, "permission.denied");
         assert_eq!(c.sent.lock().unwrap().len(), 1);
+    }
+
+    /// H3-aware scripted client: the H3 attempt fails (sent or unsent) or
+    /// succeeds; TCP attempts always answer 200. Records each wire version.
+    struct Versions {
+        h3: Option<bool>,
+        seen: Mutex<Vec<HttpVersionPolicy>>,
+    }
+    #[async_trait]
+    impl HttpClient for Versions {
+        async fn resolve(&self, _h: &str, _p: u16) -> RivetResult<Vec<IpAddr>> {
+            Ok(vec!["93.184.216.34".parse().unwrap()])
+        }
+        async fn send(&self, wire: HttpWire) -> RivetResult<HttpReply> {
+            self.seen.lock().unwrap().push(wire.version);
+            let version = if wire.version == HttpVersionPolicy::Http3 {
+                if let Some(sent) = self.h3 {
+                    let code = if sent {
+                        "connection.http3"
+                    } else {
+                        "http.version_unavailable"
+                    };
+                    return Err(RivetError::new(ErrorKind::Protocol, code, "h3 failed")
+                        .with_details(Value::object([("request_sent", Value::Bool(sent))])));
+                }
+                "3"
+            } else {
+                "2"
+            };
+            Ok(HttpReply {
+                status: 200,
+                headers: vec![],
+                version: version.into(),
+                body: HttpBody::Complete(b"{}".to_vec()),
+            })
+        }
+        async fn wait(&self, _ms: u64, _j: bool) {}
+    }
+
+    async fn versioned(
+        policy: HttpVersionPolicy,
+        h3: Option<bool>,
+        method: &str,
+    ) -> (RivetResult<HttpOutcome>, Vec<HttpVersionPolicy>) {
+        let c = Versions {
+            h3,
+            seen: Mutex::new(vec![]),
+        };
+        let mut x = get("https://api.example.com/items");
+        x.method = method.into();
+        x.version = policy;
+        let r = exchange_http(x, &grants(&["https://api.example.com:443"]), &c, &Json).await;
+        (r, c.seen.into_inner().unwrap())
+    }
+
+    // vhco:test transports.exchange_http -- strict version 3 never downgrades; prefer [3, 2] falls back only when the H3 failure wrote no request byte, and a POST whose H3 bytes may have left is sent exactly once
+    #[tokio::test]
+    async fn version_selection_and_safe_fallback() {
+        use HttpVersionPolicy::*;
+        let (r, seen) = versioned(Http3, None, "get").await;
+        assert_eq!(r.unwrap().response.version, "3");
+        assert_eq!(seen, vec![Http3]);
+
+        let (r, seen) = versioned(Http3, Some(false), "get").await;
+        assert_eq!(r.unwrap_err().code, "http.version_unavailable");
+        assert_eq!(seen, vec![Http3], "strict H3 must not downgrade");
+
+        let (r, seen) = versioned(Http3OrHttp2, Some(false), "post").await;
+        let out = r.unwrap();
+        assert_eq!(out.response.version, "2");
+        assert_eq!(out.response.to_value().get("version"), Some(&Value::Int(2)));
+        assert_eq!(seen, vec![Http3, Http2]);
+
+        let (r, seen) = versioned(Http3OrAuto, Some(true), "post").await;
+        assert_eq!(r.unwrap_err().code, "connection.http3");
+        assert_eq!(seen, vec![Http3], "an ambiguous send is never replayed");
+
+        assert_eq!(
+            HttpVersionPolicy::from_preference(&["3".into(), "2".into()]),
+            Some(Http3OrHttp2)
+        );
+        assert_eq!(
+            HttpVersionPolicy::from_preference(&["2".into(), "3".into()]),
+            None,
+            "HTTP/3 may only come first"
+        );
     }
 }

@@ -78,7 +78,10 @@ pub struct EffectOrigin {
     pub span: Option<SourceSpan>,
 }
 
-// vhco:domain HttpVersionPolicy { auto | http1 | http2 }
+// vhco:domain HttpVersionPolicy { auto | http1 | http2 | http3 | http3_or_http2 | http3_or_http1 | http3_or_auto }
+/// `version 1.1|2|3` and `version prefer [3, 2, 1.1]`. The `Http3Or*`
+/// variants try HTTP/3 first and fall back only when the H3 attempt failed
+/// before any request byte was written (see [`request_unsent`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum HttpVersionPolicy {
     /// ALPN h2 → http/1.1 for https; HTTP/1.1 for plain http.
@@ -87,6 +90,80 @@ pub enum HttpVersionPolicy {
     Http1,
     /// h2 only (ALPN for https, prior knowledge for plain http).
     Http2,
+    /// HTTP/3 only (QUIC, ALPN h3); never downgrades.
+    Http3,
+    /// `prefer [3, 2]`: H3, else h2 only.
+    Http3OrHttp2,
+    /// `prefer [3, 1.1]`: H3, else HTTP/1.1 only.
+    Http3OrHttp1,
+    /// `prefer [3, 2, 1.1]`: H3, else h2 → http/1.1.
+    Http3OrAuto,
+}
+
+impl HttpVersionPolicy {
+    /// Does the first attempt use HTTP/3?
+    pub fn wants_h3(self) -> bool {
+        matches!(
+            self,
+            HttpVersionPolicy::Http3
+                | HttpVersionPolicy::Http3OrHttp2
+                | HttpVersionPolicy::Http3OrHttp1
+                | HttpVersionPolicy::Http3OrAuto
+        )
+    }
+
+    /// The TCP policy an H3 preference may fall back to (None = strict).
+    pub fn h3_fallback(self) -> Option<HttpVersionPolicy> {
+        match self {
+            HttpVersionPolicy::Http3OrHttp2 => Some(HttpVersionPolicy::Http2),
+            HttpVersionPolicy::Http3OrHttp1 => Some(HttpVersionPolicy::Http1),
+            HttpVersionPolicy::Http3OrAuto => Some(HttpVersionPolicy::Auto),
+            _ => None,
+        }
+    }
+
+    /// `version prefer [..]`: an ordered list of "3", "2", "1.1" (or "1").
+    /// HTTP/3 may only come first (fallback happens before any request
+    /// byte; nothing ever upgrades mid-request); duplicates are refused.
+    pub fn from_preference(list: &[String]) -> Option<HttpVersionPolicy> {
+        let norm: Vec<&str> = list
+            .iter()
+            .map(|v| match v.trim() {
+                "1" | "1.1" => "1.1",
+                other => other,
+            })
+            .collect();
+        Some(match norm.as_slice() {
+            ["3"] => HttpVersionPolicy::Http3,
+            ["3", "2"] => HttpVersionPolicy::Http3OrHttp2,
+            ["3", "1.1"] => HttpVersionPolicy::Http3OrHttp1,
+            ["3", "2", "1.1"] => HttpVersionPolicy::Http3OrAuto,
+            ["2"] => HttpVersionPolicy::Http2,
+            ["1.1"] => HttpVersionPolicy::Http1,
+            ["2", "1.1"] => HttpVersionPolicy::Auto,
+            _ => return None,
+        })
+    }
+}
+
+/// Marker carried in `details.request_sent` by an HttpClient failure: an
+/// error with `request_sent: false` guarantees that no request byte (no
+/// HEADERS, no body) reached the wire, so a version fallback cannot replay
+/// a request. Any other failure may have delivered the request.
+pub fn request_unsent(e: &RivetError) -> bool {
+    matches!(e.details.get("request_sent"), Some(Value::Bool(false)))
+}
+
+/// `response.version` as scripts see it: 3, 2 (integers) or 1.1 / 1.0.
+pub fn version_value(v: &str) -> Value {
+    match v {
+        "3" => Value::Int(3),
+        "2" => Value::Int(2),
+        other => match other.parse::<f64>() {
+            Ok(f) => Value::Float(f),
+            Err(_) => Value::text(other),
+        },
+    }
 }
 
 // vhco:domain StreamMode { sse | jsonl | lines | bytes }
@@ -214,6 +291,7 @@ impl std::fmt::Debug for HttpBody {
 }
 
 // vhco:domain HttpReply { status: int; headers: [string,string][]; version: string; body: HttpBody }
+/// `version` is the protocol actually used: "3", "2", "1.1" or "1.0".
 #[derive(Debug)]
 pub struct HttpReply {
     pub status: u16,
@@ -247,6 +325,7 @@ impl HttpResponse {
             ("status", Value::Int(self.status as i64)),
             ("headers", self.headers.clone()),
             ("body", self.body.clone()),
+            ("version", version_value(&self.version)),
         ])
     }
 }
@@ -389,11 +468,16 @@ pub trait ByteStream: Send {
     async fn close(self: Box<Self>) -> RivetResult<()>;
 }
 
-/// Broker-dialed HTTP/1.1 + HTTP/2 client. It never follows redirects and
-/// never resolves names on its own: the use case hands it a checked address.
+/// Broker-dialed HTTP/1.1 + HTTP/2 + HTTP/3 client. It never follows
+/// redirects and never resolves names on its own: the use case hands it a
+/// checked address (for HTTP/3 the same address, over UDP).
 #[async_trait]
 pub trait HttpClient: Send + Sync {
     async fn resolve(&self, host: &str, port: u16) -> RivetResult<Vec<IpAddr>>;
+    /// One attempt at exactly `wire.version` (`Http3` = QUIC/h3, never a
+    /// TCP downgrade). A failure before any request byte was written
+    /// carries `details.request_sent: false` ([`request_unsent`]); an H3
+    /// peer that does not speak h3 is `http.version_unavailable`.
     async fn send(&self, wire: HttpWire) -> RivetResult<HttpReply>;
     /// Backoff pause between retries (jitter applied by the adapter when asked).
     async fn wait(&self, delay_ms: u64, jitter: bool);

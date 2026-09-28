@@ -255,7 +255,10 @@ fn access_cell(t: &TargetSummary) -> String {
     let shown: Vec<&String> = t
         .protocols
         .iter()
-        .filter(|p| matches!(p.as_str(), "ws" | "grpc" | "quic" | "http3" | "sse"))
+        .filter(|p| {
+            p.split('|')
+                .any(|x| matches!(x, "ws" | "grpc" | "quic" | "http3" | "sse"))
+        })
         .collect();
     if !shown.is_empty() {
         s.push_str(&format!(

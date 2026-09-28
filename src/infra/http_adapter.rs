@@ -2,7 +2,9 @@
 //!
 //! Rivet's own connection-level client over `hyper::client::conn` (ADR-0002):
 //! it dials exactly the address the use case checked, speaks HTTP/1.1 or h2
-//! (ALPN for https), never follows redirects and never resolves names itself.
+//! (ALPN for https) or HTTP/3 over QUIC (`h3_client`, for `version 3` /
+//! `version prefer [3, …]`), never follows redirects and never resolves
+//! names itself.
 //! One connection per attempt (no pooling yet).
 //!
 //! ```text
@@ -20,13 +22,14 @@ use super::effect_args::{
     apply_tls, bad, budget_ms, duration, int, int_list, key, options, origin, read_file, text, word,
 };
 use super::execution_driver::{EffectAdapter, EffectCtx, EvalArg, EvaluatedForm, ResourceHandle};
+use super::h3_client;
 use super::net_tls::{client_config, connect_err, handshake_err, resolve, server_name};
 use crate::domain::ir::EffectForm;
 use crate::domain::ports::{FileAccess, PolicyEvaluator};
 use crate::domain::transports::{
     ByteStream, Codec, CodecInput, CodecKind, HttpBody, HttpClient, HttpExchange, HttpOutcome,
     HttpReply, HttpResponse, HttpVersionPolicy, HttpWire, RetryPolicy, StreamMode, TlsMaterial,
-    WireTarget,
+    WireTarget, version_value,
 };
 use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
 use async_trait::async_trait;
@@ -60,6 +63,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 
 // vhco:infra http_adapter satisfies HttpClient
 // vhco:net connect http+https -- every origin (and each resolved IP / redirect hop) authorized by the transports.exchange_http use case before dialing
+// vhco:net connect udp -- HTTP/3 (QUIC v1, ALPN h3, 0-RTT off) only to the same checked host:port the https origin grant covers
 pub struct HyperClient;
 
 fn http_err(e: impl std::fmt::Display) -> RivetError {
@@ -77,6 +81,12 @@ impl HttpClient for HyperClient {
     }
 
     async fn send(&self, wire: HttpWire) -> RivetResult<HttpReply> {
+        if wire.version.wants_h3() {
+            // HTTP/3 at the same checked address; never downgrades here (the
+            // use case alone decides a pre-send fallback).
+            let r = h3_client::send(&wire).await?;
+            return buffer_reply(r.status, r.headers, "3".into(), r.body, &wire).await;
+        }
         let url = url::Url::parse(&wire.url).map_err(|e| bad("validation.url", e.to_string()))?;
         let host = url.host_str().unwrap_or("").to_string();
         let https = url.scheme() == "https";
@@ -104,9 +114,9 @@ impl HttpClient for HyperClient {
         };
         let (io, h2): (Box<dyn Io>, bool) = if https {
             let alpn: &[&[u8]] = match wire.version {
-                HttpVersionPolicy::Auto => &[b"h2", b"http/1.1"],
                 HttpVersionPolicy::Http1 => &[b"http/1.1"],
                 HttpVersionPolicy::Http2 => &[b"h2"],
+                _ => &[b"h2", b"http/1.1"],
             };
             let cfg = client_config(&wire.tls, alpn)?;
             let name = server_name(&host, &wire.tls)?;
@@ -187,7 +197,12 @@ impl HttpClient for HyperClient {
             }
         };
         let status = resp.status().as_u16();
-        let version = format!("{:?}", resp.version());
+        let version = match resp.version() {
+            hyper::Version::HTTP_2 => "2",
+            hyper::Version::HTTP_10 => "1.0",
+            _ => "1.1",
+        }
+        .to_string();
         let headers: Vec<(String, String)> = resp
             .headers()
             .iter()
@@ -198,38 +213,11 @@ impl HttpClient for HyperClient {
                 )
             })
             .collect();
-        let incoming = resp.into_body();
-        let body = if wire.stream {
-            HttpBody::Stream(Box::new(HyperStream {
-                body: incoming,
-                conn: Some(conn),
-            }))
-        } else {
-            let mut s = HyperStream {
-                body: incoming,
-                conn: Some(conn),
-            };
-            let mut buf = Vec::new();
-            while let Some(chunk) = s.next_chunk().await? {
-                if (buf.len() + chunk.len()) as u64 > wire.max_body {
-                    let _ = Box::new(s).close().await;
-                    return Err(RivetError::new(
-                        ErrorKind::Limit,
-                        "limit.http_body",
-                        format!("response body exceeded {} bytes", wire.max_body),
-                    ));
-                }
-                buf.extend_from_slice(&chunk);
-            }
-            let _ = Box::new(s).close().await;
-            HttpBody::Complete(buf)
-        };
-        Ok(HttpReply {
-            status,
-            headers,
-            version,
-            body,
-        })
+        let body = Box::new(HyperStream {
+            body: resp.into_body(),
+            conn: Some(conn),
+        });
+        buffer_reply(status, headers, version, body, &wire).await
     }
 
     async fn wait(&self, delay_ms: u64, jitter: bool) {
@@ -244,6 +232,40 @@ impl HttpClient for HyperClient {
         };
         tokio::time::sleep(Duration::from_millis(ms)).await;
     }
+}
+
+/// Hand a live body back for `stream …`, or buffer it up to `max_body`.
+async fn buffer_reply(
+    status: u16,
+    headers: Vec<(String, String)>,
+    version: String,
+    mut body: Box<dyn ByteStream>,
+    wire: &HttpWire,
+) -> RivetResult<HttpReply> {
+    let body = if wire.stream {
+        HttpBody::Stream(body)
+    } else {
+        let mut buf = Vec::new();
+        while let Some(chunk) = body.next_chunk().await? {
+            if (buf.len() + chunk.len()) as u64 > wire.max_body {
+                let _ = body.close().await;
+                return Err(RivetError::new(
+                    ErrorKind::Limit,
+                    "limit.http_body",
+                    format!("response body exceeded {} bytes", wire.max_body),
+                ));
+            }
+            buf.extend_from_slice(&chunk);
+        }
+        let _ = body.close().await;
+        HttpBody::Complete(buf)
+    };
+    Ok(HttpReply {
+        status,
+        headers,
+        version,
+        body,
+    })
 }
 
 /// A live hyper response body; the connection task is aborted on close.
@@ -419,18 +441,7 @@ impl HttpEffects {
                     }
                 }
                 "retry" => x.retry = Some(parse_retry(args)?),
-                "version" => {
-                    x.version = match text(args.first()).as_deref() {
-                        Some("1") | Some("1.1") => HttpVersionPolicy::Http1,
-                        Some("2") => HttpVersionPolicy::Http2,
-                        _ => {
-                            return Err(RivetError::unsupported(
-                                "unsupported.http3",
-                                "HTTP/3 and version fallback lists are not available in this build",
-                            ));
-                        }
-                    }
-                }
+                "version" => x.version = parse_version(args)?,
                 "auth" => {
                     return Err(RivetError::unsupported(
                         "unsupported.oauth",
@@ -483,6 +494,40 @@ impl HttpEffects {
                 format!("the HTTP exchange exceeded {ms} ms"),
             )),
         }
+    }
+}
+
+/// `version 1.1|2|3` or `version prefer [3, 2, 1.1]` (HTTP/3 first, if at all).
+fn parse_version(args: &[EvalArg]) -> RivetResult<HttpVersionPolicy> {
+    let bad_version = || {
+        bad(
+            "validation.http_version",
+            "expected `version 1.1|2|3` or `version prefer [3, 2]` (HTTP/3 may only come first; no repeats)",
+        )
+    };
+    let list: Vec<String> = if word(args.first()) == Some("prefer") {
+        match args.get(1) {
+            Some(EvalArg::Value(Value::List(items))) => {
+                items.iter().map(|v| version_text(v.to_display())).collect()
+            }
+            _ => return Err(bad_version()),
+        }
+    } else {
+        match text(args.first()) {
+            Some(v) if args.len() == 1 => vec![version_text(v)],
+            _ => return Err(bad_version()),
+        }
+    };
+    HttpVersionPolicy::from_preference(&list).ok_or_else(bad_version)
+}
+
+/// `1.1` may print as `1.1`, `2.0` as `2`: normalise to the version name.
+fn version_text(v: String) -> String {
+    match v.as_str() {
+        "2.0" => "2".into(),
+        "3.0" => "3".into(),
+        "1.0" | "1" => "1.1".into(),
+        _ => v,
     }
 }
 
@@ -646,7 +691,7 @@ impl ResourceHandle for StreamHandle {
         match (&self.response, name) {
             (Some(r), "status") => Ok(Value::Int(r.status as i64)),
             (Some(r), "headers") => Ok(r.headers.clone()),
-            (Some(r), "version") => Ok(Value::text(&r.version)),
+            (Some(r), "version") => Ok(version_value(&r.version)),
             _ => Err(RivetError::unsupported(
                 "unsupported.property",
                 format!("this stream has no `{name}` property"),
