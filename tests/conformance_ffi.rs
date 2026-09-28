@@ -10,8 +10,8 @@
 //!        └─ ffi/include/rivet.h == cbindgen output (when cbindgen is installed)
 //! ```
 //!
-//! The library comes from the same `cargo test --workspace` build (rivet-ffi is
-//! a workspace member). Run alone (`-p rivet-runtime`) without it, the suite
+//! The library comes from `cargo build --workspace` (rivet-ffi builds only
+//! cdylib/staticlib, so `cargo test` alone does not produce it; INC-2026-0010). Run alone (`-p rivet-runtime`) without it, the suite
 //! skips with a note; in CI (`CI` set) a missing library fails.
 #![cfg(unix)]
 
@@ -41,7 +41,7 @@ fn target_dir() -> Option<PathBuf> {
         }
     }
     let msg = format!(
-        "librivet is not built in {} — run `cargo test --workspace` (rivet-ffi is a workspace member)",
+        "librivet is not built in {} — run `cargo build --workspace --all-features` first (rivet-ffi builds only cdylib/staticlib)",
         deps.display()
     );
     if std::env::var_os("CI").is_some() {

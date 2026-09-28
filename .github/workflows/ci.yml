@@ -42,6 +42,11 @@ jobs:
       - name: build (release)
         if: always()
         run: python scripts/ci_step.py build -- cargo build --release --workspace --all-features
+      - name: build (debug, librivet for the FFI tests)
+        if: always()
+        # conformance_ffi links the C/Python examples against target/debug/librivet.*;
+        # `cargo test` alone does not produce the cdylib/staticlib (INC-2026-0010).
+        run: python scripts/ci_step.py build-debug -- cargo build --workspace --all-features
       - name: tests (T-01…T-29 suites)
         if: always()
         run: python scripts/ci_step.py tests -- cargo test --workspace --all-targets --all-features --no-fail-fast

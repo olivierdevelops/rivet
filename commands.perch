@@ -54,6 +54,8 @@ command tests
     description "Run every workspace test target with all Cargo features"
     dir "${script_dir}"
     do
+        # librivet (cdylib/staticlib) must exist for conformance_ffi; cargo test alone does not build it.
+        cargo build --locked --workspace --all-features
         cargo test --locked --workspace --all-targets --all-features
     end
 end
