@@ -9,10 +9,12 @@
 //!  free while running ─▶ cancel + bounded cleanup (5 s grace)
 //! ```
 //!
-//! These tests call the exported `extern "C"` functions directly (the rlib of
-//! rivet-ffi), exactly as a C host would.
+//! These unit tests call the exported `extern "C"` functions directly, exactly as a
+//! C host would. They live in the crate (not `ffi/tests/`) so rivet-ffi needs no
+//! `rlib` output, whose `librivet.rlib` would collide with rivet-runtime's
+//! (INC-2026-0010).
 
-use rivet::*;
+use super::*;
 use serde_json::Value as Json;
 use std::ffi::{CStr, CString, c_char};
 use std::ptr::{null, null_mut};

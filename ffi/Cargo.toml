@@ -17,7 +17,7 @@ publish = false
 [lib]
 name = "rivet"
 path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib", "rlib"]
+crate-type = ["cdylib", "staticlib"]
 
 # The runtime's Cargo features pass through (librivet ships the runtime defaults).
 [features]

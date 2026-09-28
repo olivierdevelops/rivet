@@ -327,3 +327,6 @@ pub unsafe extern "C" fn rivet_string_free(s: *mut c_char) -> RivetStatus {
     drop(unsafe { CString::from_raw(s) });
     RivetStatus::RIVET_OK
 }
+
+#[cfg(test)]
+mod tests;

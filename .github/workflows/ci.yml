@@ -16,7 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows was dropped from CI on 2026-09-29 (maintainer decision): Rivet 0.2.0 supports
+        # macOS and Linux; the Windows failures are catalogued in INC-2026-0011 for a later port.
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
