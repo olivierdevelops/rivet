@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 7
+document_revision: 8
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -126,16 +126,16 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 23 | P3–P5 |
-| IN PROGRESS | 0 | |
-| BLOCKED | 2 | TASK-095/096 now unblocked by the remote (origin added 2026-09-28); updated at P5 |
+| NOT STARTED | 24 | P3, P4 remainder, P5 |
+| IN PROGRESS | 1 | P4 docs (part A running), TASK-096 CI |
+| BLOCKED | 0 | |
 | DONE | 48 | P1, P2a–P2f |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
-- **Current phase:** P1 and P2a–P2f done (476 tests, `vhco sync` 0); P3 next.
-- **Next action:** P3 full test and validation (TASK-060…064), including the first CI run of the `features` matrix, the header check and `conformance_ffi` on Linux (the Linux static `Libs.private` list is unverified); no open incident.
-- **Remote:** `origin` = https://github.com/olivierdevelops/rivet.git (added 2026-09-28); `main` and `v0.1.0` pushed; CI runs on push.
+- **Current phase:** P2 complete (476 tests); CI green on macOS + Linux (run 36483001760); P4 documentation in progress; P3 records next.
+- **Platforms:** macOS and Linux supported; Windows dropped (INC-2026-0011).
+- **Remote:** `origin` https://github.com/olivierdevelops/rivet (main pushed after each verified phase).
 - **Last updated:** 2026-09-29.
 - **Release target:** v0.2.0.
 
@@ -354,8 +354,8 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | NOT STARTED | |
 | TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | NOT STARTED | |
 | TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | NOT STARTED | |
-| TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | BLOCKED | no git remote |
-| TASK-096 | P5 | CI on Linux and Windows; post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | BLOCKED | no git remote |
+| TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | NOT STARTED | Remote origin added 2026-09-28 (main, v0.1.0 pushed); runs at P5 |
+| TASK-096 | P5 | CI on macOS and Linux (Windows dropped by the maintainer 2026-09-29, INC-2026-0011); post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | IN PROGRESS | CI green on ubuntu-latest + macos-latest + feature matrix + deny: run 36483001760 (commit 8045343). Post-release verification pending P5 |
 
 ## File and Artifact Checklist
 
@@ -607,6 +607,11 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-28 | Deviation | IDs | The validation report is RPT-2026-0015 (RPT-2026-0014 belongs to the 13-real-world-apis smoke tests) | — | Implementer | D-08 |
 | 2026-09-28 | Blocker | TASK-095/096 | No git remote: push, CI and git-dependency consumers of the tag cannot be verified remotely | Local release only | Maintainer | — |
 | 2026-09-28 | Scope | TASK-038 | crates.io publication deferred (G-PUB) | Git dependency path | Maintainer | ADR-0004 |
+| 2026-09-29 | Decision | TASK-096 | Maintainer: drop Windows from CI and from supported platforms for v0.2.0; catalogue the Windows bugs for a future port | Supported: macOS + Linux; Windows failures W-01…W-13 | Maintainer | INC-2026-0011 |
+| 2026-09-29 | Finding | TASK-096 | Linux has no process sandbox (gated, ADR-0003): process tests are platform-aware (macOS real spawn; Linux typed `unsupported.sandbox_backend`) | Linux CI green without weakening the sandbox | Implementer | 850460c |
+| 2026-09-29 | Finding | TASK-041 | `rivet-ffi`'s extra `rlib` collided with `rivet-runtime`'s `librivet.rlib`; FFI tests moved in-crate; CI and `perch tests` now build librivet before testing | Build hazard removed | Implementer | INC-2026-0010, 6f9943f, 8045343 |
+| 2026-09-29 | Finding | TASK-096 | CI logs need admin rights; `scripts/ci_step.py` re-emits failures as public check-run annotations | CI debuggable without `gh` | Implementer | TRBL-2026-0007 (to write) |
+| 2026-09-29 | Finding | — | A separate Codex session added STD-2026-0001 (orchestrator and cross-package review standard); committed as authored (e7ed8ed) | Review practice only | Maintainer | STD-2026-0001 |
 | 2026-09-28 | Decision | UQ-09 / P2f | Scope amendment: file modules (import in `.rivet` + host load objects in Rust/C/Python), namespaced by alias, loader's policy only; CLI run-from-path not selected | +8 tasks (TASK-045, TASK-100–107), T-16–T-20, D-71, D-72 | Maintainer | PROP-2026-0002 rev 3, ADR-0004 rev 2 |
 | 2026-09-28 | Deviation | IDs | The modules demo takes DEMO-2026-0019; the release verification guide moves to DEMO-2026-0020 | — | Implementer | D-64, D-71 |
 | 2026-09-28 | Finding | TASK-005 | vhco reads only `src/`: the `ffi/` crate is invisible, so all FFI logic and annotations go in `orchestrator/setup_ffi.rs` (ADR-0005). `vhco sync` also compares flow triggers (exact text) and flow handling (`layer: ref` steps), so renaming a trigger or a step needs a hand edit of the contract flow | Every later phase edits contract flows with its code | Implementer | RES-2026-0004, TRBL-2026-0004 |
@@ -735,6 +740,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-29 | Claude | CI green on macOS + Linux (run 36483001760); Windows dropped (INC-2026-0011); INC-2026-0010; live status. |
 | 7 | 2026-09-29 | Claude | P2c and P2d done: TASK-030…035 (`10c8130`) and TASK-040…045 (`f9af92a`) DONE with evidence; phase rows P2c/P2d DONE; R10–R15, R23 code and tests done (R12 publication deferred to G-PUB); PF-09–PF-12, PF-T03, PF-T04 DONE, PF-16/PF-17 in progress; T-09–T-12, T-19 PASS (476 tests); findings and deviations recorded (internal module layout, breaking API list, feature refusal rules, ABI deviations, macOS deployment target, deps-dir libraries); TRBL-2026-0006; live status refreshed. |
 | 6 | 2026-09-28 | Claude | P2e done: TASK-050…053 DONE (`9ec2a39`, `0d6c2ea`); phase row P2e DONE; R16/R17 code and tests done; PF-13, PF-14, PF-T05, PF-G02 DONE; T-13, T-14 PASS (455 tests); INC-2026-0009 resolved (`93388c1`, `6af5c27`); deviations (Python `.vsix` packager and TextMate engine instead of Node tools; library trigger contract edit) and findings recorded; live status refreshed. |
 | 5 | 2026-09-28 | Claude | Live status refreshed after P2b/P2f; git remote added and main + v0.1.0 pushed. |

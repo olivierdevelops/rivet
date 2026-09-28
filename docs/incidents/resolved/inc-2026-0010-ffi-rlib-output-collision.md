@@ -5,7 +5,7 @@ document_type: incident
 status: resolved
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 severity: "S3"
@@ -135,6 +135,8 @@ crate (`ffi/src/tests.rs`), where they call the `extern "C"` functions directly.
 - `cargo test -p rivet-ffi --all-features`: 8 passed.
 - `cargo test --test conformance_ffi`: 7 passed.
 - `cargo build --release --workspace --all-features`: 0 collision warnings.
+- Follow-up `8045343`: without the `rlib`, `cargo test` no longer builds `librivet` as a side effect, so CI and
+  `perch tests` now run `cargo build --workspace --all-features` first. CI run 36483001760 is green on macOS and Linux.
 
 ## Corrective Actions
 
@@ -166,4 +168,5 @@ Giving two workspace crates the same library name needs care: only the artifacts
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-29 | Claude | Follow-up: build librivet before tests (8045343); CI green. |
 | 1 | 2026-09-29 | Claude | Recorded and resolved. |
