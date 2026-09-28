@@ -54,8 +54,9 @@ pub trait PolicyDraftWriter: Send + Sync {
     fn write_new(&self, file: &PolicyDraftFile) -> RivetResult<PolicyDraftReceipt>;
 }
 
-/// Receives streamed data items. Returning an error stops the producer and
-/// cancels the request (consumer_failed).
+/// Receives streamed data items. Returning `RivetError::consumer_stop()` stops
+/// the producer and the request ends `cancelled` (`consumer.stop`); any other
+/// error stops it as `consumer_failed`.
 #[async_trait]
 pub trait DataSink: Send + Sync {
     async fn send(&self, event: DataEvent) -> RivetResult<()>;

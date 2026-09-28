@@ -276,7 +276,7 @@ impl Default for ServePolicy {
     }
 }
 
-// vhco:domain Policy { present: bool; file?: string; base_dir: string; sha256?: string; grants: Grant[]; deny: Grant[]; network: NetworkPolicy; limits: PolicyLimits; approved: ApprovedHashes; serve: ServePolicy }
+// vhco:domain Policy { present: bool; file?: string; base_dir: string; sha256?: string; grants: Grant[]; deny: Grant[]; network: NetworkPolicy; limits: PolicyLimits; approved: ApprovedHashes; serve: ServePolicy; ceiling?: Policy }
 /// Effective policy. `present == false` means no policy file was found:
 /// deny-by-default for every new application effect.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -291,6 +291,9 @@ pub struct Policy {
     pub limits: PolicyLimits,
     pub approved: ApprovedHashes,
     pub serve: ServePolicy,
+    /// Library host ceiling (`Runtime::builder().ceiling(..)`): an attempt must
+    /// be allowed by BOTH this policy and the ceiling; a deny in either wins.
+    pub ceiling: Option<Box<Policy>>,
 }
 
 impl Policy {
@@ -300,6 +303,35 @@ impl Policy {
             base_dir: base_dir.to_string(),
             ..Policy::default()
         }
+    }
+
+    /// Narrow this policy by a host ceiling: decisions intersect (see
+    /// `ceiling`) and every numeric limit becomes the smaller of the two.
+    ///
+    /// ```text
+    ///   ceiling ∩ policy.json   allowed only when both allow; deny from either wins
+    /// ```
+    pub fn with_ceiling(mut self, ceiling: Policy) -> Policy {
+        self.limits = PolicyLimits {
+            max_concurrent_requests: self
+                .limits
+                .max_concurrent_requests
+                .min(ceiling.limits.max_concurrent_requests),
+            max_call_depth: self
+                .limits
+                .max_call_depth
+                .min(ceiling.limits.max_call_depth),
+            max_buffered_bytes: self
+                .limits
+                .max_buffered_bytes
+                .min(ceiling.limits.max_buffered_bytes),
+        };
+        self.ceiling = Some(Box::new(match self.ceiling.take() {
+            // A second ceiling nests: both must allow.
+            Some(prev) => prev.with_ceiling(ceiling),
+            None => ceiling,
+        }));
+        self
     }
 }
 

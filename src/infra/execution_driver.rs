@@ -1186,6 +1186,11 @@ impl<'a> Machine<'a> {
             })
             .await
             .map_err(|e| {
+                // A typed stop is the consumer's choice, not a failure: the
+                // request ends cancelled (G33).
+                if e.is_consumer_stop() {
+                    return e.with_span(Some(span.clone()));
+                }
                 let mut err = RivetError::new(
                     ErrorKind::ConsumerFailed,
                     "consumer_failed",
