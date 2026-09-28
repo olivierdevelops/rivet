@@ -4,37 +4,37 @@ title: "QUIC streams and HTTP3"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 5
+last_updated: 2026-09-29
+document_revision: 6
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [quic, transports, policy, cli]
 affected_versions:
-  from: "0.1.0"
+  from: "0.2.0"
   to: null
 applicable_environments: [development]
 audience: [developers, reviewers]
 scope: Runnable QUIC and HTTP/3 demo — a scoped native QUIC connection with a length-prefixed bidirectional stream and a strict `version 3` HTTP request, trusted through `tls ca_file`, with timeout, wrong-ALPN, untrusted-certificate and policy failures, against a shipped aioquic fixture.
-reason: User requested sample files in folders with READMEs showing usage; UQ-14 asks for QUIC and HTTP/3; UQ-17 adds declared outputs and policy.json-only policy; TASK-067 executed every step against the 0.1.0 release candidate.
+reason: User requested sample files in folders with READMEs showing usage; UQ-14 asks for QUIC and HTTP/3; UQ-17 adds declared outputs and policy.json-only policy; TASK-067 executed every step against the 0.1.0 release candidate. TASK-076 (PLAN-2026-0002) re-executed it against the 0.2.0 release candidate.
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, MAN-2026-0008, TEST-2026-0013, TEST-2026-0014, TEST-2026-0015, TEST-2026-0025]
+related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, MAN-2026-0008, TEST-2026-0013, TEST-2026-0014, TEST-2026-0015, TEST-2026-0025, PLAN-2026-0002, DEMO-2026-0020, MIG-2026-0001]
 supersedes: null
 superseded_by: null
 tags: [rivet, demo, quic, http3, tls]
 confidentiality: internal
 review_cycle: on-release
 next_review_date: 2026-10-28
-verified_against: "0.1.0"
+verified_against: "0.2.0"
 ---
 
 # QUIC streams and HTTP3
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
-> **Affected Versions:** 0.1.0 and later
+> **Last Updated:** 2026-09-29
+> **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** quic, transports, policy, cli
 
@@ -59,13 +59,13 @@ QUIC streams and HTTP3. Delivery stage: **B**. Read [app.rivet](app.rivet) along
 
 ## Verified Against Version
 
-0.1.0. Verified on 0.1.0-dev at commit `829ca43`, the release candidate (the version bump to 0.1.0 happens at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-28. Every output block below was pasted from that run. Request and trace IDs, hashes and ports vary.
+0.2.0. Verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped to 0.2.0 at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Since 0.2.0 results and errors are ResponseEnvelopes and input is given with `--data` ([migration guide](../../migrations/mig-2026-0001-response-and-input-envelopes.md)). QUIC and HTTP/3 need the `quic` Cargo feature (on by default); a build without it refuses this bundle at load with `unsupported.feature`. Every output block below was pasted from that run. Request and trace IDs, hashes and ports vary.
 
 ## Prerequisites
 
 ```sh
-cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
+cargo build --release --features cli       # from the repository root (quic is a default feature)
+export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
 python3 -m venv "$TMPDIR/rivet-quic-venv" && "$TMPDIR/rivet-quic-venv/bin/pip" install aioquic
 ```
 
@@ -113,7 +113,7 @@ receives —
 errors   —
 ```
 
-`outputs --all --json` prints both entries on one line, the first being:
+`outputs --all --json` prints one `rivet.outputs` envelope on one line; the first of the two entries in its `data` is:
 
 ```json
 {"id":"engine.status","output":{"type":"object","properties":{"state":{"type":"string","description":"Engine state; the fixture answers \"ready\"."}},"required":["state"],"additionalProperties":false,"description":"Engine status frame returned on the QUIC stream."},"emits":null,"receives":null,"errors":[]}
@@ -203,10 +203,10 @@ items.http3    file     read         ./ca.pem                       exact      a
 #### Command / Request
 
 ```sh
-rivet --file app.rivet request engine.status --params '{}'
-rivet --file app.rivet --policy ./policies/http3.json request items.http3 --params '{}'
-rivet --file app.rivet request items.http3 --params '{}'
-rivet --file app.rivet --policy ./policies/http3.json request engine.status --params '{}'
+rivet --file app.rivet request engine.status
+rivet --file app.rivet --policy ./policies/http3.json request items.http3
+rivet --file app.rivet request items.http3
+rivet --file app.rivet --policy ./policies/http3.json request engine.status
 ```
 
 #### Expected Output / Response
@@ -214,14 +214,14 @@ rivet --file app.rivet --policy ./policies/http3.json request engine.status --pa
 Both succeed under their own policy file (exit 0):
 
 ```json
-{"request_id":"req_01db5ccd9d","trace_id":"tr_01db5ccd9d","result":{"state":"ready"},"data_count":0,"effects":"committed"}
-{"request_id":"req_01c84dc925","trace_id":"tr_01c84dc925","result":{"items":[],"version":3},"data_count":0,"effects":"none"}
+{"request_id":"req_01d45e2ecd","trace_id":"tr_01d45e2ecd","operation":"engine.status","type":"result","status":"ok","data":{"state":"ready"},"error":null,"effects":"committed","data_count":0}
+{"request_id":"req_01c014f9a5","trace_id":"tr_01c014f9a5","operation":"items.http3","type":"result","status":"ok","data":{"items":[],"version":3},"error":null,"effects":"none","data_count":0}
 ```
 
 Under the other file each is denied (exit 3), for example:
 
 ```json
-{"request_id":"req_01c72f72dd","trace_id":"tr_01c72f72dd","error":{"kind":"permission","code":"permission.denied","message":"allow_network connect https://127.0.0.1:18891/items denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"https://127.0.0.1:18891/items\") to allow it","retryable":false,"effects":"none","source":{"file":"app.rivet","line":28,"column":5,"end_line":33,"end_column":8},"operation_id":"items.http3","details":{"capability":"allow_network","access":"connect","target":"https://127.0.0.1:18891/items"}}}
+{"request_id":"req_01bf8eb49d","trace_id":"tr_01bf8eb49d","operation":"items.http3","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect https://127.0.0.1:18891/items denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"https://127.0.0.1:18891/items\") to allow it","retryable":false,"source":{"file":"app.rivet","line":28,"column":5,"end_line":33,"end_column":8},"operation_id":"items.http3","details":{"capability":"allow_network","access":"connect","target":"https://127.0.0.1:18891/items"}},"effects":"none","data_count":0}
 ```
 
 `engine.status` under http3.json is denied the same way for `quic://127.0.0.1:18890`. `fixture.log` gains `rpc stream 0: {'action': 'status'}` and `h3 GET /items`.
@@ -233,7 +233,7 @@ Under the other file each is denied (exit 3), for example:
 ```sh
 kill $FX
 "$TMPDIR/rivet-quic-venv/bin/python" fixtures/quic_fixture.py --cert server.pem --key server.key --rpc-silent >> fixture.log 2>&1 & FX=$!
-rivet --file app.rivet request engine.status --params '{}'
+rivet --file app.rivet request engine.status
 kill $FX
 ```
 
@@ -242,7 +242,7 @@ kill $FX
 After `timeout "5s"` (exit 6); the request frame was sent, so `effects` is `committed`:
 
 ```json
-{"request_id":"req_014d51c805","trace_id":"tr_014d51c805","error":{"kind":"timeout","code":"timeout","message":"receiving from the stream did not complete within 5000 ms","retryable":false,"effects":"committed","source":{"file":"app.rivet","line":16,"column":13,"end_line":16,"end_column":52},"operation_id":"engine.status"}}
+{"request_id":"req_01518d04ed","trace_id":"tr_01518d04ed","operation":"engine.status","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout","message":"receiving from the stream did not complete within 5000 ms","retryable":false,"source":{"file":"app.rivet","line":16,"column":13,"end_line":16,"end_column":52},"operation_id":"engine.status"},"effects":"committed","data_count":0}
 ```
 
 ### 6. Handshake failures: wrong ALPN, no HTTP/3, untrusted certificate
@@ -255,8 +255,8 @@ Point each operation at the other fixture port, so the ALPN never matches:
 sed -i.bak2 's#quic://127.0.0.1:18890#quic://127.0.0.1:18891#' app.rivet policy.json
 sed -i.bak3 's#https://127.0.0.1:18891#https://127.0.0.1:18890#' app.rivet policies/http3.json
 "$TMPDIR/rivet-quic-venv/bin/python" fixtures/quic_fixture.py --cert server.pem --key server.key >> fixture.log 2>&1 & FX=$!
-rivet --file app.rivet request engine.status --params '{}'
-rivet --file app.rivet --policy ./policies/http3.json request items.http3 --params '{}'
+rivet --file app.rivet request engine.status
+rivet --file app.rivet --policy ./policies/http3.json request items.http3
 kill $FX
 ```
 
@@ -265,13 +265,13 @@ kill $FX
 Native QUIC with the wrong ALPN (exit 5):
 
 ```json
-{"request_id":"req_019e1d3ddd","trace_id":"tr_019e1d3ddd","error":{"kind":"tls","code":"quic.tls","message":"QUIC handshake failed: aborted by peer: the cryptographic handshake failed: error 40: No common ALPN protocols","retryable":false,"effects":"none","source":{"file":"app.rivet","line":7,"column":5,"end_line":18,"end_column":8},"operation_id":"engine.status","details":{"tls_alert":40}}}
+{"request_id":"req_01ac62e54d","trace_id":"tr_01ac62e54d","operation":"engine.status","type":"result","status":"error","data":null,"error":{"kind":"tls","code":"quic.tls","message":"QUIC handshake failed: aborted by peer: the cryptographic handshake failed: error 40: No common ALPN protocols","retryable":false,"source":{"file":"app.rivet","line":7,"column":5,"end_line":18,"end_column":8},"operation_id":"engine.status","details":{"tls_alert":40}},"effects":"none","data_count":0}
 ```
 
 `version 3` against a peer that does not speak `h3` fails before any request byte and does not fall back (exit 5):
 
 ```json
-{"request_id":"req_019c068725","trace_id":"tr_019c068725","error":{"kind":"tls","code":"tls.handshake","message":"HTTP/3 TLS handshake failed: aborted by peer: the cryptographic handshake failed: error 40: No common ALPN protocols","retryable":false,"effects":"none","source":{"file":"app.rivet","line":28,"column":5,"end_line":33,"end_column":8},"operation_id":"items.http3","details":{"tls_alert":40,"request_sent":false,"version":3}}}
+{"request_id":"req_01ab00a61d","trace_id":"tr_01ab00a61d","operation":"items.http3","type":"result","status":"error","data":null,"error":{"kind":"tls","code":"tls.handshake","message":"HTTP/3 TLS handshake failed: aborted by peer: the cryptographic handshake failed: error 40: No common ALPN protocols","retryable":false,"source":{"file":"app.rivet","line":28,"column":5,"end_line":33,"end_column":8},"operation_id":"items.http3","details":{"tls_alert":40,"request_sent":false,"version":3}},"effects":"none","data_count":0}
 ```
 
 Without the two `tls` lines (the platform verifier does not know the demo CA), the QUIC handshake fails with `quic.tls` and `invalid peer certificate: UnknownIssuer` (`tls_alert` 48, exit 5).
@@ -296,9 +296,18 @@ The HTTPS-origin grant allows the HTTP adapter's own QUIC/UDP transport, not raw
 
 ## Release Updates
 
+0.2.0 updates shown here (numbering of the [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)):
+
 | Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
 |---|---|---|---|---|---|
-| U-17 | UQ-14 / R17 | Native QUIC v1: ALPN, bidi streams, framing, TLS trust | Steps 3–6 | `{"state":"ready"}`; `timeout`; `quic.tls` | This README steps 3–6 (2026-09-28, 829ca43); TEST-2026-0013 |
+| U-01 / U-02 | UQ-03/05 / R1, R2 | Results and errors are ResponseEnvelopes | Steps 4–6 | Same codes, exits and `effects` as 0.1.0 | This README steps 4–6 (2026-09-29, 8031baa) |
+| U-11 | UQ-02 / R11 | QUIC/HTTP3 behind the `quic` Cargo feature (default on) | Prerequisites | This all-features build runs every step | [01-catalog](../01-catalog/README.md) step 1 `build_features` |
+
+Still verified from 0.1.0 (numbering of [DEMO-2026-0015](../demo-2026-0015-v0-1-0-release-verification.md)):
+
+| Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
+|---|---|---|---|---|---|
+| U-17 | UQ-14 / R17 | Native QUIC v1: ALPN, bidi streams, framing, TLS trust | Steps 3–6 | `{"state":"ready"}`; `timeout`; `quic.tls` | This README steps 3–6 (re-run 2026-09-29, 8031baa); TEST-2026-0013 |
 | U-18 | UQ-14 / R18 | Strict HTTP/3 (`version 3`) with no silent fallback | Steps 4, 6 | `{"items":[],"version":3}`; `tls.handshake` with `request_sent:false` | This README steps 4, 6; TEST-2026-0014 |
 | U-26 | UQ-18 / R26 | Protocol-tagged manifest; `tls ca_file` is a file site | Steps 2–3 | `quic` vs `http3`; `./ca.pem` rows | This README steps 2–3; TEST-2026-0025 |
 
@@ -314,14 +323,14 @@ rm -rf "$TMPDIR/rivet-quic-venv"           # optional
 
 | Step | Verified By | Verified At | Result |
 |---|---|---|---|
-| 1. `check --strict-docs`, `outputs` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 2. `io --by target`; `io --check-policy` exit 3 / 0 / 0; `io --check-files` exit 0 | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 3. Certificates, scratch copy, `ca_file` sites | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 4. QUIC status, HTTP/3 items, cross-policy denials | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 5. Stream timeout | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 6. Wrong ALPN, non-h3 peer, untrusted certificate | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
+| 1. `check --strict-docs`, `outputs` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. `io --by target`; `io --check-policy` exit 3 / 0 / 0; `io --check-files` exit 0 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. Certificates, scratch copy, `ca_file` sites | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 4. QUIC status, HTTP/3 items, cross-policy denials | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 5. Stream timeout | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. Wrong ALPN, non-h3 peer, untrusted certificate | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Build: `cargo build` and `cargo build --release` at 829ca43; every command above was executed from this folder or the scratch copy and the output pasted from that run.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy (with the aioquic fixture and a fresh throwaway CA) and the output pasted from that run, including the `UnknownIssuer` case without the `tls` lines. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
 
 ## Known Caveats
 
@@ -331,7 +340,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 ## Related Documents
 
-- [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
+- [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md) · [v0.1.0 guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Protocols and connectors manual](../../manuals/man-2026-0008-protocols-and-connectors.md)
 - [QUIC tests TEST-2026-0013](../../testing/test-2026-0013-quic.md) · [HTTP/3 tests TEST-2026-0014](../../testing/test-2026-0014-http3.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
@@ -340,6 +349,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-58): re-executed every step against the 0.2.0 release candidate (8031baa) with the aioquic fixture; `--params` dropped (no parameters); results and errors replaced by 0.2.0 envelopes; `outputs --all --json` as an envelope; `quic` feature note; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/quic_fixture.py (ports 18890/18891) and a scratch-copy run with a throwaway CA and `tls ca_file`; executed every step against 0.1.0-dev (829ca43) and pasted real output: check, outputs, manifest (summary line, `ca_file` file sites), QUIC status, HTTP/3 items, cross-policy denials, stream `timeout`, `quic.tls` (ALPN, unknown issuer), `tls.handshake` for a non-h3 peer; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`with quic`, `http get`), PHASE and NEEDS FILE. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest: protocol-tagged sites by target and `io --check-policy` against policy.json and policies/http3.json. |

@@ -4,37 +4,37 @@ title: "Deny-by-default sandbox and I/O inventory"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 5
+last_updated: 2026-09-29
+document_revision: 6
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [policy, audit, files, cli, serve, http]
 affected_versions:
-  from: "0.1.0"
+  from: "0.2.0"
   to: null
 applicable_environments: [development]
 audience: [developers, reviewers]
 scope: Runnable policy demo — one bundle under four policy files (deny-by-default, read-only, access-narrowed, default with a deny), every I/O manifest view, the files each operation needs, brokered `--check-files`, `policy generate` compared with the hand-written policy, and planned-versus-actual trace attempts through one host.
-reason: User requested sample files in folders with READMEs showing usage; UQ-13/17 ask for deny-by-default policy from policy.json only; UQ-18 adds the generated I/O manifest and policy generate; TASK-067 executed every step against the 0.1.0 release candidate.
+reason: User requested sample files in folders with READMEs showing usage; UQ-13/17 ask for deny-by-default policy from policy.json only; UQ-18 adds the generated I/O manifest and policy generate; TASK-067 executed every step against the 0.1.0 release candidate. TASK-076 (PLAN-2026-0002) re-executed it against the 0.2.0 release candidate.
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, MAN-2026-0005, TEST-2026-0008, TEST-2026-0021, TEST-2026-0025, TEST-2026-0026]
+related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, MAN-2026-0005, TEST-2026-0008, TEST-2026-0021, TEST-2026-0025, TEST-2026-0026, PLAN-2026-0002, DEMO-2026-0020, MIG-2026-0001]
 supersedes: null
 superseded_by: null
 tags: [rivet, demo, policy, sandbox, io-manifest, policy-generate]
 confidentiality: internal
 review_cycle: on-release
 next_review_date: 2026-10-28
-verified_against: "0.1.0"
+verified_against: "0.2.0"
 ---
 
 # Deny-by-default sandbox and I/O inventory
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
-> **Affected Versions:** 0.1.0 and later
+> **Last Updated:** 2026-09-29
+> **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, audit, files, cli, serve, http
 
@@ -63,13 +63,13 @@ Four policy files show the same bundle under different authority. Only the file 
 
 ## Verified Against Version
 
-0.1.0. Verified on 0.1.0-dev at commit `829ca43`, the release candidate (the version bump to 0.1.0 happens at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-28. Every output block below was pasted from that run. Request and trace IDs and hashes vary.
+0.2.0. Verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped to 0.2.0 at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Since 0.2.0 results, errors and every `--json`/`--format json` output are ResponseEnvelopes, and `request` takes `--data` ([migration guide](../../migrations/mig-2026-0001-response-and-input-envelopes.md)). The tables, policy decisions and exit codes are unchanged; `policy generate` without `--json` still prints the bare draft so `> policy.json` keeps working. Every output block below was pasted from that run. Request and trace IDs and hashes vary.
 
 ## Prerequisites
 
 ```sh
-cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
+cargo build --release --features cli       # from the repository root
+export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
 ```
 
 `curl` for step 8; loopback port 18811 free.
@@ -115,20 +115,20 @@ errors
   permission.denied   policy.json denies ./data/private/**; deny overrides grants.
 ```
 
-Both exit 0. `outputs --all --json` lists four entries sorted by ID (`data.private`, `data.read`, `data.snapshot`, `demo.echo`).
+Both exit 0. `outputs --all --json` prints a `rivet.outputs` envelope whose `data` lists four entries sorted by ID (`data.private`, `data.read`, `data.snapshot`, `demo.echo`).
 
 ### 2. Run under four policy files
 
 #### Command / Request
 
 ```sh
-rivet --file app.rivet --policy ./policies/empty.json request demo.echo --params '{"value":"ok"}'
-rivet --file app.rivet --policy ./policies/empty.json request data.read --params '{}'
-rivet --file app.rivet request data.read --params '{}'
-rivet --file app.rivet request data.private --params '{}'
-rivet --file app.rivet --policy ./policies/read-only.json request data.snapshot --params '{}'
-rivet --file app.rivet request data.snapshot --params '{}'
-rivet --file app.rivet request data.snapshot --params '{}'
+rivet --file app.rivet --policy ./policies/empty.json request demo.echo --data '{"value":"ok"}'
+rivet --file app.rivet --policy ./policies/empty.json request data.read
+rivet --file app.rivet request data.read
+rivet --file app.rivet request data.private
+rivet --file app.rivet --policy ./policies/read-only.json request data.snapshot
+rivet --file app.rivet request data.snapshot
+rivet --file app.rivet request data.snapshot
 ```
 
 #### Expected Output / Response
@@ -136,28 +136,28 @@ rivet --file app.rivet request data.snapshot --params '{}'
 Pure work needs no grant (exit 0); a read under the empty policy is denied before the file is touched (exit 3):
 
 ```json
-{"request_id":"req_01c7983435","trace_id":"tr_01c7983435","result":"ok","data_count":0,"effects":"none"}
-{"request_id":"req_01c6389945","trace_id":"tr_01c6389945","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/public.json denied: no grant for allow_read ./data/public.json","retryable":false,"effects":"none","source":{"file":"app.rivet","line":15,"column":5,"end_line":15,"end_column":51},"operation_id":"data.read","details":{"capability":"allow_read","access":"read","target":"./data/public.json"}}}
+{"request_id":"req_01194a6be5","trace_id":"tr_01194a6be5","operation":"demo.echo","type":"result","status":"ok","data":"ok","error":null,"effects":"none","data_count":0}
+{"request_id":"req_01181da81d","trace_id":"tr_01181da81d","operation":"data.read","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/public.json denied: no grant for allow_read ./data/public.json","retryable":false,"source":{"file":"app.rivet","line":15,"column":5,"end_line":15,"end_column":51},"operation_id":"data.read","details":{"capability":"allow_read","access":"read","target":"./data/public.json"}},"effects":"none","data_count":0}
 ```
 
 Under policy.json the public read succeeds (exit 0) and the deny entry overrides the `./data/**` grant (exit 3):
 
 ```json
-{"request_id":"req_01c55e7f7d","trace_id":"tr_01c55e7f7d","result":{"message":"public demo data"},"data_count":0,"effects":"none"}
-{"request_id":"req_01c59f1735","trace_id":"tr_01c59f1735","error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/private/secret.json denied: deny allow_read ./data/private/**","retryable":false,"effects":"none","source":{"file":"app.rivet","line":26,"column":5,"end_line":26,"end_column":59},"operation_id":"data.private","details":{"capability":"allow_read","access":"read","target":"./data/private/secret.json"}}}
+{"request_id":"req_01172a3305","trace_id":"tr_01172a3305","operation":"data.read","type":"result","status":"ok","data":{"message":"public demo data"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_0116f417ed","trace_id":"tr_0116f417ed","operation":"data.private","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_read read on ./data/private/secret.json denied: deny allow_read ./data/private/**","retryable":false,"source":{"file":"app.rivet","line":26,"column":5,"end_line":26,"end_column":59},"operation_id":"data.private","details":{"capability":"allow_read","access":"read","target":"./data/private/secret.json"}},"effects":"none","data_count":0}
 ```
 
 Read-only has no write grant (exit 3):
 
 ```json
-{"request_id":"req_01c3d7e05d","trace_id":"tr_01c3d7e05d","error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/snapshot.json denied: no grant for allow_write ./out/snapshot.json","retryable":false,"effects":"none","source":{"file":"app.rivet","line":38,"column":5,"end_line":38,"end_column":49},"operation_id":"data.snapshot","details":{"capability":"allow_write","access":"create","target":"./out/snapshot.json"}}}
+{"request_id":"req_0115ac7bd5","trace_id":"tr_0115ac7bd5","operation":"data.snapshot","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/snapshot.json denied: no grant for allow_write ./out/snapshot.json","retryable":false,"source":{"file":"app.rivet","line":38,"column":5,"end_line":38,"end_column":49},"operation_id":"data.snapshot","details":{"capability":"allow_write","access":"create","target":"./out/snapshot.json"}},"effects":"none","data_count":0}
 ```
 
 The first snapshot writes `out/snapshot.json` (exit 0); the repeat never overwrites (exit 4):
 
 ```json
-{"request_id":"req_01c27cb31d","trace_id":"tr_01c27cb31d","result":{"message":"public demo data"},"data_count":0,"effects":"committed"}
-{"request_id":"req_01c1a2d565","trace_id":"tr_01c1a2d565","error":{"kind":"conflict","code":"conflict.already_exists","message":"./out/snapshot.json already exists","retryable":false,"effects":"none","source":{"file":"app.rivet","line":38,"column":5,"end_line":38,"end_column":49},"operation_id":"data.snapshot"}}
+{"request_id":"req_0114acdb05","trace_id":"tr_0114acdb05","operation":"data.snapshot","type":"result","status":"ok","data":{"message":"public demo data"},"error":null,"effects":"committed","data_count":0}
+{"request_id":"req_01139e2ec5","trace_id":"tr_01139e2ec5","operation":"data.snapshot","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.already_exists","message":"./out/snapshot.json already exists","retryable":false,"source":{"file":"app.rivet","line":38,"column":5,"end_line":38,"end_column":49},"operation_id":"data.snapshot"},"effects":"none","data_count":0}
 ```
 
 Under create-only.json (after `rm out/snapshot.json`), `data.snapshot` succeeds then conflicts the same way, `data.read` succeeds, and `data.private` is denied with `no grant for allow_read ./data/private/secret.json`.
@@ -189,7 +189,7 @@ data.snapshot  file  create  ./out/snapshot.json  exact      app.rivet:38  denie
 denied: data.snapshot#1 allow_write ./out/snapshot.json (create)
 ```
 
-With `--json` the same result is one JSON object (`present`, `file`, `sha256`, `grants`, `deny`, `broad`, `sites` with per-site `decision`) followed by the `denied:` line.
+With `--json` the same result is one `rivet.policy.explain` envelope whose `data` holds `present`, `file`, `sha256`, `grants`, `deny`, `broad` and `sites` (per-site `decision`), followed by the `denied:` line on stderr and exit 3. The envelope `status` is `ok` because the explanation itself succeeded; the denial is in the site `decision` and the exit code.
 
 ### 4. The manifest views
 
@@ -256,7 +256,7 @@ OPERATION  KIND  ACCESS  TARGET  KNOWLEDGE  SOURCE
 error[validation.usage]: --access connect: not an access verb of kind file
 ```
 
-The strict JSON manifest has `"complete": true`, three sites and seven `bootstrap` entries (`./app.rivet (+ imports)`, `./policy.json`, `system CA bundle`, `/etc/resolv.conf / system resolver`, `tzdata`, `descriptor/schema files named by connectors (none here)`, `stdin, stdout, stderr`); every target is a literal path, so `--strict` exits 0.
+The strict JSON manifest is a `rivet.io` envelope whose `data` has `"complete": true`, three sites and seven `bootstrap` entries (`./app.rivet`, `./policy.json`, `system CA bundle`, `/etc/resolv.conf / system resolver`, `tzdata`, `descriptor/schema files named by connectors (none here)`, `stdin, stdout, stderr`); every target is a literal path, so `--strict` exits 0.
 
 ### 5. JSON sites for one operation
 
@@ -268,7 +268,7 @@ rivet --file app.rivet io data.snapshot --check-policy --format json
 
 #### Expected Output / Response
 
-Stdout is the IoManifest; stderr prints `2 allowed` (exit 0). The two sites, abbreviated to their key fields:
+Stdout is a `rivet.io` envelope whose `data` is the IoManifest (`bundle`, `policy`, `complete`, `sites`, `targets`, `needs`, `bootstrap`); stderr prints `2 allowed` (exit 0). The two sites, abbreviated to their key fields:
 
 ```json
 {"effect_id":"data.read#1","operation_id":"data.read","access":["read"],"capability":"allow_read","knowledge":"exact","call_chain":["data.snapshot","data.read"],"source":{"file":"app.rivet","line":15,"column":5},"origin":{"statement":"file read"},"phase":"body","requires_existing":true,"decision":"allowed"}
@@ -398,8 +398,10 @@ For every public operation (stdout; stderr `policy generate: 3 grants, 0 review 
 The draft grants exactly what the source uses, including the secret read the hand-written file denies: it is a starting point for review, not an approval. Naming the intended operations leaves that grant out. The first `--output` writes the file (`policy generate: 2 grants, 0 review items`, exit 0); the second refuses to overwrite (exit 4):
 
 ```json
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.exists","message":"refusing to overwrite ./policy.draft.json","retryable":false,"effects":"none","details":{"path":"./policy.draft.json"}}}
+{"request_id":"","trace_id":"","operation":"rivet.policy.generate","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.exists","message":"refusing to overwrite ./policy.draft.json","retryable":false,"details":{"path":"./policy.draft.json"}},"effects":"none","data_count":0}
 ```
+
+Without `--json`, `policy generate` prints the bare draft (so it can be redirected into a policy file); `policy generate --json` prints a `rivet.policy.generate` envelope whose `data.policy` is the draft.
 
 `policy.draft.json` holds the two grants for `./data/public.json` `[read]` and `./out/snapshot.json` `[create]`. Under create-only.json, the whole-bundle check shows `data.private` `denied` (`2 allowed · 1 denied`, exit 3) and `io data.snapshot --check-policy` shows `2 allowed` (exit 0). A verb that does not belong to the capability fails loading (exit 2):
 
@@ -415,27 +417,27 @@ So does an unknown key such as `grantz`: `error[policy.invalid]: policy.json /gr
 
 ```sh
 rivet --file app.rivet serve --listen 127.0.0.1:18811 2>serve.err & SV=$!
-rivet --endpoint http://127.0.0.1:18811 request data.read --params '{}'
+rivet --endpoint http://127.0.0.1:18811 request data.read
 rivet --endpoint http://127.0.0.1:18811 trace show REPLACE_WITH_REQUEST_ID --json
 rivet --endpoint http://127.0.0.1:18811 io data.read --trace REPLACE_WITH_REQUEST_ID
-curl -sS -w ' %{http_code}\n' http://127.0.0.1:18811/v1/request -H 'content-type: application/json' -d '{"id":"data.private","params":{}}'
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:18811/v1/request -H 'content-type: application/json' -d '{"operation":"data.private","data":{}}'
 kill $SV; rm -f serve.err
 ```
 
 #### Expected Output / Response
 
 ```json
-{"request_id":"req_01761b9afd","trace_id":"tr_01761b9afd","result":{"message":"public demo data"},"data_count":0,"effects":"none"}
+{"request_id":"req_02a949f6ba","trace_id":"tr_02a949f6ba","operation":"data.read","type":"result","status":"ok","data":{"message":"public demo data"},"error":null,"effects":"none","data_count":0}
 ```
 
-`trace show --json` lists one attempt: `"effect_id":"data.read#1"`, `"capability":"allow_read"`, `"access":"read"`, `"target":"./data/public.json"`, `"decision":"allowed"` and the `policy_hash`. `io --trace` joins it to the planned site:
+`trace show --json` prints a `rivet.trace.show` envelope whose `data.attempts` lists one attempt: `"effect_id":"data.read#1"`, `"capability":"allow_read"`, `"access":"read"`, `"target":"./data/public.json"`, `"decision":"allowed"` and the `policy_hash`. `io --trace` joins it to the planned site:
 
 ```text
 OPERATION  KIND  ACCESS  TARGET              KNOWLEDGE  SOURCE        ATTEMPTS
 data.read  file  read    ./data/public.json  exact      app.rivet:15  1 allowed
 ```
 
-The denied read over HTTP returns the same `permission.denied` body as step 2 with status `403`. The same manifest is `GET /v1/io?by=target&check_policy=true`. The loopback principal `local` may call `rivet.io`; a network principal needs it listed explicitly in `serve.principals`.
+The denied read over HTTP returns the same `permission.denied` envelope as step 2 with status `403`. The same manifest is `GET /v1/io?by=target&check_policy=true`, answered as a `rivet.io` envelope. The loopback principal `local` may call `rivet.io`; a network principal needs it listed explicitly in `serve.principals`.
 
 ## Effects and policy
 
@@ -456,9 +458,19 @@ Deny overrides grants. Policy comes only from a file: the auto-discovered policy
 
 ## Release Updates
 
+0.2.0 updates shown here (numbering of the [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)):
+
 | Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
 |---|---|---|---|---|---|
-| U-06 | UQ-05/18 / R6 | Trace attempts carry `effect_id`; `io --trace` joins planned and actual | Step 8 | `1 allowed` | This README step 8 (2026-09-28, 829ca43); TEST-2026-0009 |
+| U-01 / U-02 | UQ-03/05 / R1, R2 | Results and errors are ResponseEnvelopes; HTTP 403 unchanged | Steps 2, 8 | Same codes and exits | This README steps 2, 8 (2026-09-29, 8031baa) |
+| U-03 | UQ-03 / R3 | `io --format json`, `policy explain --json`, `policy generate --json`, `trace show --json`, `GET /v1/io` are envelopes | Steps 3–5, 7, 8 | `rivet.io`, `rivet.policy.explain`, `rivet.policy.generate`, `rivet.trace.show` | This README steps 3–5, 7, 8 |
+| U-19 | UQ-09 / R19 | Bootstrap lists `./app.rivet` (and each module) instead of `(+ imports)` | Step 4 | Seven bootstrap entries starting with `./app.rivet` | This README step 4 |
+
+Still verified from 0.1.0 (numbering of [DEMO-2026-0015](../demo-2026-0015-v0-1-0-release-verification.md)):
+
+| Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
+|---|---|---|---|---|---|
+| U-06 | UQ-05/18 / R6 | Trace attempts carry `effect_id`; `io --trace` joins planned and actual | Step 8 | `1 allowed` | This README step 8 (re-run 2026-09-29, 8031baa); TEST-2026-0009 |
 | U-11 | UQ-13/17 / R11 | No policy = deny-by-default; deny overrides grants | Step 2 | `permission.denied` under empty.json and for `data.private` | This README step 2; TEST-2026-0008 |
 | U-24 | UQ-17 / R24 | Policy only from policy.json / `--policy PATH`; `access` narrowing; strict schema | Steps 2, 3, 7 | Results per file; `policy.invalid` exit 2 | This README steps 2, 3, 7; TEST-2026-0021 |
 | U-26 | UQ-18 / R26 | Manifest views, `--needs`, brokered `--check-files`, `policy generate` | Steps 4–7 | Tables above; exits 3 / 0 / 3; draft with 3 or 2 grants | This README steps 4–7; TEST-2026-0025, TEST-2026-0026 |
@@ -476,16 +488,16 @@ Stop the step 8 host if it is still running; its memory trace records disappear 
 
 | Step | Verified By | Verified At | Result |
 |---|---|---|---|
-| 1. `check --strict-docs`, `outputs` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 2. Requests under empty, default, read-only and create-only policies | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 3. `policy explain` (text and `--json`) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 4. `io --check-policy` (3), `--by target`, `--by capability`, filters, strict JSON (0) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 5. `io data.snapshot --check-policy --format json` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 6. `io --needs`; `io --check-files` exits 3 / 0 / 3 | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 7. `policy generate`, `--output` refusal, create-only checks, `policy.invalid` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 8. `trace show`, `io --trace`, HTTP 403 through serve | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
+| 1. `check --strict-docs`, `outputs` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. Requests under empty, default, read-only and create-only policies | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. `policy explain` (text and `--json`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 4. `io --check-policy` (3), `--by target`, `--by capability`, filters, strict JSON (0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 5. `io data.snapshot --check-policy --format json` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. `io --needs`; `io --check-files` exits 3 / 0 / 3 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 7. `policy generate`, `--output` refusal, create-only checks, `policy.invalid` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 8. `trace show`, `io --trace`, HTTP 403 through serve | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Build: `cargo build` and `cargo build --release` at 829ca43; every command above was executed from this folder and the output pasted from that run.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder and the output pasted from that run (the two `policy.invalid` probes used throwaway policy files in a scratch directory). The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
 
 ## Known Caveats
 
@@ -495,7 +507,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 ## Related Documents
 
-- [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
+- [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md) · [v0.1.0 guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Policy and I/O manifest guide](../../manuals/man-2026-0005-policy-and-io-manifest-guide.md)
 - [Policy file tests TEST-2026-0021](../../testing/test-2026-0021-policy-file.md) · [I/O manifest tests TEST-2026-0025](../../testing/test-2026-0025-io-manifest.md) · [Policy generate tests TEST-2026-0026](../../testing/test-2026-0026-policy-generate.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
@@ -504,6 +516,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-60): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` → `--data` on `request` (kept on `policy explain`); results and errors replaced by 0.2.0 envelopes; JSON manifest, `policy explain --json`, `policy generate` conflict and `trace show --json` described as envelopes; bootstrap list without the `(+ imports)` placeholder; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: summary lines under each table; `--by capability` has a header and an `unused:` line; the JSON excerpt is replaced by the real site fields; `--check-files` summary counts files, not rows; `policy generate` stderr summary; `policy explain` output; `policy.invalid` messages; trace `ATTEMPTS` reads `1 allowed`; removed the stale committed `out/snapshot.json` (a leftover run output that made the first snapshot conflict); removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `--by target` ORIGIN/PHASE/NEEDS FILE; new "Files each operation needs" section (`io --needs`, brokered `io --check-files` under policy.json and create-only.json, flow diagram); JSON excerpt gains origin/phase/requires_existing/secret and `needs`; U-04; exit codes 3/4 for `--check-files`. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: I/O manifest walkthrough — source→manifest diagram, `io --check-policy`, `--by target`, `--by capability`, `--kind file --access delete`, `--format json` excerpt, `policy generate` compared with policy.json, new policies/create-only.json (`access: ["create"]` narrowing) and `io --trace` planned-vs-actual. |

@@ -4,37 +4,37 @@ title: "UDP request and separately authorized reply"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 6
+last_updated: 2026-09-29
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [language, datagrams, policy, audit, cli, serve]
 affected_versions:
-  from: "0.1.0"
+  from: "0.2.0"
   to: null
 applicable_environments: [development]
 audience: [developers, reviewers]
 scope: Runnable UDP demo — one unicast request/reply, one bound receive whose reply needs its own peer grant, the policy denials, and the I/O manifest under two policy files, run against a shipped stdlib UDP fixture.
-reason: User requested sample files in folders with READMEs showing usage; UQ-17 (2026-09-28) adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 (2026-09-28) adds the generated I/O manifest and policy generate; TASK-067: executed against the 0.1.0 release candidate.
+reason: User requested sample files in folders with READMEs showing usage; UQ-17 (2026-09-28) adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 (2026-09-28) adds the generated I/O manifest and policy generate; TASK-067: executed against the 0.1.0 release candidate. TASK-076 (PLAN-2026-0002) re-executed it against the 0.2.0 release candidate.
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, PROP-2026-0001, REF-2026-0002, MAN-2026-0008, MAN-2026-0005, API-2026-0005, TEST-2026-0012, TEST-2026-0020, TEST-2026-0021, TEST-2026-0025]
+related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, PROP-2026-0001, REF-2026-0002, MAN-2026-0008, MAN-2026-0005, API-2026-0005, TEST-2026-0012, TEST-2026-0020, TEST-2026-0021, TEST-2026-0025, PLAN-2026-0002, DEMO-2026-0020, MIG-2026-0001]
 supersedes: null
 superseded_by: null
 tags: [rivet, examples, udp, datagrams, policy]
 confidentiality: internal
 review_cycle: on-release
 next_review_date: 2026-10-28
-verified_against: "0.1.0"
+verified_against: "0.2.0"
 ---
 
 # UDP request and separately authorized reply
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
-> **Affected Versions:** 0.1.0 and later
+> **Last Updated:** 2026-09-29
+> **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, datagrams, policy, audit, cli, serve
 
@@ -75,13 +75,13 @@ which also asserts the manifest verdicts for this bundle shown in steps 4–5.
 
 ## Verified Against Version
 
-0.1.0. Verified on 0.1.0-dev at commit 829ca43, the release candidate (the version bump to 0.1.0 happens at release, P5), with target/release/rivet on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-28.
+0.2.0. Verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped to 0.2.0 at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Since 0.2.0 results and errors are ResponseEnvelopes and input is given with `--data` ([migration guide](../../migrations/mig-2026-0001-response-and-input-envelopes.md)); UDP behaviour, grants and codes are unchanged.
 
 ## Prerequisites
 
 ```sh
-cargo build --release                       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
+cargo build --release --features cli       # from the repository root
+export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
 ```
 
 - `python3` (3.8+, standard library only) for the fixture [fixtures/udp_fixture.py](fixtures/udp_fixture.py).
@@ -150,10 +150,10 @@ receives —
 errors   —
 ```
 
-`outputs --all --json` prints one line; reformatted here, both entries:
+`outputs --all --json` prints one `rivet.outputs` envelope on one line; reformatted here, the two entries of its `data`:
 
 ```json
-[
+{"request_id": "req_01c7d66e65", "trace_id": "tr_01c7d66e65", "operation": "rivet.outputs", "type": "result", "status": "ok", "data": [
   {"id": "telemetry.receive",
    "output": {"type": "object",
               "properties": {"peer": {"type": "string", "description": "Sender address as host:port."},
@@ -167,7 +167,7 @@ errors   —
               "required": ["state"], "additionalProperties": false,
               "description": "Status reported by the UDP peer."},
    "emits": null, "receives": null, "errors": []}
-]
+ ], "error": null, "effects": "none", "data_count": 0}
 ```
 
 Both exit 0.
@@ -277,12 +277,12 @@ under the default policy prints the step 4 table plus the `complete=false` lines
   └──────────────────────────────┴──────┘
 ```
 
-`--include-bootstrap` adds the fixed runtime-internal list under a separate `BOOTSTRAP` section (listed, not governed by policy.json):
+`--include-bootstrap` adds the fixed runtime-internal list under a separate `BOOTSTRAP` section (listed, not governed by policy.json). Since 0.2.0 the bundle row names the entry file and one row per imported module (0.1.0 printed `./app.rivet (+ imports)`); this bundle imports nothing:
 
 ```text
 BOOTSTRAP (runtime-internal; listed, not governed by policy.json)
 KIND  ACCESS       TARGET
-file  read         ./app.rivet (+ imports)
+file  read         ./app.rivet
 file  read         ./policy.json
 file  read         system CA bundle
 file  read         /etc/resolv.conf / system resolver
@@ -307,7 +307,7 @@ rivet --file app.rivet --policy ./policies/receive.json policy explain telemetry
 Default policy (exit 3):
 
 ```text
-policy   ./policy.json (sha256:01e2cdbd…)
+policy   ./policy.json (sha256:01e2cdbd5f9655d2c033432b5388019d4ac9eb1f893997d26a5c0d63eae411c7)
 base     .
 network  deny_private_ranges true
 limits   64 concurrent, depth 16, 268435456 buffered bytes
@@ -321,7 +321,7 @@ denied: telemetry.receive#1 allow_listen udp://127.0.0.1:7001 (bind)
 
 Under receive.json (exit 0): `policy ./policies/receive.json …`, `base ./policies`, grants
 `allow_listen udp://127.0.0.1:7001` and `allow_network udp://127.0.0.1:7002`, bind `allowed`, reply `unknown`.
-Hashes vary with file content.
+Hashes vary with file content. `policy explain` keeps `--params` in 0.2.0 (it has no `--data`); the `--params` argument is what makes it evaluate one concrete call and exit 3 on a denial.
 
 ## Local fixture run
 
@@ -371,13 +371,13 @@ arrives (covering the moment before Rivet binds), prints it and exits. Request a
 #### Command / Request
 
 ```sh
-rivet --file app.rivet request telemetry.status --params '{}'
+rivet --file app.rivet request telemetry.status
 ```
 
 #### Expected Output / Response
 
 ```json
-{"request_id":"req_01ce8db4a5","trace_id":"tr_01ce8db4a5","result":{"state":"ready"},"data_count":0,"effects":"committed"}
+{"request_id":"req_014a068a85","trace_id":"tr_014a068a85","operation":"telemetry.status","type":"result","status":"ok","data":{"state":"ready"},"error":null,"effects":"committed","data_count":0}
 ```
 
 Exit 0.
@@ -387,13 +387,13 @@ Exit 0.
 #### Command / Request
 
 ```sh
-rivet --file app.rivet request telemetry.receive --params '{}'
+rivet --file app.rivet request telemetry.receive
 ```
 
 #### Expected Output / Response
 
 ```json
-{"request_id":"req_01cd37b24d","trace_id":"tr_01cd37b24d","error":{"kind":"permission","code":"permission.denied","message":"allow_listen bind udp://127.0.0.1:18801 denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"udp://127.0.0.1:18801\") to allow it","retryable":false,"effects":"none","source":{"file":"app.rivet","line":21,"column":5,"end_line":26,"end_column":8},"operation_id":"telemetry.receive","details":{"capability":"allow_listen","access":"bind","target":"udp://127.0.0.1:18801"}}}
+{"request_id":"req_014939d3dd","trace_id":"tr_014939d3dd","operation":"telemetry.receive","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_listen bind udp://127.0.0.1:18801 denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"udp://127.0.0.1:18801\") to allow it","retryable":false,"source":{"file":"app.rivet","line":21,"column":5,"end_line":26,"end_column":8},"operation_id":"telemetry.receive","details":{"capability":"allow_listen","access":"bind","target":"udp://127.0.0.1:18801"}},"effects":"none","data_count":0}
 ```
 
 Exit 3, `effects: "none"` — nothing was bound. This matches the step 4 manifest. (The same command in the
@@ -405,7 +405,7 @@ unmodified folder gives the same error for `udp://127.0.0.1:7001`; no socket is 
 
 ```sh
 python3 fixtures/udp_fixture.py ping 18802 18801 & PG=$!
-rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive --params '{}'
+rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive
 wait $PG
 ```
 
@@ -414,7 +414,7 @@ wait $PG
 Rivet (exit 0):
 
 ```json
-{"request_id":"req_01cc5276ad","trace_id":"tr_01cc5276ad","result":{"peer":"127.0.0.1:18802","value":{"reading":42}},"data_count":0,"effects":"committed"}
+{"request_id":"req_0148cbc08d","trace_id":"tr_0148cbc08d","operation":"telemetry.receive","type":"result","status":"ok","data":{"peer":"127.0.0.1:18802","value":{"reading":42}},"error":null,"effects":"committed","data_count":0}
 ```
 
 The ping fixture (exit 0):
@@ -429,7 +429,7 @@ reply from 127.0.0.1:18801: {"received":true}
 
 ```sh
 python3 fixtures/udp_fixture.py ping 18803 18801 & PG=$!
-rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive --params '{}'
+rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive
 kill $PG
 ```
 
@@ -438,7 +438,7 @@ kill $PG
 Receiving from `:18803` does not grant replying to it; `send_to` fails:
 
 ```json
-{"request_id":"req_01cab6e0bd","trace_id":"tr_01cab6e0bd","error":{"kind":"permission","code":"permission.denied","message":"allow_network connect udp://127.0.0.1:18803 denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"udp://127.0.0.1:18803\") to allow it","retryable":false,"effects":"none","source":{"file":"app.rivet","line":24,"column":9,"end_line":24,"end_column":58},"operation_id":"telemetry.receive","details":{"capability":"allow_network","access":"connect","target":"udp://127.0.0.1:18803"}}}
+{"request_id":"req_0145d057f5","trace_id":"tr_0145d057f5","operation":"telemetry.receive","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect udp://127.0.0.1:18803 denied: 127.0.0.1 is a private/loopback/link-local address; grant it literally (e.g. \"udp://127.0.0.1:18803\") to allow it","retryable":false,"source":{"file":"app.rivet","line":24,"column":9,"end_line":24,"end_column":58},"operation_id":"telemetry.receive","details":{"capability":"allow_network","access":"connect","target":"udp://127.0.0.1:18803"}},"effects":"none","data_count":0}
 ```
 
 Exit 3. The source points at line 24 (`socket.send_to`). The ping fixture never gets a reply.
@@ -448,7 +448,7 @@ Exit 3. The source points at line 24 (`socket.send_to`). The ping fixture never 
 #### Command / Request
 
 ```sh
-rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive --params '{}'
+rivet --file app.rivet --policy ./policies/receive.json request telemetry.receive
 ```
 
 #### Expected Output / Response
@@ -456,7 +456,7 @@ rivet --file app.rivet --policy ./policies/receive.json request telemetry.receiv
 After 5 s (exit 6):
 
 ```json
-{"request_id":"req_01c7e76ed5","trace_id":"tr_01c7e76ed5","error":{"kind":"timeout","code":"timeout","message":"no datagram within 5000 ms","retryable":false,"effects":"none","source":{"file":"app.rivet","line":23,"column":9,"end_line":23,"end_column":56},"operation_id":"telemetry.receive"}}
+{"request_id":"req_01423cc2e5","trace_id":"tr_01423cc2e5","operation":"telemetry.receive","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout","message":"no datagram within 5000 ms","retryable":false,"source":{"file":"app.rivet","line":23,"column":9,"end_line":23,"end_column":56},"operation_id":"telemetry.receive"},"effects":"none","data_count":0}
 ```
 
 ### 12. Lost reply — status timeout, no silent retry
@@ -466,7 +466,7 @@ After 5 s (exit 6):
 ```sh
 kill $FX
 python3 fixtures/udp_fixture.py status 18800 --silent & FX=$!
-rivet --file app.rivet request telemetry.status --params '{}'
+rivet --file app.rivet request telemetry.status
 ```
 
 #### Expected Output / Response
@@ -474,7 +474,7 @@ rivet --file app.rivet request telemetry.status --params '{}'
 After 1 s (exit 6). `effects` is `committed` because the status datagram was sent; Rivet does not resend it:
 
 ```json
-{"request_id":"req_0183664665","trace_id":"tr_0183664665","error":{"kind":"timeout","code":"timeout","message":"no datagram within 1000 ms","retryable":false,"effects":"committed","source":{"file":"app.rivet","line":10,"column":9,"end_line":10,"end_column":48},"operation_id":"telemetry.status"}}
+{"request_id":"req_01d8454a5d","trace_id":"tr_01d8454a5d","operation":"telemetry.status","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout","message":"no datagram within 1000 ms","retryable":false,"source":{"file":"app.rivet","line":10,"column":9,"end_line":10,"end_column":48},"operation_id":"telemetry.status"},"effects":"committed","data_count":0}
 ```
 
 ### 13. Oversized reply — `udp.truncated` (CLI exit 5, HTTP 502)
@@ -484,12 +484,12 @@ After 1 s (exit 6). `effects` is `committed` because the status datagram was sen
 ```sh
 kill $FX
 python3 fixtures/udp_fixture.py status 18800 --big 9000 & FX=$!
-rivet --file app.rivet request telemetry.status --params '{}'
+rivet --file app.rivet request telemetry.status
 
 # Same failure through one `rivet serve` listener:
 rivet serve --file app.rivet --listen 127.0.0.1:18810 & SV=$!
 curl -s -w '\n%{http_code}\n' -X POST http://127.0.0.1:18810/v1/request \
-  -H 'content-type: application/json' -d '{"id":"telemetry.status","params":{}}'
+  -H 'content-type: application/json' -d '{"operation":"telemetry.status","data":{}}'
 kill $SV
 ```
 
@@ -498,10 +498,10 @@ kill $SV
 A 9000-byte datagram exceeds `max_datagram 8192`; it is rejected, never parsed clipped (exit 5):
 
 ```json
-{"request_id":"req_012ee1280d","trace_id":"tr_012ee1280d","error":{"kind":"protocol","code":"udp.truncated","message":"a datagram from 127.0.0.1:18800 exceeds max_datagram 8192; it is not parsed clipped","retryable":false,"effects":"committed","source":{"file":"app.rivet","line":10,"column":9,"end_line":10,"end_column":48},"operation_id":"telemetry.status","details":{"peer":"127.0.0.1:18800"}}}
+{"request_id":"req_015e4ccd2d","trace_id":"tr_015e4ccd2d","operation":"telemetry.status","type":"result","status":"error","data":null,"error":{"kind":"protocol","code":"udp.truncated","message":"a datagram from 127.0.0.1:18800 exceeds max_datagram 8192; it is not parsed clipped","retryable":false,"source":{"file":"app.rivet","line":10,"column":9,"end_line":10,"end_column":48},"operation_id":"telemetry.status","details":{"peer":"127.0.0.1:18800"}},"effects":"committed","data_count":0}
 ```
 
-The `curl` call prints the same error body followed by `502`; the serve access log on stderr shows
+The `curl` call prints the same error envelope (its own request ID) followed by `502`; the serve access log on stderr shows
 `"route":"/v1/request",…,"operation":"telemetry.status","status":502`.
 
 ## Effects and policy
@@ -528,12 +528,21 @@ delivery or exactly-once remote execution. `max_datagram` options come before th
 
 ## Release Updates
 
+0.2.0 updates shown here (numbering of the [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)):
+
 | Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
 |---|---|---|---|---|---|
-| U-15 | UQ-14 / R15 | UDP `with udp`, `with udp bind`, `send`/`receive`/`receive_from`/`send_to`, `max_datagram`, per-peer reply authorization | Steps 7–13 | Reply `{"state":"ready"}`; reply to granted peer only; `timeout` exit 6; `udp.truncated` exit 5 / HTTP 502 | This README steps 7–13 (2026-09-28, 829ca43); TEST-2026-0012 |
-| U-23 | UQ-17 / R23 | Declared outputs | Step 2: `rivet outputs --all --json` | Two entries | This README step 2 (2026-09-28, 829ca43); TEST-2026-0020 |
-| U-24 | UQ-17 / R24 | Two `--sandbox` variants became policy.json + policies/receive.json | Steps 6, 8, 9 | Default policy denies the bind; receive.json allows bind and the 18802 reply | This README steps 6, 8, 9 (2026-09-28, 829ca43); TEST-2026-0021 |
-| U-26 | UQ-18 / R26 | `io` became the generated I/O manifest (targets, access verbs, capability, `--by`, `--check-policy`); B3: manifest decisions mirror the runtime permit | Steps 3–5 | Tables above; exits 3 / 0 / 3 / 7 | This README steps 3–5 (2026-09-28, 829ca43); TEST-2026-0025 |
+| U-01 / U-02 | UQ-03/05 / R1, R2 | Results and errors are ResponseEnvelopes on the CLI and HTTP | Steps 7–13 | Same codes, exits, `effects` and HTTP 502 as 0.1.0 | This README steps 7–13 (2026-09-29, 8031baa) |
+| U-19 | UQ-09 / R19 | The bootstrap list names the entry file (and each imported module) instead of `(+ imports)` | Step 5 `--include-bootstrap` | `file read ./app.rivet` | This README step 5 |
+
+Still verified from 0.1.0 (numbering of [DEMO-2026-0015](../demo-2026-0015-v0-1-0-release-verification.md)):
+
+| Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
+|---|---|---|---|---|---|
+| U-15 | UQ-14 / R15 | UDP `with udp`, `with udp bind`, `send`/`receive`/`receive_from`/`send_to`, `max_datagram`, per-peer reply authorization | Steps 7–13 | Reply `{"state":"ready"}`; reply to granted peer only; `timeout` exit 6; `udp.truncated` exit 5 / HTTP 502 | This README steps 7–13 (re-run 2026-09-29, 8031baa); TEST-2026-0012 |
+| U-23 | UQ-17 / R23 | Declared outputs | Step 2: `rivet outputs --all --json` | Two entries | This README step 2; TEST-2026-0020 |
+| U-24 | UQ-17 / R24 | Two `--sandbox` variants became policy.json + policies/receive.json | Steps 6, 8, 9 | Default policy denies the bind; receive.json allows bind and the 18802 reply | This README steps 6, 8, 9; TEST-2026-0021 |
+| U-26 | UQ-18 / R26 | `io` became the generated I/O manifest (targets, access verbs, capability, `--by`, `--check-policy`); B3: manifest decisions mirror the runtime permit | Steps 3–5 | Tables above; exits 3 / 0 / 3 / 7 | This README steps 3–5; TEST-2026-0025 |
 
 ## Cleanup
 
@@ -546,22 +555,22 @@ cd - && rm -rf "$WORK"
 
 | Step | Verified By | Verified At | Result |
 |---|---|---|---|
-| `check --strict-docs` / `check` (step 1) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 2. View the declared outputs | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 3. I/O manifest by target | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| `io --check-policy` (steps 4–5: exit 3 default; 0 / 3 / 7 under receive.json) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| `io --check-files` (step 4) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 6. Explain the policy decision | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 7. `telemetry.status` unicast request/reply | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 8. `telemetry.receive` denied under default policy | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 9. `telemetry.receive` under receive.json with authorized reply | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 10. Unexpected source port — reply denied | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 11. Receive timeout | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 12. Lost status reply — timeout | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 13. Oversized reply — `udp.truncated` (CLI and serve) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| Multicast | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | NOT APPLICABLE — this bundle declares no multicast operation; see tests/conformance_udp.rs |
+| `check --strict-docs` / `check` (step 1) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. View the declared outputs (envelope) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. I/O manifest by target | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| `io --check-policy` (steps 4–5: exit 3 default; 0 / 3 / 7 under receive.json; 3 for `--check-policy --strict` under the default) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| `io --check-files` (step 4); `--include-bootstrap` (no `(+ imports)`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. Explain the policy decision (`--params '{}'`: exit 3 / 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 7. `telemetry.status` unicast request/reply | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 8. `telemetry.receive` denied under default policy | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 9. `telemetry.receive` under receive.json with authorized reply | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 10. Unexpected source port — reply denied | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 11. Receive timeout | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 12. Lost status reply — timeout | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 13. Oversized reply — `udp.truncated` (CLI and serve, HTTP 502) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| Multicast | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | NOT APPLICABLE — this bundle declares no multicast operation; see tests/conformance_udp.rs |
 
-Build: `cargo build` and `cargo build --release` at 829ca43; every command above was executed from this folder (or the scratch copy named in Local fixture run) and the output pasted from that run.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder (or the scratch copy named in Local fixture run) and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
 
 ## Known Caveats
 
@@ -573,7 +582,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 ## Related Documents
 
-- [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md)
+- [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md) · [v0.1.0 guide](../demo-2026-0015-v0-1-0-release-verification.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md)
 - [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - [Implementation plan PLAN-2026-0001](../../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md)
@@ -590,6 +599,7 @@ Build: `cargo build` and `cargo build --release` at 829ca43; every command above
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-57): re-executed every step against the 0.2.0 release candidate (8031baa) with the local UDP fixture; `--params` dropped on `request` (kept on `policy explain`), HTTP body `{operation, data}`; results and errors replaced by 0.2.0 envelopes; `outputs --all --json` as an envelope; the bootstrap row now names `./app.rivet` (INC-2026-0008 placeholder gone); full policy hash; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 6 | 2026-09-28 | Claude | TASK-067 re-verification at 829ca43 (after the INC-2026-0005/0006 fixes): every step re-run, output identical except IDs and hashes; commit references updated; linked the release verification guide DEMO-2026-0015 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (073d944); added fixtures/udp_fixture.py and a Local fixture run (ports remapped to 18800–18803); pasted real output for check, outputs (both entries), `io --by target` (row order), `io --check-policy` (summary line, receive.json whole-bundle denial of status, `--strict` exit 7, denied-beats-dynamic exit 3), `policy explain`, and every request outcome (status, denial, authorized reply, unexpected peer, both timeouts, `udp.truncated` exit 5 / HTTP 502); removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`with udp`, `with udp bind`, `socket.send_to`), PHASE and NEEDS FILE. |

@@ -1,87 +1,104 @@
-// Rivet library embedding: a complete host program against the `rivet` crate on main.
-// Save as src/main.rs (or examples/embedding.rs) with app.rivet next to it, add
-// `rivet`, `tokio` (rt-multi-thread, macros) and `serde_json` as dependencies, and run it
-// from this demo directory so `policy.json` resolves. It is compiled and run as a
-// scratch `cargo run --example` to check that it matches the real API.
+// Rivet library embedding: a complete host program against the `rivet` facade
+// (package `rivet-runtime`, library `rivet`, 0.2.0). Save as src/main.rs with
+// app.rivet next to this demo's policy.json, add `rivet`, `tokio`
+// (rt-multi-thread, macros) and `serde_json` as dependencies, and run it from
+// this demo directory so `app.rivet` and `policy.json` resolve. The same
+// program ships compiled as `examples/embed.rs` (`cargo run --example embed`).
 //
 //   policy.json ──Policy::from_file─────────┐
 //   host limits ──Policy::from_json─.ceiling─┤   (a deny in either wins; limits narrow)
-//   app.rivet  ──.source(path, src, root)────┼──> Runtime::builder().build()
+//   app.rivet  ──.file(path)─────────────────┼──> Runtime::builder().build()
 //                                            │        │
-//                  rt.request ───────────────┘        ├──> Completion         (unary)
-//                  rt.scope(|scope| …) scope.stream ──├──> Envelope stream    (emits)
-//                                      scope.duplex ──├──> send / finish_send / next (receives)
-//                  rt.outputs ────────────────────────├──> OutputReport       (declared outputs)
-//                  rt.io / rt.generate_policy ────────└──> I/O manifest / least-privilege draft
+//   rt.call(InputEnvelope) ──────────────────┘        ├──> ResponseEnvelope  (every surface's shape)
+//   rt.request(id, Value, None) ──────────────────────├──> Completion        (Rust-idiomatic `?`)
+//   rt.scope(|scope| scope.stream(…)) ────────────────├──> Envelope records  (emits)
+//   rt.outputs / rt.io / rt.generate_policy ──────────└──> reports (nothing runs)
 
-use rivet::Runtime;
-use rivet::domain::Value;
-use rivet::domain::contracts::{Completion, Envelope};
-use rivet::domain::io_manifest::IoQuery;
-use rivet::domain::policy::Policy;
-use rivet::domain::RivetResult;
+#![allow(clippy::result_large_err)] // rivet::Error carries the full error contract
+
+use rivet::types::IoQuery;
+use rivet::{Completion, Envelope, InputEnvelope, Policy, Runtime, Value};
+use serde_json::json;
 
 #[tokio::main]
-async fn main() -> RivetResult<()> {
-    let src = include_str!("app.rivet");
-
+async fn main() -> rivet::Result<()> {
     // policy.json is loaded strictly (schema v1); the host ceiling can only narrow it.
     let ceiling = Policy::from_json(br#"{"version":1,"limits":{"max_concurrent_requests":8}}"#)?;
     let rt = Runtime::builder()
-        .source("app.rivet", src, ".")
+        .file("app.rivet")
         .policy(Policy::from_file("policy.json")?)
         .ceiling(ceiling)
         .build()?;
 
-    // Unary: params and results are rivet::domain::Value (Value::from_json / to_json).
+    // One envelope for every outcome: the same JSON as the CLI, HTTP, MCP and FFI.
+    let out = rt
+        .call(InputEnvelope::new("demo.add").data(json!({"a": 2, "b": 3})))
+        .await;
+    println!("{}", out.to_json_pretty());
+    assert!(out.status().is_ok());
+    assert_eq!(out.to_json()["data"], json!(5));
+
+    // A failure is an envelope too (status "error", data null, the error object).
+    let bad = rt
+        .call(InputEnvelope::new("demo.add").data(json!({"a": "two"})))
+        .await;
+    println!("{}", bad.to_json_string());
+    assert_eq!(bad.to_json()["status"], "error");
+
+    // Rust-idiomatic: `request` returns Result<Completion, rivet::Error>.
     let c: Completion = rt
         .request(
-            "demo.add",
-            Value::from_json(&serde_json::json!({"a": 2, "b": 3})),
+            "demo.greet",
+            Value::from_json(&json!({"person": "Ada"})),
             None,
         )
         .await?;
-    assert_eq!(c.result, Value::Int(5));
+    assert_eq!(c.result, Value::text("Hello, Ada!"));
 
-    // Server stream owned by a scope: unfinished requests are cancelled and joined
-    // when the body returns. next() is Result<Option<Envelope>>.
+    // A server stream owned by a scope: unfinished requests are cancelled and
+    // joined when the body returns. `next()` is Result<Option<Envelope>>; each
+    // record prints as the same stream record as NDJSON, SSE and WebSocket.
     let items = rt
         .scope(|scope| async move {
-            let params = Value::from_json(&serde_json::json!({}));
-            let mut s = scope.stream("events.count", params).await?;
+            let mut s = scope
+                .stream("events.count", Value::from_json(&json!({})))
+                .await?;
             let mut items = Vec::new();
             while let Some(env) = s.next().await? {
+                println!("{}", env.record().to_json_string());
                 match env {
-                    Envelope::Data(d) => items.push(d.data),           // 1, 2, 3
-                    Envelope::Result(done) => assert_eq!(done.data_count, 3), // {"count": 3}
+                    Envelope::Data(d) => items.push(d.data),
+                    Envelope::Result(done) => assert_eq!(done.data_count, 3),
                     Envelope::Error { error, .. } => return Err(*error),
                 }
             }
-            // scope.duplex("ID", params) works the same for an operation that
+            // scope.duplex("ID", data) works the same for an operation that
             // `receives`: d.send(v).await?, d.finish_send(), d.next().await?.
             Ok(items)
         })
         .await?;
     assert_eq!(items, vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
 
-    // Declared outputs (the same report as `rivet outputs demo.add --json`).
+    // Declared outputs, the I/O manifest and a least-privilege draft: nothing runs.
     let spec = &rt.outputs(Some("demo.add"), false)?[0];
-    println!("{}", spec.to_json()); // output integer "Sum of a and b."; emits/receives null; errors []
-
-    // The generated I/O manifest and a least-privilege policy draft (nothing runs).
+    println!("{}", spec.to_json());
     let io = rt.io(&IoQuery {
         ids: vec!["demo.add".into()],
         format: "json".into(),
         ..IoQuery::default()
     })?;
-    println!("{}", io.manifest.to_json()); // pure operations: no sites
+    println!("{}", io.manifest.to_json());
     let draft = rt.generate_policy(&["events.count"])?;
-    println!("{}", draft.policy_json()); // {"version":1,"grants":[],"network":{…}}
+    println!("{}", draft.policy_json());
+
+    // What this build can do (`rivet.capabilities` build_features, R11).
+    println!("build features: {:?}", rivet::build_features());
     Ok(())
 }
 
 // Notes:
-// - A DataSink passed to rt.request(ID, params, Some(sink)) receives each emitted item;
-//   returning RivetError::consumer_stop() ends the request `cancelled`, not failed.
+// - A DataSink passed to rt.request(ID, data, Some(sink)) receives each emitted item;
+//   returning rivet::Error::consumer_stop() ends the request `cancelled`, not failed.
 // - Dropping a request future runs its cleanup; rt.scope joins everything it started.
 // - Runtime is Clone + Send + Sync; share it across tasks instead of rebuilding it.
+// - rt.load("./users.rivet") returns a Module object (see docs/demos/17-modules).

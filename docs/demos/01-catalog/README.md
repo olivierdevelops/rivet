@@ -4,37 +4,37 @@ title: "One file, four operations, every access point"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 7
+last_updated: 2026-09-29
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
 systems: [Rivet]
 components: [registry, cli, serve, http, poll, ws, mcp, sessions, auth]
 affected_versions:
-  from: "0.1.0"
+  from: "0.2.0"
   to: null
 applicable_environments: [development]
 audience: [developers, reviewers]
 scope: One app.rivet with four pure, described operations, called from the CLI and from one `rivet serve` over REST, SSE, polling, WebSocket and MCP, with bearer authentication through an alternate policy file.
-reason: User requested sample folders with READMEs showing usage; UQ-17 adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 adds the generated I/O manifest. TASK-067 executed every step against the 0.1.0 release candidate.
+reason: User requested sample folders with READMEs showing usage; UQ-17 adds declared outputs, policy.json-only policy and one serve for every surface; UQ-18 adds the generated I/O manifest. TASK-067 executed every step against the 0.1.0 release candidate; TASK-076 (PLAN-2026-0002) re-executed it against the 0.2.0 release candidate (ResponseEnvelope/InputEnvelope wire, `--data`, `--input`, `--pretty`).
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: [PLAN-2026-0001, DEMO-2026-0015, DEMO-2026-0013, MAN-2026-0002, MAN-2026-0006, API-2026-0001, API-2026-0002, API-2026-0003, TEST-2026-0002, TEST-2026-0020, TEST-2026-0022]
+related_documents: [PLAN-2026-0001, PLAN-2026-0002, DEMO-2026-0015, DEMO-2026-0020, API-2026-0006, MIG-2026-0001, DEMO-2026-0013, MAN-2026-0002, MAN-2026-0006, API-2026-0001, API-2026-0002, API-2026-0003, TEST-2026-0002, TEST-2026-0020, TEST-2026-0022]
 supersedes: null
 superseded_by: null
 tags: [rivet, demo, catalog, serve, rest, sse, polling, websocket, mcp]
 confidentiality: internal
 review_cycle: on-release
 next_review_date: 2026-10-28
-verified_against: "0.1.0"
+verified_against: "0.2.0"
 ---
 
 # One file, four operations, every access point
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
-> **Affected Versions:** 0.1.0 and later
+> **Last Updated:** 2026-09-29
+> **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** registry, cli, serve, http, poll, ws, mcp, sessions, auth
 
@@ -63,15 +63,29 @@ One [app.rivet](app.rivet) declares four pure operations, each with a declared, 
 
 ## Verified Against Version
 
-0.1.0. Verified on 0.1.0-dev at commit `829ca43`, the release candidate (the version bump to 0.1.0 happens at release, P5), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-28. Every output block below was pasted from that run; the verification run listened on `127.0.0.1:18800` instead of 8080. Request, trace and session IDs, timestamps, hashes and ports vary from run to run.
+0.2.0. Verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped from 0.1.0 to 0.2.0 at release, P5, so `rivet --version` and `serverInfo.version` still print 0.1.0), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Every output block below was pasted from that run; the verification run listened on `127.0.0.1:18800` instead of 8080. Request, trace and session IDs, timestamps, hashes and ports vary from run to run.
+
+What changed from 0.1.0 ([migration guide](../../migrations/mig-2026-0001-response-and-input-envelopes.md), [envelope reference](../../api/api-2026-0006-envelopes.md)):
+
+```text
+  0.1.0                                         0.2.0
+  ─────────────────────────────────────────     ──────────────────────────────────────────────────────
+  input   {"id": ID, "params": {...}}       ──▶  {"operation": ID, "data": {...}}     (old keys: deprecated aliases)
+  CLI     --params JSON                     ──▶  --data JSON · --input FILE|- · --pretty
+  output  {request_id, trace_id, result}    ──▶  {request_id, trace_id, operation, type, status,
+          {request_id, trace_id, error}           data, error, effects, data_count}   (one shape everywhere)
+  SSE     event: error                      ──▶  event: result  + "status": "error"
+  WS      {"type":"result","completion":…}  ──▶  the envelope itself, plus "ref"
+  MCP     structuredContent = Completion    ──▶  structuredContent = ResponseEnvelope
+```
 
 ## Prerequisites
 
 Build Rivet and put it on `PATH` (from the repository root):
 
 ```sh
-cargo build --release
-export PATH="$PWD/target/release:$PATH"     # `rivet --version` prints rivet 0.1.0
+cargo build --release --features cli
+export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
 ```
 
 `curl` is needed for the HTTP steps. The WebSocket step uses the small client in [fixtures/ws_client.py](fixtures/ws_client.py), which needs the `websockets` Python package (any WebSocket client that can set the `rivet.v1` subprotocol works, for example websocat):
@@ -114,10 +128,17 @@ The alternate file [policies/team.json](policies/team.json) is used only in the 
 ```sh
 rivet --file app.rivet list --outputs
 rivet --file app.rivet describe demo.add --json
-rivet --file app.rivet request demo.add --params '{"a":2,"b":3}'
-rivet --file app.rivet request demo.greet --params '{"person":"Ada"}'
-rivet --file app.rivet request demo.health --params '{}'
-rivet --file app.rivet request demo.countdown --params '{}' --stream
+rivet --file app.rivet request demo.add --data '{"a":2,"b":3}'
+rivet --file app.rivet request demo.greet --data '{"person":"Ada"}'
+rivet --file app.rivet request demo.health
+rivet --file app.rivet request demo.countdown --stream
+```
+
+`--data` defaults to `{}`, so operations without parameters need no flag. The same call can come from a whole input envelope (`--input FILE`, or `-` for stdin), and `--pretty` indents one envelope:
+
+```sh
+echo '{"operation":"demo.add","data":{"a":40,"b":2}}' | rivet --file app.rivet request --input -
+rivet --file app.rivet request demo.add --data '{"a":2,"b":3}' --pretty
 ```
 
 #### Expected Output / Response
@@ -130,47 +151,101 @@ demo.health     Check availability  object      Return a constant readiness resp
 demo.countdown  Count down          object      Emit 3, 2, 1 as data items and then return a summary.
 ```
 
-```json
-{"id":"demo.add","name":"Add two integers","description":"Add two signed integers and return their sum.","kind":"operation","input":{"type":"object","properties":{"a":{"type":"integer","description":"First operand."},"b":{"type":"integer","description":"Second operand; defaults to zero.","default":0}},"required":["a"],"additionalProperties":false},"output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[],"delivery":"unary","source":{"file":"app.rivet","line":9}}
-```
-
-Each `request` prints one Completion line and exits 0:
+`describe --json` is a ResponseEnvelope of the built-in `rivet.describe`; the descriptor is its `data`:
 
 ```json
-{"request_id":"req_01517202b5","trace_id":"tr_01517202b5","result":5,"data_count":0,"effects":"none"}
-{"request_id":"req_0150318b2d","trace_id":"tr_0150318b2d","result":"Hello, Ada!","data_count":0,"effects":"none"}
-{"request_id":"req_014f84d655","trace_id":"tr_014f84d655","result":{"ready":true},"data_count":0,"effects":"none"}
+{"request_id":"req_018241671d","trace_id":"tr_018241671d","operation":"rivet.describe","type":"result","status":"ok","data":{"id":"demo.add","name":"Add two integers","description":"Add two signed integers and return their sum.","kind":"operation","input":{"type":"object","properties":{"a":{"type":"integer","description":"First operand."},"b":{"type":"integer","description":"Second operand; defaults to zero.","default":0}},"required":["a"],"additionalProperties":false},"output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[],"delivery":"unary","source":{"file":"app.rivet","line":9}},"error":null,"effects":"none","data_count":0}
 ```
 
-`--stream` prints NDJSON: one line per data item, then the terminal result line:
+Each `request` prints one ResponseEnvelope line and exits 0. The keys always come in this order, and `data` and `error` are always present (exactly one is non-null):
 
 ```json
-{"request_id":"req_014d425c4d","trace_id":"tr_014d425c4d","seq":1,"type":"data","data":3}
-{"request_id":"req_014d425c4d","trace_id":"tr_014d425c4d","seq":2,"type":"data","data":2}
-{"request_id":"req_014d425c4d","trace_id":"tr_014d425c4d","seq":3,"type":"data","data":1}
-{"request_id":"req_014d425c4d","trace_id":"tr_014d425c4d","result":{"count":3},"data_count":3,"effects":"none","type":"result"}
+{"request_id":"req_0182f81705","trace_id":"tr_0182f81705","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"request_id":"req_018137eadd","trace_id":"tr_018137eadd","operation":"demo.greet","type":"result","status":"ok","data":"Hello, Ada!","error":null,"effects":"none","data_count":0}
+{"request_id":"req_018068dcdd","trace_id":"tr_018068dcdd","operation":"demo.health","type":"result","status":"ok","data":{"ready":true},"error":null,"effects":"none","data_count":0}
 ```
 
-**Failing examples.** Omitting `a` fails validation before execution (exit 2); an unknown ID is `not_found.operation` (exit 4):
+```text
+  request_id  trace_id  operation  type            status                              data   error   effects  data_count
+  ──────────  ────────  ─────────  ──────────────  ──────────────────────────────────  ─────  ──────  ───────  ──────────
+  req_…       tr_…      demo.add   result | data   ok | error | cancelled | accepted   5      null    none     0
+```
+
+The `--input -` call prints `…"operation":"demo.add","type":"result","status":"ok","data":42,…`, and `--pretty` prints the same envelope indented by two spaces, keys in the same order:
+
+```json
+{
+  "request_id": "req_017f286a1d",
+  "trace_id": "tr_017f286a1d",
+  "operation": "demo.add",
+  "type": "result",
+  "status": "ok",
+  "data": 5,
+  "error": null,
+  "effects": "none",
+  "data_count": 0
+}
+```
+
+`--stream` prints NDJSON: one `type: data` record per item (with `seq`, without `status`/`effects`), then the terminal `type: result` record:
+
+```json
+{"request_id":"req_018089f425","trace_id":"tr_018089f425","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
+{"request_id":"req_018089f425","trace_id":"tr_018089f425","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
+{"request_id":"req_018089f425","trace_id":"tr_018089f425","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
+{"request_id":"req_018089f425","trace_id":"tr_018089f425","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+```
+
+**Failing examples.** Omitting `a` fails validation before execution (exit 2); an unknown ID is `not_found.operation` (exit 4). Errors use the same envelope with `status: "error"` and `data: null`:
 
 ```sh
-rivet --file app.rivet request demo.add --params '{"b":3}'
-rivet --file app.rivet request demo.nope --params '{}'
+rivet --file app.rivet request demo.add --data '{"b":3}'
+rivet --file app.rivet request demo.nope
 ```
 
 ```json
-{"request_id":"req_01eacbbe45","trace_id":"tr_01eacbbe45","error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"effects":"none","operation_id":"demo.add","details":{"field":"a"}}}
-{"request_id":"req_01e76c91dd","trace_id":"tr_01e76c91dd","error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false,"effects":"none","operation_id":"demo.nope"}}
+{"request_id":"req_018e167b1d","trace_id":"tr_018e167b1d","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"request_id":"req_018d5928c5","trace_id":"tr_018d5928c5","operation":"demo.nope","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false,"operation_id":"demo.nope"},"effects":"none","data_count":0}
 ```
 
-The build's own capability report is a built-in operation too (output abbreviated):
+**Deprecated 0.1.0 input.** `--params` still works in 0.2.x and prints a warning on stderr; mixing it with `--data`, or `operation` with `id` in one envelope, is refused (exit 2). `--pretty` with `--stream` is refused too, because NDJSON must stay one record per line (exit 2):
 
 ```sh
-rivet --file app.rivet request rivet.capabilities --params '{}'
+rivet --file app.rivet request demo.add --params '{"a":2,"b":3}'
+echo '{"operation":"demo.add","id":"demo.add","data":{"a":1}}' | rivet --file app.rivet request --input -
+rivet --file app.rivet request demo.countdown --stream --pretty
+```
+
+```text
+warning[deprecated.params]: --params is deprecated; use --data (removed in 0.3.0)
+{"request_id":"req_017e45e80d","trace_id":"tr_017e45e80d","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input_envelope","message":"use `operation` or the deprecated `id`, not both","retryable":false,"details":{"key":"operation","alias":"id"}},"effects":"none","data_count":0}
+{
+  "request_id": "",
+  "trace_id": "",
+  "operation": "demo.countdown",
+  "type": "result",
+  "status": "error",
+  "data": null,
+  "error": {
+    "kind": "validation",
+    "code": "validation.usage",
+    "message": "--pretty cannot be used with --stream: NDJSON records must stay one per line",
+    "retryable": false
+  },
+  "effects": "none",
+  "data_count": 0
+}
+```
+
+The build's own capability report is a built-in operation too. 0.2.0 adds `build_features` (the compiled Cargo features) and `abi_version` (the C ABI major version). Output abbreviated:
+
+```sh
+rivet --file app.rivet request rivet.capabilities
 ```
 
 ```json
-{"request_id":"req_01ace5705d","trace_id":"tr_01ace5705d","result":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]}},"data_count":0,"effects":"none"}
+{"request_id":"req_018b6d075d","trace_id":"tr_018b6d075d","operation":"rivet.capabilities","type":"result","status":"ok","data":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]},"build_features":["serve","grpc","quic","oauth","cli"],"abi_version":1},"error":null,"effects":"none","data_count":0}
 ```
 
 ### 2. View outputs
@@ -193,16 +268,18 @@ receives —
 errors   —
 ```
 
-`outputs --all --json` prints one entry per public operation, sorted by ID, on one line (wrapped here):
+`outputs --all --json` prints one `rivet.outputs` envelope whose `data` holds one entry per public operation, sorted by ID, on one line (wrapped here):
 
 ```json
-[{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},
+{"request_id":"req_018ad690cd","trace_id":"tr_018ad690cd","operation":"rivet.outputs","type":"result","status":"ok","data":[
+ {"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},
  {"id":"demo.countdown","output":{"type":"object","properties":{"count":{"type":"integer","description":"Number of items emitted."}},"required":["count"],"additionalProperties":false,"description":"Summary returned after the last item."},"emits":{"type":"integer","description":"One countdown value per item."},"receives":null,"errors":[]},
  {"id":"demo.greet","output":{"type":"string","description":"Greeting that contains the person's name."},"emits":null,"receives":null,"errors":[]},
- {"id":"demo.health","output":{"type":"object","properties":{"ready":{"type":"boolean","description":"True whenever the host can run pure operations."}},"required":["ready"],"additionalProperties":false,"description":"Readiness report for this catalog."},"emits":null,"receives":null,"errors":[]}]
+ {"id":"demo.health","output":{"type":"object","properties":{"ready":{"type":"boolean","description":"True whenever the host can run pure operations."}},"required":["ready"],"additionalProperties":false,"description":"Readiness report for this catalog."},"emits":null,"receives":null,"errors":[]}
+ ],"error":null,"effects":"none","data_count":0}
 ```
 
-`GET /v1/operations/demo.add/outputs` and the MCP `rivet.outputs` tool return the same JSON for one ID. The `emits` entry carries the item type only; see Known Caveats.
+`GET /v1/operations/demo.add/outputs` and the MCP `rivet.outputs` tool return the same entry for one ID, inside a `rivet.outputs` envelope. The `emits` entry carries the item type and its description.
 
 ### 3. Start one server for every surface
 
@@ -216,11 +293,12 @@ rivet --file app.rivet serve --listen 127.0.0.1:8080
 
 #### Expected Output / Response
 
-The first stderr line is the startup record; every request then adds one JSON access-log line on stderr:
+The first stderr line is the startup record; every request then adds one JSON access-log line on stderr. A request that used the deprecated `id`/`params` keys is marked `"deprecated":1`, so operators can find 0.1.0 clients:
 
 ```json
 {"listen_addr":"127.0.0.1:8080","stdio":false,"surfaces":["http","sse","poll","ws","mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","policy_hash":null}
-{"time":"2026-09-28T06:42:38.600Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.add","status":200,"duration_ms":0}
+{"time":"2026-09-28T21:15:49.910Z","surface":"http","method":"GET","route":"/v1/health","principal":null,"operation":"rivet.health","status":200,"duration_ms":0}
+{"time":"2026-09-28T21:15:50.065Z","surface":"http","method":"POST","route":"/v1/request","principal":"local","operation":"demo.add","status":200,"duration_ms":0,"deprecated":1}
 ```
 
 `--listen 127.0.0.1:8080` is the default and may be omitted. With no policy.json the server binds loopback only, uses auth `none` (principal `local`), mounts all five surfaces, runs pure operations and denies every effect.
@@ -257,36 +335,60 @@ curl -sS http://127.0.0.1:8080/v1/operations
 curl -sS http://127.0.0.1:8080/v1/operations/demo.add
 curl -sS http://127.0.0.1:8080/v1/operations/demo.add/outputs
 curl -sS http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' --data-binary @requests/add.http.json
+curl -sS 'http://127.0.0.1:8080/v1/request?pretty=true' -H 'Content-Type: application/json' --data-binary @requests/add.http.json
 ```
+
+[requests/add.http.json](requests/add.http.json) is an input envelope: `{"operation": "demo.add", "data": {"a": 2, "b": 3}}`.
 
 #### Expected Output / Response
 
-```json
-{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730"}
-{"operations":[{"id":"demo.greet","name":"Greet a person","description":"Return a greeting for the supplied person.","streaming":false},{"id":"demo.add","name":"Add two integers","description":"Add two signed integers and return their sum.","streaming":false},{"id":"demo.health","name":"Check availability","description":"Return a constant readiness response without I/O.","streaming":false},{"id":"demo.countdown","name":"Count down","description":"Emit 3, 2, 1 as data items and then return a summary.","streaming":true}],"next_cursor":null}
-```
-
-`/v1/operations/demo.add` returns the same descriptor as `describe demo.add --json` (step 1), `/outputs` returns `{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]}`, and `POST /v1/request` returns HTTP 200:
+Every GET route answers with an envelope of the matching built-in (`rivet.health`, `rivet.list`, `rivet.describe`, `rivet.outputs`):
 
 ```json
-{"request_id":"req_01735e65a5","trace_id":"tr_01735e65a5","result":5,"data_count":0,"effects":"none"}
+{"request_id":"req_02a4cf4782","trace_id":"tr_02a4cf4782","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.1.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_0326f0907f","trace_id":"tr_0326f0907f","operation":"rivet.list","type":"result","status":"ok","data":{"operations":[{"id":"demo.greet","name":"Greet a person","description":"Return a greeting for the supplied person.","streaming":false},{"id":"demo.add","name":"Add two integers","description":"Add two signed integers and return their sum.","streaming":false},{"id":"demo.health","name":"Check availability","description":"Return a constant readiness response without I/O.","streaming":false},{"id":"demo.countdown","name":"Count down","description":"Emit 3, 2, 1 as data items and then return a summary.","streaming":true}],"next_cursor":null},"error":null,"effects":"none","data_count":0}
 ```
+
+`/v1/operations/demo.add` returns the same `rivet.describe` envelope as `describe demo.add --json` (step 1), `/outputs` returns `{…"operation":"rivet.outputs",…,"data":{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},…}`, and `POST /v1/request` returns HTTP 200:
+
+```json
+{"request_id":"req_06a5b4d57e","trace_id":"tr_06a5b4d57e","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+```
+
+`?pretty=true` returns the same envelope indented (two spaces, same key order), exactly like `--pretty` in step 1.
 
 The dispatcher validates each result against the declared output before returning; a mismatch would be `output.invalid` (HTTP 500, exit 5).
 
 **Failing examples** (the HTTP status follows the body):
 
 ```sh
-curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"id":"demo.add","params":{"b":3}}'
-curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"id":"demo.nope","params":{}}'
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"operation":"demo.add","data":{"b":3}}'
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"operation":"demo.nope","data":{}}'
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"operation":"demo.add","id":"demo.add","data":{"a":1}}'
 ```
 
 ```text
-{"request_id":"req_057f6f5649","trace_id":"tr_057f6f5649","error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"effects":"none","operation_id":"demo.add","details":{"field":"a"}}} 422
-{"request_id":"req_06f84617ee","trace_id":"tr_06f84617ee","error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false,"effects":"none","operation_id":"demo.nope"}} 404
+{"request_id":"req_08a5a51510","trace_id":"tr_08a5a51510","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0} 422
+{"request_id":"req_091954749d","trace_id":"tr_091954749d","operation":"demo.nope","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false,"operation_id":"demo.nope"},"effects":"none","data_count":0} 404
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input_envelope","message":"use `operation` or the deprecated `id`, not both","retryable":false,"details":{"key":"operation","alias":"id"}},"effects":"none","data_count":0} 422
 ```
 
-**W3C trace context.** A `traceparent` header is accepted; the Completion's `trace_id` becomes its trace ID and the response carries a new `traceparent` with the same trace ID:
+**A 0.1.0 client still works in 0.2.x.** The legacy body `{"id", "params"}` is accepted, and the response carries `Deprecation: true` (and the access log `"deprecated":1`):
+
+```sh
+curl -sS -i http://127.0.0.1:8080/v1/request -H 'Content-Type: application/json' -d '{"id":"demo.add","params":{"a":2,"b":3}}'
+```
+
+```text
+HTTP/1.1 200 OK
+content-type: application/json
+traceparent: 00-418af828f130d81693a9b9a4f579dfb7-ff6e720c6ab8902e-01
+deprecation: true
+…
+{"request_id":"req_109a2976aa","trace_id":"tr_109a2976aa","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+```
+
+**W3C trace context.** A `traceparent` header is accepted; the envelope's `trace_id` becomes its trace ID and the response carries a new `traceparent` with the same trace ID:
 
 ```sh
 curl -sS -i http://127.0.0.1:8080/v1/request -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' \
@@ -296,9 +398,9 @@ curl -sS -i http://127.0.0.1:8080/v1/request -H 'traceparent: 00-4bf92f3577b34da
 ```text
 HTTP/1.1 200 OK
 content-type: application/json
-traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-66e207f1cfec19a8-01
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-ef1195a42751f92a-01
 …
-{"request_id":"req_04e8703e14","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","result":5,"data_count":0,"effects":"none"}
+{"request_id":"req_111beda15f","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 ```
 
 ### 5. SSE (same route, different `Accept`)
@@ -316,28 +418,56 @@ curl -sSN http://127.0.0.1:8080/v1/request \
 ```text
 id: 1
 event: data
-data: {"request_id":"req_02f38843e2","trace_id":"tr_02f38843e2","seq":1,"type":"data","data":3}
+data: {"request_id":"req_1293872424","trace_id":"tr_1293872424","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
 
 id: 2
 event: data
-data: {"request_id":"req_02f38843e2","trace_id":"tr_02f38843e2","seq":2,"type":"data","data":2}
+data: {"request_id":"req_1293872424","trace_id":"tr_1293872424","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
 
 id: 3
 event: data
-data: {"request_id":"req_02f38843e2","trace_id":"tr_02f38843e2","seq":3,"type":"data","data":1}
+data: {"request_id":"req_1293872424","trace_id":"tr_1293872424","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
 
 id: 4
 event: result
-data: {"request_id":"req_02f38843e2","trace_id":"tr_02f38843e2","result":{"count":3},"data_count":3,"effects":"none","type":"result","seq":4}
+data: {"request_id":"req_1293872424","trace_id":"tr_1293872424","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+```
+
+The event name mirrors the record `type`. There is no `event: error` any more: a failed stream ends with `event: result` whose `status` is `error` (or `cancelled`), so a client switches on `status`.
+
+**Failing example.** Pretty JSON cannot be combined with an event stream (HTTP 400):
+
+```sh
+curl -sS -w ' %{http_code}\n' 'http://127.0.0.1:8080/v1/request?pretty=true' \
+  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' --data-binary @requests/countdown.http.json
+```
+
+```text
+{
+  "request_id": "",
+  "trace_id": "",
+  "operation": "demo.countdown",
+  "type": "result",
+  "status": "error",
+  "data": null,
+  "error": {
+    "kind": "validation",
+    "code": "validation.pretty_stream",
+    "message": "pretty JSON cannot be used with an event stream (Accept: text/event-stream); drop ?pretty=true",
+    "retryable": false
+  },
+  "effects": "none",
+  "data_count": 0
+} 400
 ```
 
 ### 6. Polling: open → events → terminal
 
 ```text
  client                                         rivet serve
-   | POST /v1/requests {id, params}                 |
+   | POST /v1/requests {operation, data}            |
    |----------------------------------------------->|  open (rivet.sessions.open)
-   |<-------------- 202 SessionReceipt + events_url |
+   |<-- 202 envelope status accepted, data = receipt|
    | GET {events_url}?after_seq=0&wait_ms=1000      |
    |----------------------------------------------->|  read (rivet.sessions.read)
    |<----------- 200 SessionBatch  terminal:false   |
@@ -371,39 +501,39 @@ curl -sS -X POST http://127.0.0.1:8080/v1/requests \
 
 #### Expected Output / Response
 
-The open call returns HTTP 202 with a SessionReceipt:
+The open call returns HTTP 202 with an envelope whose `status` is `accepted` and whose `data` is the SessionReceipt (the only case where `data` is set and the request has not finished):
 
 ```json
-{"session_id":"ses_017150dba5","request_id":"req_0373c5efc7","trace_id":"tr_0373c5efc7","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","input_schema":null,"emits_schema":{"type":"integer"},"next_send_seq":1,"expires_at":"2026-09-28T06:43:08Z","events_url":"/v1/requests/ses_017150dba5/events"}
+{"request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","operation":"demo.countdown","type":"result","status":"accepted","data":{"session_id":"ses_01a29191d5","request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","input_schema":null,"emits_schema":{"type":"integer"},"next_send_seq":1,"expires_at":"2026-09-28T21:16:26Z","events_url":"/v1/requests/ses_01a29191d5/events"},"error":null,"effects":"none","data_count":0}
 ```
 
-Polling `events_url` returns a SessionBatch; the countdown fits in one batch:
+Polling `events_url` returns a SessionBatch (not an envelope; its `events` are stream records, the same records as NDJSON and SSE). The countdown fits in one batch:
 
 ```json
-{"session_id":"ses_017150dba5","events":[{"request_id":"req_0373c5efc7","trace_id":"tr_0373c5efc7","seq":1,"type":"data","data":3},{"request_id":"req_0373c5efc7","trace_id":"tr_0373c5efc7","seq":2,"type":"data","data":2},{"request_id":"req_0373c5efc7","trace_id":"tr_0373c5efc7","seq":3,"type":"data","data":1},{"request_id":"req_0373c5efc7","trace_id":"tr_0373c5efc7","result":{"count":3},"data_count":3,"effects":"none","type":"result","seq":4}],"last_seq":4,"terminal":true}
+{"session_id":"ses_01a29191d5","events":[{"request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null},{"request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null},{"request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null},{"request_id":"req_13ab13a8e1","trace_id":"tr_13ab13a8e1","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}],"last_seq":4,"terminal":true}
 ```
 
-Polling again with `after_seq=4` returns `{"session_id":"ses_017150dba5","events":[],"last_seq":4,"terminal":true}`. The unary `demo.add` job returns one batch with one terminal event:
+Polling again with `after_seq=4` returns `{"session_id":"ses_01a29191d5","events":[],"last_seq":4,"terminal":true}`. The unary `demo.add` job returns one batch with one terminal record:
 
 ```json
-{"session_id":"ses_0201e20dd2","events":[{"request_id":"req_04025f578c","trace_id":"tr_04025f578c","result":5,"data_count":0,"effects":"none","type":"result","seq":1}],"last_seq":1,"terminal":true}
+{"session_id":"ses_02ddba1c42","events":[{"request_id":"req_14d53c29a6","trace_id":"tr_14d53c29a6","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}],"last_seq":1,"terminal":true}
 ```
 
 Cancelling a session that already finished reports its terminal state instead of cancelling it:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:8080/v1/requests/ses_017150dba5/cancel
+curl -sS -X POST http://127.0.0.1:8080/v1/requests/ses_01a29191d5/cancel
 ```
 
 ```json
-{"session_id":"ses_017150dba5","request_id":"req_0373c5efc7","state":"succeeded"}
+{"session_id":"ses_01a29191d5","request_id":"req_13ab13a8e1","state":"succeeded"}
 ```
 
 Polling sessions survive client reconnects until they expire (`expires_at`) or are cancelled.
 
 ### 7. WebSocket frames
 
-[requests/ws-frames.jsonl](requests/ws-frames.jsonl) holds three client frames, multiplexed by client-chosen `ref`.
+[requests/ws-frames.jsonl](requests/ws-frames.jsonl) holds three client frames, multiplexed by client-chosen `ref`. Each is an input envelope plus `type` and `ref`: `{"type":"request","ref":"c1","operation":"demo.add","data":{"a":2,"b":3}}`.
 
 #### Command / Request
 
@@ -415,24 +545,26 @@ The client connects with subprotocol `rivet.v1`, sends each line as one text fra
 
 ```text
  client frames (ref)                      server frames (per-ref order guaranteed)
- c1 request demo.add {a:2,b:3}   ------>  c1 result  completion.result = 5
- c2 request demo.countdown {}    ------>  c2 data seq 1..3, then c2 result {count:3}
- c3 request demo.add {b:3}       ------>  c3 error   validation.required
+ c1 request demo.add {a:2,b:3}   ------>  c1 result  status ok, data 5
+ c2 request demo.countdown {}    ------>  c2 data seq 1..3, then c2 result status ok, data {count:3}
+ c3 request demo.add {b:3}       ------>  c3 result  status error, validation.required
                                           (frames of different refs may interleave)
 ```
 
 #### Expected Output / Response
 
-The order of different refs varies between runs; the order within a ref does not:
+Every server frame is a stream record (the same envelope as NDJSON and SSE) with `ref` first. There is no separate `error` frame and no nested `completion`. The order of different refs varies between runs; the order within a ref does not:
 
 ```json
-{"type":"error","ref":"c3","error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"effects":"none","operation_id":"demo.add","details":{"field":"a"}}}
-{"type":"result","ref":"c1","completion":{"request_id":"req_08cb342438","trace_id":"tr_08cb342438","result":5,"data_count":0,"effects":"none"}}
-{"type":"data","ref":"c2","request_id":"req_0948f72145","trace_id":"tr_0948f72145","seq":1,"data":3}
-{"type":"data","ref":"c2","request_id":"req_0948f72145","trace_id":"tr_0948f72145","seq":2,"data":2}
-{"type":"data","ref":"c2","request_id":"req_0948f72145","trace_id":"tr_0948f72145","seq":3,"data":1}
-{"type":"result","ref":"c2","completion":{"request_id":"req_0948f72145","trace_id":"tr_0948f72145","result":{"count":3},"data_count":3,"effects":"none"}}
+{"ref":"c3","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"ref":"c1","request_id":"req_15449bbcd3","trace_id":"tr_15449bbcd3","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
+{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
+{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
+{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 ```
+
+The validation failure of `c3` is refused before a request is created, so its `request_id` and `trace_id` are empty (the HTTP 422 of step 4 does assign IDs).
 
 A connection may hold at most 8 in-flight refs; each ref has a bounded 16-frame queue. Closing the socket cancels and joins all of its refs. Unlike polling sessions, WebSocket requests are owned by the connection.
 
@@ -467,22 +599,22 @@ The bodies are [initialized](requests/initialized.mcp.json), [list](requests/lis
 ```text
 HTTP/1.1 200 OK
 content-type: application/json
-mcp-session-id: mcp_192d307ae7f5842cd
+mcp-session-id: mcp_1d9bddc0650692315
 …
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 ```
 
-`notifications/initialized` returns HTTP 202 with an empty body. `tools/list` returns the four direct tools, each with `name`, `title`, `description`, `inputSchema` and `outputSchema` (the Completion envelope whose `result` is the declared output), followed by the built-ins `rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.open|send|finish_input|read|cancel`, `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.capabilities`, `rivet.connectors.sync` and `rivet.auth.begin|complete|status|disconnect|cancel`. One entry, abbreviated:
+`notifications/initialized` returns HTTP 202 with an empty body. `tools/list` returns the four direct tools, each with `name`, `title`, `description`, `inputSchema` and `outputSchema` (the ResponseEnvelope schema whose `data` is the declared output or null), followed by the built-ins `rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.open|send|finish_input|read|cancel`, `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.capabilities`, `rivet.connectors.sync` and `rivet.auth.begin|complete|status|disconnect|cancel`. One entry:
 
 ```json
-{"name":"demo.countdown","title":"Count down","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false},"description":"Emit 3, 2, 1 as data items and then return a summary.","outputSchema":{"type":"object","properties":{"session_id":{"type":"string"}, …},"required":["session_id","request_id","catalog_version","next_send_seq","expires_at"]},"_meta":{"rivet/delivery":"session"}}
+{"name":"demo.add","title":"Add two integers","inputSchema":{"type":"object","properties":{"a":{"type":"integer","description":"First operand."},"b":{"type":"integer","description":"Second operand; defaults to zero.","default":0}},"required":["a"],"additionalProperties":false},"description":"Add two signed integers and return their sum.","outputSchema":{"type":"object","properties":{"request_id":{"type":"string"},"trace_id":{"type":"string"},"operation":{"type":["string","null"]},"type":{"type":"string","enum":["result"]},"status":{"type":"string","enum":["ok","error","cancelled","accepted"]},"data":{"anyOf":[{"type":"integer","description":"Sum of a and b."},{"type":"null"}]},"error":{"type":["object","null"]},"effects":{"type":"string","enum":["none","committed","partial","unknown"]},"data_count":{"type":"integer","minimum":0}},"required":["request_id","trace_id","operation","type","status","data","error","effects","data_count"]}}
 ```
 
-`demo.countdown` is a session tool: calling it returns a SessionReceipt, read with `rivet.sessions.read`. The direct `demo.add` call and `rivet.outputs` return the Completion in `structuredContent` (and as text):
+`demo.countdown` is a session tool (`"_meta":{"rivet/delivery":"session"}`): calling it returns an envelope whose `data` is a SessionReceipt, read with `rivet.sessions.read`. The direct `demo.add` call and `rivet.outputs` return the ResponseEnvelope in `structuredContent` (and as text); `isError` is true when `status` is `error` or `cancelled`:
 
 ```json
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_1071fc88ca\",\"trace_id\":\"tr_1071fc88ca\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}"}],"structuredContent":{"request_id":"req_1071fc88ca","trace_id":"tr_1071fc88ca","result":5,"data_count":0,"effects":"none"},"isError":false}}
-{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_11f2323bdf","trace_id":"tr_11f2323bdf","result":{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},"data_count":0,"effects":"none"},"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_17a45216dd\",\"trace_id\":\"tr_17a45216dd\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_17a45216dd","trace_id":"tr_17a45216dd","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_182b40b5b2","trace_id":"tr_182b40b5b2","operation":"rivet.outputs","type":"result","status":"ok","data":{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
 For an MCP client that launches Rivet as a subprocess, use stdio instead. It serves MCP only; stdout carries only protocol messages and the startup record goes to stderr:
@@ -494,7 +626,7 @@ For an MCP client that launches Rivet as a subprocess, use stdio instead. It ser
 
 ```json
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_01aabacb0d\",\"trace_id\":\"tr_01aabacb0d\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}"}],"structuredContent":{"request_id":"req_01aabacb0d","trace_id":"tr_01aabacb0d","result":5,"data_count":0,"effects":"none"},"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0170b71c45\",\"trace_id\":\"tr_0170b71c45\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_0170b71c45","trace_id":"tr_0170b71c45","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
 ### 9. Authentication and narrowed surfaces (alternate policy file)
@@ -526,8 +658,8 @@ The CLI can act as a thin client of the same server. The token is read from a fi
 
 ```sh
 TOKEN_FILE="$(mktemp)"; printf 'dev-token-ada' > "$TOKEN_FILE"
-rivet --endpoint http://127.0.0.1:8080 --token-file "$TOKEN_FILE" request demo.add --params '{"a":2,"b":3}'
-rivet --endpoint http://127.0.0.1:8080 request demo.add --params '{"a":2}'
+rivet --endpoint http://127.0.0.1:8080 --token-file "$TOKEN_FILE" request demo.add --data '{"a":2,"b":3}'
+rivet --endpoint http://127.0.0.1:8080 request demo.add --data '{"a":2}'
 rivet --endpoint http://127.0.0.1:8080 --token-file "$TOKEN_FILE" check
 rm -f "$TOKEN_FILE"
 ```
@@ -541,19 +673,19 @@ The startup record now shows the narrowed surfaces and bearer auth:
 ```
 
 ```text
-{"request_id":"req_01299f569d","trace_id":"tr_01299f569d","result":5,"data_count":0,"effects":"none"}
-{"request_id":"req_02a92a9dba","trace_id":"tr_02a92a9dba","error":{"kind":"permission","code":"permission.denied","message":"principal `ci` may not call `demo.add`","retryable":false,"effects":"none"}} 403
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false,"effects":"none"}} 401
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false,"effects":"none"}} 401
+{"request_id":"req_02ef6e364a","trace_id":"tr_02ef6e364a","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"request_id":"req_036f163dff","trace_id":"tr_036f163dff","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"principal `ci` may not call `demo.add`","retryable":false},"effects":"none","data_count":0} 403
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false},"effects":"none","data_count":0} 401
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false},"effects":"none","data_count":0} 401
 404
-{"operations":[{"id":"demo.health","name":"Check availability","description":"Return a constant readiness response without I/O.","streaming":false}],"next_cursor":null}
+{"request_id":"req_04eb22d6d4","trace_id":"tr_04eb22d6d4","operation":"rivet.list","type":"result","status":"ok","data":{"operations":[{"id":"demo.health","name":"Check availability","description":"Return a constant readiness response without I/O.","streaming":false}],"next_cursor":null},"error":null,"effects":"none","data_count":0}
 ```
 
-`ci` only sees the one operation it may call. The `--endpoint` client prints the same Completion as a local run (exit 0); without a token it gets `auth.required` (exit 3); `check`, `graph`, `policy` and `serve` are refused remotely (exit 2):
+`ci` only sees the one operation it may call. The `--endpoint` client prints the same envelope as a local run (exit 0); without a token it gets `auth.required` (exit 3); `check`, `graph`, `policy` and `serve` are refused remotely (exit 2):
 
 ```text
-{"request_id":"req_036f555ba7","trace_id":"tr_036f555ba7","result":5,"data_count":0,"effects":"none"}
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false,"effects":"none"}}
+{"request_id":"req_056a8ca619","trace_id":"tr_056a8ca619","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false},"effects":"none","data_count":0}
 error[validation.usage]: check, graph, policy and serve work on a local bundle (--file); they are not available with --endpoint
 ```
 
@@ -570,7 +702,7 @@ rivet --file app.rivet serve --listen 0.0.0.0:8080
 ```
 
 ```json
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"serve.auth_required","message":"non-loopback listener requires serve.auth in policy.json","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.serve","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"serve.auth_required","message":"non-loopback listener requires serve.auth in policy.json","retryable":false},"effects":"none","data_count":0}
 ```
 
 It exits 2. The embedding equivalent is in [12-library](../12-library/README.md).
@@ -581,6 +713,8 @@ It exits 2. The embedding equivalent is in [12-library](../12-library/README.md)
 |---|---|---|---|
 | Success | — | 200 (202 for polling open) | 0 |
 | Missing `a` | `validation.required` | 422 | 2 |
+| `operation` and `id` (or `--data` and `--params`) together | `validation.input_envelope` / `validation.usage` | 422 | 2 |
+| `?pretty=true` with SSE / `--pretty` with `--stream` | `validation.pretty_stream` / `validation.usage` | 400 | 2 |
 | Malformed policy file | `policy.invalid` | — | 2 |
 | Non-loopback listen with auth `none` | `serve.auth_required` | — | 2 |
 | Missing / wrong bearer token | `auth.required` / `auth.invalid` | 401 | 3 |
@@ -632,26 +766,45 @@ demo.countdown  app.rivet:27
 
 All of these exit 0. `check --strict-docs` requires descriptions on every param, output and output field and an `error` line for every code a body can `fail` with; removing any `description` from an `output` or `field` line makes it fail with exit 2. The graph of a pure operation is just its node; see [05-dag](../05-dag/README.md) for a larger one.
 
-The JSON manifest has no sites (`"policy": null, "complete": true, "sites": [], "targets": [], "needs": []`), so `--strict` exits 0. `--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key. Abbreviated to the templates it lists:
+`check --json` prints a `rivet.check` envelope (`"data":{"operations":4,"connectors":0,"auth_profiles":0,"warnings":0}`). The JSON manifest is a `rivet.io` envelope whose `data` has no sites (`"policy":null,"complete":true,"sites":[],"targets":[],"needs":[]`), so `--strict` exits 0. `--include-bootstrap` adds the fixed runtime-internal list under a separate `bootstrap` key. The table form (`rivet --file app.rivet io --include-bootstrap`) prints:
 
 ```text
-bootstrap (phase load, never granted to scripts):
-  file read   ./app.rivet (+ imports)
-  file read   ./policy.json (when present)
-  file read   system CA bundle
-  file read   /etc/resolv.conf / system resolver
-  file read   tzdata
-  file read   descriptor/schema files named by connectors (none here)
-  pipe r/w    stdin, stdout, stderr
+OPERATION  KIND  ACCESS  TARGET  KNOWLEDGE  SOURCE
+(no I/O sites)
+
+BOOTSTRAP (runtime-internal; listed, not governed by policy.json)
+KIND  ACCESS       TARGET
+file  read         ./app.rivet
+file  read         ./policy.json (when present)
+file  read         system CA bundle
+file  read         /etc/resolv.conf / system resolver
+file  read         tzdata
+file  read         descriptor/schema files named by connectors (none here)
+pipe  read, write  stdin, stdout, stderr
 ```
+
+Since 0.2.0 the bundle row names the entry file and, one row each, every imported module file (0.1.0 printed the placeholder `./app.rivet (+ imports)`); this bundle has no imports. See [17-modules](../17-modules/README.md) for a bundle that has.
 
 `io --check-policy` finds no policy.json, so the effective policy is deny-by-default; with zero sites nothing can be denied. `--policy ./policies/team.json io --check-policy` gives the same result. `io` performs no I/O and evaluates no source expression. Exit codes: 3 when `--check-policy` finds a reachable site denied or partial; 7 with `--strict` when any site is dynamic or opaque; otherwise 0.
 
 ## Release Updates
 
+0.2.0 updates shown here (numbering of the [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)):
+
 | Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
 |---|---|---|---|---|---|
-| U-08 | UQ-07/09 / R8 | One dispatcher behind CLI, REST, SSE, polling, WS, MCP | Steps 1, 4–8 | `demo.add` returns 5 on every surface | This README steps 1, 4–8 (2026-09-28, 829ca43); TEST-2026-0002 |
+| U-01 | UQ-03/05 / R1 | One ResponseEnvelope on CLI, HTTP, SSE, polling, WS and MCP | Steps 1, 4–8 | Same nine keys in the same order on every surface; `data` 5 | This README steps 1, 4–8 (2026-09-29, 8031baa) |
+| U-02 | UQ-05 / R2 | `status` ok/error/cancelled/accepted; `type` result/data; `effects` top level | Steps 1, 4, 6 | `status: error` + `data: null` for failures; `accepted` for the polling open | This README steps 1, 4, 6 |
+| U-03 | UQ-03 / R3 | Built-ins, GET routes and `--json` outputs are envelopes | Steps 1, 2, 4; Inspect | `rivet.describe`, `rivet.outputs`, `rivet.list`, `rivet.health`, `rivet.check`, `rivet.io` envelopes | This README steps 1, 2, 4 |
+| U-04 | UQ-06 / R4 | One input envelope `{operation, data}`; `--data`, `--input` | Steps 1, 4, 6, 7 | Same body accepted by CLI `--input`, REST, polling and WS | This README; [requests/](requests/add.http.json) |
+| U-05 | 0.1.0 clients / R5 | `id`/`params` and `--params` still accepted with a deprecation signal; mixing refused | Steps 1, 4 | `warning[deprecated.params]`; `deprecation: true`; `validation.input_envelope` 422 / exit 2 | This README steps 1, 3, 4 |
+| U-06 | UQ-04 / R6 | `--pretty`, `?pretty=true`; refused with NDJSON/SSE | Steps 1, 4, 5 | Indented envelope; `validation.usage` exit 2; `validation.pretty_stream` 400 | This README steps 1, 4, 5 |
+
+Still verified from 0.1.0 (numbering of [DEMO-2026-0015](../demo-2026-0015-v0-1-0-release-verification.md)):
+
+| Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
+|---|---|---|---|---|---|
+| U-08 | UQ-07/09 / R8 | One dispatcher behind CLI, REST, SSE, polling, WS, MCP | Steps 1, 4–8 | `demo.add` returns 5 on every surface | This README steps 1, 4–8 (re-run 2026-09-29, 8031baa); TEST-2026-0002 |
 | U-20 | UQ-15 / R20 | Many described operations in one file | Step 1 `list --outputs` | Four IDs with names, outputs, descriptions | This README step 1; TEST-2026-0016 |
 | U-21 | UQ-15 / R21 | Incoming MCP: direct named tools plus built-ins | Step 8 | `tools/list` shows `demo.*` and `rivet.*`; `demo.add` → 5 | This README step 8; TEST-2026-0018 |
 | U-22 | UQ-15/08/17 / R22 | Live streams on every surface | Steps 1, 5, 6, 7 | Items 3, 2, 1 then `{count:3}` | This README steps 1, 5–7; TEST-2026-0019 |
@@ -660,7 +813,7 @@ bootstrap (phase load, never granted to scripts):
 | U-25 | UQ-17 / R25 | One `serve` mounts REST, SSE, polling, WS and MCP with one auth model | Steps 3–9 | 200/401/403/404 as shown | This README steps 3–9; TEST-2026-0022 |
 | U-26 | UQ-18 / R26 | `io` is the generated I/O manifest | Inspect before invoking | `(no I/O sites)`, exit 0 | This README "Inspect"; TEST-2026-0025 |
 
-The current command list is in the [CLI reference](../../manuals/man-2026-0004-cli-reference.md); the release-wide checklist is the [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md).
+The current command list is in the [CLI reference](../../manuals/man-2026-0004-cli-reference.md); the release-wide checklists are the [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md) and, for 0.1.0, [DEMO-2026-0015](../demo-2026-0015-v0-1-0-release-verification.md).
 
 ## Cleanup
 
@@ -670,30 +823,31 @@ Stop any server you started with Ctrl-C (or `kill -TERM`, which drains the same 
 
 | Step | Verified By | Verified At | Result |
 |---|---|---|---|
-| 1. CLI list, describe, request ×3, `--stream`, failures, `rivet.capabilities` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 2. `outputs demo.health`, `outputs --all --json` | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 3. `serve --listen` (run on 127.0.0.1:18800) startup record and access log | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 4. REST health, operations, describe, outputs, request, 422/404, traceparent | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 5. SSE countdown | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 6. Polling open (202), events, unary job, cancel after finish | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 7. WebSocket three refs via fixtures/ws_client.py | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 8. MCP initialize, initialized, tools/list, direct tool, `rivet.outputs`, stdio | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| 9. team.json: ada 200, ci 403, no/wrong token 401, ws 404, `--endpoint`, non-loopback refusal | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| `check --strict-docs` (exit 0) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| `io --check-policy` (exit 0) | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
-| `io --check-files` (exit 0), `io --by target`, `graph`, JSON manifest | Claude (TASK-067) | 2026-09-28, commit 829ca43, macOS 26.4.1 arm64 | PASS |
+| 1. CLI list, describe, request ×3 with `--data`, `--input -`, `--pretty`, `--stream`, failures, `--params` warning, mixed-key and `--stream --pretty` refusals, `rivet.capabilities` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. `outputs demo.health`, `outputs --all --json` (envelope) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. `serve --listen` (run on 127.0.0.1:18800) startup record, access log with `deprecated` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 4. REST GET routes (envelopes), request, `?pretty=true`, 422/404/422, legacy body + `Deprecation`, traceparent | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 5. SSE countdown (`event: result`), `?pretty=true` refusal 400 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. Polling open (202 `accepted`), events, unary job, cancel after finish | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 7. WebSocket three refs via fixtures/ws_client.py (envelope frames with `ref`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 8. MCP initialize, initialized, tools/list (`outputSchema` = envelope), direct tool, `rivet.outputs`, stdio | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 9. team.json: ada 200, ci 403, no/wrong token 401, ws 404, `--endpoint`, non-loopback refusal | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| `check --strict-docs`, `check --json` (exit 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| `io --check-policy` (exit 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| `io --check-files` (exit 0), `io --by target`, `graph`, `io --include-bootstrap` (no `(+ imports)` placeholder), JSON manifest | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Build: `cargo build` and `cargo build --release` at `829ca43`. Every command above was executed from this folder and the output pasted from that run.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`). Every command above was executed from this folder and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43, 2026-09-28) is recorded in revision 7 below.
 
 ## Known Caveats
 
 - Request, trace, session and MCP session IDs, timestamps, `catalog_version` and `policy_hash` values are generated or content-derived; compare application results, codes and HTTP statuses, not literal IDs.
 - Frames of different WebSocket refs interleave differently on each run.
 - Port 8080 is a common development port; when it is taken, pick another loopback port consistently.
+- The release candidate still reports version `0.1.0` (`rivet --version`, `/v1/health`, `serverInfo.version`, `rivet.capabilities`); the bump to 0.2.0 happens at release (PLAN-2026-0002 P5).
 
 ## Related Documents
 
-- [All sample folders](../README.md) · [demos index](../index.md) · [release verification guide](../demo-2026-0015-v0-1-0-release-verification.md) · [CLI reference](../../manuals/man-2026-0004-cli-reference.md)
+- [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md) · [v0.1.0 guide](../demo-2026-0015-v0-1-0-release-verification.md) · [envelope reference (API-2026-0006)](../../api/api-2026-0006-envelopes.md) · [migration guide (MIG-2026-0001)](../../migrations/mig-2026-0001-response-and-input-envelopes.md) · [CLI reference](../../manuals/man-2026-0004-cli-reference.md)
 - [Installation and quickstart (MAN-2026-0002)](../../manuals/man-2026-0002-installation-and-quickstart.md) · [Serving and surfaces (MAN-2026-0006)](../../manuals/man-2026-0006-serving-and-surfaces.md)
 - [Usage reference](../../references/ref-2026-0002-language-and-usage.md) · [Proposal](../../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
@@ -701,6 +855,7 @@ Build: `cargo build` and `cargo build --release` at `829ca43`. Every command abo
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-50): re-executed every step against the 0.2.0 release candidate (8031baa). Commands use `--data` (plus `--input -`, `--pretty`, the `--params` deprecation warning and the refusals); every output replaced by 0.2.0 ResponseEnvelopes and stream records: GET routes, `describe`/`outputs`/`check`/`io` JSON, SSE `event: result`, polling `accepted` receipt, WS envelope frames with `ref`, MCP `structuredContent` and `outputSchema`; legacy-body `Deprecation` example; `(+ imports)` placeholder replaced by the real bootstrap table; `build_features`/`abi_version` in `rivet.capabilities`; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 7 | 2026-09-28 | Claude | TASK-067 re-verification at 829ca43 (after the INC-2026-0005/0006 fixes): every step re-run with the release binary on 127.0.0.1:18800; output identical except IDs, timestamps and ports; commit references updated; linked the release verification guide DEMO-2026-0015 |
 | 6 | 2026-09-28 | Codex | Repaired two links to the absent release-verification guide by linking the current CLI reference. |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (073d944) and pasted real output. Fixes: `list --outputs` columns; `describe`, `outputs --all --json`, Completion, SSE, polling receipt/batch (session IDs `ses_…`, `trace_id` in receipts, `seq` on the result event) and WebSocket frames (data frames carry `request_id`/`trace_id`) as printed; MCP `tools/list` built-in set; `/v1/health`, traceparent, cancel-after-finish, `--endpoint`, 401 codes, `rivet.capabilities`, `graph`, `io --check-files`; WebSocket step uses fixtures/ws_client.py (websocat is optional); §7 header; status active; verified_against 0.1.0. |
