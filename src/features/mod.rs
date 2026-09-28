@@ -1,6 +1,7 @@
 //! Features: pure, surface-blind use cases and their ports.
 
 pub mod audit;
+pub mod connectors;
 pub mod datagrams;
 pub mod execution;
 pub mod files;

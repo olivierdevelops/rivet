@@ -1,6 +1,6 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy
+// vhco:surface cli kind cli calls language/compile_program, registry/describe_operations, registry/inspect_outputs, execution/request_operation, policy/load_policy, serve/start_serve, audit/inspect_effects, audit/read_trace, policy/generate_policy, connectors/invoke_mcp
 // vhco:trigger cli execution/request_operation = rivet request ID --params JSON
 // vhco:trigger cli registry/describe_operations = rivet list | rivet describe ID
 // vhco:trigger cli registry/inspect_outputs = rivet outputs ID | rivet outputs --all
@@ -10,6 +10,10 @@
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
 // vhco:trigger cli audit/read_trace = rivet trace show REQ
 // vhco:trigger cli policy/generate_policy = rivet policy generate [ID ...|--all] [--output PATH]
+// vhco:trigger cli connectors/invoke_mcp = rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON
+// vhco:api cli connectors/invoke_mcp rivet connectors sync NAME --output PATH -- authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists
+// vhco:request { "name": "string — mcp connector", "output": "string — new snapshot path inside the bundle" }
+// vhco:response { "connector": "string", "path": "string", "sha256": "sha256:…", "protocolVersion": "string", "tools": "string[]", "resources": "string[]", "prompts": "string[]" }
 // vhco:api cli audit/inspect_effects rivet io [ID ...] [flags] -- the I/O manifest; stdout in the requested format, summaries on stderr; exit 0, 3 (denied/partial or not_permitted/unreadable), 4 (missing needed file / unknown id), 7 (--strict and incomplete), 2 (usage)
 // vhco:request { "ids": "string[]", "all": "bool", "by": "operation|target|capability", "kind": "string?", "access": "string[]", "format": "table|json|markdown|csv", "check_policy": "bool", "strict": "bool", "needs": "bool", "check_files": "bool", "trace": "string?" }
 // vhco:response { "bundle": "FileDigest", "policy": "FileDigest?", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]", "needs": "OperationNeeds[]", "bootstrap": "EffectSite[]" }
@@ -26,8 +30,8 @@ use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
 use crate::features::language::lower::strict_doc_findings;
 use crate::io::cli::{
-    Cli, Command, PolicyCommand, TraceCommand, render_describe, render_list, render_outputs,
-    render_policy, render_policy_review,
+    Cli, Command, ConnectorsCommand, PolicyCommand, TraceCommand, render_describe, render_list,
+    render_outputs, render_policy, render_policy_review,
 };
 use crate::orchestrator::runtime::{Runtime, RuntimeBuilder};
 use clap::Parser;
@@ -83,6 +87,10 @@ fn load(cli: &Cli) -> Result<Runtime, (RivetError, Option<String>)> {
     let mut b: RuntimeBuilder = Runtime::builder().file(&file);
     if let Some(p) = &cli.policy {
         b = b.policy_file(p);
+    }
+    if matches!(cli.command, Command::Connectors { .. }) {
+        // Refreshing a snapshot must work before one exists or is approved.
+        b = b.connector_discovery();
     }
     b.build().map_err(|e| (e, source))
 }
@@ -312,6 +320,25 @@ async fn run(cli: Cli) -> i32 {
             }
             Err(e) => fail(&e, None, true),
         },
+        Command::Connectors {
+            command: ConnectorsCommand::Sync { name, output },
+        } => {
+            let rel = match root_relative(output, &runtime.bundle().root) {
+                Ok(r) => r,
+                Err(e) => return fail(&e, None, true),
+            };
+            match runtime.sync_connector(name, &rel).await {
+                Ok(receipt) => {
+                    let _ = writeln!(stdout, "{}", receipt.to_json());
+                    eprintln!(
+                        "wrote candidate snapshot {output} ({}); after review, approve it in policy.json: \"approved\": {{\"snapshots\": [\"{}\"]}}",
+                        receipt.sha256, receipt.sha256
+                    );
+                    0
+                }
+                Err(e) => fail(&e, None, true),
+            }
+        }
         #[allow(unreachable_patterns)]
         _ => fail(
             &RivetError::unsupported(
@@ -322,6 +349,38 @@ async fn run(cli: Cli) -> i32 {
             cli.json,
         ),
     }
+}
+
+/// A cwd-relative output path as a bundle-root-relative `./path` (files are
+/// confined to the bundle root); a path outside the bundle is refused.
+fn root_relative(output: &str, root: &str) -> Result<String, RivetError> {
+    let norm = |p: &std::path::Path| -> Vec<String> {
+        let abs = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(p)
+        };
+        let mut out: Vec<String> = Vec::new();
+        for c in abs.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    out.pop();
+                }
+                std::path::Component::Normal(s) => out.push(s.to_string_lossy().to_string()),
+                _ => {}
+            }
+        }
+        out
+    };
+    let o = norm(std::path::Path::new(output));
+    let r = norm(std::path::Path::new(root));
+    if o.len() <= r.len() || o[..r.len()] != r[..] {
+        return Err(RivetError::validation(
+            "validation.output",
+            format!("--output {output} must be inside the bundle directory {root}"),
+        ));
+    }
+    Ok(format!("./{}", o[r.len()..].join("/")))
 }
 
 /// `--stream`: each data item becomes one NDJSON envelope line on stdout.

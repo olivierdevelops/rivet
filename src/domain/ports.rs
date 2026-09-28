@@ -256,3 +256,34 @@ pub trait ServeListener: Send {
 pub trait WsConnection: Send + Sync {
     async fn send(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
 }
+
+/// MCP client connectors: the catalog read at bundle load (reviewed
+/// snapshots, exposure, imports) and scoped sessions to one connector's
+/// transport. The adapter authorizes every transport attempt (network connect
+/// or process exec) itself; logical allow_mcp checks happen in the use case.
+#[async_trait]
+pub trait McpClient: Send + Sync {
+    fn catalog(&self) -> &super::mcp::McpCatalog;
+    /// Spawn / connect, then run initialize + notifications/initialized.
+    async fn open(
+        &self,
+        connector: &super::mcp::McpConnectorInfo,
+        context: &super::mcp::McpContext,
+    ) -> RivetResult<Box<dyn McpSession>>;
+}
+
+/// One initialized MCP session. `request` correlates one JSON-RPC request
+/// with its response, answering server pings, ignoring progress/log
+/// notifications and declining sampling/elicitation/roots. Dropping a session
+/// with a request in flight sends notifications/cancelled.
+#[async_trait]
+pub trait McpSession: Send {
+    fn peer(&self) -> &super::mcp::McpPeerInfo;
+    async fn request(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> RivetResult<super::mcp::McpReply>;
+    /// End the session (close stdin / DELETE the HTTP session) and release it.
+    async fn close(self: Box<Self>);
+}

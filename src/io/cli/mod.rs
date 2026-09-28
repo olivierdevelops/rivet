@@ -65,6 +65,23 @@ pub enum Command {
         #[command(subcommand)]
         command: TraceCommand,
     },
+    /// Outbound MCP connectors.
+    Connectors {
+        #[command(subcommand)]
+        command: ConnectorsCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConnectorsCommand {
+    /// Discover a connector's tools/resources/prompts and write a NEW candidate
+    /// snapshot (never overwrites); prints the sha256 to approve in policy.json.
+    Sync {
+        name: String,
+        /// Where to write the candidate snapshot (must not exist; inside the bundle).
+        #[arg(long)]
+        output: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]

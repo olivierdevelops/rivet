@@ -23,8 +23,8 @@ use super::http_adapter::{MAX_STREAM_ITEM, StreamHandle};
 use crate::domain::ir::EffectForm;
 use crate::domain::ports::PolicyEvaluator;
 use crate::domain::transports::{
-    ByteStream, Codec, CodecInput, CodecKind, ProcessOutcome, ProcessPlan, ProcessResult,
-    ProcessRunner, StreamMode,
+    ByteSink, ByteStream, ChildDuplex, Codec, CodecInput, CodecKind, ProcessOutcome, ProcessPlan,
+    ProcessResult, ProcessRunner, StreamMode,
 };
 use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
 use async_trait::async_trait;
@@ -266,8 +266,64 @@ impl ProcessRunner for TokioRunner {
         })
     }
 
+    async fn spawn_duplex(&self, plan: &ProcessPlan) -> RivetResult<ChildDuplex> {
+        let mut cmd = self.command(plan)?;
+        cmd.stdin(Stdio::piped());
+        let mut child = cmd.spawn().map_err(|e| spawn_err(&plan.program, e))?;
+        let stdin = child.stdin.take().ok_or_else(|| {
+            RivetError::new(
+                ErrorKind::Process,
+                "process.io",
+                "child stdin is unavailable",
+            )
+        })?;
+        let stdout = self.stream_child(plan, child);
+        Ok(ChildDuplex {
+            stdin: Box::new(StdinSink { stdin: Some(stdin) }),
+            stdout,
+        })
+    }
+
     async fn spawn(&self, plan: &ProcessPlan) -> RivetResult<Box<dyn ByteStream>> {
-        let mut child = self.spawn_child(plan)?;
+        let child = self.spawn_child(plan)?;
+        Ok(self.stream_child(plan, child))
+    }
+}
+
+/// A child's stdin kept open for protocol traffic (MCP stdio).
+struct StdinSink {
+    stdin: Option<tokio::process::ChildStdin>,
+}
+
+#[async_trait]
+impl ByteSink for StdinSink {
+    async fn write(&mut self, bytes: &[u8]) -> RivetResult<()> {
+        let io = |e: std::io::Error| {
+            RivetError::new(
+                ErrorKind::Process,
+                "process.io",
+                format!("writing child stdin failed: {e}"),
+            )
+        };
+        let s = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| io(std::io::Error::other("stdin closed")))?;
+        s.write_all(bytes).await.map_err(io)?;
+        s.flush().await.map_err(io)
+    }
+
+    async fn close(mut self: Box<Self>) -> RivetResult<()> {
+        if let Some(mut s) = self.stdin.take() {
+            let _ = s.shutdown().await;
+        }
+        Ok(())
+    }
+}
+
+impl TokioRunner {
+    /// Wrap a spawned child: stdout becomes the stream, stderr is drained into a bounded tail.
+    fn stream_child(&self, plan: &ProcessPlan, mut child: Child) -> Box<dyn ByteStream> {
         let stdout = child.stdout.take();
         let stderr_tail = Arc::new(tokio::sync::Mutex::new(Vec::<u8>::new()));
         if let Some(mut err) = child.stderr.take() {
@@ -286,7 +342,7 @@ impl ProcessRunner for TokioRunner {
                 }
             });
         }
-        Ok(Box::new(ProcStream {
+        Box::new(ProcStream {
             child: Some(child),
             stdout,
             stderr_tail,
@@ -296,7 +352,7 @@ impl ProcessRunner for TokioRunner {
                 plan.accept_exit.clone()
             },
             program: plan.program.clone(),
-        }))
+        })
     }
 }
 
