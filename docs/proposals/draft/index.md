@@ -5,7 +5,7 @@ document_type: reference
 status: draft
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -35,31 +35,28 @@ approves one, it moves to [approved/](../approved/index.md) and keeps its file n
 
 ## Reading order and active documents
 
-**This directory is currently empty.** No proposal is under review.
+| Proposal | Status | Target | Summary |
+|---|---|---|---|
+| [PROP-2026-0002](prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | draft | v0.2.0 | Standard input/output envelopes, pretty JSON, `global` constants, Rivet as a Cargo dependency, C ABI shared/static library, syntax highlighting |
 
-- PROP-2026-0001 (Rivet runtime) was approved on 2026-09-28
-  ([ADR-0001](../../decisions/adr-0001-approve-rivet-runtime-design.md)) and now lives at
+- PROP-2026-0001 (Rivet runtime) was implemented in v0.1.0 and lives at
   [implemented/prop-2026-0001-rivet-runtime.md](../implemented/prop-2026-0001-rivet-runtime.md).
 - [Parent proposal index](../index.md)
 
 ## Status and maintenance
 
 ```text
-  draft/     (empty)
-  approved/  PROP-2026-0001  status: approved  design revision 8
-    gates:  [x] G-DESIGN    human design review            (ADR-0001)
-            [x] G-CONTRACT  vhco-contract.json approved    (ADR-0001)
-            [x] G-LIC       maintainer owns Capy           (ADR-0001)
-            [ ] G-SPIKE     every numbered example + docs/demos .rivet parses (PLAN-2026-0001 TASK-010)
+  draft/        PROP-2026-0002  status: draft   (awaiting G-DESIGN, then G-CONTRACT)
+  implemented/  PROP-2026-0001  v0.1.0
 ```
 
-Recently updated, 2026-09-28: PROP-2026-0001 left this directory on approval. A new proposal starts here with the
-next free ID (PROP-2026-0002). Update this index when a document is added or changes lifecycle.
+Recently updated, 2026-09-28: PROP-2026-0002 drafted. Update this index when a document changes lifecycle.
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-28 | Claude | Added PROP-2026-0002 (draft). |
 | 6 | 2026-09-28 | Claude | PROP-2026-0001 approved and moved to `approved/`; this directory is now empty. |
 | 5 | 2026-09-28 | Claude | Status for design revision 5 with the approval-gate checklist. |
 | 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |
