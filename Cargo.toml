@@ -1,0 +1,41 @@
+[package]
+name = "rivet"
+version = "0.1.0-dev"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+description = "Rivet — protocol-visible operations, scoped resources and composable DAGs, parsed with Capy"
+repository = "https://github.com/olivierdevelops/rivet"
+readme = "README.md"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "rivet"
+path = "src/main.rs"
+
+[dependencies]
+# language (ADR-0002)
+capy-core = { git = "https://github.com/olivierdevelops/capy", rev = "84f984c64e0811ef2bfff7835167d6630422ecaa" }
+# async runtime and plumbing
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "io-util", "io-std", "process", "fs", "time", "sync", "signal"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "sink"] }
+async-trait = "0.1"
+bytes = "1.12"
+# data, hashing, matching, URLs
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
+sha2 = "0.11"
+base64 = "0.22"
+globset = "0.4.20"
+url = "2.5.8"
+# CLI and diagnostics
+clap = { version = "4.6.7", features = ["derive"] }
+tracing = "0.1.44"
+# files
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
+
+[dev-dependencies]
+tempfile = "3"
