@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -56,6 +56,7 @@ evidence (`../research/`).
 | [ADR-0002](adr-0002-rust-crate-selection.md) | approved | 2026-09-28 | Rust crate set for v0.1.0 (RES-2026-0002); ring-only TLS; broker-dialed hyper client; rmcp pinned to 2025-11-25; hand-rolled OAuth | TASK-014, [RES-2026-0002](../research/res-2026-0002-rust-crate-feasibility.md) |
 | [ADR-0003](adr-0003-process-sandbox-backends.md) | approved | 2026-09-28 | Sandbox backends: macOS Seatbelt ships; Linux Landlock+seccomp gated on T-08; Windows/others refuse `unsupported.sandbox_backend`; children get no network | TASK-035, [RES-2026-0003](../research/res-2026-0003-process-sandbox-backends.md) |
 | [ADR-0004](adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) | approved | 2026-09-28 | PROP-2026-0002 approved for v0.2.0: envelopes, pretty JSON, globals, Cargo library, C ABI, highlighting; Q-01…Q-06 per recommendations | [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) |
+| [ADR-0005](adr-0005-workspace-package-and-features.md) | approved | 2026-09-28 | Workspace (`rivet-runtime` lib `rivet` + `ffi/` crate `rivet-ffi` lib `rivet`), FFI logic in `setup_ffi.rs`, features `serve,grpc,quic,oauth,cli` (default without `cli`), `unsupported.feature`, `build_features` in capabilities | PLAN-2026-0002 P2c/P2d, [RES-2026-0004](../research/res-2026-0004-workspace-ffi-and-feature-experiments.md) |
 
 ## Pending decisions
 
@@ -66,10 +67,13 @@ None.
                           │
                           ├── RES-2026-0002 ──▶ ADR-0002 crates   (approved) ──▶ TASK-014 Cargo.toml
                           └── RES-2026-0003 ──▶ ADR-0003 sandbox  (approved) ──▶ TASK-035 sandbox_*.rs
+
+ PROP-2026-0002 ──▶ ADR-0004 approved ──▶ PLAN-2026-0002 P1 ──▶ RES-2026-0004 ──▶ ADR-0005 packaging ──▶ P2c / P2d
 ```
 
 ## Recently added or updated
 
+- 2026-09-28: ADR-0005 (workspace, package and features) recorded from RES-2026-0004.
 - 2026-09-28: ADR-0001 recorded the maintainer's approval ("use git, i own capy so dont worry — everything else is
   approved").
 - 2026-09-28: ADR-0002 (crates) and ADR-0003 (sandbox backends) approved from the P1 research.
@@ -83,6 +87,8 @@ None.
 1. [ADR-0001](adr-0001-approve-rivet-runtime-design.md): what was approved.
 2. [ADR-0002](adr-0002-rust-crate-selection.md): which libraries implement it.
 3. [ADR-0003](adr-0003-process-sandbox-backends.md): where child-process confinement is and is not available.
+4. [ADR-0004](adr-0004-approve-envelopes-globals-library-ffi-highlighting.md): what v0.2.0 adds.
+5. [ADR-0005](adr-0005-workspace-package-and-features.md): how v0.2.0 is packaged.
 
 ## Related directories
 
@@ -93,6 +99,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-28 | Claude | Added ADR-0005. |
 | 3 | 2026-09-28 | Claude | Added ADR-0004. |
 | 2 | 2026-09-28 | Claude | Added ADR-0002 and ADR-0003; no pending decisions. |
 | 1 | 2026-09-28 | Claude | Created decisions index with ADR-0001 and the pending ADR-0002/0003. |
