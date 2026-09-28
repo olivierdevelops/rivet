@@ -4,8 +4,8 @@ title: "Rivet policy broker and I/O manifest"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [policy, audit]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
-scope: How Rivet loads policy.json, authorizes every effect attempt through the traced policy broker, and derives the static I/O manifest, policy drafts and request traces.
+scope: How Rivet loads policy.json, authorizes every effect attempt through the traced policy broker, and derives the static I/O manifest, policy drafts and request traces — including (0.2.0) global substitution into targets, one policy across file modules, and bootstrap reads of imported files.
 reason: Every application effect in Rivet passes through one decision function; operators and reviewers need an accurate description of how that decision is made, what the I/O manifest reports and where the evidence (traces, drafts) lives.
-related_documents: [PROP-2026-0001, PLAN-2026-0001, SYS-2026-0001, SYS-2026-0002, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0008, SYS-2026-0009]
+related_documents: [PROP-2026-0001, PLAN-2026-0001, PROP-2026-0002, PLAN-2026-0002, API-2026-0006, SEC-2026-0001, SYS-2026-0001, SYS-2026-0002, SYS-2026-0004, SYS-2026-0005, SYS-2026-0006, SYS-2026-0008, SYS-2026-0009]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, policy, broker, audit, io-manifest, trace, least-privilege]
@@ -31,11 +31,11 @@ tags: [rivet, system, policy, broker, audit, io-manifest, trace, least-privilege
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, audit
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -50,6 +50,12 @@ bounded, in-memory **trace store** readable with `rivet trace show` and exportab
 `Runtime::export_trace`. The effective authority of one attempt is **policy.json ∩ library host
 ceiling ∩ every per-request `restrict`** — callers and hosts can only narrow. The audit feature also
 builds the static call graph behind `rivet graph`.
+
+In 0.2.0 the manifest also sees `global` constants and file modules. Globals are substituted into effect
+targets, so a target built only from literals and globals is `exact`. A bundle of several files runs under **one**
+policy, the loader's, and each imported file is listed as its own bootstrap read. The `--json` outputs of these
+commands are [ResponseEnvelopes](../../api/api-2026-0006-envelopes.md) (`rivet.io`, `rivet.policy.generate`,
+`rivet.trace.show`, …).
 
 ```text
                        ┌──────────────────────────── policy feature ─────────────────────────────┐
@@ -99,9 +105,10 @@ builds the static call graph behind `rivet graph`.
 - **Does not perform I/O for the manifest.** `rivet io` never connects, never evaluates a source
   expression and never opens a file. The only exception is `--check-files`, which `stat`s paths through
   the broker (metadata only).
-- **Does not govern bootstrap reads.** The entry bundle, `policy.json` itself, CA bundles, the resolver,
-  tzdata, connector descriptor/schema snapshots and stdio are listed with `--include-bootstrap` but are
-  never checked against `policy.json`.
+- **Does not govern bootstrap reads.** The entry bundle and every imported module file (0.2.0), `policy.json`
+  itself, CA bundles, the resolver, tzdata, connector descriptor/schema snapshots and stdio are listed with
+  `--include-bootstrap` but are never checked against `policy.json`. Module reads are confined to the runtime
+  root by the loader instead (SYS-2026-0001).
 - **Does not persist anything.** The trace store and decision log are memory only and die with the
   process. Drafts are only written when `--output PATH` is given.
 - **The schema reference lives elsewhere.** Every key, default and error message of `policy.json` is in
@@ -210,7 +217,7 @@ Selector matching (`selector_matches` in `src/features/policy/authorize_effect.r
 | Selector kind | Applies to | Rule |
 |---|---|---|
 | `"*"` | every capability | matches every target (still subject to the private-range rule) |
-| path glob | `allow_read`, `allow_write`, `allow_delete`, `allow_exec`, `allow_unix`, `allow_pipe` | selector is joined to the **policy file's directory** and normalized; the target is joined to the **bundle root**; `globset` with `literal_separator(true)` (`*` stays inside one segment, `**` crosses); `dir/**` also matches `dir` itself; on macOS and Windows both sides are lower-cased |
+| path glob | `allow_read`, `allow_write`, `allow_delete`, `allow_exec`, `allow_unix`, `allow_pipe` | selector is joined to the **policy file's directory** and normalized; the target is joined to the **bundle root**; `globset` with `literal_separator(true)` (`*` stays inside one segment, `**` crosses); `dir/**` also matches `dir` itself; on macOS both sides are lower-cased (the code also lower-cases on Windows, which is not a supported platform; INC-2026-0011) |
 | URL | network-style targets | same scheme, same host (case-insensitive), same port after defaults (`https` → 443, `http` → 80); an empty or `/` path matches every path; otherwise the target path must equal the selector path or continue it with `/` (whole segments: `/users/42` never covers `/users/420`; a selector ending in `/` covers everything below it); a trailing `*` makes it a raw string prefix |
 | IP or CIDR | URL targets whose host is an IP literal | single IP equality or CIDR containment (IPv4 and IPv6) |
 | anything else | env names, logical targets (`crm/tools/search`, `users/example.Users/GetUser`, `PROFILE/ACCOUNT/use`) | plain `globset` match against the text |
@@ -320,7 +327,7 @@ non-param expression; shown as `<dynamic: EXPR>`), `opaque_remote` and `opaque_n
 |---|---|---|
 | `rivet check --file F [--policy P]` | compiles and loads the policy; a schema error stops here | 0, 2 |
 | `rivet policy explain --file F` | prints the effective policy (file + sha256, base dir, network, limits, every grant/deny; `"*"` flagged as broad) | 0, 2 |
-| `rivet policy explain ID --file F [--params JSON]` | the above plus the `--check-policy` table for that operation; with `--params`, each site whose placeholders are all params of the call is filled with the concrete target (`fill_params`, knowledge `exact`) and evaluated | 0, 2, 4; **3** when `--params` is given and a concrete target is denied |
+| `rivet policy explain ID --file F [--params JSON]` | the above plus the `--check-policy` table for that operation; with `--params`, each site whose placeholders are all params of the call is filled with the concrete target (`fill_params`, knowledge `exact`) and evaluated. In 0.2.0 this flag is still named `--params` (it is **not** the deprecated `request --params` and prints no warning; there is no `--data` here) | 0, 2, 4; **3** when `--params` is given and a concrete target is denied |
 | `rivet io [ID …] [--all] [--by operation\|target\|capability] [--kind K] [--access V,V] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]` | the I/O manifest | 0, 2, 3, 4, 7 |
 | `rivet policy generate [ID …\|--all] [--output PATH]` | least-privilege draft | 0, 4, 7 |
 | `rivet trace show REQ` | one request's decisions from this host's trace store | 0, 2, 4 |
@@ -328,10 +335,22 @@ non-param expression; shown as `<dynamic: EXPR>`), `opaque_remote` and `opaque_n
 | `rivet graph ID [--all] [--json]` | static call graph (local only) | 0, 2, 4 |
 | `rivet --endpoint URL [--token-file F] io …` / `trace show REQ` | the same use cases on a running server (`--endpoint` refuses `--file`/`--policy`) | as above, 3 when the principal is not allowed |
 
+With `--json` (0.2.0), `io`, `policy explain`, `policy generate`, `trace show` and `check` print one
+ResponseEnvelope whose `operation` is the built-in and whose `data` is the report. Failures print an error
+envelope on stderr. `policy generate` **without** `--json` still prints the bare draft on stdout, so
+`> policy.json` keeps working (PLAN-2026-0002, TASK-011). With `--json` its `data` is
+`{policy, review, complete}`:
+
+```text
+$ rivet --file app.rivet --json policy generate notes.touch
+{"request_id":"req_011c59653d","trace_id":"tr_011c59653d","operation":"rivet.policy.generate","type":"result","status":"ok","data":{"policy":{"version":1,"grants":[{"capability":"allow_read","targets":["./out/a.json"],"access":["stat"]},{"capability":"allow_write","targets":["./out/a.json"],"access":["update"]}],"network":{"deny_private_ranges":true}},"review":[],"complete":true},"error":null,"effects":"none","data_count":0}
+policy generate: 2 grants, 0 review items          ← stderr
+```
+
 ### Library (`src/orchestrator/runtime.rs`)
 
 ```text
-Runtime::builder().file(p) | .source(path, text, root)
+Runtime::builder().file(p) | .source(path, text, root) | .root(dir)
                   .policy_file(p)        -- explicit file (same rules as --policy)
                   .policy(Policy)        -- Policy::from_file(p) / Policy::from_json(bytes) / built by the host
                   .ceiling(Policy)       -- host ceiling (intersection; limits take the minimum)
@@ -339,7 +358,12 @@ Runtime::builder().file(p) | .source(path, text, root)
 rivet::orchestrator::runtime::policy_from_json(bytes, base_dir) -- same strict parser as policy.json
 rt.policy() · rt.io(&IoQuery) · rt.generate_policy_draft(ids, all, output) · rt.trace(req) · rt.trace_store()
 rt.export_trace(req, path) · rt.graph(&GraphQuery) · rt.request_restricted(id, params, restrict, sink)
+rt.load(path) / rt.load_as(path, alias)  -- 0.2.0: the module runs under this runtime's policy and ceiling
 ```
+
+In 0.2.0 the stable facade exports `rivet::Policy` (with `Policy::from_file`, `Policy::from_json`) and
+`rivet::types::IoQuery`. The paths above under `rivet::orchestrator::…` moved to the hidden
+`rivet::internal::…` ([SYS-2026-0010](sys-2026-0010-ffi-surface-and-packaging.md#facade)).
 
 Without `.file(...)` and without an explicit policy, the builder uses `Policy::deny_all(root)`.
 
@@ -399,8 +423,8 @@ base     .
 network  deny_private_ranges true
 limits   64 concurrent, depth 16, 268435456 buffered bytes
 
-$ rivet request notes.create --file app.rivet --params '{"text":"hi"}'
-{"request_id":"req_017689aced","trace_id":"tr_017689aced","error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/note.json denied: no policy.json: allow_write is denied by default (add a grant for ./out/note.json)","retryable":false,"effects":"none","source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create","details":{"capability":"allow_write","access":"create","target":"./out/note.json"}}}
+$ rivet request notes.create --file app.rivet --data '{"text":"hi"}'
+{"request_id":"req_0161980a65","trace_id":"tr_0161980a65","operation":"notes.create","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_write create on ./out/note.json denied: no policy.json: allow_write is denied by default (add a grant for ./out/note.json)","retryable":false,"source":{"file":"app.rivet","line":9,"column":5,"end_line":9,"end_column":52},"operation_id":"notes.create","details":{"capability":"allow_write","access":"create","target":"./out/note.json"}},"effects":"none","data_count":0}
 exit=3
 ```
 
@@ -411,7 +435,8 @@ exit=3
 The following outputs come from a scratch bundle with six operations (`notes.save` creates
 `./out/${name}.json`, `notes.touch` updates `./out/a.json`, `data.read` / `data.secret` read
 `./data/in.txt` / `./data/private/k.txt`, `cloud.meta` GETs `http://169.254.169.254/latest`, `local.get`
-GETs `http://127.0.0.1:18439/x`) and this policy:
+GETs `http://127.0.0.1:18439/x`) and this policy. They were re-captured on the 0.2.0-rc; the source lines
+differ from the 0.1.0 captures because the scratch bundle was rewritten.
 
 ```json
 {
@@ -442,13 +467,13 @@ deny     allow_read ./data/private/**
 
 $ rivet io --file app.rivet --check-policy
 OPERATION    KIND     ACCESS       TARGET                         KNOWLEDGE        SOURCE        DECISION
-cloud.meta   network  connect GET  http://169.254.169.254/latest  exact            app.rivet:42  denied
-data.read    file     read         ./data/in.txt                  exact            app.rivet:26  allowed
-data.secret  file     read         ./data/private/k.txt           exact            app.rivet:34  denied
-local.get    network  connect GET  http://127.0.0.1:18439/x       exact            app.rivet:52  allowed
-notes.save   file     create       ./out/{name}.json              param_dependent  app.rivet:8   allowed
-notes.touch  file     stat         ./out/a.json                   exact            app.rivet:18  allowed
-notes.touch  file     update       ./out/a.json                   exact            app.rivet:18  denied
+cloud.meta   network  connect GET  http://169.254.169.254/latest  exact            app.rivet:26  denied
+data.read    file     read         ./data/in.txt                  exact            app.rivet:16  allowed
+data.secret  file     read         ./data/private/k.txt           exact            app.rivet:21  denied
+local.get    network  connect GET  http://127.0.0.1:18439/x       exact            app.rivet:34  allowed
+notes.save   file     create       ./out/{name}.json              param_dependent  app.rivet:4   allowed
+notes.touch  file     stat         ./out/a.json                   exact            app.rivet:10  allowed
+notes.touch  file     update       ./out/a.json                   exact            app.rivet:10  denied
 4 allowed · 3 denied
 exit=3
 ```
@@ -466,9 +491,12 @@ The runtime refuses the same attempts with the rule that decided them:
 Full envelope of one denial:
 
 ```text
-$ rivet request notes.touch --file app.rivet --params '{}'
-{"request_id":"req_015d36e1ad","trace_id":"tr_015d36e1ad","error":{"kind":"permission","code":"permission.denied","message":"allow_write update on ./out/a.json denied: grant allow_write ./out/** access [create] does not include `update`","retryable":false,"effects":"none","source":{"file":"app.rivet","line":18,"column":5,"end_line":18,"end_column":43},"operation_id":"notes.touch","details":{"capability":"allow_write","access":"update","target":"./out/a.json"}}}
+$ rivet request notes.touch --file app.rivet
+{"request_id":"req_013f5e87fd","trace_id":"tr_013f5e87fd","operation":"notes.touch","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_write update on ./out/a.json denied: grant allow_write ./out/** access [create] does not include `update`","retryable":false,"source":{"file":"app.rivet","line":10,"column":5,"end_line":10,"end_column":56},"operation_id":"notes.touch","details":{"capability":"allow_write","access":"update","target":"./out/a.json"}},"effects":"none","data_count":0}
 exit=3
+$ rivet request local.get --file app.rivet          # allowed by the literal grant; nothing listens
+{"request_id":"req_013dabbbfd","trace_id":"tr_013dabbbfd","operation":"local.get","type":"result","status":"error","data":null,"error":{"kind":"connection","code":"connection.refused","message":"cannot connect to 127.0.0.1 (127.0.0.1:18439): Connection refused (os error 61)","retryable":false,"source":{"file":"app.rivet","line":34,"column":5,"end_line":36,"end_column":8},"operation_id":"local.get"},"effects":"none","data_count":0}
+exit=5
 ```
 
 A deny entry narrowed with `access` blocks only those verbs:
@@ -478,9 +506,9 @@ policy: grants allow_read ./out/**, allow_write ./out/**; deny allow_write ./out
 
 $ rivet io notes.save notes.touch --file app.rivet --policy deny-verb.json --check-policy
 OPERATION    KIND  ACCESS  TARGET             KNOWLEDGE        SOURCE        DECISION
-notes.save   file  create  ./out/{name}.json  param_dependent  app.rivet:8   allowed
-notes.touch  file  stat    ./out/a.json       exact            app.rivet:18  allowed
-notes.touch  file  update  ./out/a.json       exact            app.rivet:18  denied
+notes.save   file  create  ./out/{name}.json  param_dependent  app.rivet:4   allowed
+notes.touch  file  stat    ./out/a.json       exact            app.rivet:10  allowed
+notes.touch  file  update  ./out/a.json       exact            app.rivet:10  denied
 2 allowed · 1 denied
 exit=3
 ```
@@ -503,14 +531,17 @@ The worst verb decides the site (`denied` > `partial` > `unknown` > `allowed`). 
 (the `bind` option, or the unspecified address on the group's port), so the static verdict and the run agree.
 
 With `policy explain ID --params JSON`, param-dependent sites of the entry operation are first filled with the
-call's values, so they are evaluated as `exact` targets (scratch bundle at `829ca43`, `demo.read` =
-`return file read path as text`, policy granting `allow_read ./data/**`):
+call's values, so they are evaluated as `exact` targets (scratch bundle, `demo.read` =
+`return file read path as text`, policy granting `allow_read ./data/**`; the policy header lines are omitted):
 
 ```text
 $ rivet --file app.rivet policy explain demo.read --params '{"path":"app.rivet"}'           exit 3
 OPERATION  KIND  ACCESS  TARGET     KNOWLEDGE  SOURCE        DECISION
-demo.read  file  read    app.rivet  exact      app.rivet:73  denied
+demo.read  file  read    app.rivet  exact      app.rivet:13  denied
 denied: demo.read#1 allow_read app.rivet (read)
+$ rivet --file app.rivet policy explain demo.read --params '{"path":"./data/x.txt"}'        exit 0
+OPERATION  KIND  ACCESS  TARGET        KNOWLEDGE  SOURCE        DECISION
+demo.read  file  read    ./data/x.txt  exact      app.rivet:13  allowed
 ```
 
 ### Views, needs and file probes
@@ -557,10 +588,11 @@ Dynamic targets and `--strict` (scratch bundle whose URL comes from a file):
 ```text
 $ rivet io --file app.rivet --strict
 OPERATION  KIND     ACCESS       TARGET              KNOWLEDGE  SOURCE
-cfg.fetch  file     read         ./data/cfg.json     exact      app.rivet:5
-cfg.fetch  network  connect GET  <dynamic: cfg.url>  dynamic    app.rivet:6
-io: complete=false — 1 of 2 sites is dynamic/opaque
-  cfg.fetch#2  network connect GET  target from expression cfg.url  (app.rivet:6)
+cfg.fetch  file     read         ./data/cfg.json     exact            app.rivet:3
+cfg.fetch  network  connect GET  <dynamic: cfg.url>  dynamic          app.rivet:4
+demo.read  file     read         {path}              param_dependent  app.rivet:13
+io: complete=false — 1 of 3 sites is dynamic/opaque
+  cfg.fetch#2  network connect GET  target from expression cfg.url  (app.rivet:4)
 exit=7
 ```
 
@@ -596,10 +628,10 @@ $ cat policies/draft.json                       # targets rebased onto the draft
 }
 
 $ rivet policy generate --file app.rivet --output draft.json     # second time
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.exists","message":"refusing to overwrite draft.json","retryable":false,"effects":"none","details":{"path":"draft.json"}}}
+{"request_id":"","trace_id":"","operation":"rivet.policy.generate","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.exists","message":"refusing to overwrite draft.json","retryable":false,"details":{"path":"draft.json"}},"effects":"none","data_count":0}
 exit=4
 
-$ rivet policy generate --file app.rivet                        # bundle with a dynamic URL
+$ rivet policy generate cfg.fetch --file app.rivet              # bundle with a dynamic URL
 {
   "version": 1,
   "grants": [
@@ -607,7 +639,7 @@ $ rivet policy generate --file app.rivet                        # bundle with a 
   ],
   "network": {"deny_private_ranges": true}
 }
-review  cfg.fetch#2  network connect GET  <dynamic: cfg.url>  app.rivet:6  not granted (dynamic target)
+review  cfg.fetch#2  network connect GET  <dynamic: cfg.url>  app.rivet:4  not granted (dynamic target)
 policy generate: 1 grants, 1 review item — draft incomplete
 exit=7
 ```
@@ -616,6 +648,120 @@ A draft never contains `deny`, `limits`, `serve`, `approved` or secret material,
 `network.deny_private_ranges: true`. Network sites become their origin, so a draft for a literal private
 address (for example `http://169.254.169.254:80`) is a literal grant: review drafts before adopting them.
 
+### Globals, file modules and bootstrap reads (0.2.0)
+
+**Global substitution.** `effect_sites::analyze_program` reads the frozen `GlobalScope` of the site's own
+file (SYS-2026-0001) and substitutes every global it finds in a target template, header or path. The knowledge
+class is then decided on what remains:
+
+```text
+ http get "${users_url}/${id}"      users_url = "${api}/users", api = "https://api.example.com"
+      │ substitute globals  ─▶ "https://api.example.com/users/{id}"
+      ▼
+ only literals and globals left?  ── yes ─▶ exact             (grantable as written)
+      │ no: a param placeholder remains
+      ▼
+ param_dependent  (host and path known, so the origin / glob is still grantable)
+```
+
+The proposal's UC-04 sample showed `…/users/{id}` as `exact`. The build keeps the 0.1.0 rule that a param
+placeholder makes a target `param_dependent`, as the plan's findings table records (TASK-023). Real output
+from the globals bundle of [MAN-2026-0003](../../manuals/man-2026-0003-language-guide.md#globals):
+
+```text
+$ rivet --file app.rivet io
+OPERATION  KIND     ACCESS       TARGET                              KNOWLEDGE        SOURCE
+users.get  network  connect GET  https://api.example.com/users/{id}  param_dependent  app.rivet:10
+```
+
+A global used as a file path is substituted the same way. In the modules bundle below,
+`global archive = "./out/last.json"` and `file write archive json w` give the `exact` site `./out/last.json`.
+A global can never hold a secret or an `env` value (`check.global_not_constant`), so substitution never places
+secret material in a manifest, draft or trace.
+
+**One policy across modules.** A bundle of several files is compiled into one program and runs under **the
+loader's policy** only: the entry bundle's `policy.json` (or `--policy`), intersected with the host ceiling
+and every `restrict`. A `policy.json` beside a module is never loaded (`check.module_policy_ignored`, a
+warning). `rivet io`, `policy generate`, `policy explain` and `rivet graph` cover every file, with each site's
+own `file:line`. Connector and auth profile names stay unique across the bundle (`check.import_collision`),
+because the single policy grants them by name (`allow_mcp NAME/…`, `allow_auth PROFILE/…`). A module loaded at
+run time (`Runtime::load`, `rivet_load`) joins the same runtime and so the same policy and ceiling. Its sites
+enter the next catalog snapshot's effect catalog.
+
+```text
+ app.rivet ─ policy.json (the ONE policy) ───────────────┐
+   └─ import "./svc/weather.rivet" as weather public      │ governs every file
+        svc/weather.rivet ─ svc/policy.json  ✗ ignored ───┘ (warning check.module_policy_ignored)
+```
+
+Real output (scratch bundle: `app.rivet` imports `svc/weather.rivet` as `weather public`; the entry policy
+grants `allow_network https://api.weather.example` and `allow_write ./out/**`; `svc/policy.json` grants
+`allow_network *` and is ignored):
+
+```text
+$ rivet --file app.rivet check
+warning[check.module_policy_ignored]: the policy.json beside svc/weather.rivet is ignored: module `weather` runs under the loader's policy
+  --> app.rivet:1:1
+   |
+  1| import "./svc/weather.rivet" as weather public
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: grant what the module needs in the entry bundle's policy.json (or the host policy)
+ok: 3 operations, 0 connectors, 0 auth profiles
+exit=0
+$ rivet --file app.rivet io --check-policy
+OPERATION         KIND     ACCESS          TARGET                                  KNOWLEDGE        SOURCE                DECISION
+report.now        (calls weather.now — see above)                                                   app.rivet:9
+report.now        file     create, update  ./out/last.json                         exact            app.rivet:10          allowed
+weather.now       network  connect GET     https://api.weather.example/now/{city}  param_dependent  svc/weather.rivet:7   allowed
+weather.stations  network  connect GET     https://api.weather.example/stations    exact            svc/weather.rivet:17  allowed
+3 allowed
+exit=0
+$ rivet --file app.rivet policy generate --all
+{
+  "version": 1,
+  "grants": [
+    {"capability": "allow_write", "targets": ["./out/last.json"], "access": ["create", "update"]},
+    {"capability": "allow_network", "targets": ["https://api.weather.example:443"]}
+  ],
+  "network": {"deny_private_ranges": true}
+}
+policy generate: 2 grants, 0 review items
+exit=0
+$ rivet --file app.rivet policy explain weather.now --params '{"city":"oslo"}'      (policy header omitted)
+OPERATION    KIND     ACCESS       TARGET                                KNOWLEDGE  SOURCE               DECISION
+weather.now  network  connect GET  https://api.weather.example/now/oslo  exact      svc/weather.rivet:7  allowed
+exit=0
+$ rivet --file app.rivet graph report.now
+report.now                                                            app.rivet:5
+├── call weather.now                                                  app.rivet:9
+│   └── network  connect GET  https://api.weather.example/now/{city}  svc/weather.rivet:7
+└── file     create, update ./out/last.json                           app.rivet:10
+exit=0
+```
+
+**Bootstrap reads of imported files.** `inspect_effects` (`bootstrap_sites`) lists the entry file and then **each** module file
+as its own `file read` row, in resolution order. In 0.1.0 (and in the INC-2026-0008 known issue) there was a
+single `./app.rivet (+ imports)` placeholder. That placeholder is gone; `tests/conformance_io_manifest.rs`
+asserts the per-file rows. These reads happen before the policy exists, so they are listed and never governed
+by it. The loader confines them to the runtime root and refuses symlinks.
+
+```text
+$ rivet --file app.rivet io --include-bootstrap        (the BOOTSTRAP part only)
+BOOTSTRAP (runtime-internal; listed, not governed by policy.json)
+KIND  ACCESS       TARGET
+file  read         ./app.rivet
+file  read         ./svc/weather.rivet
+file  read         ./policy.json
+file  read         system CA bundle
+file  read         /etc/resolv.conf / system resolver
+file  read         tzdata
+file  read         descriptor/schema files named by connectors (none here)
+pipe  read, write  stdin, stdout, stderr
+exit=0
+```
+
+When no `policy.json` exists beside the entry, the row reads `./policy.json (when present)`.
+
 ### Traces
 
 The trace store lives in the process that ran the request. A one-shot CLI process starts with an empty
@@ -623,16 +769,25 @@ store, so `rivet trace show` and `rivet io --trace` are only useful against a ru
 
 ```text
 $ rivet trace show req_01f723dfc5 --file app.rivet
-{"request_id":"","trace_id":"","error":{"kind":"not_found","code":"not_found.trace","message":"no trace for request `req_01f723dfc5` in this host's trace store","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.trace.show","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.trace","message":"no trace for request `req_01f723dfc5` in this host's trace store","retryable":false},"effects":"none","data_count":0}
 exit=4
+```
 
-$ rivet --endpoint http://127.0.0.1:18437 --token-file ci.token trace show req_02eb0dc172
-{"request_id":"req_02eb0dc172","attempts":[{"request_id":"req_02eb0dc172","trace_id":"tr_02eb0dc172","node_id":null,"attempt":1,"effect_id":"data.secret#1","operation_id":"data.secret","phase":"decision","capability":"allow_read","access":"read","target":"./data/private/k.txt","decision":"denied","policy_hash":"sha256:fd3a186d2587b4be4a44c6455578c126847f8e163da1e5a407c2d2a26a152e5b","source":null,"outcome":{"rule":"deny allow_read ./data/private/**"}}],"complete":true,"next_cursor":null,"gaps":0}
+Against a running server the answer is a `rivet.trace.show` envelope whose `data` is the `TraceResult`. This
+capture is from a scratch copy of 02-file-crud on `127.0.0.1:18901`:
+
+```text
+$ rivet --endpoint http://127.0.0.1:18901 trace show req_01087ca4cd
+{"request_id":"req_0282643a62","trace_id":"tr_0282643a62","operation":"rivet.trace.show","type":"result","status":"ok","data":{"request_id":"req_01087ca4cd","attempts":[{"request_id":"req_01087ca4cd","trace_id":"tr_01087ca4cd","node_id":null,"attempt":1,"effect_id":"notes.create#1","operation_id":"notes.create","phase":"decision","capability":"allow_write","access":"create","target":"./out/note.json","decision":"allowed","policy_hash":"sha256:deccf2027323af83c9798a05d6cac1adb657a81852e54ac7b99ce3eca4b0bef3","source":{"file":"app.rivet","line":9,"column":5},"outcome":{"rule":"grant allow_write ./out/**"}}],"complete":true,"next_cursor":null,"gaps":0},"error":null,"effects":"none","data_count":0}
 exit=0
 ```
 
-(In that run principal `ci` had an exact `rivet.trace.show` entry in `serve.principals`; a principal
-listed only with `*` got ``principal `ada` may not call `rivet.trace.show` ``, exit 3.)
+A network principal needs an exact `rivet.trace.show` entry in `serve.principals`. In a 0.1.0 run, a
+principal listed only with `*` got ``principal `ada` may not call `rivet.trace.show` ``, exit 3.
+
+A request sent with the deprecated input keys `id`/`params` has one extra trace event (0.2.0): phase `input`,
+access `deprecated`, decision `deprecated` and no `effect_id`. The manifest join (`io --trace`) ignores it,
+and operators can count it (see [OPS-2026-0001](../../operations/ops-2026-0001-operating-rivet-serve.md)).
 
 File decisions carry the operation ID and the statement span (every file effect runs in its effect scope), so
 their trace events have a `source`. `Runtime::export_trace(req, path)` serializes the same `TraceResult` as
@@ -651,7 +806,7 @@ export -> permission.denied allow_write create on ./audit/trace.json denied: hos
 |---|---|---|---|
 | Effective `Policy` (grants, deny, network, limits, approved, serve, `sha256`, `base_dir`) | `PolicyBroker.policy` | — | runtime |
 | Decision log (`Vec<Permit>`, allow and deny) | `PolicyBroker.decisions` | first 10 000 decisions | runtime |
-| `EffectCatalog` (sites per operation, connector load sites) | built in `Runtime::assemble` | — | runtime (immutable) |
+| `EffectCatalog` (sites per operation, connector load sites) | built with each catalog snapshot (`Runtime::assemble`, and again on a module load) | — | snapshot (immutable) |
 | Site index `(operation, line, capability, verb) → effect_id` | `TracedEvaluator.index` | — | runtime |
 | Attempt counters per `(request, effect_id)` | `TracedEvaluator.attempts` | cleared when above 50 000 keys | runtime |
 | `TraceEvent`s | `MemoryTraceStore` | 10 000 events, oldest evicted first; evictions counted per request as `gaps` | runtime |
@@ -718,7 +873,7 @@ loop is:
 
 | Question | Tool |
 |---|---|
-| Which policy is in force, with which hash? | `rivet policy explain` (`--json` prints `{present, file, sha256, grants, deny}`) |
+| Which policy is in force, with which hash? | `rivet policy explain` (`--json`: a `rivet.policy.explain` envelope whose `data` is `{present, file, sha256, grants, deny, broad}`, with counts for `grants` and `deny`) |
 | What will this operation touch, and is it allowed? | `rivet io ID --check-policy`, `rivet policy explain ID` |
 | Which files must exist before a run? | `rivet io --needs`, `rivet io --check-files` |
 | Why was an attempt denied? | the `permission.denied` message and `details {capability, access, target}`; `outcome.rule` in the trace |
@@ -727,7 +882,8 @@ loop is:
 | What does this operation call and touch? | `rivet graph ID [--json]` |
 
 Summaries (decision counts, probe counts, incompleteness) go to stderr; stdout carries only the requested
-format, so `--format json` output can be piped.
+format, so `--format json` output can be piped. `rivet --json io` wraps the manifest in a `rivet.io` envelope
+(`data` = the manifest), while `rivet io --format json` prints the bare manifest.
 
 ## Known Limitations
 
@@ -738,13 +894,21 @@ From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.m
 - **`approved.overlaps` is unused**: parsed and validated, never consulted.
 - The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`; see SYS-2026-0004).
 
-Other current behaviour: on macOS and Windows path selectors and targets are compared lower-cased. The
+Other current behaviour: on macOS path selectors and targets are compared lower-cased. Windows is not a
+supported platform in 0.2.0 ([INC-2026-0011](../../incidents/active/inc-2026-0011-windows-port-failures.md)). The
 `rivet.trace.export` dispatch defect found at `829ca43` was fixed in `2a751ab` (INC-2026-0007); a literal call to an
 operation without sites renders as `(calls X — no I/O)` in `io --check-policy` tables.
 
 ## Last Verified Version
 
-0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`. Outputs were first produced at `f40d4aa` against
+0.2.0-rc (main at `8031baa`), 2026-09-29, macOS, `target/release/rivet` (`cargo build --release --features cli`).
+Every capture in Runtime Behaviour was re-run on scratch bundles: the six-operation decision bundle, a dynamic-URL
+bundle, the MAN-2026-0003 globals bundle, a two-file module bundle with an ignored module policy, and a copy of
+02-file-crud served on 127.0.0.1:18901 (stopped afterwards). Global substitution and the per-file bootstrap rows
+were checked in `effect_sites.rs` and `inspect_effects.rs`. Request IDs, trace IDs and policy hashes vary per run
+and per file.
+
+History: 0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`. Outputs were first produced at `f40d4aa` against
 `docs/demos/02-file-crud` and scratch bundles; the ceiling, restriction, `explain --params`, trace export and
 multicast rows were verified at `829ca43` (scratch bundles, a library host and `tests/conformance_udp.rs`); request IDs, trace IDs and policy hashes
 vary per run and per file.
@@ -761,6 +925,9 @@ vary per run and per file.
 - [SYS-2026-0006 OAuth and credentials](../integrations/sys-2026-0006-oauth-and-credentials.md)
 - [SYS-2026-0009 MCP client connectors](../integrations/sys-2026-0009-mcp-client-connectors.md)
 - [REF-2026-0002 Language and usage](../../references/ref-2026-0002-language-and-usage.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md)
+- [SEC-2026-0001 Policy and sandbox model](../../security/sec-2026-0001-policy-and-sandbox-model.md) (module boundaries)
+- [PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (D-33, D-47)
 - [Demos](../../demos/README.md)
 
 ## Change History
@@ -769,3 +936,4 @@ vary per run and per file.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-17). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): host ceiling and per-request restriction in the decision flow, URL path segments, `policy explain --params` (exit 3), multicast manifest mirrors the runtime, file decisions carry source spans, `Runtime::export_trace`, `rivet graph`, bare `/v1/io`; limitations reduced to the current ones; export defect fixed in 2a751ab. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-33/D-47 (TASK-073, TASK-070): global substitution into targets (`exact` vs `param_dependent`), one policy across file modules (module `policy.json` ignored; io/generate/explain/graph over every file; run-time loads), bootstrap rows per imported file (the `(+ imports)` placeholder is gone); `--json` outputs as envelopes; `policy explain --params` flag noted; captures re-run on the 0.2.0-rc; macOS/Linux only. |
