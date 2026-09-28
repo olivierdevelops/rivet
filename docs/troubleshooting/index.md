@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 5
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -45,9 +45,11 @@ Known problems, diagnosis and fixes worth keeping (DOCUMENTATION §4.13, §26).
 | [TRBL-2026-0004](trbl-2026-0004-vhco-sync-drift-after-renaming-triggers-or-steps.md) | resolved | `vhco sync` reports flow drift after a trigger or step rename: flows compare trigger text and `layer: ref` steps; edit the contract flow by hand |
 | [TRBL-2026-0005](trbl-2026-0005-contract-written-ahead-of-code-drifts-on-ports-and-step-order.md) | resolved | A use case authored in the contract before its code drifts on port parameter names, step order and surface calls; write types only, steps in source order, and add triggered actions to `calls` |
 | [TRBL-2026-0006](trbl-2026-0006-cargo-test-leaves-cdylib-and-staticlib-in-deps.md) | resolved | `cargo test` leaves the cdylib and staticlib of rivet-ffi in `target/<profile>/deps` (no uplift); FFI tests look there first |
+| [TRBL-2026-0007](trbl-2026-0007-reading-ci-failures-through-annotations.md) | resolved | Reading CI failures without admin rights (check-run annotations) |
 
 ## Recently added or updated
 
+- 2026-09-29: TRBL-2026-0007 added (reading CI through annotations); TRBL-2026-0006 revised after INC-2026-0010.
 - 2026-09-29: TRBL-2026-0006 added (PLAN-2026-0002 P2d).
 - 2026-09-28: TRBL-2026-0005 added (PLAN-2026-0002 P2b/P2f).
 - 2026-09-28: TRBL-2026-0004 added (PLAN-2026-0002 P2a).
@@ -70,4 +72,5 @@ None.
 | 2 | 2026-09-28 | Claude | Recorded TRBL-2026-0002 revision 2. |
 | 3 | 2026-09-28 | Claude | Added TRBL-2026-0004. |
 | 4 | 2026-09-28 | Claude | Added TRBL-2026-0005. |
+| 6 | 2026-09-29 | Claude | Added TRBL-2026-0007; TRBL-2026-0006 revised. |
 | 5 | 2026-09-29 | Claude | Added TRBL-2026-0006. |

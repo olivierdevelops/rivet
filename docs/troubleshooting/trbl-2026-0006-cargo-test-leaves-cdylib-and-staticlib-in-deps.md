@@ -5,7 +5,7 @@ document_type: troubleshooting
 status: resolved
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -96,6 +96,21 @@ run; alone (`-p rivet-runtime`) it skips with a note, and with `CI` set a missin
 `cargo test --workspace --all-features --test conformance_ffi`: 7 passed, linking `target/debug/deps/librivet.*`
 shared and static (commit `f9af92a`).
 
+## Update (2026-09-29, revision 2)
+
+The behaviour above only applied while rivet-ffi also built an `rlib` and had integration tests in `ffi/tests/`:
+building those tests forced its `cdylib` and `staticlib` into `deps`. INC-2026-0010 removed the `rlib`, because
+it collided with rivet-runtime's `librivet.rlib`, and moved the tests into the crate. Now **`cargo test` does not
+produce librivet at all**. Build it explicitly first:
+
+```text
+ cargo build --workspace --all-features   ─▶ target/debug/librivet.{dylib|so,a}   (conformance_ffi finds it here)
+ cargo test  --workspace --all-targets --all-features
+```
+
+CI (`.github/workflows/ci.yml`, step "build (debug, librivet for the FFI tests)") and `perch tests` run the build
+first (commit 8045343).
+
 ## Remaining Limitations
 
 With `-p rivet-runtime` alone the deps directory may hold an older librivet from a previous workspace run;
@@ -115,4 +130,5 @@ Resolved (documented procedure, implemented in `tests/conformance_ffi.rs`).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-29 | Claude | Update after INC-2026-0010: cargo test no longer builds librivet; build it first (8045343). |
 | 1 | 2026-09-29 | Claude | Recorded from PLAN-2026-0002 P2d. |
