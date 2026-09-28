@@ -234,7 +234,13 @@ fn host_ip(u: &url::Url) -> Option<IpAddr> {
         url::Host::Domain(d) if d.eq_ignore_ascii_case("localhost") => {
             Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
         }
-        url::Host::Domain(_) => None,
+        // Non-special schemes (udp://, quic://, tcp://) keep IP literals as opaque
+        // host text; parse them so the private-range rule still applies.
+        url::Host::Domain(d) => d
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<IpAddr>()
+            .ok(),
     }
 }
 
@@ -473,5 +479,47 @@ mod tests {
             "svc",
         );
         assert_eq!(loopback_named.decision, Decision::Allowed);
+    }
+
+    #[test]
+    fn opaque_scheme_ip_literals_get_the_private_range_rule() {
+        let pol = policy(
+            r#"{"version":1,"grants":[{"capability":"allow_network","targets":["*"]},{"capability":"allow_network","targets":["udp://127.0.0.1:7000"]}]}"#,
+        );
+        let wildcard_only = authorize_effect(
+            &intent(
+                Capability::Network,
+                AccessVerb::Connect,
+                EffectTarget::Url("udp://10.0.0.5:53".into()),
+            ),
+            &pol,
+            "svc",
+        );
+        assert_eq!(
+            wildcard_only.decision,
+            Decision::Denied,
+            "{}",
+            wildcard_only.rule
+        );
+        let named = authorize_effect(
+            &intent(
+                Capability::Network,
+                AccessVerb::Connect,
+                EffectTarget::Url("udp://127.0.0.1:7000".into()),
+            ),
+            &pol,
+            "svc",
+        );
+        assert_eq!(named.decision, Decision::Allowed, "{}", named.rule);
+        let quic_v6 = authorize_effect(
+            &intent(
+                Capability::Network,
+                AccessVerb::Connect,
+                EffectTarget::Url("quic://[::1]:4433".into()),
+            ),
+            &pol,
+            "svc",
+        );
+        assert_eq!(quic_v6.decision, Decision::Denied);
     }
 }
