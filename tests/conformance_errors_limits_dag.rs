@@ -684,3 +684,69 @@ async fn library_cancel_by_request_id() {
     assert_eq!((e.http_status(), e.exit_code()), (409, 130));
     assert!(stats.wait_aborted(1).await);
 }
+
+/// One-route HTTP fixture answering every request with `len` bytes of JSON text.
+async fn big_body_server(len: usize) -> u16 {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut s, _)) = l.accept().await {
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 4096];
+                let mut seen = Vec::new();
+                while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut buf).await {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => seen.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let body = format!("\"{}\"", "x".repeat(len - 2));
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes()).await;
+                let _ = s.write_all(body.as_bytes()).await;
+                let _ = s.shutdown().await;
+            });
+        }
+    });
+    port
+}
+
+// vhco:test execution.request_operation -- G11 default size limits follow the proposal (8 MiB frame/body, 16-frame / 32 MiB session queues, 256 MiB host budget): a 9 MiB HTTP body is limit.http_body by default and passes with an explicit `max_body`
+#[tokio::test]
+async fn default_body_limit_is_8_mib_and_max_body_overrides() {
+    let defaults = rivet::domain::sessions::SessionLimits::default();
+    assert_eq!(
+        (defaults.queue_frames, defaults.queue_bytes),
+        (16, 32 << 20)
+    );
+    assert_eq!(rivet::domain::transport::DEFAULT_MAX_FRAME, 8 << 20);
+    assert_eq!(
+        rivet::domain::policy::PolicyLimits::default().max_buffered_bytes,
+        256 << 20
+    );
+    let port = big_body_server(9 << 20).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_str().unwrap();
+    let policy = format!(
+        r#"{{"version":1,"grants":[{{"capability":"allow_network","targets":["http://127.0.0.1:{port}"]}}]}}"#
+    );
+    let src = format!(
+        "operation t.default\n    output json\n    r = http get \"http://127.0.0.1:{port}/big\"\n        decode json\n    end\n    return (length r.body)\nend\n\noperation t.raised\n    output json\n    r = http get \"http://127.0.0.1:{port}/big\"\n        max_body 16777216\n        decode json\n    end\n    return (length r.body)\nend\n"
+    );
+    let rt = Runtime::builder()
+        .source("app.rivet", &src, root)
+        .policy(policy_from_json(policy.as_bytes(), root).unwrap())
+        .build()
+        .unwrap();
+    let e = rt
+        .request("t.default", Value::Null, None)
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, "limit.http_body", "{e:?}");
+    let c = rt.request("t.raised", Value::Null, None).await.unwrap();
+    assert_eq!(c.result, Value::Int((9 << 20) - 2));
+}

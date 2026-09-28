@@ -53,10 +53,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-/// Default cap on a buffered response body (overridden by `max_body N`).
-pub const DEFAULT_MAX_BODY: u64 = 64 * 1024 * 1024;
-/// Largest single stream item (SSE event, JSON line, text line).
-pub const MAX_STREAM_ITEM: usize = 16 * 1024 * 1024;
+/// Default cap on a buffered response body (overridden by `max_body N`); proposal
+/// default frame/body limit 8 MiB (G11).
+pub const DEFAULT_MAX_BODY: u64 = 8 * 1024 * 1024;
+/// Largest single stream item (SSE event, JSON line, text line): the 8 MiB frame limit.
+pub const MAX_STREAM_ITEM: usize = 8 * 1024 * 1024;
 
 /// The injected `transports.exchange_http` use case.
 pub type ExchangeHttpFn = dyn for<'a> Fn(

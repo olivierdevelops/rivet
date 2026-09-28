@@ -543,11 +543,12 @@ impl Runtime {
             let w = weak.clone();
             let upgrade: Arc<super::setup_library::UpgradeFn> =
                 Arc::new(move || w.upgrade().map(|inner| Runtime { inner }));
-            let sessions = Arc::new(super::setup_library::session_host(
-                upgrade,
-                registry.clone(),
-                catalog_version,
-            ));
+            let sessions = Arc::new(
+                super::setup_library::session_host(upgrade, registry.clone(), catalog_version)
+                    .with_budget(crate::infra::session_driver::BufferBudget::new(
+                        policy.limits.max_buffered_bytes,
+                    )),
+            );
             Inner {
                 bundle,
                 program,

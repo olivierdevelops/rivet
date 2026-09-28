@@ -43,8 +43,8 @@ use super::sandbox_macos as sandbox;
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use super::sandbox_unsupported as sandbox;
 
-/// Default bound on captured stdout / stderr.
-pub const DEFAULT_MAX_OUTPUT: u64 = 64 * 1024 * 1024;
+/// Default bound on captured stdout / stderr (proposal body limit: 8 MiB).
+pub const DEFAULT_MAX_OUTPUT: u64 = 8 * 1024 * 1024;
 /// Controlled PATH given to children (never the host's).
 const CHILD_PATH: &str = "/usr/bin:/bin";
 

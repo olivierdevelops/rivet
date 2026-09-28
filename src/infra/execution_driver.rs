@@ -1200,6 +1200,11 @@ impl<'a> Machine<'a> {
             })
             .await
             .map_err(|e| {
+                // A host limit (limit.buffered_bytes from the session queue budget)
+                // is reported as itself, not as a consumer failure.
+                if e.kind == ErrorKind::Limit {
+                    return e;
+                }
                 let mut err = RivetError::new(
                     ErrorKind::ConsumerFailed,
                     "consumer_failed",
