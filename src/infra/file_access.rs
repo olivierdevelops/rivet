@@ -273,6 +273,144 @@ fn atomic_write(dir: &Dir, rel_path: &Path, path: &str, bytes: &[u8]) -> RivetRe
     written
 }
 
+/// How long a replacement waits for another Rivet writer's lock on the same file.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Conditional (and every) replacement of an EXISTING file — G32, proposal
+/// Increment 4 `if_version`:
+///
+/// ```text
+///  open target no-follow ─▶ flock(LOCK_EX) ─▶ fd still the file at PATH? (dev+ino) ──no──▶ retry
+///        │                                              │ yes
+///        │                                              ▼
+///        │                         nlink > 1 → file.hardlink_refused
+///        │                         read via the locked fd → version ≠ V → conflict.version
+///        │                         write temp sibling ─▶ fsync ─▶ rename over PATH (lock still held)
+///        ▼
+///   missing → not_found (update) / plain create (write without if_version)
+/// ```
+///
+/// Guarantee (documented decision): the compare-and-replace is atomic with respect
+/// to every writer that takes the same advisory `flock` on the target — all Rivet
+/// runtimes (every update/write of an existing file goes through this path, so an
+/// unconditional Rivet write cannot slip between another's check and rename). The
+/// dev+ino re-check after locking closes the rename race (a waiter that locked the
+/// replaced inode retries on the new file and then fails `conflict.version`). An
+/// external process that writes WITHOUT taking the lock is not stopped by an
+/// advisory lock; such writers are outside what this adapter can enforce. Where
+/// `flock` is unavailable (non-Unix targets) a conditional update is refused with
+/// `unsupported.conditional_update` before anything is written — never degraded to
+/// read-then-write.
+#[cfg(unix)]
+fn locked_replace(
+    dir: &Dir,
+    rel_path: &Path,
+    path: &str,
+    if_version: Option<&str>,
+    bytes: &[u8],
+) -> RivetResult<()> {
+    use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt};
+    use cap_std::fs::MetadataExt as _;
+    use std::os::unix::io::AsRawFd;
+    let started = std::time::Instant::now();
+    loop {
+        let mut opts = OpenOptions::new();
+        opts.read(true).follow(FollowSymlinks::No);
+        let mut f = dir
+            .open_with(rel_path, &opts)
+            .map_err(|e| io_err(path, e))?;
+        // Bounded wait for the exclusive advisory lock (released on drop/close).
+        loop {
+            // SAFETY: flock on a descriptor this function owns for the whole scope.
+            let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+            if rc == 0 {
+                break;
+            }
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(libc::EWOULDBLOCK) {
+                return Err(io_err(path, err));
+            }
+            if started.elapsed() > LOCK_WAIT {
+                return Err(RivetError::new(
+                    ErrorKind::Timeout,
+                    "timeout.file_lock",
+                    format!("{path}: another writer held the file lock for too long"),
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let held = f.metadata().map_err(|e| io_err(path, e))?;
+        let now = match dir.symlink_metadata(rel_path) {
+            Ok(m) => m,
+            // Replaced and removed meanwhile: the next open reports it.
+            Err(_) => continue,
+        };
+        if now.file_type().is_symlink() {
+            return Err(RivetError::permission(format!(
+                "{path}: symbolic link refused (no-follow)"
+            )));
+        }
+        if now.dev() != held.dev() || now.ino() != held.ino() {
+            // We locked an inode that another writer already renamed away.
+            continue;
+        }
+        if link_count(&held) > 1 {
+            return Err(RivetError::new(
+                ErrorKind::Permission,
+                "file.hardlink_refused",
+                format!(
+                    "{path} has {} hard links; write/delete refused",
+                    link_count(&held)
+                ),
+            ));
+        }
+        if let Some(want) = if_version {
+            if held.len() > MAX_READ_BYTES {
+                return Err(RivetError::new(
+                    ErrorKind::Limit,
+                    "limit.file_size",
+                    format!(
+                        "{path} is {} bytes; the read limit is {MAX_READ_BYTES}",
+                        held.len()
+                    ),
+                ));
+            }
+            let mut current = Vec::new();
+            f.read_to_end(&mut current).map_err(|e| io_err(path, e))?;
+            let have = version_of(&current);
+            if have != want {
+                return Err(RivetError::new(
+                    ErrorKind::Conflict,
+                    "conflict.version",
+                    format!("{path} changed: version {have}, expected {want}"),
+                ));
+            }
+        }
+        // Rename while the lock is held; dropping `f` afterwards releases it.
+        let out = atomic_write(dir, rel_path, path, bytes);
+        drop(f);
+        return out;
+    }
+}
+
+#[cfg(not(unix))]
+fn locked_replace(
+    dir: &Dir,
+    rel_path: &Path,
+    path: &str,
+    if_version: Option<&str>,
+    bytes: &[u8],
+) -> RivetResult<()> {
+    if if_version.is_some() {
+        return Err(RivetError::unsupported(
+            "unsupported.conditional_update",
+            format!("{path}: this platform cannot guard `if_version` against concurrent writers"),
+        ));
+    }
+    refuse_hardlink(dir, rel_path, path)?;
+    atomic_write(dir, rel_path, path, bytes)
+}
+
 fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
     let dir = Dir::open_ambient_dir(root, ambient_authority()).map_err(|e| {
         RivetError::new(
@@ -356,32 +494,37 @@ fn apply_sync(root: &Path, op: FileOperation) -> RivetResult<Value> {
             ]))
         }
         FileVerb::Update | FileVerb::Write => {
-            let existing = match read_all(&dir, &r, path) {
-                Ok(b) => Some(b),
-                Err(e) if e.kind == ErrorKind::NotFound && op.verb == FileVerb::Write => None,
-                Err(e) => return Err(e),
+            let bytes = encode(&op.content, op.codec, path)?;
+            let existing = match dir.symlink_metadata(&r) {
+                Ok(m) if m.file_type().is_symlink() => {
+                    return Err(RivetError::permission(format!(
+                        "{path}: symbolic link refused (no-follow)"
+                    )));
+                }
+                Ok(_) => true,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                Err(e) => return Err(io_err(path, e)),
             };
-            if let (Some(want), Some(bytes)) = (&op.if_version, &existing) {
-                let have = version_of(bytes);
-                if &have != want {
-                    return Err(RivetError::new(
+            if existing {
+                // Compare-and-replace under the file lock (see locked_replace).
+                locked_replace(&dir, &r, path, op.if_version.as_deref(), &bytes)?;
+            } else if op.verb == FileVerb::Update || op.if_version.is_some() {
+                // Update never creates; a version guard on a missing file cannot hold.
+                return Err(match &op.if_version {
+                    Some(want) if op.verb == FileVerb::Write => RivetError::new(
                         ErrorKind::Conflict,
                         "conflict.version",
-                        format!("{path} changed: version {have}, expected {want}"),
-                    ));
-                }
+                        format!("{path} does not exist, expected version {want}"),
+                    ),
+                    _ => RivetError::not_found("not_found.file", format!("{path}: no such file")),
+                });
+            } else {
+                atomic_write(&dir, &r, path, &bytes)?;
             }
-            refuse_hardlink(&dir, &r, path)?;
-            let bytes = encode(&op.content, op.codec, path)?;
-            atomic_write(&dir, &r, path, &bytes)?;
             Ok(Value::object([
                 ("path", Value::text(path)),
                 (
-                    if existing.is_some() {
-                        "updated"
-                    } else {
-                        "created"
-                    },
+                    if existing { "updated" } else { "created" },
                     Value::Bool(true),
                 ),
                 ("version", Value::text(version_of(&bytes))),
@@ -550,6 +693,79 @@ mod tests {
             files.apply(d).await.unwrap().get("deleted"),
             Some(&Value::Bool(false))
         );
+    }
+
+    // vhco:test files.apply_file_operation -- G32 concurrent `update … if_version V` from many threads: exactly one compare-and-replace wins per round, every other updater gets conflict.version, and the file holds the winner's bytes (no lost update)
+    #[cfg(unix)]
+    #[test]
+    fn concurrent_conditional_updates_have_one_winner() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("out")).unwrap();
+        std::fs::write(tmp.path().join("out/c.json"), "0").unwrap();
+        let root = tmp.path().to_path_buf();
+        for round in 0..20 {
+            let v = version_of(&std::fs::read(root.join("out/c.json")).unwrap());
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+            let handles: Vec<_> = (0..8)
+                .map(|i| {
+                    let (root, v, barrier) = (root.clone(), v.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        let mut u = FileOperation::new(FileVerb::Update, "./out/c.json");
+                        u.codec = Some(Codec::Text);
+                        u.content = Some(Value::text(format!("{round}-{i}")));
+                        u.if_version = Some(v);
+                        barrier.wait();
+                        (i, apply_sync(&root, u))
+                    })
+                })
+                .collect();
+            let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+            let winners: Vec<_> = results.iter().filter(|(_, r)| r.is_ok()).collect();
+            assert_eq!(winners.len(), 1, "round {round}: {results:?}");
+            for (_, r) in &results {
+                if let Err(e) = r {
+                    assert_eq!(e.code, "conflict.version", "round {round}: {e:?}");
+                }
+            }
+            let content = std::fs::read_to_string(root.join("out/c.json")).unwrap();
+            assert_eq!(content, format!("{round}-{}", winners[0].0));
+        }
+        // No temporary siblings are left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(root.join("out"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".rivet-tmp"))
+            .collect();
+        assert!(leftovers.is_empty());
+    }
+
+    // vhco:test files.apply_file_operation -- G32 an update waits for another holder of the file lock and then re-checks the version (a writer that changed the file under the lock makes the stale guard fail)
+    #[cfg(unix)]
+    #[test]
+    fn conditional_update_waits_for_the_lock_and_rechecks() {
+        use std::os::unix::io::AsRawFd;
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("c.txt");
+        std::fs::write(&p, "a").unwrap();
+        let v = version_of(b"a");
+        let holder = std::fs::File::open(&p).unwrap();
+        assert_eq!(unsafe { libc::flock(holder.as_raw_fd(), libc::LOCK_EX) }, 0);
+        let root = tmp.path().to_path_buf();
+        let t = std::thread::spawn(move || {
+            let mut u = FileOperation::new(FileVerb::Update, "./c.txt");
+            u.codec = Some(Codec::Text);
+            u.content = Some(Value::text("b"));
+            u.if_version = Some(v);
+            apply_sync(&root, u)
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!t.is_finished(), "the update must wait for the lock");
+        // The lock holder changes the file in place, then releases the lock.
+        std::fs::write(&p, "z").unwrap();
+        drop(holder);
+        let e = t.join().unwrap().unwrap_err();
+        assert_eq!(e.code, "conflict.version");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "z");
     }
 
     #[tokio::test]
