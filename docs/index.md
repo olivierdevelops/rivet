@@ -37,7 +37,7 @@ docs/
 ├── README.md            current state, risks, gates
 ├── index.md             this navigation page
 ├── decisions/           ADR-0001 approval · ADR-0002 crates · ADR-0003 sandbox (all approved)
-├── incidents/           INC-2026-0001 … 0004 (all resolved; found during implementation)
+├── incidents/           INC-2026-0001 … 0005 (all resolved; found during implementation)
 ├── troubleshooting/     TRBL-2026-0001 … 0003
 ├── research/            RES-2026-0001 Capy spike · 0002 crates · 0003 sandbox (completed)
 ├── manuals/             MAN-2026-0001 manual + 7 volumes (current-state book)
@@ -48,6 +48,7 @@ docs/
 ├── operations/          OPS-2026-0001
 ├── runbooks/            RUN-2026-0001 · 0002
 ├── onboarding/          ONB-2026-0001
+├── testing/             TEST-2026-0001 … 0033 (one per plan test row, latest recorded result)
 ├── plans/               PLAN-2026-0001 v0.1.0 implementation, validation and release (P1 in execution)
 ├── proposals/           design proposals by lifecycle
 │   ├── approved/        PROP-2026-0001 Rivet runtime (approved, revision 8)
@@ -63,6 +64,7 @@ docs/
 - [Decisions](decisions/index.md)
 - [Research](research/index.md)
 - [Incidents](incidents/index.md)
+- [Tests](testing/index.md)
 - [Troubleshooting](troubleshooting/index.md)
 - [Proposals](proposals/index.md), then [approved proposals](proposals/approved/index.md)
 - [Plans](plans/index.md)
