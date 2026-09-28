@@ -79,6 +79,66 @@ impl ValueSpec {
         }
     }
 
+    /// Best-effort inverse of [`ValueSpec::to_json_schema`] (remote `describe`
+    /// tables, imported MCP tool schemas). Constructs Rivet cannot express
+    /// (`oneOf`, `format`, tuples, …) become `json` — looser, never stricter.
+    pub fn from_json_schema(schema: &Json) -> ValueSpec {
+        let Some(m) = schema.as_object() else {
+            return ValueSpec::Json;
+        };
+        let ty = m.get("type").and_then(Json::as_str).unwrap_or("");
+        match ty {
+            "string" => ValueSpec::Text,
+            "integer" => ValueSpec::Integer,
+            "number" => ValueSpec::Number,
+            "boolean" => ValueSpec::Boolean,
+            "array" => ValueSpec::List(Box::new(
+                m.get("items")
+                    .map(ValueSpec::from_json_schema)
+                    .unwrap_or(ValueSpec::Json),
+            )),
+            "object" => {
+                let props = m.get("properties").and_then(Json::as_object);
+                if props
+                    .and_then(|p| p.get("$type"))
+                    .and_then(|t| t.get("const"))
+                    .and_then(Json::as_str)
+                    == Some("bytes")
+                {
+                    return ValueSpec::Bytes;
+                }
+                let required: Vec<&str> = m
+                    .get("required")
+                    .and_then(Json::as_array)
+                    .map(|r| r.iter().filter_map(Json::as_str).collect())
+                    .unwrap_or_default();
+                let fields = props
+                    .map(|p| {
+                        p.iter()
+                            .map(|(name, s)| FieldSpec {
+                                name: name.clone(),
+                                spec: ValueSpec::from_json_schema(s),
+                                required: required.contains(&name.as_str()),
+                                description: s
+                                    .get("description")
+                                    .and_then(Json::as_str)
+                                    .map(str::to_string),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                ValueSpec::Object {
+                    fields,
+                    open: m
+                        .get("additionalProperties")
+                        .map(|a| a.as_bool().unwrap_or(true))
+                        .unwrap_or(true),
+                }
+            }
+            _ => ValueSpec::Json,
+        }
+    }
+
     /// Structural check of a value against this spec. Returns every violation.
     pub fn check(&self, value: &Value, path: &str, out: &mut Vec<SchemaViolation>) {
         let ok = match (self, value) {
@@ -189,6 +249,37 @@ pub struct ParamSpec {
 }
 
 impl ParamSpec {
+    /// Every parameter of an object input schema (inverse of [`params_schema`]).
+    pub fn list_from_schema(schema: &Json) -> Vec<ParamSpec> {
+        let required: Vec<&str> = schema
+            .get("required")
+            .and_then(Json::as_array)
+            .map(|r| r.iter().filter_map(Json::as_str).collect())
+            .unwrap_or_default();
+        let Some(props) = schema.get("properties").and_then(Json::as_object) else {
+            return Vec::new();
+        };
+        props
+            .iter()
+            .map(|(name, s)| ParamSpec {
+                name: name.clone(),
+                spec: ValueSpec::from_json_schema(s),
+                required: required.contains(&name.as_str()),
+                default: s.get("default").map(Value::from_json),
+                min: s.get("minimum").and_then(Json::as_f64),
+                max: s.get("maximum").and_then(Json::as_f64),
+                enum_values: s
+                    .get("enum")
+                    .and_then(Json::as_array)
+                    .map(|e| e.iter().map(Value::from_json).collect()),
+                description: s
+                    .get("description")
+                    .and_then(Json::as_str)
+                    .map(str::to_string),
+            })
+            .collect()
+    }
+
     pub fn to_json_schema(&self) -> Json {
         let mut s = self.spec.to_json_schema();
         if let Json::Object(m) = &mut s {

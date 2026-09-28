@@ -6,6 +6,8 @@
 //!  rivet.list / describe / outputs ─▶ registry use cases, filtered by serve.authorize_operation
 //!  rivet.request {id, params}       ─▶ unary: nested dispatch │ streaming: sessions.open receipt
 //!  rivet.sessions.*                 ─▶ sessions use cases ─▶ SessionHost
+//!  rivet.trace.show {request_id}   ─▶ audit.read_trace (explicit listing for network principals)
+//!  rivet.connectors.sync {name, output} ─▶ connectors.invoke_mcp discover + exclusive snapshot create
 //!  rivet.auth.begin / complete / status / disconnect / cancel
 //!                                   ─▶ auth use cases ─▶ OAuthAdapter (traced broker evaluator)
 //! ```
@@ -37,10 +39,12 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 16] = [
+pub const BUILTIN_IDS: [&str; 18] = [
     "rivet.request",
     "rivet.io",
     "rivet.policy.generate",
+    "rivet.trace.show",
+    "rivet.connectors.sync",
     "rivet.list",
     "rivet.describe",
     "rivet.outputs",
@@ -227,10 +231,42 @@ async fn dispatch_builtin_inner(
                     needs: flag("needs"),
                     strict: flag("strict"),
                     include_bootstrap: flag("include_bootstrap"),
+                    // `trace`: join this host's recorded attempts (ATTEMPTS column).
+                    trace_request_id: p.get("trace").and_then(Value::as_str).map(str::to_string),
                     ..crate::domain::io_manifest::IoQuery::default()
                 };
-                let report = rt.io(&query)?;
-                Ok(done(report.manifest.to_json()))
+                // `format` (table|markdown|csv|json) asks for the rendered
+                // IoReport {format, by, rendered, diagnostics, exit_code, manifest}
+                // (what a remote `rivet io` prints); without it the result is the IoManifest.
+                let Some(format) = p.get("format").and_then(Value::as_str) else {
+                    return Ok(done(rt.io(&query)?.manifest.to_json()));
+                };
+                let report = rt.io(&crate::domain::io_manifest::IoQuery {
+                    format: format.to_string(),
+                    ..query
+                })?;
+                Ok(done(json!({
+                    "format": report.format,
+                    "by": report.by,
+                    "rendered": report.rendered,
+                    "diagnostics": report.diagnostics,
+                    "exit_code": report.exit_code,
+                    "manifest": report.manifest.to_json(),
+                })))
+            }
+            "rivet.trace.show" => {
+                // Traces reveal targets and paths: only the local principal or an
+                // explicit `rivet.trace.show` listing reaches this arm.
+                let t = rt.trace(&text(p, "request_id")?)?;
+                Ok(done(t.to_json()))
+            }
+            "rivet.connectors.sync" => {
+                // Same authorized discovery as `rivet connectors sync`; `output`
+                // is bundle-root relative and is created exclusively.
+                let receipt = rt
+                    .sync_connector(&text(p, "name")?, &text(p, "output")?)
+                    .await?;
+                Ok(done(receipt.to_json()))
             }
             "rivet.policy.generate" => {
                 let ids: Vec<String> = match p.get("ids") {

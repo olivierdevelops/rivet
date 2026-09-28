@@ -4,3 +4,5 @@
 pub use crate::domain::ports::{McpClient, McpSession};
 // vhco:port PolicyEvaluator { evaluate(EffectIntent) -> Permit }
 pub use crate::domain::ports::PolicyEvaluator;
+// vhco:port CredentialProvider { acquire(CredentialInput) -> CredentialLease; invalidate(CredentialLease) -> Unit }
+pub use crate::domain::ports::CredentialProvider;

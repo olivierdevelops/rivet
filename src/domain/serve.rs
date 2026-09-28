@@ -196,7 +196,7 @@ impl WsFrameType {
     }
 }
 
-// vhco:domain WsFrame { type: WsFrameType; ref: string; id?: string; params?: Value; seq?: int; data?: Value; completion?: Completion; error?: RivetError }
+// vhco:domain WsFrame { type: WsFrameType; ref: string; id?: string; params?: Value; seq?: int; data?: Value; completion?: Completion; error?: RivetError; request_id?: string; trace_id?: string }
 /// One JSON text frame on `/v1/ws` (client or server direction).
 #[derive(Clone, Debug, PartialEq)]
 pub struct WsFrame {
@@ -208,6 +208,10 @@ pub struct WsFrame {
     pub data: Option<Value>,
     pub completion: Option<Completion>,
     pub error: Option<RivetError>,
+    /// Server data/error frames name the request they belong to (the result
+    /// frame carries them inside its Completion).
+    pub request_id: Option<String>,
+    pub trace_id: Option<String>,
 }
 
 impl WsFrame {
@@ -221,7 +225,16 @@ impl WsFrame {
             data: None,
             completion: None,
             error: None,
+            request_id: None,
+            trace_id: None,
         }
+    }
+
+    /// Stamp the request this data/error frame belongs to.
+    pub fn for_request(mut self, request_id: &str, trace_id: &str) -> WsFrame {
+        self.request_id = Some(request_id.to_string());
+        self.trace_id = Some(trace_id.to_string());
+        self
     }
 
     pub fn error(r#ref: &str, error: RivetError) -> WsFrame {
@@ -250,11 +263,17 @@ impl WsFrame {
         matches!(self.kind, WsFrameType::Result | WsFrameType::Error)
     }
 
-    /// Server frame JSON: `{type, ref, seq?, data?, completion?, error?}`.
+    /// Server frame JSON: `{type, ref, request_id?, trace_id?, seq?, data?, completion?, error?}`.
     pub fn to_json(&self) -> Json {
         let mut m = serde_json::Map::new();
         m.insert("type".into(), json!(self.kind.as_str()));
         m.insert("ref".into(), json!(self.r#ref));
+        if let Some(r) = &self.request_id {
+            m.insert("request_id".into(), json!(r));
+        }
+        if let Some(t) = &self.trace_id {
+            m.insert("trace_id".into(), json!(t));
+        }
         if let Some(id) = &self.id {
             m.insert("id".into(), json!(id));
         }

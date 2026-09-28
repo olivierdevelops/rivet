@@ -195,6 +195,8 @@ struct Inner {
     bridges: Mutex<HashMap<String, BridgeHops>>,
     /// OAuth transactions, account state and the credential store (`rivet.auth.*`).
     oauth: Arc<OAuthAdapter>,
+    /// The authorized credential provider (auth.acquire_credential) for MCP connectors.
+    credentials: Arc<dyn CredentialProvider>,
 }
 
 /// CredentialProvider seen by transport adapters: every lease runs the
@@ -445,6 +447,7 @@ impl Runtime {
             &policy.approved.snapshots,
             discovery,
         )?;
+        let import_entries = mcp_catalog.import_entries();
         let mcp = Arc::new(McpPeer::new(
             mcp_catalog,
             &bundle.root,
@@ -465,6 +468,7 @@ impl Runtime {
         let credentials: Arc<dyn CredentialProvider> = Arc::new(AuthorizedCredentials {
             raw: Arc::clone(&oauth),
         });
+        let mcp_credentials = Arc::clone(&credentials);
         crate::orchestrator::transports::register(
             &mut interp,
             files,
@@ -486,7 +490,11 @@ impl Runtime {
         });
         interp.register_adapter("grpc", Arc::new(GrpcEffects::new(invoke)));
         let driver = Arc::new(interp);
-        let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)).with_effects(effects));
+        let registry = Arc::new(
+            ProgramRegistry::new(Arc::clone(&program))
+                .with_imports(import_entries)
+                .with_effects(effects),
+        );
         let catalog_version = program.source_hash.clone();
         let inner = Arc::new_cyclic(|weak: &std::sync::Weak<Inner>| {
             let w = weak.clone();
@@ -515,6 +523,7 @@ impl Runtime {
                 files: host_files,
                 bridges: Mutex::new(HashMap::new()),
                 oauth,
+                credentials: mcp_credentials,
             }
         });
         inner.driver.set_dag_executor(Arc::new(DagUseCase));
@@ -707,6 +716,8 @@ impl Runtime {
                 .unwrap_or_default(),
             identity: self.bridge_identity(),
             span: None,
+            principal: req.map(|r| r.principal.clone()),
+            bearer: None,
         }
     }
 
@@ -737,6 +748,7 @@ impl Runtime {
             input,
             self.inner.evaluator.as_ref(),
             self.inner.mcp.as_ref(),
+            Some(self.inner.credentials.as_ref()),
         );
         let result = match tokio::time::timeout(
             std::time::Duration::from_millis(req.deadline_ms.max(1)),
@@ -809,6 +821,7 @@ impl Runtime {
             input,
             self.inner.evaluator.as_ref(),
             self.inner.mcp.as_ref(),
+            Some(self.inner.credentials.as_ref()),
         )
         .await?;
         let snapshot_json = found

@@ -24,6 +24,13 @@ impl ProgramRegistry {
         }
     }
 
+    /// Add imported MCP operations (reviewed snapshot schemas) after the
+    /// program's own operations; the loader already rejected ID collisions.
+    pub fn with_imports(mut self, imports: Vec<RegistryEntry>) -> ProgramRegistry {
+        self.entries.extend(imports);
+        self
+    }
+
     /// Attach the effect sites computed once from the same program.
     pub fn with_effects(mut self, effects: EffectCatalog) -> ProgramRegistry {
         self.effects = Arc::new(effects);
@@ -44,6 +51,8 @@ pub fn entry_of(op: &Operation) -> RegistryEntry {
         receives: op.receives.clone(),
         errors: op.errors.clone(),
         source: op.span.clone(),
+        raw_input_schema: None,
+        raw_output_schema: None,
     }
 }
 

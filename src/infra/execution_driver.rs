@@ -16,7 +16,7 @@ use crate::domain::ir::{
 use crate::domain::policy::{AccessVerb, Capability, Decision, EffectIntent, EffectTarget};
 use crate::domain::ports::{DataSink, Dispatcher, ExecutionDriver, FileAccess, PolicyEvaluator};
 use crate::domain::source::SourceSpan;
-use crate::domain::transports::{UrlPiece, assemble_url};
+use crate::domain::transports::{UrlPiece, assemble_url, xml_element};
 use crate::domain::{RivetError, RivetResult, Value};
 use async_trait::async_trait;
 use base64::Engine;
@@ -163,6 +163,9 @@ type SharedHandle = Arc<tokio::sync::Mutex<Option<Box<dyn ResourceHandle>>>>;
 pub struct EvaluatedForm {
     pub head: Vec<EvalArg>,
     pub options: Vec<(String, Vec<EvalArg>)>,
+    /// Evaluated child lines of each option, index-aligned with `options`
+    /// (`body multipart … end` parts: `field NAME VALUE`, `file NAME PATH [TYPE]`).
+    pub children: Vec<Vec<(String, Vec<EvalArg>)>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1168,6 +1171,19 @@ impl<'a> Machine<'a> {
                 args.push(self.eval_arg(frame, a).await?);
             }
             out.options.push((o.key.clone(), args));
+            let mut kids = Vec::with_capacity(o.children.len());
+            for c in &o.children {
+                let mut args = Vec::with_capacity(c.args.len());
+                for (i, a) in c.args.iter().enumerate() {
+                    // A part's bare NAME is a literal name, never a variable lookup.
+                    args.push(match a {
+                        Arg::Word(w, _) if i == 0 => EvalArg::Word(w.clone()),
+                        _ => self.eval_arg(frame, a).await?,
+                    });
+                }
+                kids.push((c.key.clone(), args));
+            }
+            out.children.push(kids);
         }
         Ok(out)
     }
@@ -1694,6 +1710,11 @@ impl<'a> Machine<'a> {
                 Ok(Value::Text(
                     base64::engine::general_purpose::STANDARD.encode(bytes),
                 ))
+            }
+            "xml.element" => {
+                arity(3)?;
+                xml_element(&vals[0], &vals[1], &vals[2])
+                    .map_err(|m| runtime_err("call.xml", m, span))
             }
             "base64.decode" => {
                 arity(1)?;

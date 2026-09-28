@@ -11,7 +11,6 @@
 //! ```
 
 use crate::domain::contracts::RegistryEntry;
-use crate::domain::outputs::params_schema;
 use crate::domain::serve::MCP_PROTOCOL_VERSION;
 use serde_json::{Value as Json, json};
 
@@ -117,7 +116,7 @@ pub fn tool_descriptor(e: &RegistryEntry) -> Json {
     let mut t = json!({
         "name": e.id,
         "title": e.name,
-        "inputSchema": params_schema(&e.params),
+        "inputSchema": e.input_schema(),
     });
     if let Some(d) = &e.description {
         t["description"] = json!(d);

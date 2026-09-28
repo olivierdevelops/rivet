@@ -55,6 +55,7 @@ pub fn inspect_outputs(
             emits: e.emits,
             receives: e.receives,
             errors: e.errors,
+            raw_output_schema: e.raw_output_schema,
         })
         .collect();
     reports.sort_by(|a, b| a.id.cmp(&b.id));

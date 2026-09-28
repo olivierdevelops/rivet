@@ -1,9 +1,16 @@
 use crate::domain::serve::{AccessDecision, OperationAccess};
 use crate::domain::{RivetError, RivetResult};
 
-/// IDs that reveal internal URLs/paths: a network principal needs them listed
-/// explicitly; `*` / `demo.*` style patterns never match them.
-pub const SENSITIVE_IDS: [&str; 2] = ["rivet.io", "rivet.policy.generate"];
+/// IDs that reveal internal URLs/paths (the I/O manifest, policy drafts,
+/// recorded traces) or write host files (`connectors sync`): a network
+/// principal needs them listed explicitly; `*` / `demo.*` style patterns never
+/// match them.
+pub const SENSITIVE_IDS: [&str; 4] = [
+    "rivet.io",
+    "rivet.policy.generate",
+    "rivet.trace.show",
+    "rivet.connectors.sync",
+];
 
 /// Generic built-ins whose authorization applies to the operation they name
 /// (`rivet.request`, `rivet.sessions.open`, `rivet.describe`, `rivet.outputs`)
@@ -138,6 +145,8 @@ mod tests {
         assert!(!authorize_operation(&access("eve", "demo.add", team())).allowed);
         assert!(authorize_operation(&access("eve", "demo.add", None)).allowed);
         assert!(!authorize_operation(&access("eve", "rivet.policy.generate", None)).allowed);
+        assert!(!authorize_operation(&access("ops", "rivet.trace.show", team())).allowed);
+        assert!(!authorize_operation(&access("eve", "rivet.connectors.sync", None)).allowed);
         assert!(authorize_operation(&access("ci", "rivet.sessions.read", team())).allowed);
         let mut local = access("local", "rivet.io", team());
         local.principal = Principal::local();

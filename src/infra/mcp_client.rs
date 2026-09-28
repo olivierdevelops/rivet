@@ -19,6 +19,7 @@
 use super::codec::StreamDecoder;
 use super::effect_args::read_file;
 use crate::domain::ErrorKind;
+use crate::domain::auth::SecretString;
 use crate::domain::ir::{Arg, CompiledProgram, Declaration, Expr, OptionLine};
 use crate::domain::mcp::{
     MCP_CLIENT_VERSION, MCP_COMPATIBLE_VERSIONS, McpCatalog, McpConnectorInfo, McpContext,
@@ -295,6 +296,13 @@ fn connector_info(
             ),
         )
     })?;
+    if matches!(info.transport, McpTransport::Command { .. }) && info.auth.is_some() {
+        return Err(decl_err(
+            decl,
+            "mcp.auth_transport",
+            "`auth PROFILE account \"A\"` applies only to `transport http`: OAuth bearers bind to network origins",
+        ));
+    }
     if matches!(info.transport, McpTransport::Command { .. }) && info.tls != McpTls::default() {
         return Err(decl_err(
             decl,
@@ -527,6 +535,10 @@ impl McpClient for McpPeer {
                 evaluator: Arc::clone(&self.evaluator),
                 origin,
                 tls: self.tls_material(&connector.tls).await?,
+                bearer: context
+                    .bearer
+                    .as_ref()
+                    .map(|l| SecretString::new(format!("Bearer {}", l.handle.expose()))),
                 session_id: None,
                 protocol: None,
                 inbox: None,
@@ -706,6 +718,8 @@ struct HttpLink {
     evaluator: Arc<dyn PolicyEvaluator>,
     origin: EffectOrigin,
     tls: TlsMaterial,
+    /// `Authorization` value from the origin-bound lease (`auth PROFILE account A`).
+    bearer: Option<SecretString>,
     session_id: Option<String>,
     protocol: Option<String>,
     inbox: Option<Inbox>,
@@ -725,6 +739,10 @@ impl HttpLink {
         }
         if let Some(v) = &self.protocol {
             headers.push(("mcp-protocol-version".into(), v.clone()));
+        }
+        // exchange_http strips it on any origin change (redirects are off here)
+        if let Some(b) = &self.bearer {
+            headers.push(("authorization".into(), b.expose().to_string()));
         }
         HttpExchange {
             method: method.into(),

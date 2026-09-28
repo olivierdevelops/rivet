@@ -30,10 +30,18 @@ use crate::domain::policy::{AccessVerb, Capability, EffectTarget};
 use crate::domain::ports::{CredentialProvider, FileAccess, PolicyEvaluator};
 use crate::domain::transports::{
     ByteStream, Codec, CodecInput, CodecKind, HttpBody, HttpClient, HttpExchange, HttpOutcome,
-    HttpReply, HttpResponse, HttpVersionPolicy, HttpWire, RetryPolicy, StreamMode, TlsMaterial,
-    WireTarget, replay_safe, version_value,
+    HttpReply, HttpResponse, HttpVersionPolicy, HttpWire, MultipartPart, RetryPolicy, StreamMode,
+    TlsMaterial, WireTarget, multipart_body, replay_safe, version_value, xml_markup,
 };
 use crate::domain::{ErrorKind, RivetError, RivetResult, Value};
+
+/// A fresh `multipart/form-data` boundary (CSPRNG hex; never derived from content).
+fn multipart_boundary() -> String {
+    let mut b = [0u8; 16];
+    let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut b);
+    let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    format!("rivet-{hex}")
+}
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::future::BoxFuture;
@@ -504,11 +512,91 @@ impl HttpEffects {
                             }
                         }
                         "multipart" => {
-                            return Err(RivetError::unsupported(
-                                "unsupported.http_body",
-                                "`body multipart` is not available in this build",
+                            // Parts are evaluated child lines; every `file` part is
+                            // an authorized read (allow_read) before anything connects.
+                            let mut parts = Vec::new();
+                            for (key, pa) in f.children.get(i).map(Vec::as_slice).unwrap_or(&[]) {
+                                let name = word(pa.first())
+                                    .map(str::to_string)
+                                    .or_else(|| text(pa.first()))
+                                    .ok_or_else(|| {
+                                        bad("validation.http_option", format!("multipart `{key}` needs a NAME"))
+                                    })?;
+                                match key.as_str() {
+                                    "field" => parts.push(MultipartPart::Field {
+                                        name: name.clone(),
+                                        value: match pa.get(1) {
+                                            Some(EvalArg::Value(Value::Text(s))) => s.clone(),
+                                            Some(EvalArg::Value(v)) => v.to_display(),
+                                            Some(EvalArg::Word(w)) => w.clone(),
+                                            None => {
+                                                return Err(bad(
+                                                    "validation.http_option",
+                                                    format!("multipart `field {name}` needs a value"),
+                                                ));
+                                            }
+                                        },
+                                    }),
+                                    "file" => {
+                                        let path = text(pa.get(1)).ok_or_else(|| {
+                                            bad(
+                                                "validation.http_option",
+                                                format!("multipart `file {name}` needs a path"),
+                                            )
+                                        })?;
+                                        let bytes = read_file(self.files.as_ref(), &path).await?;
+                                        parts.push(MultipartPart::File {
+                                            filename: std::path::Path::new(&path)
+                                                .file_name()
+                                                .map(|n| n.to_string_lossy().into_owned())
+                                                .unwrap_or_else(|| name.clone()),
+                                            name,
+                                            content_type: text(pa.get(2))
+                                                .unwrap_or_else(|| "application/octet-stream".into()),
+                                            bytes,
+                                        });
+                                    }
+                                    other => {
+                                        return Err(bad(
+                                            "validation.http_option",
+                                            format!("`{other}` is not a multipart part (field, file)"),
+                                        ));
+                                    }
+                                }
+                            }
+                            let boundary = multipart_boundary();
+                            x.headers
+                                .retain(|(k, _)| !k.eq_ignore_ascii_case("content-type"));
+                            x.headers.push((
+                                "content-type".into(),
+                                format!("multipart/form-data; boundary={boundary}"),
                             ));
+                            CodecInput {
+                                kind: CodecKind::Bytes,
+                                bytes: None,
+                                value: Some(Value::Bytes(multipart_body(&parts, &boundary))),
+                            }
                         }
+                        "xml" => CodecInput {
+                            kind: CodecKind::Xml,
+                            bytes: None,
+                            // (xml.element …) markup, or text the caller already serialized
+                            value: Some(match xml_markup(&value) {
+                                Some(m) => Value::text(m),
+                                None => match &value {
+                                    Value::Text(_) => value.clone(),
+                                    other => {
+                                        return Err(bad(
+                                            "validation.http_option",
+                                            format!(
+                                                "`body xml` needs (xml.element …) or text, got {}",
+                                                other.type_name()
+                                            ),
+                                        ));
+                                    }
+                                },
+                            }),
+                        },
                         other => CodecInput {
                             kind: CodecKind::parse(other).ok_or_else(|| {
                                 bad(

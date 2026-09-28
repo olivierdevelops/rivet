@@ -366,3 +366,43 @@ pub trait CredentialProvider: Send + Sync {
     /// Drop a lease the resource rejected (401) so the next use reacquires.
     fn invalidate(&self, lease: &super::auth::CredentialLease);
 }
+
+// vhco:domain RemoteCall { id: string; params: Value; deadline_ms?: int }
+/// One call a CLI in `--endpoint` mode sends to a running `rivet serve`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RemoteCall {
+    pub id: String,
+    pub params: Value,
+    /// `--timeout`: asks the server for this request deadline (capped there).
+    pub deadline_ms: Option<u64>,
+}
+
+/// Host bootstrap I/O, not a script effect: the CLI as a thin client of an
+/// existing `rivet serve` (`--endpoint URL`). Every method returns the server's
+/// own Completion or its ErrorEnvelope decoded back into the same RivetError,
+/// so exit codes follow the registry exactly as for a local run.
+#[async_trait]
+pub trait RemoteEndpoint: Send + Sync {
+    /// `POST /v1/request {id, params}` → Completion.
+    async fn request(&self, call: RemoteCall) -> RivetResult<Completion>;
+    /// `POST /v1/request` with `Accept: text/event-stream`: each data envelope
+    /// goes to `sink` as it arrives; the terminal event is the result.
+    async fn request_stream(
+        &self,
+        call: RemoteCall,
+        sink: Arc<dyn DataSink>,
+    ) -> RivetResult<Completion>;
+    /// `GET PATH` (path plus query) → the JSON body of a 2xx answer.
+    async fn get(&self, path: &str) -> RivetResult<serde_json::Value>;
+    /// `/v1/ws` (subprotocol rivet.v1): one `request` frame, then an `input`
+    /// frame per item received on `input` while data frames drain to `sink`;
+    /// the channel closing sends `finish_input`, `cancel` firing sends
+    /// `cancel`. Ends with the ref's single result or error frame.
+    async fn duplex(
+        &self,
+        call: RemoteCall,
+        input: tokio::sync::mpsc::Receiver<Value>,
+        cancel: tokio::sync::oneshot::Receiver<()>,
+        sink: Arc<dyn DataSink>,
+    ) -> RivetResult<Completion>;
+}

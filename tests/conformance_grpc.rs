@@ -1016,3 +1016,113 @@ fn fixture_descriptors_match_the_demo_schema() {
     );
     let _ = DynamicMessage::new(users.methods().next().unwrap().input()).descriptor();
 }
+
+// ---------------------------------------------------------------- CLI live input (Increment 14)
+
+/// docs/demos/10-grpc `chat.exchange`: live `incoming` → Chat → emitted echoes.
+const CHAT_LIVE: &str = "operation chat.exchange\n    output json\n    emits object\n        field text text required\n    end\n    receives object\n        field text text required\n    end\n    with grpc users.Chat as rpc\n        timeout \"30s\"\n        concurrent limit 2 fail fast\n            task send\n                for message in incoming\n                    rpc.send message\n                end\n                rpc.finish_send\n            end\n            task receive\n                for message in rpc\n                    emit message\n                end\n            end\n        end\n        return rpc.completion\n    end\nend\n\n";
+
+/// Drive `rivet … request chat.exchange --params '{}' --input-jsonl - --stream`
+/// interactively: each stdin line's echo is read back BEFORE the next line is
+/// written (so stdin is never buffered up front), then EOF finishes the input.
+async fn live_chat(prefix: &[&str]) -> Vec<serde_json::Value> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
+        .args(prefix)
+        .args([
+            "request",
+            "chat.exchange",
+            "--params",
+            "{}",
+            "--input-jsonl",
+            "-",
+            "--stream",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = tokio::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut out = Vec::new();
+    for text in ["hello", "world"] {
+        stdin
+            .write_all(format!("{{\"text\":\"{text}\"}}\n").as_bytes())
+            .await
+            .unwrap();
+        stdin.flush().await.unwrap();
+        let line = tokio::time::timeout(Duration::from_secs(10), lines.next_line())
+            .await
+            .expect("an echo arrives while stdin is still open")
+            .unwrap()
+            .unwrap();
+        out.push(serde_json::from_str(&line).unwrap());
+    }
+    drop(stdin); // EOF = finish_input → half-close → OK trailers
+    while let Some(line) = tokio::time::timeout(Duration::from_secs(10), lines.next_line())
+        .await
+        .unwrap()
+        .unwrap()
+    {
+        out.push(serde_json::from_str(&line).unwrap());
+    }
+    let status = child.wait().await.unwrap();
+    assert_eq!(status.code(), Some(0));
+    out
+}
+
+// vhco:test sessions.send_input -- CLI `request chat.exchange --input-jsonl - --stream` locally (Runtime::dispatch_session) and against serve (/v1/ws frames): echoes stream while stdin is open, EOF finishes input, the result is the OK completion; a schema-invalid line cancels with validation.input (exit 2)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cli_live_input_local_and_remote() {
+    let s = start_plain().await;
+    let b = std_bundle(&s, CHAT_LIVE);
+    let file = b._dir.path().join("app.rivet");
+    let file = file.to_str().unwrap();
+    let rt = b.rt.as_ref().unwrap().clone();
+    let server = rivet::orchestrator::setup_serve::start(
+        rt,
+        rivet::orchestrator::setup_serve::ServeOptions {
+            listen: Some("127.0.0.1:0".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let url = format!("http://{}", server.addr.unwrap());
+    for prefix in [vec!["--file", file], vec!["--endpoint", url.as_str()]] {
+        let out = live_chat(&prefix).await;
+        assert_eq!(out.len(), 3, "{prefix:?} {out:?}");
+        assert_eq!(
+            (&out[0]["data"]["text"], &out[1]["data"]["text"]),
+            (&serde_json::json!("hello"), &serde_json::json!("world"))
+        );
+        assert_eq!(out[0]["type"], "data");
+        assert_eq!(out[2]["type"], "result");
+        assert_eq!(out[2]["result"]["status"], "OK");
+        // A line that breaks the `receives` schema cancels the call (exit 2).
+        let bad = tokio::process::Command::new(env!("CARGO_BIN_EXE_rivet"))
+            .args(&prefix)
+            .args(["request", "chat.exchange", "--input-jsonl", "-", "--stream"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut bad = bad;
+        {
+            use tokio::io::AsyncWriteExt;
+            let mut i = bad.stdin.take().unwrap();
+            i.write_all(b"{\"text\":1}\n").await.unwrap();
+            // keep stdin open: the validation error alone must end the request
+            let out = tokio::time::timeout(Duration::from_secs(10), bad.wait_with_output())
+                .await
+                .expect("a malformed line cancels without waiting for EOF")
+                .unwrap();
+            drop(i);
+            assert_eq!(out.status.code(), Some(2), "{prefix:?}");
+            assert!(String::from_utf8_lossy(&out.stderr).contains("validation.input"));
+        }
+    }
+    server.shutdown().await;
+}

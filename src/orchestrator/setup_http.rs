@@ -7,7 +7,7 @@
 //!  GET /v1/operations[/{id}[/outputs]]   ─▶ catalog filtered by the principal's authorization
 //! ```
 
-// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, audit/inspect_effects, policy/generate_policy, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface http kind http calls execution/request_operation, registry/describe_operations, registry/inspect_outputs, serve/authenticate_principal, serve/authorize_operation, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, audit/inspect_effects, policy/generate_policy, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization, audit/read_trace, connectors/invoke_mcp
 // vhco:trigger http auth/begin_authorization = POST /v1/request {"id":"rivet.auth.begin"}
 // vhco:trigger http auth/complete_authorization = POST /v1/request {"id":"rivet.auth.complete"}
 // vhco:trigger http auth/credential_status = POST /v1/request {"id":"rivet.auth.status"}
@@ -18,6 +18,8 @@
 // vhco:trigger http registry/inspect_outputs = GET /v1/operations/{id}/outputs
 // vhco:trigger http audit/inspect_effects = GET /v1/io?by=target&kind=file&check_policy=true
 // vhco:trigger http policy/generate_policy = POST /v1/policy/generate
+// vhco:trigger http audit/read_trace = POST /v1/request {"id":"rivet.trace.show","params":{"request_id":"…"}} (local principal or explicit listing)
+// vhco:trigger http connectors/invoke_mcp = POST /v1/request {"id":"rivet.connectors.sync","params":{"name":"…","output":"./…"}} | POST /v1/request {"id":"CONNECTOR.tools.NAME"}
 // vhco:trigger http serve/authenticate_principal = Authorization: Bearer TOKEN on every route
 // vhco:trigger http serve/authorize_operation = serve.principals check on every route
 // vhco:trigger http sessions/open_session = POST /v1/request {"id":"rivet.sessions.open"}
@@ -26,7 +28,7 @@
 // vhco:trigger http sessions/read_events = POST /v1/request {"id":"rivet.sessions.read"}
 // vhco:trigger http sessions/cancel_session = POST /v1/request {"id":"rivet.sessions.cancel"}
 // vhco:api http execution/request_operation POST /v1/request -- invoke one operation; JSON Completion, or SSE envelopes with Accept: text/event-stream
-// vhco:request { "id": "string — operation ID", "params": "object" }
+// vhco:request { "id": "string — operation ID", "params": "object", "deadline_ms": "int? — requested deadline, capped at 600000" }
 // vhco:response { "request_id": "string", "trace_id": "string", "result": "Value", "data_count": "int", "effects": "none|committed|partial|unknown" }
 // vhco:api http audit/inspect_effects GET /v1/io -- the I/O manifest (IoManifest JSON); needs an explicit rivet.io listing for non-local principals; check_files is refused remotely
 // vhco:response { "bundle": "FileDigest", "policy": "FileDigest|null", "complete": "bool", "sites": "EffectSite[]", "targets": "TargetSummary[]" }
@@ -190,7 +192,10 @@ async fn request(
             ),
         ));
     }
-    let req = st.runtime.new_request(&body.id, body.params, who);
+    let mut req = st.runtime.new_request(&body.id, body.params, who);
+    if let Some(ms) = body.deadline_ms {
+        req.deadline_ms = ms;
+    }
     if !sse {
         return match st.runtime.dispatch_request(req, None).await {
             Ok(c) => json_response(200, c.to_json()),

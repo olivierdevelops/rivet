@@ -430,6 +430,93 @@ impl McpCatalog {
         self.imports.iter().find(|i| i.id == id)
     }
 
+    /// One catalog entry per imported operation, with its reviewed snapshot
+    /// schemas: a tool keeps its `inputSchema` verbatim and its result schema
+    /// wraps the snapshot `outputSchema` as `structuredContent`; resources and
+    /// prompts accept only the exposed URIs / names. `list`, `describe`,
+    /// `outputs`, `/v1/operations` and MCP `tools/list` show these entries.
+    pub fn import_entries(&self) -> Vec<super::contracts::RegistryEntry> {
+        use super::contracts::RegistryEntry;
+        use super::ir::OperationKind;
+        use super::outputs::{OutputSpec, ParamSpec, ValueSpec};
+        let mut out = Vec::new();
+        for i in &self.imports {
+            let Some(conn) = self.connector(&i.connector) else {
+                continue;
+            };
+            let snapshot = conn.snapshot.as_ref();
+            let (name, description, input, output) = match i.kind {
+                McpImportKind::Tool => {
+                    let tool = snapshot.and_then(|s| s.tool(i.name.as_deref().unwrap_or("")));
+                    let structured = tool
+                        .and_then(|t| t.output_schema.clone())
+                        .unwrap_or_else(|| json!({}));
+                    (
+                        tool.and_then(|t| t.title.clone())
+                            .or_else(|| i.name.clone())
+                            .unwrap_or_else(|| i.id.clone()),
+                        tool.and_then(|t| t.description.clone()),
+                        tool.map(|t| t.input_schema.clone())
+                            .unwrap_or_else(|| json!({"type": "object"})),
+                        json!({"type": "object",
+                               "description": "MCP tool result: content blocks and structuredContent, unchanged.",
+                               "properties": {"content": {"type": "array"}, "structuredContent": structured, "isError": {"type": "boolean"}},
+                               "required": ["content", "isError"], "additionalProperties": true}),
+                    )
+                }
+                McpImportKind::ResourceRead => (
+                    format!("Read a {} resource", conn.name),
+                    Some(format!(
+                        "Read one resource exposed by MCP connector `{}`.",
+                        conn.name
+                    )),
+                    json!({"type": "object",
+                           "properties": {"uri": {"type": "string", "enum": conn.expose_resources, "description": "An exposed resource URI."}},
+                           "required": ["uri"], "additionalProperties": false}),
+                    json!({"type": "object", "description": "MCP resources/read result.",
+                           "properties": {"contents": {"type": "array"}},
+                           "required": ["contents"], "additionalProperties": true}),
+                ),
+                McpImportKind::PromptGet => (
+                    format!("Get a {} prompt", conn.name),
+                    Some(format!(
+                        "Render one prompt exposed by MCP connector `{}`.",
+                        conn.name
+                    )),
+                    json!({"type": "object",
+                           "properties": {"name": {"type": "string", "enum": conn.expose_prompts, "description": "An exposed prompt name."},
+                                          "arguments": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Prompt arguments (text)."}},
+                           "required": ["name"], "additionalProperties": false}),
+                    json!({"type": "object", "description": "MCP prompts/get result.",
+                           "properties": {"messages": {"type": "array"}},
+                           "required": ["messages"], "additionalProperties": true}),
+                ),
+            };
+            out.push(RegistryEntry {
+                id: i.id.clone(),
+                name,
+                description,
+                kind: OperationKind::Operation,
+                private: false,
+                params: ParamSpec::list_from_schema(&input),
+                output: OutputSpec {
+                    spec: ValueSpec::from_json_schema(&output),
+                    description: output
+                        .get("description")
+                        .and_then(Json::as_str)
+                        .map(str::to_string),
+                },
+                emits: None,
+                receives: None,
+                errors: Vec::new(),
+                source: conn.span.clone(),
+                raw_input_schema: Some(input),
+                raw_output_schema: Some(output),
+            });
+        }
+        out
+    }
+
     /// True when `id` is under an MCP connector's namespace (`crm.…`).
     pub fn owns(&self, id: &str) -> bool {
         id.split_once('.')
@@ -470,7 +557,7 @@ impl BridgeHops {
     }
 }
 
-// vhco:domain McpContext { operation_id: string; request_id: string; deadline_ms: int; bridge: BridgeHops; identity: string; span?: SourceSpan }
+// vhco:domain McpContext { operation_id: string; request_id: string; deadline_ms: int; bridge: BridgeHops; identity: string; span?: SourceSpan; principal?: Principal; bearer?: CredentialLease }
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct McpContext {
     /// The calling operation (or the import ID for a surface call).
@@ -481,6 +568,11 @@ pub struct McpContext {
     /// This host's identity in bridge chains (`rivet:<bundle hash prefix>`).
     pub identity: String,
     pub span: Option<SourceSpan>,
+    /// The caller (credential cache identity for `auth PROFILE account A`).
+    pub principal: Option<super::contracts::Principal>,
+    /// An origin-bound OAuth lease acquired by `connectors.invoke_mcp`; the
+    /// HTTP transport attaches it as `Authorization: Bearer` (never logged).
+    pub bearer: Option<super::auth::CredentialLease>,
 }
 
 // vhco:domain McpRequest { connector: string; method: string; params: Value; schema_hash: string; context: McpContext }

@@ -656,9 +656,198 @@ pub fn percent_encode_component(v: &str) -> String {
     s
 }
 
+// ---------------------------------------------------------------- XML builder
+
+/// Escape XML character data / attribute values (`& < > " '`).
+pub fn xml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn xml_name_ok(n: &str) -> bool {
+    let mut chars = n.chars();
+    matches!(chars.next(), Some(c) if c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':'))
+}
+
+/// Serialized XML of a value built by `(xml.element …)` (`{"$type":"xml","xml":TEXT}`).
+pub fn xml_markup(v: &Value) -> Option<&str> {
+    match (v.get("$type").and_then(Value::as_str), v.get("xml")) {
+        (Some("xml"), Some(Value::Text(x))) => Some(x),
+        _ => None,
+    }
+}
+
+/// `(xml.element NAME ATTRIBUTES CONTENT)` — a pure helper (no I/O, no
+/// entities, no DTD): NAME must be an XML name; ATTRIBUTES is an object whose
+/// values are escaped; CONTENT is text (escaped), another element, null, or a
+/// list of those. The result is `{"$type":"xml","xml":"<name …>…</name>"}` so
+/// nested elements are embedded as markup while plain text is always escaped;
+/// `body xml` sends its `xml` text as `application/xml`.
+pub fn xml_element(name: &Value, attributes: &Value, content: &Value) -> Result<Value, String> {
+    let name = name
+        .as_str()
+        .filter(|n| xml_name_ok(n))
+        .ok_or("(xml.element NAME …) needs a valid XML element name")?;
+    let mut out = format!("<{name}");
+    match attributes {
+        Value::Null => {}
+        Value::Object(pairs) => {
+            for (k, v) in pairs {
+                if !xml_name_ok(k) {
+                    return Err(format!("`{k}` is not a valid XML attribute name"));
+                }
+                let text = match v {
+                    Value::Text(s) => s.clone(),
+                    other => other.to_display(),
+                };
+                out.push_str(&format!(" {k}=\"{}\"", xml_escape(&text)));
+            }
+        }
+        other => {
+            return Err(format!(
+                "(xml.element …) attributes must be an object, got {}",
+                other.type_name()
+            ));
+        }
+    }
+    fn body(v: &Value, out: &mut String) -> Result<(), String> {
+        if let Some(markup) = xml_markup(v) {
+            out.push_str(markup);
+            return Ok(());
+        }
+        match v {
+            Value::Null => {}
+            Value::Text(s) => out.push_str(&xml_escape(s)),
+            Value::List(items) => {
+                for i in items {
+                    body(i, out)?;
+                }
+            }
+            Value::Object(_) | Value::Bytes(_) => {
+                return Err(format!(
+                    "(xml.element …) content must be text, an element or a list, got {}",
+                    v.type_name()
+                ));
+            }
+            other => out.push_str(&xml_escape(&other.to_display())),
+        }
+        Ok(())
+    }
+    let mut inner = String::new();
+    body(content, &mut inner)?;
+    if inner.is_empty() {
+        out.push_str("/>");
+    } else {
+        out.push_str(&format!(">{inner}</{name}>"));
+    }
+    Ok(Value::object([
+        ("$type", Value::text("xml")),
+        ("xml", Value::Text(out)),
+    ]))
+}
+
+/// One `body multipart` part after evaluation.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MultipartPart {
+    Field {
+        name: String,
+        value: String,
+    },
+    File {
+        name: String,
+        filename: String,
+        content_type: String,
+        bytes: Vec<u8>,
+    },
+}
+
+/// `multipart/form-data` body bytes for `parts` with `boundary` (RFC 7578).
+/// Names and filenames are quoted with `"`, CR and LF percent-escaped.
+pub fn multipart_body(parts: &[MultipartPart], boundary: &str) -> Vec<u8> {
+    let q = |s: &str| {
+        s.replace('"', "%22")
+            .replace('\r', "%0D")
+            .replace('\n', "%0A")
+    };
+    let mut out = Vec::new();
+    for p in parts {
+        out.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        match p {
+            MultipartPart::Field { name, value } => {
+                out.extend_from_slice(
+                    format!(
+                        "Content-Disposition: form-data; name=\"{}\"\r\n\r\n",
+                        q(name)
+                    )
+                    .as_bytes(),
+                );
+                out.extend_from_slice(value.as_bytes());
+            }
+            MultipartPart::File {
+                name,
+                filename,
+                content_type,
+                bytes,
+            } => {
+                out.extend_from_slice(
+                    format!(
+                        "Content-Disposition: form-data; name=\"{}\"; filename=\"{}\"\r\nContent-Type: {}\r\n\r\n",
+                        q(name),
+                        q(filename),
+                        content_type.replace(['\r', '\n'], "")
+                    )
+                    .as_bytes(),
+                );
+                out.extend_from_slice(bytes);
+            }
+        }
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xml_builder_escapes_and_nests() {
+        let inner = xml_element(&Value::text("b"), &Value::Null, &Value::text("x<y")).unwrap();
+        let v = xml_element(
+            &Value::text("speak"),
+            &Value::object([("lang", Value::text("en\"&"))]),
+            &Value::List(vec![Value::text("Hello & welcome "), inner]),
+        )
+        .unwrap();
+        assert_eq!(
+            xml_markup(&v),
+            Some("<speak lang=\"en&quot;&amp;\">Hello &amp; welcome <b>x&lt;y</b></speak>")
+        );
+        assert!(xml_element(&Value::text("1bad"), &Value::Null, &Value::Null).is_err());
+        let body = multipart_body(
+            &[MultipartPart::Field {
+                name: "purpose".into(),
+                value: "t".into(),
+            }],
+            "B",
+        );
+        assert_eq!(
+            String::from_utf8(body).unwrap(),
+            "--B\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nt\r\n--B--\r\n"
+        );
+    }
 
     fn url(pieces: &[(&str, bool)]) -> RivetResult<String> {
         let p: Vec<UrlPiece> = pieces
