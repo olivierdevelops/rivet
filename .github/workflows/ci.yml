@@ -23,18 +23,28 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Each step runs through scripts/ci_step.py, which re-emits failures as annotations
+      # (readable without admin rights; job logs are not).
       - name: fmt
-        run: cargo fmt --check
+        run: python scripts/ci_step.py fmt -- cargo fmt --check
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        if: always()
+        run: python scripts/ci_step.py clippy -- cargo clippy --all-targets -- -D warnings
       - name: build (release)
-        run: cargo build --release
+        if: always()
+        run: python scripts/ci_step.py build -- cargo build --release
       - name: tests (T-01…T-29 suites)
-        run: cargo test --all-targets
+        if: always()
+        run: python scripts/ci_step.py tests -- cargo test --all-targets --no-fail-fast
       - name: docs (T-31)
-        run: python3 scripts/check_docs.py
+        if: always()
+        run: python scripts/ci_step.py docs -- python scripts/check_docs.py
       - name: version sync (T-33)
-        run: python3 scripts/check_version.py --bin target/release/rivet${{ runner.os == 'Windows' && '.exe' || '' }}
+        if: always()
+        run: python scripts/ci_step.py version -- python scripts/check_version.py --bin target/release/rivet${{ runner.os == 'Windows' && '.exe' || '' }}
 
   deny:
     runs-on: ubuntu-latest

@@ -64,7 +64,9 @@ def main():
             check('MCP serverInfo.version', f'<no answer: {line[:80]!r}>')
         out = run([binary, '--file', 'app.rivet', 'request', 'rivet.capabilities'], cwd=d).stdout
         try:
-            check('rivet.capabilities version', json.loads(out)['result']['version'])
+            j = json.loads(out)
+            # 0.2.0 envelopes carry the payload in `data` (0.1.0 used `result`).
+            check('rivet.capabilities version', (j.get('data') or j.get('result'))['version'])
         except (ValueError, KeyError):
             check('rivet.capabilities version', f'<no answer: {out[:80]!r}>')
 
