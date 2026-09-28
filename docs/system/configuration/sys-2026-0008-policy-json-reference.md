@@ -4,8 +4,8 @@ title: "policy.json schema v1 reference"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [policy, serve, connectors, auth]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
 scope: Every key, type, default and validation error of policy.json schema v1 as implemented by the Rivet loader, with discovery rules and verified examples.
 reason: policy.json is Rivet's only configuration and only source of authority; operators need an exact, verified reference of what the loader accepts, what it rejects and with which message.
-related_documents: [PROP-2026-0001, PLAN-2026-0001, SYS-2026-0003, SYS-2026-0004, SYS-2026-0006, SYS-2026-0009]
+related_documents: [PROP-2026-0001, PLAN-2026-0001, PLAN-2026-0002, API-2026-0006, SYS-2026-0001, SYS-2026-0010, SYS-2026-0003, SYS-2026-0004, SYS-2026-0006, SYS-2026-0009]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, policy, configuration, schema, reference, serve, auth]
@@ -31,11 +31,11 @@ tags: [rivet, system, policy, configuration, schema, reference, serve, auth]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, serve, connectors, auth
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -45,6 +45,16 @@ Schema v1 has seven top-level keys: `version` (required, must be `1`), `grants`,
 strict: an unknown key, a wrong type, an unknown capability, an access verb outside its capability, a
 malformed selector, a non-positive limit or a bad `serve` block stops the program with
 `policy.invalid` (exit 2) and a message naming the JSON pointer. Only the first error is reported.
+
+The schema is unchanged in 0.2.0. Three things around it are new:
+
+- **One file per bundle.** A bundle of several files (`import`) is governed by the entry bundle's
+  `policy.json` (or `--policy`) only. A `policy.json` beside an imported module is never loaded; it only
+  triggers the warning `check.module_policy_ignored` ([SYS-2026-0003](../components/sys-2026-0003-policy-broker-and-io-manifest.md)).
+  A host that loads a module at run time keeps its own policy and ceiling.
+- **`restrict` travels in the InputEnvelope.** Its format and rules below are unchanged.
+- **`serve` needs the `serve` Cargo feature.** A build without it still parses and validates `serve`, but
+  `rivet serve` exits 5 with `unsupported.feature` ([SYS-2026-0010](../components/sys-2026-0010-ffi-surface-and-packaging.md#cargo-features)).
 
 ```text
  policy.json v1
@@ -116,8 +126,9 @@ malformed selector, a non-positive limit or a bad `serve` block stops the progra
   `rivet::orchestrator::runtime::policy_from_json(bytes, base_dir)` (same parser, file name `<memory>`).
   A builder with `.source(…)` and no policy uses deny-by-default. `.ceiling(Policy)` adds a **host ceiling**
   in the same schema: every attempt must be allowed by both; limits take the smaller value.
-- **Per-request restriction.** A caller may send `restrict: {"grants": [...]}` (HTTP `/v1/request`, polling,
-  WebSocket request frames, MCP `tools/call`, `Runtime::request_restricted`). Its `grants` use exactly the
+- **Per-request restriction.** A caller may send `restrict: {"grants": [...]}` as a key of the InputEnvelope
+  (HTTP `/v1/request`, polling, WebSocket request frames, MCP `tools/call`, `Runtime::call`,
+  `Runtime::request_restricted`, the C ABI). Its `grants` use exactly the
   `grants[]` schema below and resolve against the same base directory; any other key is
   `` policy.invalid: restrict accepts only `grants` (got `KEY`); it can narrow, never grant `` with
   `details.pointer` `/restrict/KEY`, and grant errors are reported under `/restrict/grants/…`. The restriction
@@ -378,16 +389,16 @@ grant    allow_read ./data/**
 grant    allow_network *, http://127.0.0.1:18439   ⚠ broad: "*" allows every target
 deny     allow_read ./data/private/**
 
-$ rivet request notes.touch --file app.rivet --params '{}'
-{"request_id":"req_015d36e1ad","trace_id":"tr_015d36e1ad","error":{"kind":"permission","code":"permission.denied","message":"allow_write update on ./out/a.json denied: grant allow_write ./out/** access [create] does not include `update`","retryable":false,"effects":"none","source":{"file":"app.rivet","line":18,"column":5,"end_line":18,"end_column":43},"operation_id":"notes.touch","details":{"capability":"allow_write","access":"update","target":"./out/a.json"}}}
+$ rivet request notes.touch --file app.rivet
+{"request_id":"req_013f5e87fd","trace_id":"tr_013f5e87fd","operation":"notes.touch","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_write update on ./out/a.json denied: grant allow_write ./out/** access [create] does not include `update`","retryable":false,"source":{"file":"app.rivet","line":10,"column":5,"end_line":10,"end_column":56},"operation_id":"notes.touch","details":{"capability":"allow_write","access":"update","target":"./out/a.json"}},"effects":"none","data_count":0}
 exit=3
 
-$ rivet request cloud.meta --file app.rivet --params '{}'
-{"request_id":"req_01583ea11d","trace_id":"tr_01583ea11d","error":{"kind":"permission","code":"permission.denied","message":"allow_network connect http://169.254.169.254:80/latest denied: 169.254.169.254 is a private/loopback/link-local address; grant it literally (e.g. \"http://169.254.169.254:80/latest\") to allow it","retryable":false,"effects":"none","source":{"file":"app.rivet","line":42,"column":5,"end_line":44,"end_column":8},"operation_id":"cloud.meta","details":{"capability":"allow_network","access":"connect","target":"http://169.254.169.254:80/latest"}}}
+$ rivet request cloud.meta --file app.rivet
+{"request_id":"req_013ea26a1d","trace_id":"tr_013ea26a1d","operation":"cloud.meta","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect http://169.254.169.254:80/latest denied: 169.254.169.254 is a private/loopback/link-local address; grant it literally (e.g. \"http://169.254.169.254:80/latest\") to allow it","retryable":false,"source":{"file":"app.rivet","line":26,"column":5,"end_line":28,"end_column":8},"operation_id":"cloud.meta","details":{"capability":"allow_network","access":"connect","target":"http://169.254.169.254:80/latest"}},"effects":"none","data_count":0}
 exit=3
 ```
 
-(Request IDs vary per run.)
+(Re-captured on the 0.2.0-rc with the scratch bundle of SYS-2026-0003; request IDs vary per run.)
 
 ### Bearer serve example
 
@@ -413,36 +424,40 @@ a6c6871b8f3568d985f17c7458aff2582992a5007442b589ed5af28854bb8501  -
 ```
 
 ```text
-$ rivet serve --file app.rivet --listen 127.0.0.1:18437
-{"listen_addr":"127.0.0.1:18437","stdio":false,"surfaces":["http","mcp"],"auth_type":"bearer","catalog_version":"sha256:59177b01e562da8b51d93d66e917fad0dc78283a749be3512e34c5a4dd3d771f","policy_hash":"sha256:fd3a186d2587b4be4a44c6455578c126847f8e163da1e5a407c2d2a26a152e5b"}
+$ rivet --file app.rivet --policy bearer.json serve --listen 127.0.0.1:18923
+{"listen_addr":"127.0.0.1:18923","stdio":false,"surfaces":["http","mcp"],"auth_type":"bearer","catalog_version":"sha256:0954b875e5f07e88c3eee7174e79cf47c5f22cd0557d9620edf9a564a2726fe6","policy_hash":"sha256:fee8c3f914399447942d4176b51d0031f50d7031304e21112e1ef7117e241b68"}
 
-$ curl -s -X POST http://127.0.0.1:18437/v1/request -H 'content-type: application/json' -d '{"id":"data.read","params":{}}'
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false,"effects":"none"}}
-$ curl -s -X POST http://127.0.0.1:18437/v1/request -H 'Authorization: Bearer nope' -H 'content-type: application/json' -d '{"id":"data.read","params":{}}'
-{"request_id":"","trace_id":"","error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false,"effects":"none"}}
+$ curl -s -X POST http://127.0.0.1:18923/v1/request -H 'content-type: application/json' -d '{"operation":"data.read","data":{}}'
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false},"effects":"none","data_count":0}
+$ curl -s -X POST http://127.0.0.1:18923/v1/request -H 'Authorization: Bearer nope' -H 'content-type: application/json' -d '{"operation":"data.read","data":{}}'
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.invalid","message":"invalid bearer token","retryable":false},"effects":"none","data_count":0}
 
-$ rivet --endpoint http://127.0.0.1:18437 --token-file ci.token request data.read --params '{}'
-{"request_id":"req_016bf734bd","trace_id":"tr_016bf734bd","result":"hi\n","data_count":0,"effects":"none"}
-$ rivet --endpoint http://127.0.0.1:18437 --token-file ci.token request notes.save --params '{"name":"b"}'
-{"request_id":"req_036be364e7","trace_id":"tr_036be364e7","error":{"kind":"permission","code":"permission.denied","message":"principal `ci` may not call `notes.save`","retryable":false,"effects":"none"}}
+$ rivet --endpoint http://127.0.0.1:18923 --token-file ci.token request data.read
+{"request_id":"req_01817af99d","trace_id":"tr_01817af99d","operation":"data.read","type":"result","status":"ok","data":"hi\n","error":null,"effects":"none","data_count":0}
+$ rivet --endpoint http://127.0.0.1:18923 --token-file ci.token request notes.save --data '{"name":"b"}'
+{"request_id":"req_0201b0ed32","trace_id":"tr_0201b0ed32","operation":"notes.save","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"principal `ci` may not call `notes.save`","retryable":false},"effects":"none","data_count":0}
 exit=3
-$ rivet --endpoint http://127.0.0.1:18437 --token-file ci.token list
+$ rivet --endpoint http://127.0.0.1:18923 --token-file ci.token list
 ID           NAME         DESCRIPTION
-data.read    Read input   Read the public input.
-data.secret  Read secret  Read a denied file.
-$ rivet --endpoint http://127.0.0.1:18437 --token-file ada.token io
+data.read    data.read    —
+data.secret  data.secret  —
+$ rivet --endpoint http://127.0.0.1:18923 --token-file ada.token io
 error[permission.denied]: principal `ada` may not call `rivet.io`
 exit=3
 ```
 
+(Re-captured on the 0.2.0-rc with the SYS-2026-0003 scratch bundle plus this `serve` block in `bearer.json`;
+the scratch operations have no names or descriptions, hence `—`. The server was stopped afterwards. Authentication
+runs before the body is parsed, so the 401 envelopes have `operation: null`.)
+
 Refusals at start-up:
 
 ```text
-$ rivet serve --file app.rivet --listen 0.0.0.0:18437            # policy without serve.auth
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"serve.auth_required","message":"non-loopback listener requires serve.auth in policy.json","retryable":false,"effects":"none"}}
+$ rivet serve --file app.rivet --listen 0.0.0.0:18906            # policy without serve.auth (0.2.0-rc)
+{"request_id":"","trace_id":"","operation":"rivet.serve","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"serve.auth_required","message":"non-loopback listener requires serve.auth in policy.json","retryable":false},"effects":"none","data_count":0}
 exit=2
-$ rivet serve --file app.rivet --policy mtls.json --listen 127.0.0.1:18437
-{"request_id":"","trace_id":"","error":{"kind":"unsupported","code":"unsupported.serve_mtls","message":"serve.auth type mtls needs a TLS listener, which this build does not provide yet; use bearer behind a TLS-terminating proxy","retryable":false,"effects":"none"}}
+$ rivet serve --file app.rivet --listen 127.0.0.1:18905           # policy.json serve.auth.type mtls (0.2.0-rc)
+{"request_id":"","trace_id":"","operation":"rivet.serve","type":"result","status":"error","data":null,"error":{"kind":"unsupported","code":"unsupported.serve_mtls","message":"serve.auth type mtls needs a TLS listener, which this build does not provide yet; use bearer behind a TLS-terminating proxy","retryable":false},"effects":"none","data_count":0}
 exit=5
 ```
 
@@ -601,7 +616,12 @@ file is not reloaded while a process runs.
 
 ## Last Verified Version
 
-0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`; the limit-width, `restrict` and URL-segment rows were
+0.2.0-rc (main at `8031baa`), 2026-09-29, macOS, `target/release/rivet`: the `request` and bearer-serve captures were
+re-run as envelopes (serve on 127.0.0.1:18923, stopped afterwards). The schema and its validation messages are
+unchanged from 0.1.0 (`src/features/policy/load_policy.rs`); the start-up refusals and other messages below are
+the 0.1.0 captures, whose texts the 0.2.0 build prints unchanged inside error envelopes.
+
+History: 0.1.0-dev (commit 829ca43), macOS, `target/debug/rivet`; the limit-width, `restrict` and URL-segment rows were
 re-verified at `829ca43`. Every other message above was first produced by the `f40d4aa` binary
 (`rivet check`, `rivet policy explain`, `rivet io --check-policy`, `rivet request`, `rivet serve` on
 127.0.0.1:18437) against `docs/demos/*` and scratch bundles. Request IDs and hashes vary per run and file.
@@ -615,6 +635,7 @@ re-verified at `829ca43`. Every other message above was first produced by the `f
 - [SYS-2026-0006 OAuth and credentials](../integrations/sys-2026-0006-oauth-and-credentials.md)
 - [SYS-2026-0009 MCP client connectors](../integrations/sys-2026-0009-mcp-client-connectors.md)
 - [REF-2026-0002 Language and usage](../../references/ref-2026-0002-language-and-usage.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md)
 - [Demos](../../demos/README.md)
 
 ## Change History
@@ -623,3 +644,4 @@ re-verified at `829ca43`. Every other message above was first produced by the `f
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-22). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): limit values wider than their field are rejected (B1), `max_buffered_bytes` enforced (`limit.buffered_bytes`), `restrict` and host ceiling layers, `Policy::from_file/from_json`; URL path-segment matching (2d581b8) kept; limitations reduced to the current ones. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-36/D-47 (TASK-073, TASK-070): schema unchanged; one policy per multi-file bundle (module `policy.json` ignored), `restrict` as an InputEnvelope key, `serve` feature gate; `request` and bearer-serve captures re-run as 0.2.0 envelopes. |

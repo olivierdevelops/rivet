@@ -386,18 +386,18 @@ error[not_found.mcp_snapshot]: cannot read snapshot ./schemas/crm.json of connec
   1| connector crm mcp
    | ^
   = hint: create it with `rivet connectors sync crm --output ./schemas/crm.json`, review it and approve its sha256 in policy.json
-exit 4
+exit 4                  (the demo refusals in this block were re-run on the 0.2.0-rc)
 
 $ rivet --file app.rivet connectors sync crm --output ./schemas/crm.next.json          # default policy
-{"request_id":"","trace_id":"","error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/discover denied: no grant for allow_mcp crm/discover","retryable":false,"effects":"none","details":{"capability":"allow_mcp","access":"call","target":"crm/discover"}}}
+{"request_id":"","trace_id":"","operation":"rivet.connectors.sync","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_mcp call crm/discover denied: no grant for allow_mcp crm/discover","retryable":false,"details":{"capability":"allow_mcp","access":"call","target":"crm/discover"}},"effects":"none","data_count":0}
 exit 3
 
 $ rivet --file app.rivet connectors sync crm --output /tmp/x.json
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.output","message":"--output /tmp/x.json must be inside the bundle directory .","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.connectors.sync","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.output","message":"--output /tmp/x.json must be inside the bundle directory .","retryable":false},"effects":"none","data_count":0}
 exit 2
 
 $ rivet --file app.rivet --policy ./policies/sync.json connectors sync crm --output ./schemas/crm.next.json
-{"request_id":"","trace_id":"","error":{"kind":"dns","code":"dns.resolve","message":"cannot resolve mcp.example.com: failed to lookup address information: nodename nor servname provided, or not known","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.connectors.sync","type":"result","status":"error","data":null,"error":{"kind":"dns","code":"dns.resolve","message":"cannot resolve mcp.example.com: failed to lookup address information: nodename nor servname provided, or not known","retryable":false},"effects":"none","data_count":0}
 exit 5
 ```
 
