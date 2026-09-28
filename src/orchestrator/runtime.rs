@@ -20,6 +20,7 @@ use crate::features::files::apply_file_operation::{FileRequest, apply_file_opera
 use crate::features::language::compile_program::compile_program;
 use crate::features::policy::authorize_effect::authorize_effect;
 use crate::features::policy::load_policy::{load_policy, parse_policy};
+use crate::features::quic::exchange_quic::exchange_quic;
 use crate::features::registry::describe_operations::describe_operations;
 use crate::features::registry::inspect_outputs::{OutputQuery, inspect_outputs};
 use crate::infra::capy_parser::CapyParser;
@@ -27,6 +28,7 @@ use crate::infra::execution_driver::Interpreter;
 use crate::infra::file_access::ConfinedFiles;
 use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_file_reader::DiskPolicyReader;
+use crate::infra::quic_adapter::QuicAdapter;
 use crate::infra::registry::ProgramRegistry;
 use crate::infra::source_loader::DiskSourceLoader;
 use crate::infra::udp_adapter::UdpAdapter;
@@ -169,12 +171,22 @@ impl FileAccess for PolicedFiles {
 
 /// Register the UDP and QUIC adapters (WS-D). Each adapter runs its feature
 /// use case through an injected closure so every step is authorized first.
-fn register_transports(interp: &mut Interpreter, _root: &str) {
+fn register_transports(interp: &mut Interpreter, root: &str) {
     interp.register_adapter(
         "udp",
         Arc::new(UdpAdapter::new(Arc::new(|plan, ev, drv| {
             Box::pin(async move { exchange_datagrams(plan, ev.as_ref(), drv.as_ref()).await })
         }))),
+    );
+    let tls_files: Arc<dyn FileAccess> = Arc::new(ConfinedFiles::new(root));
+    interp.register_adapter(
+        "quic",
+        Arc::new(QuicAdapter::new(
+            Arc::new(|plan, ev, drv| {
+                Box::pin(async move { exchange_quic(plan, ev.as_ref(), drv.as_ref()).await })
+            }),
+            tls_files,
+        )),
     );
 }
 

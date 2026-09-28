@@ -5,6 +5,7 @@ pub mod execution_driver;
 pub mod file_access;
 pub mod policy_broker;
 pub mod policy_file_reader;
+pub mod quic_adapter;
 pub mod registry;
 pub mod source_loader;
 pub mod udp_adapter;
