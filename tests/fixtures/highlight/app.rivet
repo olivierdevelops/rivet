@@ -1,0 +1,22 @@
+# Golden source for T-14 (tests/conformance_highlight.rs): every token class once or more.
+import "./users.rivet" as users public
+global api = "https://api.example.com"   # base URL
+global retry_on = [429, 503]
+
+operation users.get
+    description "Fetch one user by id"
+    param id integer required min 1
+    param tags list text optional
+    output json
+    r = http get "${api}/users/${id}"
+        header "accept" "application/json"
+        timeout "5s"
+        decode json
+    end
+    message = "é ${id}"
+    if r.status == 200 and not false
+        return {user: r.body, code: retry_on.0, n: (length tags)}
+    else
+        fail "not_found" {id: id, other: (users.list {page: 1})}
+    end
+end

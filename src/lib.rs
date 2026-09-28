@@ -17,3 +17,6 @@ pub mod orchestrator;
 
 pub use orchestrator::runtime::{Runtime, RuntimeBuilder};
 pub use orchestrator::setup_library::Module;
+/// Syntax highlighting of `.rivet` sources (PROP-2026-0002 R17):
+/// `rivet::highlight::tokens(src)`, `rivet::highlight::render(…)`.
+pub use orchestrator::setup_library::highlight;

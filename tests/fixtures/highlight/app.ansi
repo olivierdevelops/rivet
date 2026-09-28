@@ -1,0 +1,22 @@
+[90m# Golden source for T-14 (tests/conformance_highlight.rs): every token class once or more.[0m
+[1;35mimport[0m [32m"./users.rivet"[0m [37mas[0m users [1;35mpublic[0m
+[1;35mglobal[0m [1;33mapi[0m [37m=[0m [32m"https://api.example.com"[0m   [90m# base URL[0m
+[1;35mglobal[0m [1;33mretry_on[0m [37m=[0m [[91m429[0m, [91m503[0m]
+
+[1;35moperation[0m [1;94musers.get[0m
+    [1;35mdescription[0m [32m"Fetch one user by id"[0m
+    [1;35mparam[0m id [33minteger[0m [36mrequired[0m [36mmin[0m [91m1[0m
+    [1;35mparam[0m tags [33mlist[0m [33mtext[0m [36moptional[0m
+    [1;35moutput[0m [33mjson[0m
+    r [37m=[0m [1;34mhttp[0m [1;34mget[0m [32m"[0m[1;32m${api}[0m[32m/users/[0m[1;32m${id}[0m[32m"[0m
+        [36mheader[0m [32m"accept"[0m [32m"application/json"[0m
+        [36mtimeout[0m [32m"5s"[0m
+        [36mdecode[0m [33mjson[0m
+    [1;35mend[0m
+    message [37m=[0m [32m"é [0m[1;32m${id}[0m[32m"[0m
+    [1;35mif[0m r.status [37m==[0m [91m200[0m [37mand[0m [37mnot[0m [1;35mfalse[0m
+        [1;35mreturn[0m {user: r.body, code: [1;33mretry_on.0[0m, n: ([1;35mlength[0m tags)}
+    [1;35melse[0m
+        [1;35mfail[0m [32m"not_found"[0m {id: id, other: ([1;94musers.list[0m {page: [91m1[0m})}
+    [1;35mend[0m
+[1;35mend[0m

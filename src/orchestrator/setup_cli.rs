@@ -1,6 +1,6 @@
 //! CLI surface registration: maps each command to the shared use cases.
 
-// vhco:surface cli kind cli calls language/compile_program, language/compile_globals, language/resolve_imports, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface cli kind cli calls language/compile_program, language/compile_globals, language/resolve_imports, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization, language/highlight_source
 // vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON
 // vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
 // vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
@@ -20,6 +20,10 @@
 // vhco:trigger cli language/compile_program = rivet check [--strict-docs]
 // vhco:trigger cli language/compile_globals = rivet check (globals are evaluated when the bundle loads)
 // vhco:trigger cli language/resolve_imports = rivet check (every import is resolved when the bundle loads)
+// vhco:trigger cli language/highlight_source = rivet highlight FILE [--format ansi|html|json]
+// vhco:api cli language/highlight_source rivet highlight FILE [--format ansi|html|json] -- syntax-highlight one .rivet file from the parser's spans (reads only FILE; no bundle, policy or --file); stdout: ANSI colours (default on a terminal), an HTML <pre> with <span class="rv-CLASS">, or JSON lines (default when piped); a syntax error prints the tokens before it on stdout and the diagnostic on stderr (exit 2); an unreadable FILE is validation.usage (exit 2)
+// vhco:request { "path": "string — the .rivet file", "format": "ansi|html|json — default ansi on a TTY, json otherwise" }
+// vhco:response { "line": "int — 1-based", "col": "int — 1-based, characters", "len": "int — characters", "class": "keyword|option|type|effect|string|interpolation|number|comment|operation_id|global|variable|operator", "text": "string — exact source text" }
 // vhco:trigger cli policy/load_policy = rivet policy explain
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
@@ -275,6 +279,7 @@ fn command_operation(c: &Command) -> Option<String> {
                 command: TraceCommand::Export { .. },
             } => "rivet.trace.export",
             Command::Connectors { .. } => "rivet.connectors.sync",
+            Command::Highlight { .. } => "rivet.highlight",
             Command::Auth { .. } => return None,
         }
         .to_string(),
@@ -322,7 +327,48 @@ async fn run_endpoint(cli: &Cli, url: &str) -> i32 {
     }
 }
 
+/// `rivet highlight FILE [--format ansi|html|json]` (language.highlight_source):
+/// reads only FILE (bootstrap I/O, like `check`), prints the rendering on
+/// stdout and, on a syntax error, the partial rendering plus the diagnostic
+/// (exit 2).
+pub(super) fn highlight(path: &str, format: Option<&str>, json: bool) -> i32 {
+    use crate::orchestrator::setup_library::highlight::{HighlightFormat, render, tokens_of};
+    use std::io::IsTerminal;
+    let format = match format {
+        Some(f) => match HighlightFormat::parse(f) {
+            Ok(f) => f,
+            Err(e) => return fail_as(Some("rivet.highlight"), &e, None, json),
+        },
+        None if std::io::stdout().is_terminal() => HighlightFormat::Ansi,
+        None => HighlightFormat::Json,
+    };
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            let e = RivetError::validation(
+                "validation.usage",
+                format!("rivet highlight {path}: {}", e.kind()),
+            );
+            return fail_as(Some("rivet.highlight"), &e, None, json);
+        }
+    };
+    let (tokens, error) = match tokens_of(path, &text) {
+        Ok(t) => (t, None),
+        Err((t, e)) => (t, Some(e)),
+    };
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(render(&text, &tokens, format).as_bytes());
+    let _ = stdout.flush();
+    match error {
+        Some(e) => fail_as(Some("rivet.highlight"), &e, Some(&text), json),
+        None => 0,
+    }
+}
+
 async fn run(cli: Cli) -> i32 {
+    if let Command::Highlight { path, format } = &cli.command {
+        return highlight(path, format.as_deref(), cli.json);
+    }
     if let Some(url) = cli.endpoint.clone() {
         return run_endpoint(&cli, &url).await;
     }

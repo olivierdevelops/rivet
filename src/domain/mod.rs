@@ -12,6 +12,7 @@ pub mod envelope;
 pub mod errors;
 pub mod files;
 pub mod grpc;
+pub mod highlight;
 pub mod io_manifest;
 pub mod ir;
 pub mod mcp;

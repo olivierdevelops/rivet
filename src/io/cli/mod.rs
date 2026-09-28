@@ -93,6 +93,18 @@ pub enum Command {
         #[command(subcommand)]
         command: AuthCommand,
     },
+    /// Syntax-highlight a .rivet file from the parser's own spans (no bundle is
+    /// loaded; --file is not needed). A syntax error prints the tokens before it
+    /// and the diagnostic (exit 2).
+    Highlight {
+        /// The .rivet file to highlight.
+        path: String,
+        /// Output format: ansi (terminal colours), html (<span class="rv-CLASS">)
+        /// or json (one {line,col,len,class,text} object per line). Default:
+        /// ansi when stdout is a terminal, json otherwise.
+        #[arg(long, value_parser = ["ansi", "html", "json"])]
+        format: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

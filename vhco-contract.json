@@ -4119,7 +4119,8 @@
           "serve/parse_input",
           "language/compile_globals",
           "language/resolve_imports",
-          "registry/load_module"
+          "registry/load_module",
+          "language/highlight_source"
         ]
       },
       {
@@ -6304,6 +6305,10 @@
         {
           "surface": "cli",
           "invocation": "rivet highlight FILE [--format ansi|html|json]"
+        },
+        {
+          "surface": "library",
+          "invocation": "rivet::highlight::tokens(SOURCE) | rivet::highlight::highlight(SOURCE, FORMAT)"
         }
       ],
       "input": [

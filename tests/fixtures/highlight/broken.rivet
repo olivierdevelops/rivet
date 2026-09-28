@@ -1,0 +1,6 @@
+global api = "https://api.example.com"
+
+operation a.b
+    output json
+    return {x: }
+end

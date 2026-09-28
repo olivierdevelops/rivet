@@ -1,0 +1,23 @@
+<pre class="rv-source"><code><span class="rv-comment"># Golden source for T-14 (tests/conformance_highlight.rs): every token class once or more.</span>
+<span class="rv-keyword">import</span> <span class="rv-string">&quot;./users.rivet&quot;</span> <span class="rv-operator">as</span> <span class="rv-variable">users</span> <span class="rv-keyword">public</span>
+<span class="rv-keyword">global</span> <span class="rv-global">api</span> <span class="rv-operator">=</span> <span class="rv-string">&quot;https://api.example.com&quot;</span>   <span class="rv-comment"># base URL</span>
+<span class="rv-keyword">global</span> <span class="rv-global">retry_on</span> <span class="rv-operator">=</span> [<span class="rv-number">429</span>, <span class="rv-number">503</span>]
+
+<span class="rv-keyword">operation</span> <span class="rv-operation_id">users.get</span>
+    <span class="rv-keyword">description</span> <span class="rv-string">&quot;Fetch one user by id&quot;</span>
+    <span class="rv-keyword">param</span> <span class="rv-variable">id</span> <span class="rv-type">integer</span> <span class="rv-option">required</span> <span class="rv-option">min</span> <span class="rv-number">1</span>
+    <span class="rv-keyword">param</span> <span class="rv-variable">tags</span> <span class="rv-type">list</span> <span class="rv-type">text</span> <span class="rv-option">optional</span>
+    <span class="rv-keyword">output</span> <span class="rv-type">json</span>
+    <span class="rv-variable">r</span> <span class="rv-operator">=</span> <span class="rv-effect">http</span> <span class="rv-effect">get</span> <span class="rv-string">&quot;</span><span class="rv-interpolation">${api}</span><span class="rv-string">/users/</span><span class="rv-interpolation">${id}</span><span class="rv-string">&quot;</span>
+        <span class="rv-option">header</span> <span class="rv-string">&quot;accept&quot;</span> <span class="rv-string">&quot;application/json&quot;</span>
+        <span class="rv-option">timeout</span> <span class="rv-string">&quot;5s&quot;</span>
+        <span class="rv-option">decode</span> <span class="rv-type">json</span>
+    <span class="rv-keyword">end</span>
+    <span class="rv-variable">message</span> <span class="rv-operator">=</span> <span class="rv-string">&quot;é </span><span class="rv-interpolation">${id}</span><span class="rv-string">&quot;</span>
+    <span class="rv-keyword">if</span> <span class="rv-variable">r.status</span> <span class="rv-operator">==</span> <span class="rv-number">200</span> <span class="rv-operator">and</span> <span class="rv-operator">not</span> <span class="rv-keyword">false</span>
+        <span class="rv-keyword">return</span> {user: <span class="rv-variable">r.body</span>, code: <span class="rv-global">retry_on.0</span>, n: (<span class="rv-keyword">length</span> <span class="rv-variable">tags</span>)}
+    <span class="rv-keyword">else</span>
+        <span class="rv-keyword">fail</span> <span class="rv-string">&quot;not_found&quot;</span> {id: <span class="rv-variable">id</span>, other: (<span class="rv-operation_id">users.list</span> {page: <span class="rv-number">1</span>})}
+    <span class="rv-keyword">end</span>
+<span class="rv-keyword">end</span>
+</code></pre>

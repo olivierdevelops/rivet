@@ -9,10 +9,11 @@
 //!     ├─ scope(|scope| …): scope.stream / scope.duplex ─▶ execution.request_operation (owned, joined)
 //!     ├─ list / describe / outputs               ─▶ registry use cases
 //!     ├─ load(PATH) / load_as(PATH, ALIAS)       ─▶ registry.load_module ─▶ Module{call, stream, duplex, …}
-//!     └─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
+//!     ├─ open_session / send_input / finish_input / read_events / cancel_session ─▶ sessions use cases
+//!     └─ rivet::highlight::tokens(src) / highlight(src, format) ─▶ language.highlight_source (no Runtime needed)
 //! ```
 
-// vhco:surface library kind library calls language/compile_program, language/compile_globals, language/resolve_imports, registry/load_module, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization
+// vhco:surface library kind library calls language/compile_program, language/compile_globals, language/resolve_imports, registry/load_module, policy/load_policy, execution/request_operation, registry/describe_operations, registry/inspect_outputs, sessions/open_session, sessions/send_input, sessions/finish_input, sessions/read_events, sessions/cancel_session, serve/authorize_operation, serve/start_serve, serve/parse_input, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization, language/highlight_source
 // vhco:trigger library auth/begin_authorization = Runtime::request("rivet.auth.begin", DATA, None)
 // vhco:trigger library auth/complete_authorization = Runtime::request("rivet.auth.complete", DATA, None)
 // vhco:trigger library auth/credential_status = Runtime::request("rivet.auth.status", DATA, None)
@@ -34,6 +35,7 @@
 // vhco:trigger library sessions/cancel_session = Runtime::cancel_session(SessionRef)
 // vhco:trigger library serve/authorize_operation = Runtime::dispatch_request(Request) (principal check at depth 0)
 // vhco:trigger library serve/start_serve = orchestrator::setup_serve::serve(runtime, options)
+// vhco:trigger library language/highlight_source = rivet::highlight::tokens(SOURCE) | rivet::highlight::highlight(SOURCE, FORMAT)
 // vhco:api library execution/request_operation Runtime::call(InputEnvelope) -- invoke one operation in-process and always get a ResponseEnvelope (errors included; to_json / to_json_pretty); Runtime::request(id, data, on_data) stays for `?`-style use and returns Completion or RivetError
 // vhco:request { "operation": "string — operation ID", "data": "Value object (default {})", "deadline_ms": "int?", "restrict": "{grants:[…]}?" }
 // vhco:response { "request_id": "string", "trace_id": "string", "operation": "string", "type": "result", "status": "ok|error|cancelled", "data": "Value|null", "error": "RivetError object|null", "effects": "none|committed|partial|unknown", "data_count": "int" }
@@ -615,5 +617,56 @@ impl Module {
     /// Open one `receives` operation as a duplex owned by `scope`.
     pub async fn duplex(&self, scope: &Scope, id: &str, data: Value) -> RivetResult<DuplexHandle> {
         scope.duplex(&self.qualified(id), data).await
+    }
+}
+
+/// `rivet::highlight` — syntax highlighting of `.rivet` sources from the real
+/// parser spans (PROP-2026-0002 R17). No `Runtime` is needed: the source is
+/// only parsed, never compiled or run.
+///
+/// ```text
+///  rivet::highlight::tokens(src)          ─▶ Ok([HighlightToken]) | Err((tokens before the error, syntax error))
+///  rivet::highlight::highlight(src, fmt)  ─▶ Ok(String)           | Err((partial rendering, syntax error))
+///  rivet::highlight::render(src, &tokens, HighlightFormat::Html)  ─▶ String (pure)
+/// ```
+pub mod highlight {
+    use crate::domain::RivetError;
+    pub use crate::domain::highlight::{HighlightFormat, HighlightToken, TOKEN_CLASSES, render};
+    use crate::domain::source::SourceFile;
+    use crate::features::language::highlight_source::highlight_source;
+    use crate::infra::capy_parser::CapyParser;
+
+    /// The tokens of `source` (a file named `source.rivet` in diagnostics).
+    pub fn tokens(source: &str) -> Result<Vec<HighlightToken>, (Vec<HighlightToken>, RivetError)> {
+        tokens_of("source.rivet", source)
+    }
+
+    /// The tokens of `source`, with `path` in the diagnostic's span. On a syntax
+    /// error the tokens that start before it are returned with the error.
+    pub fn tokens_of(
+        path: &str,
+        source: &str,
+    ) -> Result<Vec<HighlightToken>, (Vec<HighlightToken>, RivetError)> {
+        let parser = CapyParser::new().map_err(|e| (Vec::new(), e))?;
+        let file = SourceFile {
+            path: path.to_string(),
+            text: source.to_string(),
+        };
+        match highlight_source(&file, &parser) {
+            (tokens, None) => Ok(tokens),
+            (tokens, Some(e)) => Err((tokens, e)),
+        }
+    }
+
+    /// `source` rendered as ANSI, HTML or JSON lines; on a syntax error the
+    /// rendering of the tokens before it, with the error.
+    pub fn highlight(
+        source: &str,
+        format: HighlightFormat,
+    ) -> Result<String, (String, RivetError)> {
+        match tokens(source) {
+            Ok(t) => Ok(render(source, &t, format)),
+            Err((t, e)) => Err((render(source, &t, format), e)),
+        }
     }
 }

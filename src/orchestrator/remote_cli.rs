@@ -404,6 +404,10 @@ pub async fn run_remote(cli: &Cli, client: &dyn RemoteEndpoint) -> i32 {
                 Err(e) => fail_as(Some("rivet.io"), &e, None, cli.json || q.format == "json"),
             }
         }
+        // Highlighting reads only the named file; it never needs the server.
+        Command::Highlight { path, format } => {
+            super::setup_cli::highlight(path, format.as_deref(), cli.json)
+        }
         Command::Check { .. }
         | Command::Graph { .. }
         | Command::Policy { .. }
