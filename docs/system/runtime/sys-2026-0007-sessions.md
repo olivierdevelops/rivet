@@ -4,8 +4,8 @@ title: "Rivet duplex sessions"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 2
+last_updated: 2026-09-29
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -15,13 +15,13 @@ components: [sessions, execution, ws, poll]
 affected_versions:
   from: "0.1.0"
   to: null
-last_verified_version: "0.1.0-dev (commit 829ca43)"
-next_review_date: 2026-10-28
+last_verified_version: "0.2.0-rc (main at 8031baa)"
+next_review_date: 2026-10-29
 review_cycle: on-release
 confidentiality: internal
 scope: The host-owned live session runtime (open, send, finish input, read, cancel, retention, limits) and how the CLI, rivet.sessions.* built-ins, HTTP polling and WebSocket surfaces project it in Rivet 0.1.0.
 reason: Streaming and duplex operations (emits / receives) outlive a single HTTP exchange; maintainers and client authors need the exact session state machine, sequencing rules, limits and per-surface behaviour as implemented (PLAN-2026-0001 D-21).
-related_documents: [PROP-2026-0001, PLAN-2026-0001, SYS-2026-0002, SYS-2026-0004, SYS-2026-0005, SYS-2026-0008]
+related_documents: [PLAN-2026-0002, API-2026-0006, SYS-2026-0010, PROP-2026-0001, PLAN-2026-0001, SYS-2026-0002, SYS-2026-0004, SYS-2026-0005, SYS-2026-0008]
 supersedes: null
 superseded_by: null
 tags: [rivet, system, sessions, streaming, duplex, polling, websocket]
@@ -31,11 +31,11 @@ tags: [rivet, system, sessions, streaming, duplex, polling, websocket]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-28
+> **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** sessions, execution, ws, poll
-> **Last Verified Version:** 0.1.0-dev (commit 829ca43)
+> **Last Verified Version:** 0.2.0-rc (main at 8031baa)
 
 ## Summary
 
@@ -185,7 +185,7 @@ session reports it.
 
 | Use case | Input → output | Early checks in the use case |
 |---|---|---|
-| `sessions.open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms?, trace?, restrict?}` → `SessionReceipt` | blank `id` → `validation.required`; non-object params → `validation.params` |
+| `sessions.open_session` | `SessionOpenInput {id, params, principal, connection_owned, deadline_ms?, trace?, restrict?}` → `SessionReceipt` (the surfaces fill `id`/`params` from the InputEnvelope's `operation`/`data`) | blank `id` → `validation.required`; non-object params → `validation.params` |
 | `sessions.send_input` | `SessionSendInput {session_id, send_seq, data, principal}` → `SessionAck` | `send_seq` 0 → `conflict.input_sequence` |
 | `sessions.finish_input` | `SessionRef` → `SessionAck {accepted_seq: null, input_closed: true}` | blank ID → `not_found.session` |
 | `sessions.read_events` | `SessionReadInput {session_id, after_seq, max_events?, wait_ms?}` → `SessionBatch` | blank ID → `not_found.session`; clamp wait/max |
@@ -199,12 +199,18 @@ Port: `SessionDriver { open; send; finish_input; read; cancel; limits }`
 ```text
  SessionReceipt  {session_id, request_id, trace_id, catalog_version, input_schema|null,
                   emits_schema|null, next_send_seq: 1, expires_at: RFC 3339, events_url?}
- SessionAck      {session_id, accepted_seq: int|null, input_closed: bool}
- SessionBatch    {session_id, events: [event…], last_seq, terminal: bool}
-   event         {request_id, trace_id, seq, type:"data", data}
-               | {request_id, trace_id, seq, type:"result", result, data_count, effects}
-               | {request_id, trace_id, seq, type:"error", error:{…}}
- CancelReceipt   {session_id, request_id, state: "cancelled"|"succeeded"|"failed"}
+                  (0.2.0: delivered as the `data` of a ResponseEnvelope — status "accepted" on
+                   POST /v1/requests and MCP streaming tools, status "ok" from rivet.sessions.open)
+ SessionAck      {session_id, accepted_seq: int|null, input_closed: bool}          (bare body)
+ SessionBatch    {session_id, events: [record…], last_seq, terminal: bool}          (bare body)
+   record (0.2.0, stream records of API-2026-0006):
+                 {request_id, trace_id, operation, type:"data", seq, data, error:null}
+               | {request_id, trace_id, operation, type:"result", seq, status:"ok"|"error"|"cancelled",
+                  data, error, effects, data_count}
+   (0.1.0: {…, seq, type:"result", result, …} and a separate {…, type:"error", error} event)
+ CancelReceipt   {session_id, request_id, state: "cancelled"|"succeeded"|"failed"}  (bare body)
+ refusals        every error on a session route is an error ResponseEnvelope (operation = the
+                 built-in, e.g. rivet.sessions.send), with the session's request/trace IDs when known
 ```
 
 `expires_at` is `now + min(idle_ms, deadline_ms)`; with the defaults that is 30 s after
@@ -215,10 +221,10 @@ caller's requested total deadline (default 30 000, clamped to 1 … 600 000).
 
 | Surface | Open | Send | Finish | Read | Cancel |
 |---|---|---|---|---|---|
-| Built-ins (`/v1/request`, MCP tools, CLI `request`, library) | `rivet.sessions.open {id, params, deadline_ms?}`; `rivet.request {id, params}` also returns a receipt when the target streams | `rivet.sessions.send {session_id, send_seq, data}` | `rivet.sessions.finish_input {session_id}` | `rivet.sessions.read {session_id, after_seq, max_events?, wait_ms?}` | `rivet.sessions.cancel {session_id}` |
-| HTTP polling (`setup_poll.rs`) | `POST /v1/requests {id, params, deadline_ms?, restrict?}` (+ `traceparent`) → 202 + `events_url` | `POST /v1/requests/{id}/input {send_seq, data}` | `POST /v1/requests/{id}/finish_input` | `GET /v1/requests/{id}/events?after_seq=N&wait_ms=M&max_events=K` | `POST /v1/requests/{id}/cancel` |
-| WebSocket `/v1/ws`, subprotocol `rivet.v1` (`setup_ws.rs`) | `{type:"request", ref, id, params, restrict?}` (no deadline field: 30 s) | `{type:"input", ref, seq, data}` | `{type:"finish_input", ref}` | server pushes `{type:"data"…}` then one `result` or `error` per ref | `{type:"cancel", ref}`; socket close cancels all refs |
-| CLI local | `rivet request ID --stream --input-jsonl -` — stdin JSONL lines are input, EOF finishes input, NDJSON envelopes on stdout (no SessionHost; direct `dispatch_session`) | | | | Ctrl-C or a bad line → `Runtime::cancel` |
+| Built-ins (`/v1/request`, MCP tools, CLI `request`, library) | `rivet.sessions.open {operation, data, deadline_ms?}` (deprecated `{id, params}`); `rivet.request {operation, data}` also returns a receipt when the target streams | `rivet.sessions.send {session_id, send_seq, data}` | `rivet.sessions.finish_input {session_id}` | `rivet.sessions.read {session_id, after_seq, max_events?, wait_ms?}` | `rivet.sessions.cancel {session_id}` |
+| HTTP polling (`setup_poll.rs`) | `POST /v1/requests {operation, data, deadline_ms?, restrict?}` (+ `traceparent`) → 202 envelope `status: "accepted"` + `events_url` | `POST /v1/requests/{id}/input {send_seq, data}` | `POST /v1/requests/{id}/finish_input` | `GET /v1/requests/{id}/events?after_seq=N&wait_ms=M&max_events=K` | `POST /v1/requests/{id}/cancel` |
+| WebSocket `/v1/ws`, subprotocol `rivet.v1` (`setup_ws.rs`) | `{type:"request", ref, operation, data, restrict?}` (no deadline field: 30 s; deprecated `id`/`params` accepted) | `{type:"input", ref, seq, data}` | `{type:"finish_input", ref}` | server pushes records with `ref` first: `type:"data"`… then one `type:"result"` per ref | `{type:"cancel", ref}`; socket close cancels all refs |
+| CLI local | `rivet request ID --stream --input-jsonl -` — stdin JSONL lines are input, EOF finishes input, NDJSON records on stdout (no SessionHost; direct `dispatch_session`) | | | | Ctrl-C or a bad line → `Runtime::cancel` |
 | CLI remote | same flags with `--endpoint URL` → one WebSocket ref (`src/infra/remote_client.rs`) | | | | Ctrl-C or a bad line → `cancel` frame |
 
 Principal and operation checks: every surface authenticates the caller first
@@ -307,173 +313,185 @@ events, so clients deduplicate by `seq`. Nothing is appended after the terminal 
 A cancel that is requested before the run completes now always wins: the session ends
 `cancelled` even if the operation's own `result` arrives while it unwinds. Cancelling a
 session that had already recorded its terminal event changes nothing and reports that
-state. Verified over polling at commit `829ca43`:
+state. Verified over polling on the 0.2.0-rc (`chat.echo` finished with no input):
 
 ```text
-POST …/finish_input                     → {"session_id":"ses_0334a478ff","accepted_seq":null,"input_closed":true}
-GET  …/events?after_seq=0&wait_ms=1000  → {…"events":[{…"result":{"echoed":0},…,"type":"result","seq":1}],"last_seq":1,"terminal":true}
-POST …/cancel                           → {"session_id":"ses_0334a478ff","request_id":"req_0334a5816f","state":"succeeded"}
+POST …/finish_input                     → {"session_id":"ses_03e90f330f","accepted_seq":null,"input_closed":true}
+GET  …/events?after_seq=0&wait_ms=1000  → {"session_id":"ses_03e90f330f","events":[{…,"operation":"chat.echo","type":"result","seq":1,"status":"ok","data":{"count":0},"error":null,"effects":"none","data_count":0}],"last_seq":1,"terminal":true}
+POST …/cancel                           → {"session_id":"ses_03e90f330f","request_id":"req_03e90f5fe7","state":"succeeded"}
 ```
 
 ### Verified: CLI duplex (local bundle)
 
-Scratch bundle `chat.echo` (`receives object {text}`, `emits object {text}`, echoes each
-input and returns `{count}`); `chat-input.jsonl` has the same two lines as
-`docs/demos/10-grpc/chat-input.jsonl`.
+Scratch bundle: `chat.echo` (`receives object {text}`, `emits object {text}`, echoes each input and
+returns `{count}`), `chat.text` (`receives text`, `emits text`), `demo.add` and `demo.countdown` (emits 3, 2, 1,
+returns `{done: true}`). `chat-input.jsonl` is `docs/demos/10-grpc/chat-input.jsonl`. Captured on the
+0.2.0-rc; IDs vary per run.
 
 ```sh
 $ rivet --file app.rivet request chat.echo --stream --input-jsonl - < chat-input.jsonl
-{"request_id":"req_01ad5fe8dd","trace_id":"tr_01ad5fe8dd","seq":1,"type":"data","data":{"text":"hello"}}
-{"request_id":"req_01ad5fe8dd","trace_id":"tr_01ad5fe8dd","seq":2,"type":"data","data":{"text":"goodbye"}}
-{"request_id":"req_01ad5fe8dd","trace_id":"tr_01ad5fe8dd","result":{"count":2},"data_count":2,"effects":"none","type":"result"}
+{"request_id":"req_01d650f8f5","trace_id":"tr_01d650f8f5","operation":"chat.echo","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+{"request_id":"req_01d650f8f5","trace_id":"tr_01d650f8f5","operation":"chat.echo","type":"data","seq":2,"data":{"text":"goodbye"},"error":null}
+{"request_id":"req_01d650f8f5","trace_id":"tr_01d650f8f5","operation":"chat.echo","type":"result","seq":3,"status":"ok","data":{"count":2},"error":null,"effects":"none","data_count":2}
 exit=0
 $ printf '{"text":"hi"}\n{"txt":1}\n' | rivet --file app.rivet request chat.echo --stream --input-jsonl -
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.input","message":"stdin line 2: input item at text must be text, got missing; the request was cancelled","retryable":false,"effects":"none"}}
+{"request_id":"req_01d55a2275","trace_id":"tr_01d55a2275","operation":"chat.echo","type":"data","seq":1,"data":{"text":"hi"},"error":null}
+{"request_id":"req_01d55a2275","trace_id":"tr_01d55a2275","operation":"chat.echo","type":"result","seq":2,"status":"error","data":null,"error":{"kind":"validation","code":"validation.input","message":"stdin line 2: input item at text must be text, got missing; the request was cancelled","retryable":false,"details":{"seq":2,"line":2}},"effects":"none","data_count":1}
 exit=2
 $ rivet --file app.rivet request chat.echo --input-jsonl - </dev/null
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.usage","message":"--input-jsonl - needs --stream (output is NDJSON envelopes)","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.usage","message":"--input-jsonl - needs --stream (output is NDJSON envelopes)","retryable":false},"effects":"none","data_count":0}
 exit=2
-$ rivet --file app.rivet request chat.echo --params '{}'
-{"request_id":"req_01aa2bdefd","trace_id":"tr_01aa2bdefd","error":{"kind":"validation","code":"stream.input_required","message":"`chat.echo` receives live input; open a session or use --input-jsonl","retryable":false,"effects":"none","operation_id":"chat.echo"}}
+$ rivet --file app.rivet request chat.echo
+{"request_id":"req_01d4a89c3d","trace_id":"tr_01d4a89c3d","operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"stream.input_required","message":"`chat.echo` receives live input; open a session or use --input-jsonl","retryable":false,"operation_id":"chat.echo"},"effects":"none","data_count":0}
 exit=2
 $ rivet --file app.rivet request demo.countdown --stream --input-jsonl - </dev/null
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.no_input","message":"`demo.countdown` does not declare `receives`; drop --input-jsonl","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"demo.countdown","type":"result","seq":1,"status":"error","data":null,"error":{"kind":"validation","code":"validation.no_input","message":"`demo.countdown` does not declare `receives`; drop --input-jsonl","retryable":false},"effects":"none","data_count":0}
 exit=2
 $ rivet --file app.rivet request chat.echo --stream --input-jsonl chat-input.jsonl
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.usage","message":"--input-jsonl chat-input.jsonl: only `-` (stdin) is supported","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.usage","message":"--input-jsonl chat-input.jsonl: only `-` (stdin) is supported","retryable":false},"effects":"none","data_count":0}
 exit=2
 ```
 
-Error envelopes are written to stderr. Whether data envelopes for lines before a bad line
-appear depends on timing (none appeared in this run).
+Error records go to stderr. In 0.2.0 a bad stdin line ends the stream with a terminal `type: "result"` record
+(`status: "error"`, `data_count` = items already emitted, `details {seq, line}`); the data records before it
+are printed first.
 
-### Verified: HTTP polling (`rivet serve --listen 127.0.0.1:18420`)
+### Verified: HTTP polling (`rivet serve --listen 127.0.0.1:18920`)
 
 ```sh
-$ curl -s -X POST $B/v1/requests -H 'content-type: application/json' -d '{"id":"chat.echo","params":{}}'
-{"session_id":"ses_018f530f9d","request_id":"req_018f531bc5","trace_id":"tr_018f531bc5","catalog_version":"sha256:222592f9989f93e116b40747b5d5f218cc5c365cafe3a3df5a56b288bc7746cc","input_schema":{"type":"object","properties":{"text":{"type":"string","description":"Message text."}},"required":["text"],"additionalProperties":false},"emits_schema":{"type":"object","properties":{"text":{"type":"string","description":"Echoed text."}},"required":["text"],"additionalProperties":false},"next_send_seq":1,"expires_at":"2026-09-28T05:14:13Z","events_url":"/v1/requests/ses_018f530f9d/events"}
-# input 1
-{"session_id":"ses_018f530f9d","accepted_seq":1,"input_closed":false}
+$ curl -s -X POST $B/v1/requests -H 'content-type: application/json' -d '{"operation":"chat.echo","data":{}}'   # [HTTP 202]
+{"request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","operation":"chat.echo","type":"result","status":"accepted","data":{"session_id":"ses_0100cdcb3d","request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","catalog_version":"sha256:3bff5923f5d074ba1d150c9178a1c6ff00e972b27dc3243538f267c0d80a2e81","input_schema":{"type":"object","properties":{"text":{"type":"string","description":"Message text."}},"required":["text"],"additionalProperties":false},"emits_schema":{"type":"object","properties":{"text":{"type":"string","description":"Echoed text."}},"required":["text"],"additionalProperties":false},"next_send_seq":1,"expires_at":"2026-09-28T22:44:01Z","events_url":"/v1/requests/ses_0100cdcb3d/events"},"error":null,"effects":"none","data_count":0}
+# input 1                              POST …/input {"send_seq":1,"data":{"text":"hello"}}
+{"session_id":"ses_0100cdcb3d","accepted_seq":1,"input_closed":false}
 # identical retry of 1
-{"session_id":"ses_018f530f9d","accepted_seq":1,"input_closed":false}
+{"session_id":"ses_0100cdcb3d","accepted_seq":1,"input_closed":false}
 # retry of 1 with a different payload                                           [HTTP 409]
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.input_sequence","message":"send_seq 1 was already accepted with a different payload","retryable":false,"effects":"none"}}
+{"request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","operation":"rivet.sessions.send","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"send_seq 1 was already accepted with a different payload","retryable":false},"effects":"none","data_count":0}
 # send_seq 3 (gap)                                                              [HTTP 409]
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
+{…,"operation":"rivet.sessions.send",…,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false},…}
 # send_seq 2 with {"txt":"x"}                                                   [HTTP 422]
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.input","message":"input item at text must be text, got missing","retryable":false,"effects":"none"}}
+{…,"operation":"rivet.sessions.send",…,"error":{"kind":"validation","code":"validation.input","message":"input item 2 at text must be text, got missing","retryable":false,"details":{"seq":2,"path":"text","expected":"text","found":"missing"}},…}
 # input 2
-{"session_id":"ses_018f530f9d","accepted_seq":2,"input_closed":false}
+{"session_id":"ses_0100cdcb3d","accepted_seq":2,"input_closed":false}
 $ curl -s "$B/v1/requests/$SID/events?after_seq=0&wait_ms=500"
-{"session_id":"ses_018f530f9d","events":[{"request_id":"req_018f531bc5","trace_id":"tr_018f531bc5","seq":1,"type":"data","data":{"text":"hello"}},{"request_id":"req_018f531bc5","trace_id":"tr_018f531bc5","seq":2,"type":"data","data":{"text":"goodbye"}}],"last_seq":2,"terminal":false}
+{"session_id":"ses_0100cdcb3d","events":[{"request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","operation":"chat.echo","type":"data","seq":1,"data":{"text":"hello"},"error":null},{"request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","operation":"chat.echo","type":"data","seq":2,"data":{"text":"goodbye"},"error":null}],"last_seq":2,"terminal":false}
 $ curl -s -X POST $B/v1/requests/$SID/finish_input
-{"session_id":"ses_018f530f9d","accepted_seq":null,"input_closed":true}
+{"session_id":"ses_0100cdcb3d","accepted_seq":null,"input_closed":true}
 # send after finish                                                             [HTTP 409]
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.input_closed","message":"input is finished; no further sends are accepted","retryable":false,"effects":"none"}}
+{…,"operation":"rivet.sessions.send",…,"error":{"kind":"conflict","code":"conflict.input_closed","message":"input is finished; no further sends are accepted","retryable":false},…}
 $ curl -s "$B/v1/requests/$SID/events?after_seq=2&wait_ms=1000"
-{"session_id":"ses_018f530f9d","events":[{"request_id":"req_018f531bc5","trace_id":"tr_018f531bc5","result":{"count":2},"data_count":2,"effects":"none","type":"result","seq":3}],"last_seq":3,"terminal":true}
+{"session_id":"ses_0100cdcb3d","events":[{"request_id":"req_0100cdd34d","trace_id":"tr_0100cdd34d","operation":"chat.echo","type":"result","seq":3,"status":"ok","data":{"count":2},"error":null,"effects":"none","data_count":2}],"last_seq":3,"terminal":true}
 # after_seq=0 again                                                             [HTTP 409]
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"stream.cursor_expired","message":"events after 0 were already acknowledged up to 2 and evicted","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.sessions.read","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"stream.cursor_expired","message":"events after 0 were already acknowledged up to 2 and evicted","retryable":false},"effects":"none","data_count":0}
 # after_seq=9                                                                   [HTTP 409]
-{"request_id":"","trace_id":"","error":{"kind":"conflict","code":"conflict.cursor","message":"after_seq 9 is ahead of the last delivered event 3","retryable":false,"effects":"none"}}
+{…,"operation":"rivet.sessions.read",…,"error":{"kind":"conflict","code":"conflict.cursor","message":"after_seq 9 is ahead of the last delivered event 3","retryable":false},…}
 $ curl -s -X POST $B/v1/requests/$SID/cancel        # already terminal
-{"session_id":"ses_018f530f9d","request_id":"req_018f531bc5","state":"succeeded"}
+{"session_id":"ses_0100cdcb3d","request_id":"req_0100cdd34d","state":"succeeded"}
 ```
 
-Unary operations work the same way; their batch holds one terminal event:
+Unary operations work the same way; their batch holds one terminal record:
 
 ```sh
-$ curl -s -X POST $B/v1/requests -d '{"id":"demo.add","params":{"a":2,"b":3}}' -H 'content-type: application/json'
-{"session_id":"ses_029974e5ea",…,"input_schema":null,"emits_schema":null,"next_send_seq":1,…}
-$ curl -s "$B/v1/requests/ses_029974e5ea/events?after_seq=0"
-{"session_id":"ses_029974e5ea","events":[{"request_id":"req_02994b02b2","trace_id":"tr_02994b02b2","result":5,"data_count":0,"effects":"none","type":"result","seq":1}],"last_seq":1,"terminal":true}
+$ curl -s -X POST $B/v1/requests -d '{"operation":"demo.add","data":{"a":2,"b":3}}' -H 'content-type: application/json'
+{…,"operation":"demo.add","type":"result","status":"accepted","data":{"session_id":"ses_0271ef4b02",…,"input_schema":null,"emits_schema":null,"next_send_seq":1,…},…}
+$ curl -s "$B/v1/requests/ses_0271ef4b02/events?after_seq=0"
+{"session_id":"ses_0271ef4b02","events":[{"request_id":"req_0271ef5372","trace_id":"tr_0271ef5372","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}],"last_seq":1,"terminal":true}
 # input to it                                                                   [HTTP 422]
-{"request_id":"","trace_id":"","error":{"kind":"validation","code":"validation.no_input","message":"this operation does not declare `receives`","retryable":false,"effects":"none"}}
+{…,"operation":"rivet.sessions.send",…,"error":{"kind":"validation","code":"validation.no_input","message":"this operation does not declare `receives`","retryable":false},…}
 ```
 
 Cancelling a live `chat.echo` session, an unknown session, and the per-principal cap:
 
 ```sh
 $ curl -s -X POST $B/v1/requests/$SID/cancel
-{"session_id":"ses_03123e87af","request_id":"req_03123e9fff","state":"cancelled"}
+{"session_id":"ses_0466c8b494","request_id":"req_0466c8cca4","state":"cancelled"}
 $ curl -s "$B/v1/requests/$SID/events?after_seq=0"
-{"session_id":"ses_03123e87af","events":[{"request_id":"req_03123e9fff","trace_id":"tr_03123e9fff","seq":1,"type":"error","error":{"kind":"cancelled","code":"cancelled.session","message":"the session was cancelled","retryable":false,"effects":"none"}}],"last_seq":1,"terminal":true}
+{"session_id":"ses_0466c8b494","events":[{"request_id":"req_0466c8cca4","trace_id":"tr_0466c8cca4","operation":"chat.echo","type":"result","seq":1,"status":"cancelled","data":null,"error":{"kind":"cancelled","code":"cancelled.session","message":"the session was cancelled","retryable":false},"effects":"none","data_count":0}],"last_seq":1,"terminal":true}
 $ curl -s "$B/v1/requests/ses_nope/events"                                      # [HTTP 404]
-{"request_id":"","trace_id":"","error":{"kind":"not_found","code":"not_found.session","message":"no session `ses_nope`","retryable":false,"effects":"none"}}
+{"request_id":"","trace_id":"","operation":"rivet.sessions.read","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.session","message":"no session `ses_nope`","retryable":false},"effects":"none","data_count":0}
 # nine opens of chat.echo in a row → 202 ×8, then [HTTP 429]:
-{"request_id":"","trace_id":"","error":{"kind":"limit","code":"limit.sessions","message":"at most 8 live sessions per principal","retryable":true,"effects":"none"}}
+{…,"operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"limit","code":"limit.sessions","message":"at most 8 live sessions per principal","retryable":true},"effects":"none","data_count":0}
 ```
 
-### Verified: `rivet.sessions.*` through `/v1/request`
+The cap also applies to `rivet.sessions.open` on the same host (429 `limit.sessions`) until live sessions end,
+are cancelled or idle out.
+
+### Verified: `rivet.sessions.*` through `/v1/request` (a fresh server on `127.0.0.1:18921`)
 
 ```sh
-$ curl -s -X POST $B/v1/request -d '{"id":"rivet.sessions.open","params":{"id":"demo.countdown"}}' -H 'content-type: application/json'
-{"request_id":"req_0487a79b1c","trace_id":"tr_0487a79b1c","result":{"session_id":"ses_0487a6c2d4","request_id":"req_0506fb42f1","trace_id":"tr_0506fb42f1","catalog_version":"sha256:222592f9…","input_schema":null,"emits_schema":{"type":"integer"},"next_send_seq":1,"expires_at":"2026-09-28T05:14:24Z"},"data_count":0,"effects":"none"}
-$ curl -s -X POST $B/v1/request -d '{"id":"rivet.sessions.read","params":{"session_id":"ses_0487a6c2d4","after_seq":0,"max_events":2}}' -H 'content-type: application/json'
-{"request_id":"req_067b9ddcae","trace_id":"tr_067b9ddcae","result":{"session_id":"ses_0487a6c2d4","events":[{"request_id":"req_0506fb42f1","trace_id":"tr_0506fb42f1","seq":1,"type":"data","data":3},{"request_id":"req_0506fb42f1","trace_id":"tr_0506fb42f1","seq":2,"type":"data","data":2}],"last_seq":2,"terminal":false},"data_count":0,"effects":"none"}
-$ curl -s -X POST $B/v1/request -d '{"id":"rivet.sessions.read","params":{"session_id":"ses_0487a6c2d4","after_seq":2}}' -H 'content-type: application/json'
-{"request_id":"req_07fa86e2e3","trace_id":"tr_07fa86e2e3","result":{"session_id":"ses_0487a6c2d4","events":[{"request_id":"req_0506fb42f1","trace_id":"tr_0506fb42f1","seq":3,"type":"data","data":1},{"request_id":"req_0506fb42f1","trace_id":"tr_0506fb42f1","result":{"done":true},"data_count":3,"effects":"none","type":"result","seq":4}],"last_seq":4,"terminal":true},"data_count":0,"effects":"none"}
+$ curl -s -X POST $B/v1/request -d '{"operation":"rivet.sessions.open","data":{"operation":"demo.countdown"}}' -H 'content-type: application/json'
+{"request_id":"req_0113229aed","trace_id":"tr_0113229aed","operation":"rivet.sessions.open","type":"result","status":"ok","data":{"session_id":"ses_0113393b2d","request_id":"req_0292e7bb7a","trace_id":"tr_0113229aed","catalog_version":"sha256:3bff5923…","input_schema":null,"emits_schema":{"type":"integer"},"next_send_seq":1,"expires_at":"2026-09-28T22:44:23Z"},"error":null,"effects":"none","data_count":0}
+$ curl -s -X POST $B/v1/request -d '{"operation":"rivet.sessions.read","data":{"session_id":"ses_0113393b2d","after_seq":0,"max_events":2}}' -H 'content-type: application/json'
+{"request_id":"req_030dbcec1f","trace_id":"tr_030dbcec1f","operation":"rivet.sessions.read","type":"result","status":"ok","data":{"session_id":"ses_0113393b2d","events":[{"request_id":"req_0292e7bb7a","trace_id":"tr_0113229aed","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null},{…,"type":"data","seq":2,"data":2,"error":null}],"last_seq":2,"terminal":false},"error":null,"effects":"none","data_count":0}
+$ curl -s -X POST $B/v1/request -d '{"operation":"rivet.sessions.read","data":{"session_id":"ses_0113393b2d","after_seq":2}}' -H 'content-type: application/json'
+{"request_id":"req_048c165bac",…,"operation":"rivet.sessions.read",…,"status":"ok","data":{"session_id":"ses_0113393b2d","events":[{…,"type":"data","seq":3,"data":1,"error":null},{"request_id":"req_0292e7bb7a","trace_id":"tr_0113229aed","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"done":true},"error":null,"effects":"none","data_count":3}],"last_seq":4,"terminal":true},…}
+$ curl -s -i -X POST $B/v1/request -d '{"id":"rivet.sessions.open","params":{"id":"demo.countdown"}}' -H 'content-type: application/json'
+HTTP/1.1 200 OK
+deprecation: true                  (0.1.0 keys, still accepted through 0.2.x)
 ```
 
-The built-in call has its own request ID; the session's run has another. A streaming
-operation called unary on `/v1/request` is refused with `stream.required` (422) and a hint
-naming SSE, polling, WebSocket and `rivet.sessions.open`.
+The built-in call has its own request ID; the session's run has another (and shares the trace ID). A streaming
+operation called unary on `/v1/request` is refused with `stream.required` (422) and a hint naming SSE, polling,
+WebSocket and `rivet.sessions.open`.
 
 ### Verified: WebSocket (`/v1/ws`, raw client)
 
 ```text
  101 Switching Protocols   Sec-WebSocket-Protocol: rivet.v1
- >> {"type":"request","ref":"c1","id":"chat.echo","params":{}}
+ >> {"type":"request","ref":"c1","operation":"chat.echo","data":{}}
  >> {"type":"input","ref":"c1","seq":1,"data":{"text":"hello"}}
- >> {"type":"request","ref":"c1","id":"demo.add","params":{"a":2,"b":3}}
- >> {"type":"request","ref":"a1","id":"demo.add","params":{"a":2,"b":3}}
+ >> {"type":"request","ref":"c1","operation":"demo.add","data":{"a":2,"b":3}}
+ >> {"type":"request","ref":"a1","operation":"demo.add","data":{"a":2,"b":3}}
  >> {"type":"input","ref":"zz","seq":1,"data":{"text":"x"}}
  >> {"type":"finish_input","ref":"c1"}
- << {"type":"error","ref":"c1","error":{"kind":"conflict","code":"conflict.ref","message":"ref `c1` is already in flight",…}}
- << {"type":"error","ref":"zz","error":{"kind":"not_found","code":"not_found.ref","message":"ref `zz` is not in flight",…}}
- << {"type":"data","ref":"c1","request_id":"req_1203d7eb8c","trace_id":"tr_1203d7eb8c","seq":1,"data":{"text":"hello"}}
- << {"type":"result","ref":"a1","completion":{"request_id":"req_1382294389","trace_id":"tr_1382294389","result":5,"data_count":0,"effects":"none"}}
- << {"type":"result","ref":"c1","completion":{"request_id":"req_1203d7eb8c","trace_id":"tr_1203d7eb8c","result":{"count":1},"data_count":1,"effects":"none"}}
+ << {"ref":"c1","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.ref","message":"ref `c1` is already in flight","retryable":false},"effects":"none","data_count":0}
+ << {"ref":"zz","request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.ref","message":"ref `zz` is not in flight","retryable":false},"effects":"none","data_count":0}
+ << {"ref":"c1","request_id":"req_01e376d2c5","trace_id":"tr_01e376d2c5","operation":"chat.echo","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+ << {"ref":"c1","request_id":"req_01e376d2c5","trace_id":"tr_01e376d2c5","operation":"chat.echo","type":"result","seq":2,"status":"ok","data":{"count":1},"error":null,"effects":"none","data_count":1}
+ << {"ref":"a1","request_id":"req_0262d45e5a","trace_id":"tr_0262d45e5a","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 ```
+
+**Known issue (0.2.0-rc).** The `conflict.ref` refusal of a duplicate request frame is a `type: "result"`
+record carrying the **in-flight** ref (`c1`), so the ref receives two terminal-looking records. It can be told
+apart only by its empty `request_id` and its `operation` (`demo.add`, not `chat.echo`). In 0.1.0 it was a
+distinct `type: "error"` frame. A client that ends a ref at its first `type: "result"`, such as
+`docs/demos/01-catalog/fixtures/ws_client.py`, stops early. Reported to the plan owner.
 
 ```text
  WS ref lifecycle (setup_ws.rs)
 
- request frame ─▶ multiplex_ws: dup ref? conflict.ref │ 9th ref? limit.ws_refs │ require_operation
+ request frame ─▶ serve.parse_input ─▶ multiplex_ws: dup ref? conflict.ref │ 9th ref? limit.ws_refs │ require_operation
                ─▶ SessionDriver.open(connection_owned = true) ─▶ spawn pump(ref)
- pump: loop read(after, wait 5000) ─▶ data frames … ─▶ one result|error frame ─▶ ref freed
- input / finish_input refused ─▶ multiplex_ws sends that ref's terminal error frame with the
-                                SPECIFIC code first, then cancels the session (its own frame is dropped)
+ pump: loop read(after, wait 5000) ─▶ data records … ─▶ one result record (any status) ─▶ ref freed
+ input / finish_input refused ─▶ multiplex_ws sends that ref's terminal result record (status error) with the
+                                SPECIFIC code first, then cancels the session (its own record is dropped)
  outbound: one 16-frame lane per ref (WsOutbox) merged into the socket writer
  cancel frame  ─▶ SessionDriver.cancel
  socket close  ─▶ cancel + join every in-flight ref (connection-owned), abort pumps
 ```
 
-A refused input frame ends its ref with the **specific** error (commit `829ca43`; `chat.echo`
-here receives and emits `text`):
+A refused input frame ends its ref with the **specific** error (`chat.text` receives and emits `text`):
 
 ```text
- >> {"type":"request","ref":"c1","id":"chat.echo","params":{}}
+ >> {"type":"request","ref":"c1","operation":"chat.text","data":{}}
  >> {"type":"input","ref":"c1","seq":1,"data":"hi"}
- << {"type":"data","ref":"c1","request_id":"req_01c6d564cd","trace_id":"tr_01c6d564cd","seq":1,"data":"hi"}
  >> {"type":"input","ref":"c1","seq":3,"data":"skip"}
- << {"type":"error","ref":"c1","request_id":"req_…","trace_id":"tr_…","error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false,"effects":"none"}}
- >> {"type":"request","ref":"c2","id":"chat.echo","params":{}}
+ << {"ref":"c1","request_id":"req_090151367d","trace_id":"tr_090151367d","operation":"chat.text","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false},"effects":"none","data_count":0}
+ >> {"type":"request","ref":"c2","operation":"chat.text","data":{}}
  >> {"type":"input","ref":"c2","seq":1,"data":5}
- << {"type":"error","ref":"c2","request_id":"req_…","trace_id":"tr_…","error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"effects":"none","details":{"seq":1,"path":"$","expected":"text","found":"integer"}}}
+ << {"ref":"c2","request_id":"req_1080325e52","trace_id":"tr_1080325e52","operation":"chat.text","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"details":{"seq":1,"path":"$","expected":"text","found":"integer"}},"effects":"none","data_count":0}
 ```
 
-(At `f40d4aa` the same refusal produced only `cancelled.session`, and a `cancel` sent right
-after `request` could still end with the operation's own `result`; both behaviours changed
-with the fix batch.)
+In this run the `hi` echo of `c1` was not delivered before the refusal ended the ref (the timing varies; a data
+record can precede the terminal record).
 
 The CLI's remote duplex uses the same WebSocket path:
 
 ```sh
-$ rivet --endpoint http://127.0.0.1:18420 request chat.echo --stream --input-jsonl - < chat-input.jsonl
-{"request_id":"req_1191f9804f","trace_id":"tr_1191f9804f","seq":1,"type":"data","data":{"text":"hello"}}
-{"request_id":"req_1191f9804f","trace_id":"tr_1191f9804f","seq":2,"type":"data","data":{"text":"goodbye"}}
-{"request_id":"req_1191f9804f","trace_id":"tr_1191f9804f","result":{"count":2},"data_count":2,"effects":"none","type":"result"}
+$ rivet --endpoint http://127.0.0.1:18921 request chat.echo --stream --input-jsonl - < chat-input.jsonl
+{"request_id":"req_128ea6b094","trace_id":"tr_128ea6b094","operation":"chat.echo","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+{"request_id":"req_128ea6b094","trace_id":"tr_128ea6b094","operation":"chat.echo","type":"data","seq":2,"data":{"text":"goodbye"},"error":null}
+{"request_id":"req_128ea6b094","trace_id":"tr_128ea6b094","operation":"chat.echo","type":"result","seq":3,"status":"ok","data":{"count":2},"error":null,"effects":"none","data_count":2}
 exit=0
 ```
 
@@ -483,8 +501,25 @@ exit=0
 that was not running; the gRPC adapter side of a duplex session was not exercised here (see
 SYS-2026-0005). Idle expiry (60 s) and retention expiry (60 s) were not waited out; they are
 described from the background sweeper in `src/infra/session_driver.rs` and its unit tests
-(`cancel_wins_the_race_with_completion` and the sweeper tests in `tests/conformance_sessions.rs`). MCP `tools/call` of `rivet.sessions.*` was not run for
-this document.
+(`cancel_wins_the_race_with_completion` and the sweeper tests in `tests/conformance_sessions.rs`). MCP `tools/call`
+of `rivet.sessions.*` was not run for this document; SYS-2026-0004 shows the `accepted` envelope an MCP
+streaming tool returns.
+
+### Other session owners (0.2.0)
+
+```text
+ SessionHost (one per Runtime, shared registry = the CURRENT catalog snapshot)
+   ├─ principal-owned  : polling, rivet.sessions.*, MCP streaming tools      (count toward 8 per principal)
+   ├─ connection-owned : WebSocket refs, C ABI call handles (rivet_call_start) (not counted; die with the owner)
+   └─ every run keeps the catalog snapshot it opened on: a module loaded later (Runtime::load, rivet_load)
+      is not visible to an already-open session; receipts report that snapshot's catalog_version
+```
+
+A C ABI call handle is a connection-owned session: `rivet_call_next` reads it in ≤ 5 s slices, the 60 s idle
+lease still applies, and each record is returned as its own envelope string
+([SYS-2026-0010](../components/sys-2026-0010-ffi-surface-and-packaging.md#call-handle)). A module load swaps
+the runtime's catalog snapshot; a session's run and its nested calls stay on the snapshot they started with
+([SYS-2026-0001](../components/sys-2026-0001-compiler-and-catalog.md#run-time-module-loads-and-catalog-snapshots)).
 
 ## Data and Storage
 
@@ -539,7 +574,7 @@ owning principal. The CLI stdin feeder never echoes line content in errors.
 
 ## Observability
 
-- Every event carries the run's `request_id` and `trace_id`; data events carry `seq`.
+- Every record carries the run's `request_id`, `trace_id` and `operation`, and `seq` (0.2.0 envelope records).
 - Effect decisions of the run are in the trace store under the run's `request_id`
   (`rivet trace show`, SYS-2026-0002).
 - Terminal errors distinguish cause by code: `cancelled.session` (explicit cancel or WS
@@ -560,7 +595,13 @@ From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.m
 
 ## Last Verified Version
 
-`0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
+`0.2.0-rc (main at 8031baa)`, 2026-09-29, macOS, `target/release/rivet` built with
+`cargo build --release --features cli`. Every capture was re-run with a scratch bundle (`chat.echo`, `chat.text`,
+`demo.add`, `demo.countdown`) locally and on `rivet serve --listen 127.0.0.1:18920`, `18921` and `18922`; all
+servers were stopped afterwards (SIGTERM, exit 0). Session, request and trace IDs, `catalog_version` and
+`expires_at` differ per run.
+
+History: `0.1.0-dev (commit 829ca43)`, 2026-09-28, macOS, `target/debug/rivet`. First verified at
 `f40d4aa` with a scratch bundle (`chat.echo`, `demo.countdown`, `demo.add`) and
 `rivet serve --listen 127.0.0.1:18420`; the cancel-after-finish, WebSocket refusal frames and
 SIGTERM drain were re-verified at `829ca43` on `127.0.0.1:18901`–`18904`; all servers were
@@ -576,6 +617,8 @@ differ per run.
 - [SYS-2026-0004 Surfaces and serve](../components/sys-2026-0004-surfaces-and-serve.md)
 - [SYS-2026-0005 Protocol adapters](../integrations/sys-2026-0005-protocol-adapters.md)
 - [SYS-2026-0008 policy.json reference](../configuration/sys-2026-0008-policy-json-reference.md)
+- [API-2026-0006 Envelopes](../../api/api-2026-0006-envelopes.md)
+- [SYS-2026-0010 FFI surface and packaging](../components/sys-2026-0010-ffi-surface-and-packaging.md)
 - [Demo folders](../../demos/README.md)
 
 ## Change History
@@ -584,3 +627,4 @@ differ per run.
 |---|---|---|---|
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-21). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): configurable `deadline_ms` (cap 600 000), background sweeper, cancel wins the race, terminal state reported by cancel, `queue_bytes` and host `max_buffered_bytes` enforced, structured cancel with grace, `cancelled.shutdown`, WS specific refusal frames and per-ref lanes, `restrict`/`trace` on open; limitations reduced to the current ones. |
+| 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-36/D-47 (TASK-073, TASK-070): receipts in `accepted`/`ok` envelopes, events as 0.2.0 stream records (`status` on the terminal record; no `error` event), session-route refusals as envelopes, `{operation, data}` inputs on every surface; every capture re-run on the 0.2.0-rc; connection-owned C ABI call handles and catalog snapshots; WS duplicate-ref known issue. |
