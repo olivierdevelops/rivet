@@ -75,9 +75,10 @@ This page lists the TEST documents (DOCUMENTATION §27). Each one maps to one ro
 | [TEST-2026-0027](test-2026-0027-build-static.md) | T-27 — build / static (all / R1) | PARTIAL |
 | [TEST-2026-0028](test-2026-0028-architecture.md) | T-28 — architecture (all / R14) | PASS |
 | [TEST-2026-0029](test-2026-0029-samples.md) | T-29 — regression / corpus (UC-01 / R2, R14) | PASS |
+| [TEST-2026-0030](test-2026-0030-demos-e2e.md) | T-30 — manual / e2e (all UCs / R1–R26) | PARTIAL |
 | [TEST-2026-0031](test-2026-0031-documentation.md) | T-31 — documentation (R14) | PASS |
 
-The table has 28 PASS and 3 PARTIAL results. Every PARTIAL result is PASS on macOS; the plan also requires Linux and Windows runs, which wait on CI (TASK-051 needs a git remote).
+The table has 28 PASS and 4 PARTIAL results. Every PARTIAL result is PASS on macOS; the plan also requires Linux and Windows runs (and, for T-30, a run against the published artifact), which wait on CI and a git remote (TASK-051).
 
 ## Recently added or updated
 
