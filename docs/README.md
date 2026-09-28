@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-28
-document_revision: 12
+document_revision: 13
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -83,9 +83,11 @@ commands.perch -> Cargo build/install/test/lint
 [ADR-0004](decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)) implements
 [PROP-2026-0002](proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) for v0.2.0:
 standard input/output envelopes (a breaking change), pretty JSON, `global` constants, Rivet as a Cargo
-dependency, a C ABI library and syntax highlighting. P1 (contract delta, RES-2026-0004, ADR-0005) and P2a
-(the envelope wire change, on `main`, not yet released) are done; the manuals and API documents still describe the
-0.1.0 wire format until P4 (TASK-070).
+dependency, a C ABI library and syntax highlighting. P1 (contract delta, RES-2026-0004, ADR-0005), P2a
+(the envelope wire change), P2b (`global` constants), P2f (file modules) and P2e (syntax highlighting:
+`rivet highlight`, the generated TextMate grammar and VS Code extension under `editors/`) are done on `main`, not
+yet released; the manuals and API documents still describe 0.1.0 until P4 (TASK-070). INC-2026-0009 (numeric
+index paths) is resolved; there is no open incident.
 
 ## Open risks and limitations
 
@@ -115,6 +117,7 @@ tree. Platform support beyond the locally verified environment requires the corr
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 13 | 2026-09-28 | Claude | PLAN-2026-0002 P2b, P2f and P2e done (globals, file modules, highlighting); INC-2026-0009 resolved. |
 | 12 | 2026-09-28 | Claude | PLAN-2026-0002 P1 and P2a done (envelopes on `main`; docs follow in P4). |
 | 11 | 2026-09-28 | Claude | Linked PLAN-2026-0002 (v0.2.0 in progress). |
 | 10 | 2026-09-28 | Claude | TASK-070: v0.1.0 release state — current release table, open risks and limitations, proposal implemented. |

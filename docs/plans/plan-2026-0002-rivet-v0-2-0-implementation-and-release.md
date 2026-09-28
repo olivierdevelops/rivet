@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 5
+document_revision: 6
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -126,15 +126,15 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 39 | P2e, P2c, P2d, P3–P5 |
+| NOT STARTED | 35 | P2c, P2d, P3–P5 |
 | IN PROGRESS | 0 | |
 | BLOCKED | 2 | TASK-095/096 now unblocked by the remote (origin added 2026-09-28); updated at P5 |
-| DONE | 32 | P1, P2a, P2b, P2f |
+| DONE | 36 | P1, P2a, P2b, P2f, P2e |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
-- **Current phase:** P1, P2a, P2b and P2f done (440 tests); P2e next, then P2c → P2d.
-- **Next action:** P2e highlighting (TASK-050…053); fix or list INC-2026-0009.
+- **Current phase:** P1, P2a, P2b, P2f and P2e done (455 tests); P2c next, then P2d.
+- **Next action:** P2c package, facade and features (TASK-030…038); INC-2026-0009 is resolved (`93388c1`), no open incident.
 - **Remote:** `origin` = https://github.com/olivierdevelops/rivet.git (added 2026-09-28); `main` and `v0.1.0` pushed; CI runs on push.
 - **Last updated:** 2026-09-28.
 - **Release target:** v0.2.0.
@@ -158,8 +158,8 @@ recommendations (ADR-0004).
 | R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | NOT STARTED |
 | R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | NOT STARTED |
 | R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | NOT STARTED |
-| R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | NOT STARTED |
-| R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | NOT STARTED |
+| R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | DONE (P2e; docs P4) |
+| R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | DONE (P2e; FFI `rivet_highlight` in P2d; docs P4) |
 | R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
 | R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | DONE (P2f; docs P4) |
 | R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | DONE (P2f; docs P4) |
@@ -222,7 +222,7 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 | P2b | Globals | P1 exit | T-06–T-08 green | P1 | DONE (`673994c`) |
 | P2c | Package rename, facade, features | P2a exit | T-09, T-10 green; feature matrix builds | P2a | NOT STARTED |
 | P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | NOT STARTED |
-| P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | NOT STARTED |
+| P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | DONE (`9ec2a39`, `0d6c2ea`; T-13, T-14 PASS) |
 | P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | DONE (`2942066`) |
 | P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
 | P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
@@ -299,10 +299,10 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-050 | P2e | `editors/gen_grammar.py`: extract `rivet.capy` literals + class table into `editors/keywords.json`, then generate `editors/rivet.tmLanguage.json` (classes: declaration, control, option, type, effect, string, interpolation, number, boolean/null, comment `#`, operation id, global, operator) | R16 / C-11 | PF-14 | T-13 | TASK-020 (so `global` is included) | I | NOT STARTED | |
-| TASK-051 | P2e | `editors/vscode/`: `package.json` (version = workspace version), `language-configuration.json` (`#` comments, brackets, `end` indentation), grammar link, README; `npx @vscode/vsce package` → `rivet-<ver>.vsix` | R16 | PF-14 | T-13 | TASK-050 | I | NOT STARTED | |
-| TASK-052 | P2e | Use case `features/language/highlight_source.rs` (pure, over the parser port) + ANSI/HTML/JSON renderers; CLI `rivet highlight FILE [--format …]` (ansi on a TTY, json otherwise); library `rivet::highlight::tokens` | R17 / C-12 | PF-13 | T-14 | TASK-004 | I | NOT STARTED | |
-| TASK-053 | P2e | Tests: keyword drift (`editors/check_keywords.py` in `cargo test` via a small Rust test or CI step); `vscode-tmgrammar-test` snapshots over REF-2026-0002 blocks and demo sources (Node optional job); `tests/conformance_highlight.rs` goldens | R16, R17 | tests | T-13, T-14 | TASK-050–052 | I | NOT STARTED | |
+| TASK-050 | P2e | `editors/gen_grammar.py`: extract `rivet.capy` literals + class table into `editors/keywords.json`, then generate `editors/rivet.tmLanguage.json` (classes: declaration, control, option, type, effect, string, interpolation, number, boolean/null, comment `#`, operation id, global, operator) | R16 / C-11 | PF-14 | T-13 | TASK-020 (so `global` is included) | I | DONE | `9ec2a39`: `editors/gen_grammar.py` (108 `rivet.capy` literals incl. `block_sections else`; table classes declaration, control, option (65 `opt_*` literals derived + 6 modifiers), type, effect, boolean_null, operator, builtin) → `editors/keywords.json` → `editors/rivet.tmLanguage.json` (`source.rivet`, standard scopes) + the extension copy; `--check` mode |
+| TASK-051 | P2e | `editors/vscode/`: `package.json` (version = workspace version), `language-configuration.json` (`#` comments, brackets, `end` indentation), grammar link, README; `npx @vscode/vsce package` → `rivet-<ver>.vsix` | R16 | PF-14 | T-13 | TASK-050 | I | DONE | `9ec2a39`: `editors/vscode/{package.json (0.1.0 = Cargo), language-configuration.json, README.md, .vscodeignore, syntaxes/}`; `.vsix` built by `editors/vscode/package_vsix.py` (Python `zipfile`, deterministic) instead of `vsce` (deviation); `dist/` ignored; installed as `rivet.rivet@0.1.0` into an isolated `code --extensions-dir` |
+| TASK-052 | P2e | Use case `features/language/highlight_source.rs` (pure, over the parser port) + ANSI/HTML/JSON renderers; CLI `rivet highlight FILE [--format …]` (ansi on a TTY, json otherwise); library `rivet::highlight::tokens` | R17 / C-12 | PF-13 | T-14 | TASK-004 | I | DONE | `0d6c2ea`: `features/language/highlight_source.rs` (pure, Parser port, embeds `editors/keywords.json`), `domain/highlight.rs` (HighlightToken, HighlightFormat, ANSI/HTML/JSON renderers), CLI `rivet highlight FILE [--format …]`, library `rivet::highlight::{tokens, tokens_of, highlight, render}`; contract: library calls + trigger (hand edit) |
+| TASK-053 | P2e | Tests: keyword drift (`editors/check_keywords.py` in `cargo test` via a small Rust test or CI step); `vscode-tmgrammar-test` snapshots over REF-2026-0002 blocks and demo sources (Node optional job); `tests/conformance_highlight.rs` goldens | R16, R17 | tests | T-13, T-14 | TASK-050–052 | I | DONE | `9ec2a39`, `0d6c2ea`: `tests/conformance_highlight.rs` (8 tests: drift, TextMate corpus, `.vsix`, 3 format goldens, classes, partial tokens, usage, span corpus) shelling out to `python3 editors/check_keywords.py`, `editors/tests/check_grammar.py` (Python TextMate engine, replaces `vscode-tmgrammar-test`) and `package_vsix.py`; 455 tests pass |
 
 ### P2f — File modules (PROP-2026-0002 revision 3)
 
@@ -377,8 +377,8 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-10 | production | `Cargo.toml` (workspace + package), `Cargo.lock`, `src/orchestrator/runtime.rs`, `src/features/registry/describe_capabilities.rs` | UPDATE | Rename, features, cfg gates, `unsupported.feature`, capabilities | R10–R12 / 030, 032, 035 | F-10 | NOT STARTED | T-10 |
 | PF-11 | production | `src/orchestrator/setup_ffi.rs` | CREATE | FFI surface logic, including module handles (R23) | R13–R15, R23 / 040, 044, 045 | F-11, F-23 | NOT STARTED | T-11, T-12, T-19 |
 | PF-12 | production | `ffi/Cargo.toml`, `ffi/src/lib.rs`, `ffi/cbindgen.toml`, `ffi/include/rivet.h`, `ffi/rivet.pc.in` | CREATE | Shims, header, pkg-config | R13 / 041 | F-12 | NOT STARTED | T-11 |
-| PF-13 | production | `src/features/language/highlight_source.rs`, `src/io/cli/**` (`highlight`) | CREATE / UPDATE | Tokenizer, renderers, command | R17 / 052 | F-13 | NOT STARTED | T-14 |
-| PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | NOT STARTED | T-13 |
+| PF-13 | production | `src/features/language/highlight_source.rs`, `src/io/cli/**` (`highlight`) | CREATE / UPDATE | Tokenizer, renderers, command | R17 / 052 | F-13 | DONE (`0d6c2ea`; also `src/domain/highlight.rs`, `src/orchestrator/{setup_cli,setup_library,remote_cli}.rs`, `src/lib.rs`) | T-14 |
+| PF-14 | production | `editors/gen_grammar.py`, `editors/check_keywords.py`, `editors/keywords.json` (GENERATE), `editors/rivet.tmLanguage.json` (GENERATE), `editors/vscode/{package.json,language-configuration.json,README.md,.vscodeignore}` | CREATE | Grammar and extension | R16 / 050, 051 | F-14 | DONE (`9ec2a39`; plus `editors/vscode/package_vsix.py`, `editors/vscode/syntaxes/rivet.tmLanguage.json` (generated copy)) | T-13 |
 | PF-15 | production | `vhco-contract.json` | UPDATE | Contract Delta | all / 004 | F-16 | DONE | T-28 |
 | PF-16 | tooling | `commands.perch`, `.github/workflows/ci.yml`, `scripts/check_version.py` | UPDATE | `cli` feature, feature matrix, FFI and vsix version checks | R11, R13 / 034, 091 | F-18 | NOT STARTED | T-10, T-33 |
 | PF-17 | examples | `examples/embed.rs`, `examples/modules.rs`, `examples/c/{demo.c,modules.c,Makefile}`, `examples/python/{demo.py,rivet.py,modules.py}`, `docs/demos/12-library/embedding.rs` (from `.txt`) | CREATE / UPDATE | Consumer examples, including module objects | R10, R13, R22, R23 / 033, 042, 045, 106 | F-24 | IN PROGRESS (`examples/modules.rs` done in `2942066`; the rest P2c/P2d) | T-09, T-11, T-18, T-19 |
@@ -396,7 +396,7 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | PF-T02 | test | `tests/conformance_globals.rs` | CREATE | T-06–T-08 | R7–R9 / 024 | DONE | `cargo test` |
 | PF-T03 | test | `tests/conformance_features.rs` + CI feature matrix | CREATE | T-10 | R11 / 032 | NOT STARTED | CI / local |
 | PF-T04 | test | `tests/conformance_ffi.rs`, `ffi/tests/*.rs` | CREATE | T-11, T-12 | R13–R15 / 043 | NOT STARTED | `cargo test --workspace` |
-| PF-T05 | test | `tests/conformance_highlight.rs`, `editors/tests/` (tmgrammar snapshots) | CREATE | T-13, T-14 | R16, R17 / 053 | NOT STARTED | `cargo test`, `npx vscode-tmgrammar-test` |
+| PF-T05 | test | `tests/conformance_highlight.rs`, `editors/tests/` (tmgrammar snapshots) | CREATE | T-13, T-14 | R16, R17 / 053 | DONE (`editors/tests/check_grammar.py`, not tmgrammar snapshots; `tests/fixtures/highlight/`) | `cargo test --test conformance_highlight` (runs the Python checks) |
 | PF-T06 | test | every existing `tests/conformance_*.rs` + `tests/support/**` | UPDATE | Envelope/input assertions | R1 / 018 | DONE | T-34 |
 | PF-T07 | fixture | `docs/demos/**/requests/*`, `docs/demos/**/fixtures/*` | UPDATE | Input envelopes | R4 / 019 | DONE | T-30 |
 | PF-T08 | schema | `docs/api/schemas/response.schema.json`, `input.schema.json`, `stream-record.schema.json` | CREATE | JSON Schemas used by T-01 | R1, R4 / 010 | DONE | T-01 |
@@ -407,7 +407,7 @@ CRUD values: CREATE, READ, UPDATE, DELETE, GENERATE. Proposal F-IDs are cited.
 | ID | Category | Exact path | CRUD | Planned edit | Req / tasks | Status | Verification |
 |---|---|---|---|---|---|---|---|
 | PF-G01 | generated | `vhco.json`, `vhco.html` | GENERATE | `vhco spec` / `vhco doc` | R18 / 060 | NOT STARTED | T-28 |
-| PF-G02 | generated | `editors/keywords.json`, `editors/rivet.tmLanguage.json` | GENERATE | from `rivet.capy` | R16 / 050 | NOT STARTED | T-13 |
+| PF-G02 | generated | `editors/keywords.json`, `editors/rivet.tmLanguage.json` | GENERATE | from `rivet.capy` | R16 / 050 | DONE (`9ec2a39`) | T-13 |
 | PF-V01 | version | workspace `Cargo.toml` `version` (single source) | UPDATE | `0.1.0` → `0.2.0` | release / 091 | NOT STARTED | T-33 |
 | PF-V02 | release | commit `release: v0.2.0`, tag `v0.2.0` | CREATE | §32 | release / 092, 093 | NOT STARTED | T-33 |
 | PF-V03 | release | `target/release/rivet`, `librivet.{dylib,so,dll}`, `librivet.a`/`rivet.lib`, `rivet.h`, `rivet.pc`, `rivet-0.2.0.vsix`, `SHA256SUMS` | GENERATE | Local release artifacts | release / 093 | NOT STARTED | T-33 |
@@ -432,8 +432,8 @@ TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST
 | T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | NOT STARTED | TEST-2026-0043 |
 | T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | NOT STARTED | TEST-2026-0044 |
 | T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | NOT STARTED | TEST-2026-0045 |
-| T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | NOT STARTED | TEST-2026-0046 |
-| T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | NOT STARTED | TEST-2026-0047 |
+| T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | PASS (`conformance_highlight` t13_*, 3 tests: `check_keywords.py`, `check_grammar.py` over 107 samples, `package_vsix.py`; Node tools replaced, see deviation) | TEST-2026-0046 |
+| T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | PASS (`conformance_highlight` t14_*, 5 tests) | TEST-2026-0047 |
 | T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | PASS | TEST-2026-0048 |
 | T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | PASS (`conformance_modules`, 4 tests) | TEST-2026-0049 |
 | T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | PASS (`conformance_modules`, 7 tests) | TEST-2026-0050 |
@@ -634,6 +634,13 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-28 | Finding | TASK-045 (P2d) | `rivet_load(rt, path, alias_or_null, &module, &err)` should call `Runtime::load` / `Runtime::load_as` (→ `registry.load_module`) and wrap the returned `rivet::Module`; `rivet_module_operations` = `Module::operations()` (short IDs + descriptions), `rivet_module_call` = `Module::call`, `rivet_module_call_start` = a scope-owned `Module::stream`/`duplex`. P2d must add `registry/load_module` to the `ffi` surface `calls` and the `rivet_load` flow trigger in the contract (not added here, to keep sync free of P2f gaps) | Hand-off | P2d | TRBL-2026-0005 |
 | 2026-09-28 | Finding | TASK-063 | INC-2026-0009 (active, S4): numeric index paths (`xs.0`) do not parse and the message names `assign_map` — pre-existing in 0.1.0, found by the globals tests, not fixed (fix or v0.2.0 Known Issue). TRBL-2026-0005: contract entries written ahead of code must use port parameter types only, flow steps in source order, and add triggered actions to the surface `calls` | Recorded | P3/P5 | INC-2026-0009, TRBL-2026-0005 |
 | 2026-09-28 | Finding | P2b, P2f | 440 tests pass (409 + 2 unit + 12 `conformance_globals` + 1 unit + 16 `conformance_modules`); fmt, clippy `-D warnings`, `vhco validate`, `vhco check` green; `vhco sync` = 8 gaps, all P2c/P2d/P2e (`CapabilityReport`, `FfiOptions`, `HighlightFormat`, `HighlightToken`, flow/use case `language.highlight_source`, cli calls `language/highlight_source`, surface `ffi`) | P2b and P2f exits met | — | `673994c`, `2942066` |
+| 2026-09-28 | Deviation | TASK-051, TASK-053 / R16, T-13 | Node.js is absent, so no `vsce` and no `vscode-tmgrammar-test`: `editors/vscode/package_vsix.py` writes the `.vsix` with Python `zipfile` (`[Content_Types].xml`, `extension.vsixmanifest`, `extension/{package.json, README.md, language-configuration.json, syntaxes/rivet.tmLanguage.json}`, fixed timestamps, `.vscodeignore` honoured); `editors/tests/check_grammar.py` applies the generated TextMate regexes with a Python engine (match/captures, begin/end, includes) over the 94 REF-2026-0002 blocks and 13 demo apps and asserts every declaration, control, option and effect statement keyword is scoped. Verified: the `.vsix` installs as `rivet.rivet@0.1.0` (isolated `code --extensions-dir`). Not covered: Oniguruma-specific behaviour (the grammar uses only syntax both engines share) | T-13 passes without Node | P5 (TASK-091 builds the release `.vsix` with the same script) | `9ec2a39` |
+| 2026-09-28 | Deviation | TASK-052 / R10, R17 | Contract hand edit: surface `library` calls `language/highlight_source` and the flow gains the trigger `rivet::highlight::tokens(SOURCE) \| rivet::highlight::highlight(SOURCE, FORMAT)`, because R10/R17 name the library entry and vhco only compares triggers of called actions (TRBL-2026-0005 rule 3). `rivet::highlight` is a `pub use` of `orchestrator::setup_library::highlight` (the facade itself is P2c) | Sync has no P2e gap | P2c (TASK-031 keeps `highlight` in the facade) | `vhco-contract.json`, `0d6c2ea` |
+| 2026-09-28 | Decision | TASK-052 / R17 | Token model: `col`/`len` count characters (not bytes), 1-based; every token lies on one line (multi-line backtick strings split per line); brackets, commas, colons, whitespace and object keys are not tokens; `true`/`false`/`null`, built-ins after `(` and statement keywords are `keyword`; an assignment's effect head and its verb (`http get`) are `effect`; names declared by `global` are `global` wherever referenced (`retry_on.0`); `(ID …)` calls are `operation_id`; the use case returns `(tokens, Option<error>)`, cut at the earliest diagnostic | Stable goldens | P4 (D-14, D-16) | `tests/fixtures/highlight/` |
+| 2026-09-28 | Finding | TASK-052 / P2c | `highlight_source.rs` embeds `editors/keywords.json` with `include_str!` (one table for the grammar and the CLI). P2c's packaging (`cargo package --list`, T-10) must keep `editors/keywords.json` in the crate if `include`/`exclude` is set | Packaging constraint | P2c (TASK-030, TASK-036) | — |
+| 2026-09-28 | Finding | TASK-052 | Capy keeps no node for the `end` of a flat option line's sub-block (`transport command …` ⏎ `args …` ⏎ `end` in demo 13): the highlighter's gap scan classifies uncovered `end` and `else` words; `rivet check` accepts the form as before (not a defect of this phase) | Highlight complete | — | T-14 corpus test |
+| 2026-09-28 | Finding | INC-2026-0009 | Resolved in `93388c1`: numeric path segments (`xs.0`, `m.rows.1.0`, `${xs.0}`, a global's `retry_on.0`) parse and evaluate; a keyword statement whose value fails is `syntax.expression` "the expression after `KEYWORD` does not parse" (never `assign_map`). 4 tests (3 `conformance_language` + 1 unit); moved to `docs/incidents/resolved/` (`6af5c27`). No v0.2.0 Known Issue needed; P4 should add a list-index example (REF/MAN) | Incident closed | P4 (MAN-2026-0003, REF-2026-0002) | `93388c1`, `6af5c27` |
+| 2026-09-28 | Finding | P2e | 455 tests pass (444 after INC-2026-0009 + 3 unit + 8 `conformance_highlight`); fmt, clippy `-D warnings`, `vhco validate`, `vhco check` green; `vhco sync` = 3 gaps, all P2c/P2d (`CapabilityReport`, `FfiOptions`, surface `ffi`) | P2e exit met | — | `9ec2a39`, `0d6c2ea` |
 
 ## Rollout Strategy
 
@@ -688,8 +695,8 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 | R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | NOT STARTED |
 | R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | NOT STARTED |
 | R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | NOT STARTED |
-| R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | NOT STARTED |
-| R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | NOT STARTED |
+| R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | CODE + TESTS DONE (P2e); docs P4 |
+| R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | CODE + TESTS DONE (P2e); docs P4 |
 | R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | NOT STARTED |
 | R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | CODE + TESTS DONE (docs P4, release P5) |
 | R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | CODE + TESTS DONE (docs P4, release P5) |
@@ -717,6 +724,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-28 | Claude | P2e done: TASK-050…053 DONE (`9ec2a39`, `0d6c2ea`); phase row P2e DONE; R16/R17 code and tests done; PF-13, PF-14, PF-T05, PF-G02 DONE; T-13, T-14 PASS (455 tests); INC-2026-0009 resolved (`93388c1`, `6af5c27`); deviations (Python `.vsix` packager and TextMate engine instead of Node tools; library trigger contract edit) and findings recorded; live status refreshed. |
 | 5 | 2026-09-28 | Claude | Live status refreshed after P2b/P2f; git remote added and main + v0.1.0 pushed. |
 | 4 | 2026-09-28 | Claude | P2b and P2f done: TASK-020…024 (`673994c`) and TASK-100…107 (`673994c`, `2942066`) DONE with evidence; phase rows P2b/P2f DONE; R7–R9, R19–R22, R24 code and tests done; PF-05–PF-08, PF-19–PF-22, PF-T02, PF-T09 DONE, PF-17 in progress; T-06–T-08, T-16–T-18, T-20 PASS (440 tests); findings and deviations recorded (contract refinements, R9 sample, snapshot semantics, Module stream signature, P2d hand-off, API changes, INC-2026-0009, TRBL-2026-0005). |
 | 3 | 2026-09-28 | Claude | P1 and P2a done: TASK-004…TASK-019 DONE with evidence (commits `ef8e053`, `3e4560f`, `c3b5565`, `f7d2907`), phase rows P1/P2a DONE, R1–R6 code and tests done, T-01–T-05/T-15/T-34 PASS (409 tests), PF-01–PF-04/PF-15/PF-T01/PF-T06–PF-T08 and D-03/D-04/D-06/D-11 DONE; findings and deviations recorded (vhco sync gaps for later phases, polling bodies, SSE event names, MCP isError, Node.js absent). |
