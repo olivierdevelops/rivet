@@ -1,4 +1,4 @@
-use super::lower::Lowerer;
+use super::lowering::lower::Lowerer;
 use crate::domain::RivetResult;
 use crate::domain::outputs::OutputSpec;
 use crate::domain::syntax_tree::SyntaxNode;

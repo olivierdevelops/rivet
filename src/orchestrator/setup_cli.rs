@@ -40,7 +40,7 @@ use crate::domain::contracts::error_envelope;
 use crate::domain::io_manifest::IoQuery;
 use crate::domain::ir::parse_duration_ms;
 use crate::domain::{RivetError, Value};
-use crate::features::language::lower::strict_doc_findings;
+use crate::features::language::lowering::lower::strict_doc_findings;
 use crate::io::cli::{
     AuthCommand, Cli, Command, ConnectorsCommand, PolicyCommand, TraceCommand, render_describe,
     render_list, render_outputs, render_policy, render_policy_review,

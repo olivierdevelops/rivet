@@ -1,4 +1,4 @@
-use super::lower::Lowerer;
+use super::lowering::lower::Lowerer;
 use super::ports::Parser;
 use crate::domain::ir::CompiledProgram;
 use crate::domain::source::SourceBundle;
