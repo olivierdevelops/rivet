@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 4
+document_revision: 5
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -126,17 +126,16 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 52 | P2b – P5 |
+| NOT STARTED | 39 | P2e, P2c, P2d, P3–P5 |
 | IN PROGRESS | 0 | |
-| BLOCKED | 2 | TASK-095 push and TASK-096 CI (no git remote) |
-| DONE | 19 | TASK-001…TASK-019 (approval, plan, indexes, contract delta, P1 experiments and docs, P2a envelopes) |
+| BLOCKED | 2 | TASK-095/096 now unblocked by the remote (origin added 2026-09-28); updated at P5 |
+| DONE | 32 | P1, P2a, P2b, P2f |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
-- **Current phase:** P1 and P2a done; P2b, P2c (entry: P2a exit, met) and P2e can start.
-- **Next action:** P2b (TASK-020) or P2c (TASK-030). The remaining `vhco sync` gaps are listed in the findings table.
-- **Blockers:** no git remote (push, CI, and git-dependency consumers of the `v0.2.0` tag); disk space (4.3 GiB
-  free at plan start, with `target/` at 28 GiB) forces sequential builds and `cargo clean` (TASK-008).
+- **Current phase:** P1, P2a, P2b and P2f done (440 tests); P2e next, then P2c → P2d.
+- **Next action:** P2e highlighting (TASK-050…053); fix or list INC-2026-0009.
+- **Remote:** `origin` = https://github.com/olivierdevelops/rivet.git (added 2026-09-28); `main` and `v0.1.0` pushed; CI runs on push.
 - **Last updated:** 2026-09-28.
 - **Release target:** v0.2.0.
 
@@ -718,6 +717,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-28 | Claude | Live status refreshed after P2b/P2f; git remote added and main + v0.1.0 pushed. |
 | 4 | 2026-09-28 | Claude | P2b and P2f done: TASK-020…024 (`673994c`) and TASK-100…107 (`673994c`, `2942066`) DONE with evidence; phase rows P2b/P2f DONE; R7–R9, R19–R22, R24 code and tests done; PF-05–PF-08, PF-19–PF-22, PF-T02, PF-T09 DONE, PF-17 in progress; T-06–T-08, T-16–T-18, T-20 PASS (440 tests); findings and deviations recorded (contract refinements, R9 sample, snapshot semantics, Module stream signature, P2d hand-off, API changes, INC-2026-0009, TRBL-2026-0005). |
 | 3 | 2026-09-28 | Claude | P1 and P2a done: TASK-004…TASK-019 DONE with evidence (commits `ef8e053`, `3e4560f`, `c3b5565`, `f7d2907`), phase rows P1/P2a DONE, R1–R6 code and tests done, T-01–T-05/T-15/T-34 PASS (409 tests), PF-01–PF-04/PF-15/PF-T01/PF-T06–PF-T08 and D-03/D-04/D-06/D-11 DONE; findings and deviations recorded (vhco sync gaps for later phases, polling bodies, SSE event names, MCP isError, Node.js absent). |
 | 2 | 2026-09-28 | Claude | Scope amendment (PROP-2026-0002 rev 3, ADR-0004 rev 2): P2f file modules (TASK-100–107), TASK-045 module ABI, R19–R24, T-16–T-20 (TEST-2026-0049…0053), demo 17-modules (DEMO-2026-0019), release guide → DEMO-2026-0020, documentation rows updated (D-12, D-13, D-15, D-20, D-22–D-24, D-26, D-31, D-33, D-37, D-43–D-45, D-64, D-71, D-72). |
