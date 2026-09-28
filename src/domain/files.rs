@@ -94,7 +94,8 @@ impl FileOperation {
             content: None,
             if_version: None,
             missing_ok: false,
-            overwrite: true,
+            // copy/move never replace an existing destination unless asked (S40).
+            overwrite: false,
         }
     }
 }

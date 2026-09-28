@@ -193,6 +193,8 @@ async fn trace_records_denials_with_effect_ids() {
     )
     .unwrap();
     std::fs::create_dir_all(d.path().join("data")).unwrap();
+    // The demo README runs `mkdir -p out`: parent directories are never created implicitly.
+    std::fs::create_dir_all(d.path().join("out")).unwrap();
     std::fs::write(d.path().join("data/public.json"), r#"{"message":"hi"}"#).unwrap();
     let rt = Runtime::builder()
         .file(&d.path().join("app.rivet").to_string_lossy())

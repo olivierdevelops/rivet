@@ -139,6 +139,7 @@ async fn stdio_rivet_peer_sync_approve_call() {
     let peer = tempfile::tempdir().unwrap();
     write(peer.path(), "app.rivet", PEER);
     let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("schemas")).unwrap(); // `connectors sync --output` never creates directories
     stdio_client(
         dir.path(),
         peer.path(),
@@ -478,6 +479,7 @@ async fn http_rivet_serve_peer() {
     let server = serve_on(peer_rt, "127.0.0.1:0").await;
     let addr = server.addr.unwrap();
     let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("schemas")).unwrap(); // `connectors sync --output` never creates directories
     write(
         dir.path(),
         "app.rivet",
@@ -692,6 +694,7 @@ fn demo_bundle(dir: &Path, url: &str) {
 async fn demo_06_readme_flows() {
     let (addr, fake) = start_fake().await;
     let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("schemas")).unwrap(); // `connectors sync --output` never creates directories
     // Unmodified demo: no snapshot → bundle load fails with not_found (exit 4).
     let e = Runtime::builder()
         .file("docs/demos/06-mcp-bridge/app.rivet")
