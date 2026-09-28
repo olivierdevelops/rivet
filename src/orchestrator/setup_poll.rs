@@ -106,6 +106,7 @@ async fn open(
                     id: b.id,
                     params: b.params,
                     deadline_ms: b.deadline_ms,
+                    restrict: b.restrict,
                 },
             )
             .await

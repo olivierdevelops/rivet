@@ -39,11 +39,12 @@ use serde_json::{Value as Json, json};
 use std::sync::Arc;
 
 /// Every built-in operation ID this build serves.
-pub const BUILTIN_IDS: [&str; 18] = [
+pub const BUILTIN_IDS: [&str; 19] = [
     "rivet.request",
     "rivet.io",
     "rivet.policy.generate",
     "rivet.trace.show",
+    "rivet.trace.export",
     "rivet.connectors.sync",
     "rivet.list",
     "rivet.describe",
@@ -354,6 +355,7 @@ async fn dispatch_builtin_inner(
                             connection_owned: false,
                             deadline_ms: None,
                             trace: outer_trace(&req),
+                            restrict: req.restrict.clone(),
                         },
                         rt.sessions().as_ref(),
                     )
@@ -385,6 +387,7 @@ async fn dispatch_builtin_inner(
                         // Requested total deadline; the driver caps it at 600000 ms.
                         deadline_ms: uint(p, "deadline_ms")?,
                         trace: outer_trace(&req),
+                        restrict: req.restrict.clone(),
                     },
                     rt.sessions().as_ref(),
                 )

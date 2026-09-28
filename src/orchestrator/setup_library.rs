@@ -92,6 +92,7 @@ pub fn session_host(
             include_private: false,
             parent_span_id: None,
             cancel: crate::domain::cancel::CancelToken::new(),
+            restrict: None,
         },
     });
     let validate: Arc<ValidateFn> = Arc::new(validate_params);

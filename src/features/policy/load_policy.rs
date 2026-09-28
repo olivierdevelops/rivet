@@ -121,11 +121,17 @@ pub fn parse_policy(bytes: &[u8], file: &str, base_dir: &str) -> RivetResult<Pol
             ],
         )?;
         let d = PolicyLimits::default();
-        let get = |k: &str, default: u64| -> RivetResult<u64> {
+        // Each limit has a hard maximum (the width of the field it lands in); a larger value is
+        // policy.invalid with its pointer — never truncated or wrapped (B1).
+        let get = |k: &str, default: u64, max: u64| -> RivetResult<u64> {
             match m.get(k) {
                 None => Ok(default),
                 Some(v) => match v.as_u64() {
-                    Some(n) if n > 0 => Ok(n),
+                    Some(n) if n > 0 && n <= max => Ok(n),
+                    Some(n) if n > max => Err(invalid(
+                        &format!("/limits/{k}"),
+                        format!("must be at most {max}"),
+                    )),
                     _ => Err(invalid(
                         &format!("/limits/{k}"),
                         "must be a positive integer",
@@ -133,13 +139,19 @@ pub fn parse_policy(bytes: &[u8], file: &str, base_dir: &str) -> RivetResult<Pol
                 },
             }
         };
+        let to_u32 = |n: u64| u32::try_from(n).unwrap_or(u32::MAX);
         policy.limits = PolicyLimits {
-            max_concurrent_requests: get(
+            max_concurrent_requests: to_u32(get(
                 "max_concurrent_requests",
                 d.max_concurrent_requests as u64,
-            )? as u32,
-            max_call_depth: get("max_call_depth", d.max_call_depth as u64)? as u32,
-            max_buffered_bytes: get("max_buffered_bytes", d.max_buffered_bytes)?,
+                u32::MAX as u64,
+            )?),
+            max_call_depth: to_u32(get(
+                "max_call_depth",
+                d.max_call_depth as u64,
+                u32::MAX as u64,
+            )?),
+            max_buffered_bytes: get("max_buffered_bytes", d.max_buffered_bytes, i64::MAX as u64)?,
         };
     }
     if let Some(a) = obj.get("approved") {
@@ -464,6 +476,22 @@ mod tests {
             (
                 r#"{"version":1,"limits":{"max_call_depth":0}}"#,
                 "/limits/max_call_depth",
+            ),
+            (
+                r#"{"version":1,"limits":{"max_concurrent_requests":4294967297}}"#,
+                "/limits/max_concurrent_requests",
+            ),
+            (
+                r#"{"version":1,"limits":{"max_call_depth":4294967296}}"#,
+                "/limits/max_call_depth",
+            ),
+            (
+                r#"{"version":1,"limits":{"max_buffered_bytes":18446744073709551615}}"#,
+                "/limits/max_buffered_bytes",
+            ),
+            (
+                r#"{"version":1,"limits":{"max_buffered_bytes":1e30}}"#,
+                "/limits/max_buffered_bytes",
             ),
             (
                 r#"{"version":1,"serve":{"surfaces":["gopher"]}}"#,

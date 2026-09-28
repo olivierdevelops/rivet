@@ -318,10 +318,18 @@ impl PolicyEvaluator for StaticEvaluator {
 
 type SiteIndex = HashMap<(String, u32, Capability, AccessVerb), Vec<(String, String)>>;
 
+tokio::task_local! {
+    /// Per-request restrictions in force for the running request (G31): each
+    /// entry only narrows; a nested restriction is appended, never substituted.
+    static REQUEST_RESTRICTION: Arc<Vec<Arc<Policy>>>;
+}
+
 /// The evaluator every adapter sees: the broker's decision plus one trace event
 /// per attempt, attributed to request + manifest effect_id through the
 /// interpreter's effect scope.
 struct TracedEvaluator {
+    /// Bundle root: selector resolution of request restrictions.
+    root: String,
     broker: Arc<PolicyBroker>,
     trace: Arc<MemoryTraceStore>,
     index: SiteIndex,
@@ -343,7 +351,20 @@ fn redact_target(t: &str) -> String {
 
 impl PolicyEvaluator for TracedEvaluator {
     fn evaluate(&self, intent: &EffectIntent) -> Permit {
-        let permit = self.broker.evaluate(intent);
+        let mut permit = self.broker.evaluate(intent);
+        // Host ceiling ∩ policy.json (the broker) ∩ every request restriction.
+        if permit.decision == Decision::Allowed
+            && let Ok(stack) = REQUEST_RESTRICTION.try_with(Arc::clone)
+            && let Some(narrowed) = stack.iter().find_map(|r| {
+                let p = authorize_effect(intent, r, &self.root);
+                (p.decision == Decision::Denied).then_some(p)
+            })
+        {
+            permit = Permit {
+                rule: format!("request restriction: {}", narrowed.rule),
+                ..narrowed
+            };
+        }
         if let Some(scope) = current_effect_scope() {
             let target = intent.target.as_str();
             let effect_id = intent.effect_id.clone().or_else(|| {
@@ -518,6 +539,7 @@ impl Runtime {
         }
         let trace = Arc::new(MemoryTraceStore::default());
         let evaluator: Arc<dyn PolicyEvaluator> = Arc::new(TracedEvaluator {
+            root: bundle.root.clone(),
             broker: Arc::clone(&broker),
             trace: Arc::clone(&trace),
             index,
@@ -588,12 +610,17 @@ impl Runtime {
             let w = weak.clone();
             let upgrade: Arc<super::setup_library::UpgradeFn> =
                 Arc::new(move || w.upgrade().map(|inner| Runtime { inner }));
-            let sessions = Arc::new(super::setup_library::session_host(
-                upgrade,
-                registry.clone(),
-                catalog_version,
-                session_limits,
-            ));
+            let sessions = Arc::new(
+                super::setup_library::session_host(
+                    upgrade,
+                    registry.clone(),
+                    catalog_version,
+                    session_limits,
+                )
+                .with_budget(crate::infra::session_driver::BufferBudget::new(
+                    policy.limits.max_buffered_bytes,
+                )),
+            );
             Inner {
                 bundle,
                 program,
@@ -666,6 +693,7 @@ impl Runtime {
             include_private: false,
             parent_span_id: None,
             cancel: crate::domain::cancel::CancelToken::new(),
+            restrict: None,
         }
     }
 
@@ -724,8 +752,89 @@ impl Runtime {
         self.dispatch_request(req, sink).await
     }
 
+    /// `request` with a per-request restriction (G31, library request option):
+    /// `restrict` is `{grants:[…]}` in the policy.json grant format and is
+    /// intersected with the effective policy for this request only.
+    pub async fn request_restricted(
+        &self,
+        operation_id: &str,
+        params: Value,
+        restrict: Value,
+        sink: Option<Arc<dyn DataSink>>,
+    ) -> RivetResult<Completion> {
+        let mut req = self.new_request(operation_id, params, Principal::local());
+        req.restrict = Some(restrict);
+        self.dispatch_request(req, sink).await
+    }
+
+    /// Validate a caller's `restrict: {grants:[…]}` into a restriction policy:
+    /// same grant schema and selector resolution as policy.json (relative to the
+    /// policy file's directory), the loaded network rules kept. Unknown keys or
+    /// malformed grants are policy.invalid naming `/restrict/…`.
+    fn parse_restriction(&self, r: &Value) -> RivetResult<Policy> {
+        let j = r.to_json();
+        let obj = j.as_object().ok_or_else(|| {
+            RivetError::validation(
+                "policy.invalid",
+                "restrict must be an object {\"grants\": [...]}",
+            )
+            .with_details(Value::object([("pointer", Value::text("/restrict"))]))
+        })?;
+        if let Some(k) = obj.keys().find(|k| k.as_str() != "grants") {
+            return Err(RivetError::validation(
+                "policy.invalid",
+                format!("restrict accepts only `grants` (got `{k}`); it can narrow, never grant"),
+            )
+            .with_details(Value::object([(
+                "pointer",
+                Value::text(format!("/restrict/{k}")),
+            )])));
+        }
+        let doc = serde_json::json!({
+            "version": 1,
+            "grants": obj.get("grants").cloned().unwrap_or_else(|| serde_json::json!([])),
+        });
+        let base = self.policy().base_dir.clone();
+        let mut p =
+            parse_policy(doc.to_string().as_bytes(), "restrict", &base).map_err(|mut e| {
+                if let Some(ptr) = e.details.get("pointer").and_then(Value::as_str) {
+                    let ptr = format!("/restrict{ptr}");
+                    e.details.set("pointer", Value::text(ptr));
+                }
+                e
+            })?;
+        p.network = self.policy().network.clone();
+        Ok(p)
+    }
+
     /// Dispatch a fully formed request (surfaces set principal, deadline, IDs).
+    /// A request `restrict` is pushed onto the task's restriction stack for the
+    /// whole request (nested calls copy it); every broker decision must then pass
+    /// the effective policy AND every stacked restriction (narrow-only).
     pub async fn dispatch_request(
+        &self,
+        req: Request,
+        sink: Option<Arc<dyn DataSink>>,
+    ) -> RivetResult<Completion> {
+        let Some(r) = &req.restrict else {
+            return self.dispatch_unrestricted(req, sink).await;
+        };
+        let parsed = self.parse_restriction(r).map_err(|mut e| {
+            e.request_id = Some(req.request_id.clone());
+            e.trace_id = Some(req.trace_id.clone());
+            e.operation_id = Some(req.operation_id.clone());
+            e
+        })?;
+        let mut stack: Vec<Arc<Policy>> = REQUEST_RESTRICTION
+            .try_with(|s| s.as_ref().clone())
+            .unwrap_or_default();
+        stack.push(Arc::new(parsed));
+        REQUEST_RESTRICTION
+            .scope(Arc::new(stack), self.dispatch_unrestricted(req, sink))
+            .await
+    }
+
+    async fn dispatch_unrestricted(
         &self,
         req: Request,
         sink: Option<Arc<dyn DataSink>>,
@@ -937,8 +1046,10 @@ impl Runtime {
         params: Value,
         bridge: BridgeHops,
         trace: Option<&TraceContext>,
+        restrict: Option<Value>,
     ) -> RivetResult<Completion> {
-        let req = self.new_request_traced(operation_id, params, principal, trace);
+        let mut req = self.new_request_traced(operation_id, params, principal, trace);
+        req.restrict = restrict;
         let trace = req.trace_id.clone();
         let tracked = bridge != BridgeHops::default();
         if tracked && let Ok(mut m) = self.inner.bridges.lock() {
@@ -956,6 +1067,22 @@ impl Runtime {
     /// the candidate snapshot (allow_write). Never overwrites an existing file,
     /// never changes this runtime's catalog. `output` is bundle-root relative.
     pub async fn sync_connector(&self, name: &str, output: &str) -> RivetResult<ConnectorSync> {
+        // G21: the snapshot is created exclusively, so an existing --output is refused
+        // BEFORE any discovery traffic reaches the server (the exclusive create below
+        // still guards the race where the path appears meanwhile).
+        let probe = FileOperation::new(crate::domain::files::FileVerb::Stat, output);
+        match ConfinedFiles::new(&self.bundle().root).apply(probe).await {
+            Ok(_) => {
+                return Err(RivetError::new(
+                    ErrorKind::Conflict,
+                    "conflict.already_exists",
+                    format!("{output} already exists; connectors sync never overwrites a snapshot"),
+                )
+                .with_details(Value::object([("path", Value::text(output))])));
+            }
+            Err(e) if e.code.starts_with("not_found") => {}
+            Err(e) => return Err(e),
+        }
         let input = McpRequest {
             connector: name.to_string(),
             method: "discover".into(),
@@ -1148,9 +1275,52 @@ impl Runtime {
         read_trace(&TraceQuery::new(request_id), self.inner.trace.as_ref())
     }
 
+    /// `rivet trace export REQ --output PATH` / `rivet.trace.export`: write this host's
+    /// (already sanitized) trace of one request as JSON to a NEW file. Trace export is
+    /// application I/O (proposal Increment 5): the write goes through the broker as
+    /// `allow_write create PATH` and an existing path is `conflict.already_exists`
+    /// (never overwritten). An unknown request is `not_found` before anything is written.
+    pub async fn export_trace(&self, request_id: &str, path: &str) -> RivetResult<TraceExport> {
+        let trace = self.trace(request_id)?;
+        let body = serde_json::to_vec_pretty(&trace.to_json())
+            .map_err(|e| RivetError::internal(format!("trace export: {e}")))?;
+        let bytes = body.len();
+        let mut op = FileOperation::new(crate::domain::files::FileVerb::Create, path);
+        op.codec = Some(crate::domain::files::Codec::Bytes);
+        op.content = Some(Value::Bytes(body));
+        op.overwrite = false;
+        self.inner.files.apply(op).await?;
+        Ok(TraceExport {
+            request_id: request_id.to_string(),
+            path: path.to_string(),
+            events: trace.events.len(),
+            bytes,
+        })
+    }
+
     /// The raw trace store (for hosts that export or inspect it).
     pub fn trace_store(&self) -> Arc<dyn TraceStore> {
         self.inner.trace.clone()
+    }
+}
+
+/// Receipt of `rivet trace export`: where the trace went and how much was written.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TraceExport {
+    pub request_id: String,
+    pub path: String,
+    pub events: usize,
+    pub bytes: usize,
+}
+
+impl TraceExport {
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "request_id": self.request_id,
+            "path": self.path,
+            "events": self.events,
+            "bytes": self.bytes,
+        })
     }
 }
 

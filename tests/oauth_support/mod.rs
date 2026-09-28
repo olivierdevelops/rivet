@@ -36,6 +36,8 @@ pub const CLIENT_SECRET: &str = "CANARY-CLIENT-SECRET";
 #[derive(Default)]
 pub struct FakeState {
     pub expires_in: Option<u64>,
+    /// Issue tokens without `expires_in` (G20: such user tokens are never reused).
+    pub omit_expiry: bool,
     pub token_delay_ms: u64,
     pub refresh_delay_ms: u64,
     pub counter: u64,
@@ -82,7 +84,9 @@ fn issue(st: &mut FakeState, with_refresh: bool) -> serde_json::Value {
     let mut j = serde_json::json!({
         "access_token": at, "token_type": "Bearer", "scope": "contacts.read",
     });
-    if let Some(e) = st.expires_in.or(Some(3600)) {
+    if !st.omit_expiry
+        && let Some(e) = st.expires_in.or(Some(3600))
+    {
         j["expires_in"] = serde_json::json!(e);
     }
     if with_refresh {

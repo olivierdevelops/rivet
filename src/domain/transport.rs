@@ -129,8 +129,8 @@ pub struct Framing {
     pub max_frame: u32,
 }
 
-/// Default frame bound (PROP-2026-0001 defaults: 1 MiB).
-pub const DEFAULT_MAX_FRAME: u32 = 1024 * 1024;
+/// Default frame bound (PROP-2026-0001 defaults: 8 MiB frame/body; `max_frame N` overrides).
+pub const DEFAULT_MAX_FRAME: u32 = 8 * 1024 * 1024;
 
 impl Default for Framing {
     fn default() -> Self {

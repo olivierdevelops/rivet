@@ -53,6 +53,7 @@ pub fn parse_client_frame(text: &str) -> Result<WsFrame, (String, RivetError)> {
                     .to_string(),
             );
             f.params = j.get("params").map(Value::from_json);
+            f.restrict = j.get("restrict").map(Value::from_json);
         }
         WsFrameType::Input => {
             f.seq = Some(

@@ -144,6 +144,12 @@ pub enum AuthCommand {
 pub enum TraceCommand {
     /// Show one request's broker decisions and attempts (each with its effect_id).
     Show { request_id: String },
+    /// Write one request's trace as JSON to a NEW file (needs allow_write on PATH; never overwrites).
+    Export {
+        request_id: String,
+        #[arg(long)]
+        output: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -199,8 +205,10 @@ pub enum PolicyCommand {
     /// Explain the effective policy (and, with an ID, what that operation needs).
     Explain {
         id: Option<String>,
-        #[arg(long, default_value = "{}")]
-        params: String,
+        /// Params of one concrete call: its param-dependent targets are filled and
+        /// evaluated; exit 3 when any would be denied.
+        #[arg(long)]
+        params: Option<String>,
     },
     /// Generate a least-privilege policy.json draft from the I/O manifest.
     Generate {
@@ -456,6 +464,7 @@ impl IoArgs {
             needs: self.needs,
             check_files: self.check_files,
             trace_request_id: self.trace.clone(),
+            params: None,
         }
     }
 }

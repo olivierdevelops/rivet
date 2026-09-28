@@ -1065,34 +1065,77 @@ impl<'a> Walker<'a> {
     fn udp_form(&mut self, form: &EffectForm, span: &SourceSpan, with: &str) {
         let first = form.head.first().and_then(Arg::word);
         match first {
-            Some(mode @ ("bind" | "multicast")) => {
+            Some("bind") => {
                 if let Some(e) = form.head.get(1).map(Arg::to_expr) {
                     let (t, k, x) = self.url_target(&e, "udp", &[]);
-                    let verb = if mode == "bind" {
-                        AccessVerb::Bind
-                    } else {
-                        AccessVerb::MulticastJoin
-                    };
-                    let mut s = self.base(SiteKind::Network, vec![verb], span);
+                    let mut s = self.base(SiteKind::Network, vec![AccessVerb::Bind], span);
                     s.protocol = Some("udp".into());
                     s.target = t;
                     s.knowledge = k;
                     s.expression = x;
-                    s.origin = SiteOrigin::Statement(format!("{with}udp {mode}"));
+                    s.origin = SiteOrigin::Statement(format!("{with}udp bind"));
                     s.phase = Phase::Connect;
                     self.push(s);
                 }
+            }
+            Some("multicast") => {
+                // Mirror exactly what the runtime authorizes when the socket opens
+                // (datagrams.exchange_datagrams authorize_open): allow_network connect on the
+                // group, then allow_listen bind + multicast_join on the bind address — the
+                // `bind` option, or the unspecified address on the group's port by default.
+                let mut group_port = None;
+                let mut group_v6 = false;
+                let mut group_knowledge = Knowledge::Exact;
+                if let Some(e) = form.head.get(1).map(Arg::to_expr) {
+                    let (t, k, x) = self.url_target(&e, "udp", &[]);
+                    group_port = t.port;
+                    group_v6 = t.host.as_deref().is_some_and(|h| h.contains(':'));
+                    group_knowledge = k;
+                    let mut s = self.base(SiteKind::Network, vec![AccessVerb::Connect], span);
+                    s.protocol = Some("udp".into());
+                    s.target = t;
+                    s.knowledge = k;
+                    s.expression = x;
+                    s.origin = SiteOrigin::Statement(format!("{with}udp multicast"));
+                    s.phase = Phase::Connect;
+                    self.push(s);
+                }
+                let listen = vec![AccessVerb::Bind, AccessVerb::MulticastJoin];
                 if let Some(b) = form.option("bind")
                     && let Some(e) = b.args.first().map(Arg::to_expr)
                 {
                     let (t, k, x) = self.url_target(&e, "udp", &[]);
                     let mut s = self.option_site(SiteKind::Network, AccessVerb::Bind, b, span);
+                    s.access = listen;
                     s.protocol = Some("udp".into());
                     s.target = t;
                     s.knowledge = k;
                     s.expression = x;
                     s.origin = SiteOrigin::Option("bind".into());
                     s.phase = Phase::Connect;
+                    self.push(s);
+                } else {
+                    let mut s = self.base(SiteKind::Network, listen, span);
+                    s.protocol = Some("udp".into());
+                    s.origin = SiteOrigin::Statement(format!("{with}udp multicast (default bind)"));
+                    s.phase = Phase::Connect;
+                    match group_port {
+                        Some(port) if group_knowledge == Knowledge::Exact => {
+                            let host = if group_v6 { "[::]" } else { "0.0.0.0" };
+                            s.target = SiteTarget {
+                                template: format!("udp://{host}:{port}"),
+                                scheme: Some("udp".into()),
+                                host: Some(host.into()),
+                                port: Some(port),
+                                path: Some("/".into()),
+                                ..SiteTarget::default()
+                            };
+                        }
+                        _ => {
+                            s.knowledge = Knowledge::Dynamic;
+                            s.expression = Some("unspecified address on the group port".into());
+                        }
+                    }
                     self.push(s);
                 }
             }

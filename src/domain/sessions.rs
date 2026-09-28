@@ -66,7 +66,7 @@ impl SessionLimits {
 /// Maximum WebSocket refs in flight per connection (same as sessions per principal).
 pub const MAX_WS_REFS: usize = 8;
 
-// vhco:domain SessionOpenInput { id: string; params: Value; principal: Principal; connection_owned: bool; deadline_ms?: int; trace?: TraceContext }
+// vhco:domain SessionOpenInput { id: string; params: Value; principal: Principal; connection_owned: bool; deadline_ms?: int; trace?: TraceContext; restrict?: Value }
 #[derive(Clone, Debug, PartialEq)]
 pub struct SessionOpenInput {
     pub id: String,
@@ -80,6 +80,8 @@ pub struct SessionOpenInput {
     pub deadline_ms: Option<u64>,
     /// The caller's W3C `traceparent` (its trace-id becomes the session's trace id).
     pub trace: Option<TraceContext>,
+    /// Per-request restriction carried into the session's request (see `Request::restrict`).
+    pub restrict: Option<Value>,
 }
 
 // vhco:domain SessionReceipt { session_id: string; request_id: string; trace_id: string; catalog_version: string; input_schema?: Json; emits_schema?: Json; next_send_seq: int; expires_at: string; events_url?: string }

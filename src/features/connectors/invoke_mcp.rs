@@ -189,6 +189,15 @@ pub async fn invoke_mcp(
             return Err(e);
         }
     };
+    // vhco:step drift check_drift -- first use of the session: live tools/list vs the approved snapshot for every exposed tool (name + inputSchema); any difference is mcp.schema_drift and the call is never sent with a live schema
+    let drift = match &import {
+        Some(_) => check_drift(session.as_mut(), conn).await,
+        None => Ok(()),
+    };
+    if let Err(e) = drift {
+        session.close().await;
+        return Err(e);
+    }
     let outcome = match (&import, call) {
         (Some(i), Some(params)) => {
             let mut params = params;
@@ -484,6 +493,65 @@ async fn call_import(
     }
 }
 
+/// G29 (proposal Increment 6: "refreshed schemas never change a running registry
+/// silently"): at first use of each connector session, compare the server's live
+/// `tools/list` with the approved snapshot. Every exposed tool must still exist
+/// under the same name with an identical `inputSchema` (JSON equality, key order
+/// ignored); otherwise the call fails `mcp.schema_drift` before anything is sent
+/// and the live schema is never used. Servers that did not negotiate `tools` are
+/// left to the capability check of the call itself.
+async fn check_drift(session: &mut dyn McpSession, conn: &McpConnectorInfo) -> RivetResult<()> {
+    let Some(snapshot) = &conn.snapshot else {
+        return Ok(());
+    };
+    if conn.expose_tools.is_empty() || !session.peer().supports("tools") {
+        return Ok(());
+    }
+    let live = list_all(session, "tools/list", "tools").await?;
+    let mut drifted: Vec<(String, &'static str)> = Vec::new();
+    for name in &conn.expose_tools {
+        let approved = snapshot.tools.iter().find(|t| &t.name == name);
+        let current = live
+            .iter()
+            .find(|t| t.get("name").and_then(Json::as_str) == Some(name.as_str()));
+        match (approved, current) {
+            (Some(a), Some(c)) => {
+                if c.get("inputSchema") != Some(&a.input_schema) {
+                    drifted.push((name.clone(), "inputSchema changed"));
+                }
+            }
+            (Some(_), None) => drifted.push((name.clone(), "missing from the live server")),
+            (None, _) => drifted.push((name.clone(), "missing from the approved snapshot")),
+        }
+    }
+    if drifted.is_empty() {
+        return Ok(());
+    }
+    let list: Vec<String> = drifted.iter().map(|(n, w)| format!("{n}: {w}")).collect();
+    Err(protocol(
+        "mcp.schema_drift",
+        format!(
+            "connector `{}`: the live server no longer matches the approved snapshot ({}); run `rivet connectors sync` and review the new snapshot",
+            conn.name,
+            list.join("; ")
+        ),
+    )
+    .with_details(Value::object([
+        ("connector", Value::text(&conn.name)),
+        (
+            "tools",
+            Value::List(
+                drifted
+                    .iter()
+                    .map(|(n, w)| {
+                        Value::object([("name", Value::text(n)), ("difference", Value::text(*w))])
+                    })
+                    .collect(),
+            ),
+        ),
+    ])))
+}
+
 /// Page one `*/list` method (cursor pagination, bounded).
 async fn list_all(session: &mut dyn McpSession, method: &str, key: &str) -> RivetResult<Vec<Json>> {
     let mut out = Vec::new();
@@ -640,7 +708,23 @@ mod tests {
         }
     }
 
+    const SEARCH_SCHEMA: &str =
+        r#"{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}"#;
+
+    /// The live `tools/list` answer the drift check reads first.
+    fn live_tools(input_schema: &str) -> McpReply {
+        let schema: Json = serde_json::from_str(input_schema).unwrap();
+        McpReply::Result(json!({"tools": [{"name": "search", "inputSchema": schema}]}))
+    }
+
+    /// A peer whose live tools/list matches the approved snapshot.
     fn fake(replies: Vec<McpReply>) -> Fake {
+        let mut all = vec![live_tools(SEARCH_SCHEMA)];
+        all.extend(replies);
+        fake_raw(all)
+    }
+
+    fn fake_raw(replies: Vec<McpReply>) -> Fake {
         let snapshot = McpSnapshot::parse(br#"{"protocolVersion":"2025-11-25","tools":[{"name":"search","inputSchema":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}]}"#).unwrap();
         Fake {
             catalog: McpCatalog {
@@ -708,10 +792,11 @@ mod tests {
         assert_eq!(v.get("isError"), Some(&Value::Bool(false)));
         assert!(v.get("structuredContent").is_some());
         let sent = f.sent.lock().unwrap();
-        assert_eq!(sent[0].0, "tools/call");
-        assert_eq!(sent[0].1["_meta"]["rivet/hops"], json!(1));
+        assert_eq!(sent[0].0, "tools/list", "drift check first");
+        assert_eq!(sent[1].0, "tools/call");
+        assert_eq!(sent[1].1["_meta"]["rivet/hops"], json!(1));
         assert_eq!(
-            sent[0].1["_meta"]["rivet/chain"][0],
+            sent[1].1["_meta"]["rivet/chain"][0],
             json!("rivet:test/crm.tools.search")
         );
     }
@@ -749,6 +834,49 @@ mod tests {
         .unwrap_err();
         assert_eq!(e.code, "protocol.mcp_error");
         assert_eq!(e.details.get("code"), Some(&Value::Int(-32602)));
+    }
+
+    // vhco:test connectors.invoke_mcp -- G29 a live tools/list whose exposed tool changed its inputSchema or disappeared fails mcp.schema_drift and the tool call is never sent; key order alone is not drift
+    #[tokio::test]
+    async fn live_schema_drift_is_refused() {
+        let ok = McpReply::Result(json!({"content": [], "isError": false}));
+        for live in [
+            live_tools(
+                r#"{"type":"object","properties":{"query":{"type":"integer"}},"required":["query"]}"#,
+            ),
+            McpReply::Result(
+                json!({"tools": [{"name": "other", "inputSchema": {"type": "object"}}]}),
+            ),
+        ] {
+            let f = fake_raw(vec![live, ok.clone()]);
+            let e = invoke_mcp(
+                req(json!({"query": "x"}), BridgeHops::default()),
+                &allow(),
+                &f,
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(e.code, "mcp.schema_drift");
+            let sent = f.sent.lock().unwrap();
+            assert_eq!(sent.len(), 1, "only tools/list was sent");
+            assert_eq!(sent[0].0, "tools/list");
+        }
+        // Same schema with keys in another order: not drift.
+        let f = fake_raw(vec![
+            live_tools(
+                r#"{"required":["query"],"properties":{"query":{"type":"string"}},"type":"object"}"#,
+            ),
+            ok,
+        ]);
+        invoke_mcp(
+            req(json!({"query": "x"}), BridgeHops::default()),
+            &allow(),
+            &f,
+            None,
+        )
+        .await
+        .unwrap();
     }
 
     // vhco:test connectors.invoke_mcp -- invalid params, denied allow_mcp, hop limit and recursion all fail before the session opens

@@ -19,6 +19,7 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
             id,
             params,
             deadline_ms,
+            restrict,
         } => {
             // vhco:step authorize require_operation -- serve.principals decision for the requested ID
             match require_operation(&OperationAccess {
@@ -36,6 +37,7 @@ pub async fn project_polling(input: PollRoute, driver: &dyn SessionDriver) -> Po
                         connection_owned: false,
                         deadline_ms,
                         trace: input.trace.clone(),
+                        restrict,
                     })
                     .await
                     .map(|mut r| {

@@ -40,7 +40,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Largest single MCP message (a JSON body, SSE event or stdio line).
-const MAX_MESSAGE: usize = 16 * 1024 * 1024;
+const MAX_MESSAGE: usize = 8 * 1024 * 1024;
 
 /// The injected `transports.exchange_http` use case (brokered HTTP client).
 pub type McpHttpFn = dyn Fn(HttpExchange, Arc<dyn PolicyEvaluator>) -> BoxFuture<'static, RivetResult<HttpOutcome>>

@@ -72,6 +72,7 @@ mod tests {
             connection_owned: false,
             deadline_ms: None,
             trace: None,
+            restrict: None,
         };
         assert_eq!(
             open_session(mk(" ", Value::Null), &Refuse)

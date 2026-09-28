@@ -348,3 +348,79 @@ async fn demo_08_udp_bundle() {
     assert_eq!(c.result.get("peer"), Some(&Value::text("127.0.0.1:7002")));
     assert_eq!(pinger.await.unwrap().unwrap(), br#"{"received":true}"#);
 }
+
+/// The static `io --check-policy` verdict of one operation: denied when any site is.
+fn manifest_denies(rt: &Runtime, id: &str) -> bool {
+    let q = rivet::domain::io_manifest::IoQuery {
+        ids: vec![id.to_string()],
+        check_policy: true,
+        format: "json".into(),
+        ..Default::default()
+    };
+    let report = rt.io(&q).unwrap();
+    assert!(!report.manifest.sites.is_empty());
+    report
+        .manifest
+        .sites
+        .iter()
+        .any(|s| s.decision.as_deref() == Some("denied"))
+}
+
+// vhco:test audit.inspect_effects -- B3: for UDP multicast (default and explicit bind) the manifest's check-policy decision matches the runtime permit (group connect + bind/multicast_join on the bind address) for every grant combination, and agrees for the docs/demos/08-udp bundle
+#[tokio::test]
+async fn multicast_manifest_agrees_with_runtime_permits() {
+    let group = "239.255.42.97";
+    let port = free_port();
+    let default_bind = format!(
+        "operation t.mc\n    output json\n    with udp multicast \"{group}:{port}\" as socket\n        max_datagram 512\n        return socket.receive text timeout \"50ms\"\n    end\nend\n"
+    );
+    let explicit_bind = format!(
+        "operation t.mc\n    output json\n    with udp multicast \"{group}:{port}\" as socket\n        bind \"0.0.0.0:{port}\"\n        max_datagram 512\n        return socket.receive text timeout \"50ms\"\n    end\nend\n"
+    );
+    let net = ("allow_network", format!("udp://{group}:{port}"));
+    let listen_any = ("allow_listen", format!("udp://0.0.0.0:{port}"));
+    let listen_group = ("allow_listen", format!("udp://{group}:{port}"));
+    let combos: Vec<Vec<(&str, String)>> = vec![
+        vec![],
+        vec![net.clone()],
+        vec![listen_any.clone()],
+        vec![listen_group.clone()],
+        vec![net.clone(), listen_group.clone()],
+        vec![net.clone(), listen_any.clone()],
+    ];
+    for src in [&default_bind, &explicit_bind] {
+        for g in &combos {
+            let policy = if g.is_empty() {
+                r#"{"version": 1}"#.to_string()
+            } else {
+                grants(g)
+            };
+            let rt = runtime(src, &policy);
+            let static_denied = manifest_denies(&rt, "t.mc");
+            let runtime_denied = matches!(
+                run(&rt, "t.mc").await,
+                Err(e) if e.code == "permission.denied"
+            );
+            assert_eq!(
+                static_denied, runtime_denied,
+                "manifest and runtime disagree for grants {g:?}"
+            );
+        }
+    }
+
+    // docs/demos/08-udp: the default policy denies only the listener; receive.json
+    // grants the listener and the reply peer but not the status peer.
+    for policy in [None, Some("docs/demos/08-udp/policies/receive.json")] {
+        let mut b = Runtime::builder().file("docs/demos/08-udp/app.rivet");
+        if let Some(p) = policy {
+            b = b.policy_file(p);
+        }
+        let rt = b.build().unwrap();
+        let receive = manifest_denies(&rt, "telemetry.receive");
+        let status = manifest_denies(&rt, "telemetry.status");
+        match policy {
+            None => assert!(!status && receive, "demo default policy"),
+            Some(_) => assert!(status && !receive, "demo receive.json policy"),
+        }
+    }
+}

@@ -26,7 +26,7 @@ use crate::domain::{RivetError, RivetResult, Value};
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant, SystemTime};
@@ -44,6 +44,77 @@ pub type LaunchFn = dyn Fn(
 pub type MintFn = dyn Fn(&str, Value, Principal) -> Request + Send + Sync;
 /// The dispatcher's parameter validation (unknown fields, types, required, defaults).
 pub type ValidateFn = dyn Fn(&RegistryEntry, &Value) -> RivetResult<Value> + Send + Sync;
+
+/// Host-wide budget for bytes held in stream/session queues (policy.json
+/// `limits.max_buffered_bytes`, default 256 MiB), shared by every session of the
+/// runtime. Each retained output event reserves its serialized size until the
+/// consumer acknowledges it (or the session is dropped); a reservation that would
+/// exceed the budget fails `limit.buffered_bytes` instead of growing memory.
+#[derive(Debug)]
+pub struct BufferBudget {
+    capacity: u64,
+    used: AtomicU64,
+}
+
+/// Bytes held against a [`BufferBudget`]; released on drop.
+#[derive(Debug)]
+pub struct Reservation {
+    budget: Arc<BufferBudget>,
+    bytes: u64,
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        self.budget.used.fetch_sub(self.bytes, Ordering::SeqCst);
+    }
+}
+
+impl BufferBudget {
+    pub fn new(capacity: u64) -> Arc<BufferBudget> {
+        Arc::new(BufferBudget {
+            capacity,
+            used: AtomicU64::new(0),
+        })
+    }
+
+    /// Bytes currently reserved across the host.
+    pub fn used(&self) -> u64 {
+        self.used.load(Ordering::SeqCst)
+    }
+
+    pub fn try_reserve(self: &Arc<Self>, bytes: u64) -> RivetResult<Reservation> {
+        let mut cur = self.used.load(Ordering::SeqCst);
+        loop {
+            let next = cur.saturating_add(bytes);
+            if next > self.capacity {
+                return Err(RivetError::new(
+                    ErrorKind::Limit,
+                    "limit.buffered_bytes",
+                    format!(
+                        "limits.max_buffered_bytes ({}) reached: {cur} bytes are buffered host-wide",
+                        self.capacity
+                    ),
+                )
+                .with_details(Value::object([
+                    ("limit", Value::Int(self.capacity as i64)),
+                    ("requested", Value::Int(bytes as i64)),
+                ])));
+            }
+            match self
+                .used
+                .compare_exchange(cur, next, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => {
+                    return Ok(Reservation {
+                        budget: Arc::clone(self),
+                        bytes,
+                    });
+                }
+                Err(actual) => cur = actual,
+            }
+        }
+    }
+}
 
 const ACTION_DEADLINE: Duration = Duration::from_secs(5);
 const CLEANUP_GRACE: Duration = Duration::from_secs(5);
@@ -64,11 +135,15 @@ pub struct SessionHost {
     counter: AtomicU64,
     /// The background sweeper starts with the first session.
     sweeper: std::sync::Once,
+    budget: Arc<BufferBudget>,
 }
 
 struct State {
     seq: InputSequencer,
     log: EventLog,
+    /// Reservations of retained output events (seq, bytes held), oldest first.
+    held: VecDeque<(u64, Reservation)>,
+    held_bytes: u64,
     last_touch: Instant,
     terminal_at: Option<Instant>,
     /// Terminal state kept after the terminal event is acknowledged and evicted.
@@ -86,6 +161,8 @@ struct Session {
     connection_owned: bool,
     receives: Option<ValueSpec>,
     queue_frames: usize,
+    queue_bytes: u64,
+    budget: Arc<BufferBudget>,
     state: Mutex<State>,
     changed: Notify,
     input: tokio::sync::Mutex<Option<mpsc::Sender<Value>>>,
@@ -177,7 +254,8 @@ impl Session {
 }
 
 /// Data items of the run go into the session's event log; the producer waits
-/// while `queue_frames` events are retained (backpressure).
+/// while `queue_frames` events or `queue_bytes` bytes are retained (backpressure),
+/// and each retained event holds a reservation on the host-wide buffer budget.
 struct SessionSink {
     session: Arc<Session>,
 }
@@ -195,8 +273,14 @@ impl DataSink for SessionSink {
                 if st.log.is_terminal() {
                     return Err(s.cancelled_error("cancelled.session", "the session ended"));
                 }
-                if st.log.retained() < s.queue_frames {
-                    st.log.push(Envelope::Data(event));
+                let bytes = event.data.to_json().to_string().len() as u64;
+                let fits_bytes = st.log.retained() == 0 || st.held_bytes + bytes <= s.queue_bytes;
+                if st.log.retained() < s.queue_frames && fits_bytes {
+                    let reservation = s.budget.try_reserve(bytes)?;
+                    if let Some(seq) = st.log.push(Envelope::Data(event)) {
+                        st.held.push_back((seq, reservation));
+                        st.held_bytes += bytes;
+                    }
                     drop(st);
                     s.changed.notify_waiters();
                     return Ok(());
@@ -226,7 +310,16 @@ impl SessionHost {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             counter: AtomicU64::new(0),
             sweeper: std::sync::Once::new(),
+            budget: BufferBudget::new(
+                crate::domain::policy::PolicyLimits::default().max_buffered_bytes,
+            ),
         }
+    }
+
+    /// Share the host-wide buffer budget (`limits.max_buffered_bytes`).
+    pub fn with_budget(mut self, budget: Arc<BufferBudget>) -> Self {
+        self.budget = budget;
+        self
     }
 
     fn map(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Session>>> {
@@ -334,6 +427,7 @@ impl SessionDriver for SessionHost {
             }
         }
         let mut req = (self.mint)(&entry.id, input.params.clone(), input.principal.clone());
+        req.restrict = input.restrict.clone();
         // Requested total deadline, capped by the host (10 minutes).
         if let Some(d) = input.deadline_ms {
             req.deadline_ms = d.clamp(1, MAX_DEADLINE_MS);
@@ -358,12 +452,16 @@ impl SessionDriver for SessionHost {
             connection_owned: input.connection_owned,
             receives: entry.receives.clone(),
             queue_frames: self.limits.queue_frames,
+            queue_bytes: self.limits.queue_bytes,
+            budget: Arc::clone(&self.budget),
             state: Mutex::new(State {
                 seq: InputSequencer {
                     closed: entry.receives.is_none(),
                     ..InputSequencer::default()
                 },
                 log: EventLog::default(),
+                held: VecDeque::new(),
+                held_bytes: 0,
                 last_touch: Instant::now(),
                 terminal_at: None,
                 terminal_state: None,
@@ -495,8 +593,21 @@ impl SessionDriver for SessionHost {
         let max = self.limits.clamp_max_events(input.max_events) as usize;
         let wait = Duration::from_millis(self.limits.clamp_wait(input.wait_ms) as u64);
         let until = Instant::now() + wait;
-        // Acknowledge once; freed space wakes a producer blocked on a full log.
-        s.st().log.ack(input.after_seq)?;
+        // Acknowledge once; freed space (frames, bytes, host budget) wakes a
+        // producer blocked on a full log.
+        {
+            let mut st = s.st();
+            st.log.ack(input.after_seq)?;
+            while st
+                .held
+                .front()
+                .is_some_and(|(seq, _)| *seq <= input.after_seq)
+            {
+                if let Some((_, r)) = st.held.pop_front() {
+                    st.held_bytes = st.held_bytes.saturating_sub(r.bytes);
+                }
+            }
+        }
         s.changed.notify_waiters();
         loop {
             let notified = s.changed.notified();
@@ -682,6 +793,7 @@ mod tests {
             include_private: false,
             parent_span_id: None,
             cancel: CancelToken::new(),
+            restrict: None,
         });
         let validate: Arc<ValidateFn> = Arc::new(|_: &RegistryEntry, v: &Value| Ok(v.clone()));
         let host = SessionHost::new(
@@ -701,6 +813,7 @@ mod tests {
                 connection_owned: false,
                 deadline_ms: None,
                 trace: None,
+                restrict: None,
             })
             .await
             .unwrap();

@@ -21,7 +21,7 @@
 // vhco:trigger cli serve/start_serve = rivet serve [--listen HOST:PORT] | rivet serve --stdio
 // vhco:trigger cli audit/inspect_effects = rivet io [ID ...] [--all] [--by operation|target|capability] [--kind K] [--access V,V] [--format table|json|markdown|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files] [--include-bootstrap]
 // vhco:trigger cli audit/build_graph = rivet graph ID [--all] [--json]
-// vhco:trigger cli audit/read_trace = rivet trace show REQ | rivet --endpoint URL trace show REQ (rivet.trace.show)
+// vhco:trigger cli audit/read_trace = rivet trace show REQ | rivet trace export REQ --output PATH | rivet --endpoint URL trace show|export … (rivet.trace.show / rivet.trace.export)
 // vhco:trigger cli policy/generate_policy = rivet policy generate [ID ...|--all] [--output PATH]
 // vhco:trigger cli connectors/invoke_mcp = rivet connectors sync NAME --output PATH | rivet request CONNECTOR.tools.NAME --params JSON
 // vhco:api cli connectors/invoke_mcp rivet connectors sync NAME --output PATH -- authorized discovery (allow_mcp NAME/discover + transport grants + allow_write PATH) writing a NEW candidate snapshot; prints its sha256 to approve in policy.json approved.snapshots; exit 0, 3 denied, 4 output exists
@@ -336,13 +336,18 @@ async fn run(cli: Cli) -> i32 {
             0
         }
         Command::Policy {
-            command: PolicyCommand::Explain { id, .. },
+            command: PolicyCommand::Explain { id, params },
         } => {
+            let params = match params.as_deref().map(parse_params).transpose() {
+                Ok(p) => p,
+                Err(e) => return fail(&e, None, cli.json),
+            };
             let report = match id {
                 Some(id) => match runtime.io(&IoQuery {
                     ids: vec![id.clone()],
                     all: true,
                     check_policy: true,
+                    params: params.clone(),
                     format: if cli.json {
                         "json".into()
                     } else {
@@ -377,7 +382,32 @@ async fn run(cli: Cli) -> i32 {
                     let _ = write!(stdout, "\n{}", r.rendered);
                 }
             }
-            0
+            // G9: with --params the sites are that call's concrete targets; any denial
+            // means the call would be refused → exit 3 (permission).
+            let denied = report.as_ref().is_some_and(|r| {
+                r.manifest
+                    .sites
+                    .iter()
+                    .any(|s| s.decision.as_deref() == Some("denied"))
+            });
+            if params.is_some() && denied {
+                if let Some(r) = &report {
+                    for s in &r.manifest.sites {
+                        if s.decision.as_deref() == Some("denied") {
+                            eprintln!(
+                                "denied: {} {} {} ({})",
+                                s.effect_id,
+                                s.capability.as_str(),
+                                s.target.template,
+                                s.access_label()
+                            );
+                        }
+                    }
+                }
+                3
+            } else {
+                0
+            }
         }
         Command::Serve(args) => {
             match super::setup_serve::run_cli(runtime.clone(), &args.listen, args.stdio).await {
@@ -433,6 +463,21 @@ async fn run(cli: Cli) -> i32 {
             }
             Err(e) => fail(&e, None, true),
         },
+        Command::Trace {
+            command: TraceCommand::Export { request_id, output },
+        } => {
+            let rel = match root_relative(output, &runtime.bundle().root) {
+                Ok(r) => r,
+                Err(e) => return fail(&e, None, true),
+            };
+            match runtime.export_trace(request_id, &rel).await {
+                Ok(receipt) => {
+                    let _ = writeln!(stdout, "{}", receipt.to_json());
+                    0
+                }
+                Err(e) => fail(&e, None, true),
+            }
+        }
         Command::Connectors {
             command: ConnectorsCommand::Sync { name, output },
         } => {

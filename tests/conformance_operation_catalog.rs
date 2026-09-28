@@ -391,6 +391,7 @@ async fn private_helper_is_hidden_but_callable_in_bundle() {
             connection_owned: false,
             deadline_ms: None,
             trace: None,
+            restrict: None,
         })
         .await
         .unwrap_err();

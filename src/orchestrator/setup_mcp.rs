@@ -28,7 +28,7 @@
 // vhco:trigger mcp serve/authenticate_principal = Authorization: Bearer TOKEN on every POST /mcp
 // vhco:trigger mcp serve/authorize_operation = tools/list filtering and every tools/call
 // vhco:api mcp execution/request_operation POST /mcp tools/call -- call an operation as its direct named tool
-// vhco:request { "jsonrpc": "2.0", "id": "int", "method": "tools/call", "params": "{name: ID, arguments: object}" }
+// vhco:request { "jsonrpc": "2.0", "id": "int", "method": "tools/call", "params": "{name: ID, arguments: object, restrict?: {grants:[…]} (narrows this call only)}" }
 // vhco:response { "content": "[{type:text, text: serialized Completion}]", "structuredContent": "Completion | SessionReceipt | ErrorEnvelope", "isError": "bool" }
 
 use super::builtins::{BUILTIN_IDS, visible};
@@ -112,7 +112,9 @@ pub async fn handle_request(
             // Bridge recursion state (`_meta` rivet/hops + rivet/chain) continues into nested connector calls.
             let bridge = BridgeHops::from_meta(params);
             note_access(|n| n.operation = Some(name.clone()));
-            Ok(call_tool(rt, principal, &name, args, bridge, trace).await?)
+            // G31: optional `restrict: {grants:[…]}` beside name/arguments narrows this call.
+            let restrict = params.get("restrict").map(Value::from_json);
+            Ok(call_tool(rt, principal, &name, args, bridge, trace, restrict).await?)
         }
         other => Err((METHOD_NOT_FOUND, format!("method not found: {other}"))),
     }
@@ -125,10 +127,12 @@ async fn call_tool(
     args: Value,
     bridge: BridgeHops,
     trace: Option<&TraceContext>,
+    restrict: Option<Value>,
 ) -> Result<Json, (i64, String)> {
     let unknown = || (INVALID_PARAMS, format!("Unknown tool: {name}"));
     let outcome = if BUILTIN_IDS.contains(&name) {
-        let req = rt.new_request_traced(name, args, principal.clone(), trace);
+        let mut req = rt.new_request_traced(name, args, principal.clone(), trace);
+        req.restrict = restrict;
         rt.dispatch_request(req, None).await.map(|c| c.to_json())
     } else {
         if !visible(rt, principal, name) {
@@ -153,6 +157,7 @@ async fn call_tool(
                         connection_owned: false,
                         deadline_ms: None,
                         trace: trace.cloned(),
+                        restrict,
                     },
                     rt.sessions().as_ref(),
                 )
@@ -161,7 +166,7 @@ async fn call_tool(
             .await;
             opened.map(|r| r.to_json())
         } else {
-            rt.request_bridged(principal.clone(), name, args, bridge, trace)
+            rt.request_bridged(principal.clone(), name, args, bridge, trace, restrict)
                 .await
                 .map(|c| c.to_json())
         }

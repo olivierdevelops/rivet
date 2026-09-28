@@ -70,6 +70,7 @@ pub async fn multiplex_ws(
                         connection_owned: true,
                         deadline_ms: None,
                         trace: input.trace.clone(),
+                        restrict: frame.restrict.clone(),
                     })
                     .await?;
                 Ok(receipt.session_id)

@@ -33,8 +33,8 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 
-/// Default `max_frame`: 16 MiB.
-pub const DEFAULT_MAX_FRAME: u64 = 16 * 1024 * 1024;
+/// Default `max_frame`: the proposal frame limit, 8 MiB (overridden by `max_frame N`).
+pub const DEFAULT_MAX_FRAME: u64 = 8 * 1024 * 1024;
 
 /// The injected `transports.exchange_socket` use case.
 pub type ExchangeSocketFn = dyn for<'a> Fn(

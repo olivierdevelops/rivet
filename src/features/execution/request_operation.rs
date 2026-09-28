@@ -447,6 +447,7 @@ mod tests {
             include_private: false,
             parent_span_id: None,
             cancel: Default::default(),
+            restrict: None,
         };
         let err = request_operation(req, &OneEntry(e), &Emitter, &PolicyLimits::default(), None)
             .await

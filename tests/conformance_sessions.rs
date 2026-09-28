@@ -19,6 +19,7 @@ fn open(id: &str, who: &Principal) -> SessionOpenInput {
         connection_owned: false,
         deadline_ms: None,
         trace: None,
+        restrict: None,
     }
 }
 
@@ -46,6 +47,48 @@ fn sref(sid: &str, who: &Principal) -> SessionRef {
         session_id: sid.into(),
         principal: who.clone(),
     }
+}
+
+/// Read every event of a session until its terminal one (acknowledging as it goes).
+async fn drain(rt: &rivet::Runtime, sid: &str, who: &Principal) -> Vec<serde_json::Value> {
+    let mut after = 0;
+    let mut out = Vec::new();
+    loop {
+        let b = rt.read_events(read(sid, after, who)).await.unwrap();
+        out.extend(b.events.iter().map(|e| e.to_json()));
+        after = b.last_seq;
+        if b.terminal {
+            // Acknowledge the tail so the retained events release their reservations.
+            let _ = rt.read_events(read(sid, after, who)).await;
+            return out;
+        }
+    }
+}
+
+// vhco:test sessions.read_events -- G8 limits.max_buffered_bytes is a host-wide budget reserved by session queues: an unread producer that would exceed it fails limit.buffered_bytes, and acknowledged events release their bytes for the next session
+#[tokio::test]
+async fn host_buffer_budget_is_reserved_by_session_queues() {
+    let rt = runtime(Some(r#"{"version":1,"limits":{"max_buffered_bytes":3}}"#));
+    let me = Principal::local();
+    let mut o = open("demo.count", &me);
+    o.params = Value::object([("n", Value::Int(5))]);
+    let r = rt.open_session(o).await.unwrap();
+    // Let the producer run into the budget before anything is read.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let events = drain(&rt, &r.session_id, &me).await;
+    let data: Vec<_> = events.iter().filter(|e| e["type"] == "data").collect();
+    assert_eq!(data.len(), 3, "{events:?}");
+    let last = events.last().unwrap();
+    assert_eq!(last["type"], "error", "{events:?}");
+    assert_eq!(last["error"]["code"], "limit.buffered_bytes", "{last}");
+
+    // The acknowledged events gave their bytes back: a session that fits runs to the end.
+    let mut o = open("demo.count", &me);
+    o.params = Value::object([("n", Value::Int(3))]);
+    let r = rt.open_session(o).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let events = drain(&rt, &r.session_id, &me).await;
+    assert_eq!(events.last().unwrap()["type"], "result", "{events:?}");
 }
 
 // vhco:test sessions.send_input -- one enqueue per accepted retry; changed payload and gaps conflict; finish drains input and ends `incoming`

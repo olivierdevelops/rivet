@@ -27,8 +27,9 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-/// Largest response body / SSE event / WS frame the client accepts.
-const MAX_BODY: usize = 64 * 1024 * 1024;
+/// Largest response body / SSE event / WS frame the client accepts: the 32 MiB
+/// per-request collection budget (a Completion may carry collected items).
+const MAX_BODY: usize = 32 * 1024 * 1024;
 
 trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
@@ -177,7 +178,7 @@ impl RemoteClient {
                     return Err(RivetError::new(
                         ErrorKind::Limit,
                         "limit.response_body",
-                        "the server response exceeds 64 MiB",
+                        "the server response exceeds 32 MiB",
                     ));
                 }
             }
@@ -364,7 +365,7 @@ impl RemoteEndpoint for RemoteClient {
                 return Err(RivetError::new(
                     ErrorKind::Limit,
                     "limit.response_body",
-                    "an SSE event exceeds 64 MiB",
+                    "an SSE event exceeds 32 MiB",
                 ));
             }
         }

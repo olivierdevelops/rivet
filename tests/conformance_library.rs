@@ -267,6 +267,7 @@ async fn stream_pull_in_the_host() {
             connection_owned: false,
             deadline_ms: None,
             trace: None,
+            restrict: None,
         })
         .await
         .unwrap();
