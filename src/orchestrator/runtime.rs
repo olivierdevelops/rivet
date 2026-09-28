@@ -14,6 +14,7 @@ use crate::domain::ports::{
 };
 use crate::domain::source::SourceBundle;
 use crate::domain::{RivetError, RivetResult, Value};
+use crate::features::datagrams::exchange_datagrams::exchange_datagrams;
 use crate::features::execution::request_operation::request_operation;
 use crate::features::files::apply_file_operation::{FileRequest, apply_file_operation};
 use crate::features::language::compile_program::compile_program;
@@ -28,6 +29,7 @@ use crate::infra::policy_broker::PolicyBroker;
 use crate::infra::policy_file_reader::DiskPolicyReader;
 use crate::infra::registry::ProgramRegistry;
 use crate::infra::source_loader::DiskSourceLoader;
+use crate::infra::udp_adapter::UdpAdapter;
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -165,6 +167,17 @@ impl FileAccess for PolicedFiles {
     }
 }
 
+/// Register the UDP and QUIC adapters (WS-D). Each adapter runs its feature
+/// use case through an injected closure so every step is authorized first.
+fn register_transports(interp: &mut Interpreter, _root: &str) {
+    interp.register_adapter(
+        "udp",
+        Arc::new(UdpAdapter::new(Arc::new(|plan, ev, drv| {
+            Box::pin(async move { exchange_datagrams(plan, ev.as_ref(), drv.as_ref()).await })
+        }))),
+    );
+}
+
 /// The dispatcher handed to the interpreter for nested `(request …)` calls.
 struct NestedDispatcher {
     runtime: std::sync::Weak<Inner>,
@@ -208,7 +221,9 @@ impl Runtime {
             raw: ConfinedFiles::new(&bundle.root),
         });
         let evaluator: Arc<dyn PolicyEvaluator> = broker.clone();
-        let driver = Arc::new(Interpreter::new(Arc::clone(&program), files, evaluator));
+        let mut interp = Interpreter::new(Arc::clone(&program), files, evaluator);
+        register_transports(&mut interp, &bundle.root);
+        let driver = Arc::new(interp);
         let registry = Arc::new(ProgramRegistry::new(Arc::clone(&program)));
         let inner = Arc::new(Inner {
             bundle,

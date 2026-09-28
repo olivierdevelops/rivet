@@ -10,6 +10,7 @@ pub mod policy;
 pub mod ports;
 pub mod source;
 pub mod syntax_tree;
+pub mod transport;
 pub mod value;
 
 pub use errors::{EffectsStatus, ErrorKind, RivetError, RivetResult};

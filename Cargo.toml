@@ -36,6 +36,16 @@ tracing = "0.1.44"
 # files
 cap-std = "4.0.3"
 cap-fs-ext = "4.0.3"
+# UDP sockets (TASK-042) and native QUIC (TASK-043), ADR-0002: one TLS provider (ring)
+socket2 = { version = "0.6.5", features = ["all"] }
+quinn = { version = "0.11.12", default-features = false, features = ["runtime-tokio", "rustls-ring", "log"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+rustls-platform-verifier = "0.7.1"
+rustls-pki-types = { version = "1.15", features = ["std"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+rcgen = "0.14.10"

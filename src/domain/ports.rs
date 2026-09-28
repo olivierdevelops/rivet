@@ -12,6 +12,7 @@ use super::ir::CompiledProgram;
 use super::policy::{EffectIntent, Permit, Policy};
 use super::source::{SourceBundle, SourceFile};
 use super::syntax_tree::SyntaxTree;
+use super::transport::{DatagramPlan, DatagramResult, QuicPlan, QuicResult};
 use super::value::Value;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -100,4 +101,21 @@ pub trait FileAccess: Send + Sync {
 /// Loads a whole bundle from disk (host bootstrap, before compilation).
 pub trait SourceLoader: Send + Sync {
     fn load(&self, entry: &str) -> RivetResult<SourceBundle>;
+}
+
+/// One scoped UDP socket (`with udp …`): resolves peers for the broker check,
+/// then runs already-authorized steps on its own socket.
+#[async_trait]
+pub trait DatagramDriver: Send + Sync {
+    /// Resolve `host` (DNS or literal) to candidate addresses; no packet is sent.
+    async fn resolve(&self, host: &str, port: u16) -> RivetResult<Vec<std::net::SocketAddr>>;
+    async fn exchange(&self, plan: DatagramPlan) -> RivetResult<DatagramResult>;
+}
+
+/// One scoped native QUIC connection (`with quic …`) and its child streams.
+#[async_trait]
+pub trait QuicDriver: Send + Sync {
+    /// Resolve `host` (DNS or literal) to candidate addresses; no packet is sent.
+    async fn resolve(&self, host: &str, port: u16) -> RivetResult<Vec<std::net::SocketAddr>>;
+    async fn exchange(&self, plan: QuicPlan) -> RivetResult<QuicResult>;
 }
