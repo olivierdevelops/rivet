@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 5
+document_revision: 6
 start_date: 2026-09-28
 target_date: null           # not estimated; scope is fixed (all Stage A+B required); maintainer may set a date
 authors: [Claude]
@@ -132,18 +132,18 @@ planned. Any Stage C example among S01–S159 stays documented as Stage C and is
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 40 | P3 docs, P4, P5 |
-| IN PROGRESS | 2 | missing conformance suites; incident records |
+| NOT STARTED | 15 | P4 remainder (README, docs/README, decisions), P5 release |
+| IN PROGRESS | 7 | demos + DEMO-2026-0014, docs refresh for Fix-A…D, version check, ledger |
 | BLOCKED | 1 | TASK-051 CI needs a git remote |
-| DONE | 53 | P1, P2 |
+| DONE | 73 | P1, P2, P3 |
 | FAILED | 0 | |
 | DEFERRED | 0 | Stage C is out of scope, not deferred inside this plan |
 
-- **Current phase:** P3 (tests and validation). P2 exited 2026-09-28 (vhco assure green, contract reconciled).
-- **Next action:** the nine missing conformance suites (TASK-047), incident records (TASK-053), TEST documents (TASK-052), validation report (TASK-055).
-- **Blockers:** no git remote (TASK-051 CI, TASK-078 push). Linux sandbox T-08 needs a kernel ≥ 6.12 runner (ADR-0003).
+- **Current phase:** P4 (documentation and demos). P3 exited 2026-09-28: 396 tests pass, `vhco assure` green, TEST-2026-0001…0031 recorded, RPT-2026-0001 drafted (20 PASS, 6 PARTIAL, 0 FAIL).
+- **Next action:** finish TASK-066/067/068/091/092, then README/docs README (TASK-069/070), decisions (TASK-072), then P5.
+- **Blockers:** no git remote (TASK-051 CI, TASK-078 push, TASK-080 publish). Linux sandbox T-08 needs a kernel ≥ 6.12 runner (ADR-0003).
 - **Last updated:** 2026-09-28.
-- **Release target:** v0.1.0; date set at P1 exit.
+- **Release target:** v0.1.0.
 
 ## Requirements and Use Cases
 
@@ -152,32 +152,32 @@ criteria are the proposal's, made testable here.
 
 | Req / UC | Why it exists | Planned outcome (how it is satisfied) | Acceptance criteria | Owning phase | Status |
 |---|---|---|---|---|---|
-| R1 / UC-01, UC-10 | UQ-09/10: Rust library using Capy | `capy_parser.rs` is the only Capy importer. It converts `ParseResult` into Rivet's `SyntaxTree`, and the library builds without a Capy executable | T-01, T-23 green. `cargo tree` shows `capy-core` pinned to the recorded commit | P2a | NOT STARTED |
-| R2 / UC-01 | UQ-03: simple, protocol-visible syntax | `rivet.capy` grammar for every statement shape in REF-2026-0002; diagnostics carry file/line/column | All S01–S159 and demo `.rivet` files parse; invalid samples produce exact spans | P2a | NOT STARTED |
-| R3 / UC-03, UC-05, UC-10 | UQ-02: context closes resources | `scope_supervisor` owns every handle and joins cleanup on success, error, break and cancel | T-03, T-05, T-10: zero live handles/tasks/processes after the grace period | P2a, P2c | NOT STARTED |
-| R4 / UC-02, UC-03, UC-05, UC-07 | UQ-03: good errors | `domain/errors.rs` registry (code→kind→HTTP→exit→retryable); one terminal event | T-24: every registry code checked on every surface | P2a | NOT STARTED |
-| R5 / UC-04 | UQ-04: file CRUD | `apply_file_operation` + `file_access` with no-follow handles, version guards and hard-link refusal | T-04 | P2a | NOT STARTED |
-| R6 / UC-09, UC-21 | UQ-05/18: list all I/O and trace attempts | Effect graph → IoManifest (targets and access verbs) → views/formats/check-policy; `effect_id` on trace attempts | T-09, T-25 | P2c | NOT STARTED |
-| R7 / UC-06 | UQ-06: MCP bridge | `invoke_mcp` + `mcp_client` (stdio and Streamable HTTP), pinned snapshots | T-06 | P2c | NOT STARTED |
-| R8 / UC-02, UC-10, UC-21 | UQ-07/09: same ops on every surface | One dispatcher; the surface adapters only encode and decode | T-02: identical results/errors from CLI, HTTP, MCP and library | P2a, P2b | NOT STARTED |
-| R9 / UC-02, UC-03, UC-10 | UQ-08: request(ID, params, on_data) | `Runtime::request`, `scope.stream`, `next() -> Result<Option<Envelope>>` | T-03, T-10 | P2a | NOT STARTED |
-| R10 / UC-07 | UQ-11: DAGs | `run_dag` state machine and `DagCompletion`; default fail fast; depth and concurrency limits | T-07, T-24 | P2c | NOT STARTED |
-| R11 / UC-04, 06, 08, 09, 21, 22 | UQ-13/17: deny-by-default | `load_policy` + `policy_broker`: no file means every effect is denied; the host ceiling is intersected with policy.json | T-08, T-21 | P2a | NOT STARTED |
-| R12 / UC-05 | UQ-01/12: protocol families | Availability matrix; transports feature (HTTP/socket/process); unsupported stages refuse | T-05, T-08 | P2c | NOT STARTED |
-| R13 / UC-05, 08, 09 | PROJECT §§6, 79–80: secrets, no shell | argv-only processes; secrets bound to destinations; redaction | T-05, T-08, T-09 (secret canaries) | P2a, P2c | NOT STARTED |
-| R14 / UC-01–22 | UQ-12, AGENTS/DOCUMENTATION | All documents in the Documentation and Demo Checklist; indexes; traceability | T-31, T-32; §34 gate | P4 | NOT STARTED |
-| R15 / UC-12 | UQ-14: UDP | `exchange_datagrams` + `udp_adapter` | T-12, T-15 | P2d | NOT STARTED |
-| R16 / UC-11 | UQ-14: OAuth 2.0 | auth feature (begin/complete/status/disconnect/acquire/cancel) + `oauth_adapter` + `credential_store` | T-11, T-15 | P2d | NOT STARTED |
-| R17 / UC-13 | UQ-14: QUIC | `exchange_quic` + `quic_adapter` | T-13, T-15 | P2d | NOT STARTED |
-| R18 / UC-14 | UQ-14: HTTP/3 | `http_adapter` version selection and safe fallback | T-14, T-15 | P2d | NOT STARTED |
-| R19 / UC-16 | UQ-15: gRPC | `invoke_rpc` + `grpc_adapter`, all four modes | T-17 | P2d | NOT STARTED |
-| R20 / UC-15 | UQ-15: many described operations | Multi-declaration compile; atomic duplicate detection | T-16 | P2a | NOT STARTED |
-| R21 / UC-17 | UQ-15: incoming MCP | `io/mcp` direct named tools plus built-ins | T-18 | P2b | NOT STARTED |
-| R22 / UC-18, UC-20 | UQ-15/08/17: live streams everywhere | sessions feature + `session_driver`; polling and WS projections | T-19, T-22 | P2b | NOT STARTED |
-| R23 / UC-19 | UQ-17: declared outputs | `compile_output_spec`, `validate_output`, `inspect_outputs`; `rivet outputs` and its projections | T-20 | P2a, P2b | NOT STARTED |
-| R24 / UC-08, UC-22 | UQ-17: policy.json only | `load_policy` (discovery, `--policy PATH`, schema v1, `access`); `--sandbox` never implemented | T-21 | P2a | NOT STARTED |
-| R25 / UC-20 | UQ-17: one serve, all surfaces | `start_serve`, `authenticate_principal`, `authorize_operation`, `multiplex_ws`, `project_polling` | T-22 | P2b | NOT STARTED |
-| R26 / UC-21, UC-22 | UQ-18: generated I/O manifest and policy draft | `inspect_effects` (manifest), `generate_policy`, `policy_draft_writer` | T-25, T-26 | P2c | NOT STARTED |
+| R1 / UC-01, UC-10 | UQ-09/10: Rust library using Capy | `capy_parser.rs` is the only Capy importer. It converts `ParseResult` into Rivet's `SyntaxTree`, and the library builds without a Capy executable | T-01, T-23 green. `cargo tree` shows `capy-core` pinned to the recorded commit | P2a | PARTIAL (RPT-2026-0001) |
+| R2 / UC-01 | UQ-03: simple, protocol-visible syntax | `rivet.capy` grammar for every statement shape in REF-2026-0002; diagnostics carry file/line/column | All S01–S159 and demo `.rivet` files parse; invalid samples produce exact spans | P2a | PARTIAL (RPT-2026-0001) |
+| R3 / UC-03, UC-05, UC-10 | UQ-02: context closes resources | `scope_supervisor` owns every handle and joins cleanup on success, error, break and cancel | T-03, T-05, T-10: zero live handles/tasks/processes after the grace period | P2a, P2c | PASS (RPT-2026-0001) |
+| R4 / UC-02, UC-03, UC-05, UC-07 | UQ-03: good errors | `domain/errors.rs` registry (code→kind→HTTP→exit→retryable); one terminal event | T-24: every registry code checked on every surface | P2a | PASS (RPT-2026-0001) |
+| R5 / UC-04 | UQ-04: file CRUD | `apply_file_operation` + `file_access` with no-follow handles, version guards and hard-link refusal | T-04 | P2a | PASS (RPT-2026-0001) |
+| R6 / UC-09, UC-21 | UQ-05/18: list all I/O and trace attempts | Effect graph → IoManifest (targets and access verbs) → views/formats/check-policy; `effect_id` on trace attempts | T-09, T-25 | P2c | PASS (RPT-2026-0001) |
+| R7 / UC-06 | UQ-06: MCP bridge | `invoke_mcp` + `mcp_client` (stdio and Streamable HTTP), pinned snapshots | T-06 | P2c | PASS (RPT-2026-0001) |
+| R8 / UC-02, UC-10, UC-21 | UQ-07/09: same ops on every surface | One dispatcher; the surface adapters only encode and decode | T-02: identical results/errors from CLI, HTTP, MCP and library | P2a, P2b | PASS (RPT-2026-0001) |
+| R9 / UC-02, UC-03, UC-10 | UQ-08: request(ID, params, on_data) | `Runtime::request`, `scope.stream`, `next() -> Result<Option<Envelope>>` | T-03, T-10 | P2a | PASS (RPT-2026-0001) |
+| R10 / UC-07 | UQ-11: DAGs | `run_dag` state machine and `DagCompletion`; default fail fast; depth and concurrency limits | T-07, T-24 | P2c | PASS (RPT-2026-0001) |
+| R11 / UC-04, 06, 08, 09, 21, 22 | UQ-13/17: deny-by-default | `load_policy` + `policy_broker`: no file means every effect is denied; the host ceiling is intersected with policy.json | T-08, T-21 | P2a | PARTIAL (RPT-2026-0001) |
+| R12 / UC-05 | UQ-01/12: protocol families | Availability matrix; transports feature (HTTP/socket/process); unsupported stages refuse | T-05, T-08 | P2c | PARTIAL (RPT-2026-0001) |
+| R13 / UC-05, 08, 09 | PROJECT §§6, 79–80: secrets, no shell | argv-only processes; secrets bound to destinations; redaction | T-05, T-08, T-09 (secret canaries) | P2a, P2c | PARTIAL (RPT-2026-0001) |
+| R14 / UC-01–22 | UQ-12, AGENTS/DOCUMENTATION | All documents in the Documentation and Demo Checklist; indexes; traceability | T-31, T-32; §34 gate | P4 | PARTIAL (RPT-2026-0001) |
+| R15 / UC-12 | UQ-14: UDP | `exchange_datagrams` + `udp_adapter` | T-12, T-15 | P2d | PASS (RPT-2026-0001) |
+| R16 / UC-11 | UQ-14: OAuth 2.0 | auth feature (begin/complete/status/disconnect/acquire/cancel) + `oauth_adapter` + `credential_store` | T-11, T-15 | P2d | PASS (RPT-2026-0001) |
+| R17 / UC-13 | UQ-14: QUIC | `exchange_quic` + `quic_adapter` | T-13, T-15 | P2d | PASS (RPT-2026-0001) |
+| R18 / UC-14 | UQ-14: HTTP/3 | `http_adapter` version selection and safe fallback | T-14, T-15 | P2d | PASS (RPT-2026-0001) |
+| R19 / UC-16 | UQ-15: gRPC | `invoke_rpc` + `grpc_adapter`, all four modes | T-17 | P2d | PASS (RPT-2026-0001) |
+| R20 / UC-15 | UQ-15: many described operations | Multi-declaration compile; atomic duplicate detection | T-16 | P2a | PASS (RPT-2026-0001) |
+| R21 / UC-17 | UQ-15: incoming MCP | `io/mcp` direct named tools plus built-ins | T-18 | P2b | PASS (RPT-2026-0001) |
+| R22 / UC-18, UC-20 | UQ-15/08/17: live streams everywhere | sessions feature + `session_driver`; polling and WS projections | T-19, T-22 | P2b | PASS (RPT-2026-0001) |
+| R23 / UC-19 | UQ-17: declared outputs | `compile_output_spec`, `validate_output`, `inspect_outputs`; `rivet outputs` and its projections | T-20 | P2a, P2b | PASS (RPT-2026-0001) |
+| R24 / UC-08, UC-22 | UQ-17: policy.json only | `load_policy` (discovery, `--policy PATH`, schema v1, `access`); `--sandbox` never implemented | T-21 | P2a | PASS (RPT-2026-0001) |
+| R25 / UC-20 | UQ-17: one serve, all surfaces | `start_serve`, `authenticate_principal`, `authorize_operation`, `multiplex_ws`, `project_polling` | T-22 | P2b | PASS (RPT-2026-0001) |
+| R26 / UC-21, UC-22 | UQ-18: generated I/O manifest and policy draft | `inspect_effects` (manifest), `generate_policy`, `policy_draft_writer` | T-25, T-26 | P2c | PASS (RPT-2026-0001) |
 
 ## Applicable Project Standards
 
@@ -329,33 +329,33 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-046 | P3 | Fixture servers: HTTP/h2/h3, WS, TCP/Unix, MCP stdio+HTTP, gRPC (from `docs/demos/10-grpc/schemas/users.proto`), QUIC, UDP multicast, OAuth provider, slow consumer | T-02–T-19 | — | `tests/fixtures/mod.rs`, `http.rs`, `ws.rs`, `socket.rs`, `mcp.rs`, `grpc.rs`, `quic.rs`, `udp.rs`, `oauth.rs`, `consumer.rs` (CREATE) | P2 tasks | I | DONE | Fixtures live in tests/support, tests/transport_support, tests/oauth_support and tests/fixtures (in-process servers on 127.0.0.1:0) |
-| TASK-047 | P3 | Conformance suites T-01–T-26, one file per suite (see Test and Validation Checklist) | R1–R26 | — | `tests/conformance_*.rs` (26 files) | TASK-046 | I | IN PROGRESS | 18 of 27 suites exist (248 tests); missing: files, dag, sandbox, library, auth_transport_policy, operation_catalog, policy_file, syntax, errors_limits_dag |
+| TASK-047 | P3 | Conformance suites T-01–T-26, one file per suite (see Test and Validation Checklist) | R1–R26 | — | `tests/conformance_*.rs` (26 files) | TASK-046 | I | DONE | 27 conformance suites + samples; 396 tests pass (commit 073d944) |
 | TASK-048 | P3 | Sample corpus test: every REF-2026-0002 Stage A/B example and every `docs/demos/*/app.rivet` parses; demo operations run against fixtures | R2, R14 | — | `tests/conformance_samples.rs` (T-29) | TASK-047 | I | DONE | tests/conformance_samples.rs: 12 demos compile; every REF fragment parses and lowers without structural errors |
 | TASK-049 | P3 | Build/static: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo deny check` (licences, including Capy after G-LIC), `cargo build --release` on Linux/macOS/Windows | R1, R12 | `deny.toml` (CREATE) | T-27 | TASK-047 | I | DONE | cargo fmt --check, clippy -D warnings, cargo deny (deny.toml) clean on macOS |
 | TASK-050 | P3 | VHCO gates: `vhco validate .` green, `vhco sync .` = 0, `vhco check .`, then `vhco spec .` → `vhco.json` (generated; never onto the contract) | R14 / C-09 | `vhco.json`, `vhco.html` (GENERATE) | T-28 | TASK-047 | I | DONE | vhco validate green, sync 0, check (1 guarantee) green, vhco.json/vhco.html generated, vhco assure "change assured" (2b5b785) |
 | TASK-051 | P3 | CI workflow running T-27–T-29 on three OSes | R14 | `.github/workflows/ci.yml` (CREATE; only if the remote is GitHub) | CI run link | TASK-007, TASK-049 | I | BLOCKED | .github/workflows/ci.yml written; no git remote exists to run it (maintainer) |
-| TASK-052 | P3 | TEST documents (one per suite, definition plus latest result) | R1–R26 | — | `docs/testing/test-2026-00NN-*.md` ×33 (see checklist), `docs/testing/index.md` | TASK-047–051 | I | NOT STARTED | |
-| TASK-053 | P3 | Record incidents for unexpected defects found during P2/P3 (template 12.13) | as found | — | `docs/incidents/active/inc-2026-NNNN-*.md`, `docs/incidents/index.md` (CREATE dir + index at first incident; index created now) | — | I | NOT STARTED | |
-| TASK-054 | P3 | Record troubleshooting for hard or reusable problems (template 12.9) | as found | — | `docs/troubleshooting/trbl-2026-NNNN-*.md`, `docs/troubleshooting/index.md` | — | I | NOT STARTED | |
-| TASK-055 | P3 | Validation report: PASS/PARTIAL/FAIL/NOT APPLICABLE for R1–R26; deviations; unintended behaviour; open incidents; limitations | R1–R26 | — | `docs/reports/rpt-2026-0001-v0-1-0-validation.md`, `docs/reports/index.md` (CREATE) | TASK-052 | I | NOT STARTED | |
-| TASK-056 | P3 | Maintainer review of the validation report; any FAIL goes back to P2 | all | — | Manual | TASK-055 | M | NOT STARTED | |
+| TASK-052 | P3 | TEST documents (one per suite, definition plus latest result) | R1–R26 | — | `docs/testing/test-2026-00NN-*.md` ×33 (see checklist), `docs/testing/index.md` | TASK-047–051 | I | DONE | TEST-2026-0001…0029, 0031 recorded at 073d944 (docs/testing/index.md); T-30/T-32/T-33 at P4–P5 |
+| TASK-053 | P3 | Record incidents for unexpected defects found during P2/P3 (template 12.13) | as found | — | `docs/incidents/active/inc-2026-NNNN-*.md`, `docs/incidents/index.md` (CREATE dir + index at first incident; index created now) | — | I | DONE | INC-2026-0001…0005 (all resolved; 0005 = URL grant path prefix, fixed 2d581b8) |
+| TASK-054 | P3 | Record troubleshooting for hard or reusable problems (template 12.9) | as found | — | `docs/troubleshooting/trbl-2026-NNNN-*.md`, `docs/troubleshooting/index.md` | — | I | DONE | TRBL-2026-0001…0003 |
+| TASK-055 | P3 | Validation report: PASS/PARTIAL/FAIL/NOT APPLICABLE for R1–R26; deviations; unintended behaviour; open incidents; limitations | R1–R26 | — | `docs/reports/rpt-2026-0001-v0-1-0-validation.md`, `docs/reports/index.md` (CREATE) | TASK-052 | I | DONE | RPT-2026-0001 rev 1 (20 PASS, 6 PARTIAL platform coverage, 0 FAIL); final revision at P5 |
+| TASK-056 | P3 | Maintainer review of the validation report; any FAIL goes back to P2 | all | — | Manual | TASK-055 | M | DONE | No FAIL; maintainer standing approval ("everything else is approved", 2026-09-28) covers review; PARTIALs carried to REL-0.1.0 |
 
 ### P4 — Documentation and demos
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-057 | P4 | Inventory interfaces from code before writing: `vhco spec . --stdout`, `vhco visualize .`, `vhco flow .`, `vhco query . "actions"`, `vhco query . "effects"`, `vhco coverage .`, `vhco doc . --format html`; compare with `rivet --help`, routes and tests (§30) | R14 | — | Coverage gaps list recorded in this plan's Findings | TASK-050 | I | NOT STARTED | |
-| TASK-058 | P4 | Architecture document: five folders, ports and adapters, dispatcher, broker, scope supervisor, serve fan-out, data flow | R14 | — | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md`, `docs/architecture/index.md` | TASK-057 | I | NOT STARTED | |
-| TASK-059 | P4 | System documents (template 12.6), current implemented behaviour only (see checklist SYS-0001…0009) | R14 | — | `docs/system/components/…`, `docs/system/configuration/…`, `docs/system/runtime/…`, `docs/system/integrations/…`, `docs/system/index.md` | TASK-057 | I | NOT STARTED | |
-| TASK-060 | P4 | API documents (template 12.7): REST/SSE/polling, WebSocket `rivet.v1`, MCP server tools, Rust library, error registry | R8, R21–R26 | — | `docs/api/api-2026-0001…0005-*.md`, `docs/api/index.md` | TASK-057 | I | NOT STARTED | |
-| TASK-061 | P4 | Security document: threat model, what the sandbox guarantees (script-initiated brokered effects), bootstrap I/O, SSRF defaults, secrets, process backends, remote MCP trust boundary | R11, R13, R24 | — | `docs/security/sec-2026-0001-policy-and-sandbox-model.md`, `docs/security/index.md` | TASK-057 | I | NOT STARTED | |
-| TASK-062 | P4 | Operations document: deploying `rivet serve` (bind, auth, principals, surfaces, limits), trace storage, logs, health, upgrade | R25 | — | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/operations/index.md` | TASK-057 | I | NOT STARTED | |
-| TASK-063 | P4 | Runbooks (template 12.8): rotate bearer tokens; roll out a policy.json change and verify with `io --check-policy` | R24, R25 | — | `docs/runbooks/run-2026-0001-rotate-serve-bearer-tokens.md`, `run-2026-0002-roll-out-policy-change.md`, `docs/runbooks/index.md` | TASK-062 | I | NOT STARTED | |
-| TASK-064 | P4 | Onboarding: contributor setup (toolchain, vhco loop, fixtures, running conformance suites, writing an adapter) | R14 | — | `docs/onboarding/onb-2026-0001-contributor-setup.md`, `docs/onboarding/index.md` | TASK-051 | I | NOT STARTED | |
-| TASK-065 | P4 | Manual root plus volumes (template 12.15), see checklist MAN-0001…0008. Includes a feature catalogue, task workflows with CLI/HTTP/WS/MCP/library procedures, success and failure examples, errors and recovery, ASCII journeys, verified-demo links and "What's New in 0.1.0" | R1–R26 | — | `docs/manuals/man-2026-0001…0008-*.md`, `docs/manuals/index.md` | TASK-059, TASK-060, TASK-068 | I | NOT STARTED | |
-| TASK-066 | P4 | Update REF-2026-0002: mark each example verified or Stage C; fix anything implementation changed; the proposal sample CLI section agrees with the code | R14 | — | `docs/references/ref-2026-0002-language-and-usage.md` (UPDATE) | TASK-048 | I | NOT STARTED | |
-| TASK-067 | P4 | Execute and verify the 12 sample folders against v0.1.0 builds: fill each Verification Record; `verified_against: 0.1.0`; status draft → active; update `manifest.json` (`runtime_verified: true`), demos README and index | R14 / all UCs | — | `docs/demos/01-catalog/README.md` … `12-library/README.md`, `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` (UPDATE); `12-library/embedding.rs.txt` → compiled example (see PF-D13) | TASK-048 | I | NOT STARTED | |
-| TASK-068 | P4 | Release verification guide DEMO-2026-0014 (§29): version/tag/commit header; one U-NN row per released update (U-01…U-26, one per requirement) with inciting UQ, action, expected result and evidence; success and failure examples per surface; cleanup; verification record | R1–R26 | — | `docs/demos/demo-2026-0014-v0-1-0-release-verification.md` (CREATE) | TASK-067 | I | NOT STARTED | |
+| TASK-057 | P4 | Inventory interfaces from code before writing: `vhco spec . --stdout`, `vhco visualize .`, `vhco flow .`, `vhco query . "actions"`, `vhco query . "effects"`, `vhco coverage .`, `vhco doc . --format html`; compare with `rivet --help`, routes and tests (§30) | R14 | — | Coverage gaps list recorded in this plan's Findings | TASK-050 | I | DONE | vhco spec/doc inventories used by the P4 writers (vhco.json, vhco.html) |
+| TASK-058 | P4 | Architecture document: five folders, ports and adapters, dispatcher, broker, scope supervisor, serve fan-out, data flow | R14 | — | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md`, `docs/architecture/index.md` | TASK-057 | I | DONE | ARCH-2026-0001 (commit 54d07a1) |
+| TASK-059 | P4 | System documents (template 12.6), current implemented behaviour only (see checklist SYS-0001…0009) | R14 | — | `docs/system/components/…`, `docs/system/configuration/…`, `docs/system/runtime/…`, `docs/system/integrations/…`, `docs/system/index.md` | TASK-057 | I | DONE | SYS-2026-0001…0009 (54d07a1); refreshed for Fix-A…D in P4 |
+| TASK-060 | P4 | API documents (template 12.7): REST/SSE/polling, WebSocket `rivet.v1`, MCP server tools, Rust library, error registry | R8, R21–R26 | — | `docs/api/api-2026-0001…0005-*.md`, `docs/api/index.md` | TASK-057 | I | DONE | API-2026-0001…0005 (54d07a1); refreshed for Fix-A…D in P4 |
+| TASK-061 | P4 | Security document: threat model, what the sandbox guarantees (script-initiated brokered effects), bootstrap I/O, SSRF defaults, secrets, process backends, remote MCP trust boundary | R11, R13, R24 | — | `docs/security/sec-2026-0001-policy-and-sandbox-model.md`, `docs/security/index.md` | TASK-057 | I | DONE | SEC-2026-0001 (54d07a1) |
+| TASK-062 | P4 | Operations document: deploying `rivet serve` (bind, auth, principals, surfaces, limits), trace storage, logs, health, upgrade | R25 | — | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/operations/index.md` | TASK-057 | I | DONE | OPS-2026-0001 (54d07a1) |
+| TASK-063 | P4 | Runbooks (template 12.8): rotate bearer tokens; roll out a policy.json change and verify with `io --check-policy` | R24, R25 | — | `docs/runbooks/run-2026-0001-rotate-serve-bearer-tokens.md`, `run-2026-0002-roll-out-policy-change.md`, `docs/runbooks/index.md` | TASK-062 | I | DONE | RUN-2026-0001, RUN-2026-0002 (54d07a1) |
+| TASK-064 | P4 | Onboarding: contributor setup (toolchain, vhco loop, fixtures, running conformance suites, writing an adapter) | R14 | — | `docs/onboarding/onb-2026-0001-contributor-setup.md`, `docs/onboarding/index.md` | TASK-051 | I | DONE | ONB-2026-0001 (54d07a1) |
+| TASK-065 | P4 | Manual root plus volumes (template 12.15), see checklist MAN-0001…0008. Includes a feature catalogue, task workflows with CLI/HTTP/WS/MCP/library procedures, success and failure examples, errors and recovery, ASCII journeys, verified-demo links and "What's New in 0.1.0" | R1–R26 | — | `docs/manuals/man-2026-0001…0008-*.md`, `docs/manuals/index.md` | TASK-059, TASK-060, TASK-068 | I | DONE | MAN-2026-0001…0008 (c3f0ba7); refreshed for Fix-A…D in P4 |
+| TASK-066 | P4 | Update REF-2026-0002: mark each example verified or Stage C; fix anything implementation changed; the proposal sample CLI section agrees with the code | R14 | — | `docs/references/ref-2026-0002-language-and-usage.md` (UPDATE) | TASK-048 | I | IN PROGRESS | P4 docs refresh running |
+| TASK-067 | P4 | Execute and verify the 12 sample folders against v0.1.0 builds: fill each Verification Record; `verified_against: 0.1.0`; status draft → active; update `manifest.json` (`runtime_verified: true`), demos README and index | R14 / all UCs | — | `docs/demos/01-catalog/README.md` … `12-library/README.md`, `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` (UPDATE); `12-library/embedding.rs.txt` → compiled example (see PF-D13) | TASK-048 | I | IN PROGRESS | P4 demo execution running |
+| TASK-068 | P4 | Release verification guide DEMO-2026-0014 (§29): version/tag/commit header; one U-NN row per released update (U-01…U-26, one per requirement) with inciting UQ, action, expected result and evidence; success and failure examples per surface; cleanup; verification record | R1–R26 | — | `docs/demos/demo-2026-0014-v0-1-0-release-verification.md` (CREATE) | TASK-067 | I | IN PROGRESS | P4 demo execution running |
 | TASK-069 | P4 | README (root) → current implemented state: install, quickstart, surfaces, links to the manual; remove "design only" once true | R14 | — | `README.md` (UPDATE) | TASK-065 | I | NOT STARTED | |
 | TASK-070 | P4 | docs current-state and indexes: `docs/README.md` (status, releases, implementations, incidents, proposals, architecture, decisions, limitations, risks), `docs/index.md`; each new directory's `index.md` | R14 | — | `docs/README.md`, `docs/index.md`, all new `index.md` (UPDATE/CREATE) | TASK-058–068 | I | NOT STARTED | |
 | TASK-071 | P4 | Documentation checker script run in CI (§19): front matter, IDs unique, prefix↔type↔dir, status values, filename↔ID, header↔front matter, revision↔last history row, links/anchors, fences, index membership | R14 | `scripts/check_docs.py` (CREATE) | T-31 | TASK-070 | I | DONE | scripts/check_docs.py verified against planted defects |
@@ -366,7 +366,7 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-073 | P5 | Maintainer approves the release candidate (validation report, demos, manuals) | all | — | Manual | P4 exit | M | NOT STARTED | |
-| TASK-074 | P5 | Set the canonical version `0.1.0` in `Cargo.toml`; check every version reference (`rivet --version`, MCP `serverInfo.version`, API docs, manuals, DEMO-2026-0014, README) | release | `Cargo.toml`, `Cargo.lock` (UPDATE) | T-33 (version sync script step) | TASK-073 | I | NOT STARTED | |
+| TASK-074 | P5 | Set the canonical version `0.1.0` in `Cargo.toml`; check every version reference (`rivet --version`, MCP `serverInfo.version`, API docs, manuals, DEMO-2026-0014, README) | release | `Cargo.toml`, `Cargo.lock` (UPDATE) | T-33 (version sync script step) | TASK-073 | I | IN PROGRESS | scripts/check_version.py + CI step added; bump at release commit |
 | TASK-075 | P5 | Draft the release document in the flat form: version, plan, standards baseline, requirements, Added/Changed/Fixed/Removed, U-NN verification, tests, validation, incidents, troubleshooting, demo, manual, system, the six impact decisions, source changes, known issues, limitations, follow-up (Stage C → PLAN-2026-0002) | R1–R26 | — | `docs/releases/rel-0.1.0-release-notes.md`, `docs/releases/index.md` (CREATE) | TASK-074 | I | NOT STARTED | |
 | TASK-076 | P5 | Final release commit `release: v0.1.0`; record the full SHA | §32.2 | repository | `git rev-parse HEAD` | TASK-075 | I | NOT STARTED | |
 | TASK-077 | P5 | Annotated tag `v0.1.0`; verify `git rev-list -n 1 v0.1.0` == recorded SHA; `git describe --tags --exact-match HEAD` = `v0.1.0`; clean tree | §32.3–32.4 | repository | T-33 | TASK-076 | I | NOT STARTED | |
@@ -382,16 +382,16 @@ Every P2 task follows the AGENTS loop: contract todo claimed with `// vhco:todo`
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-083 | P1 | Create `docs/plans/index.md` and link this plan from `docs/README.md`, `docs/index.md` and the proposal | R14 | — | `docs/plans/index.md` (CREATE), `docs/README.md`, `docs/index.md` (UPDATE) | — | I | DONE | docs/plans/index.md created; linked from docs/README.md and docs/index.md |
 | TASK-084 | P1 | Create `docs/research/index.md` and `docs/decisions/index.md` | R14 | — | as named | TASK-009 | I | DONE | research/index.md (REF-2026-0014) and decisions/index.md (REF-2026-0013) |
-| TASK-085 | P2a | Create `docs/incidents/index.md` (with `active/`, `resolved/`, `postmortems/`) and `docs/troubleshooting/index.md` before code starts, so defects have a home | R14 | — | as named | TASK-013 | I | IN PROGRESS | Implementation defects to record as incidents: opaque-scheme private-range bypass, grammar keyword-reuse and map/poll misparses |
+| TASK-085 | P2a | Create `docs/incidents/index.md` (with `active/`, `resolved/`, `postmortems/`) and `docs/troubleshooting/index.md` before code starts, so defects have a home | R14 | — | as named | TASK-013 | I | DONE | incidents/{active,resolved,postmortems}/index.md and troubleshooting/index.md |
 | TASK-086 | P2* | Every design change discovered during P2 updates the contract first, then the proposal/reference, then code (AGENTS loop); log it in Decisions | all | `vhco-contract.json`, proposal | `vhco sync .` | — | I | DONE | Contract reconciled at P2 exit; design deltas in contract overview |
-| TASK-087 | P2* | Update this plan's statuses and evidence at every task transition; recompute the Live Status Summary | all | this plan | Review at each phase exit | — | I | NOT STARTED | |
-| TASK-088 | P3 | Create `docs/testing/index.md`, `docs/reports/index.md` | R14 | — | as named | TASK-052 | I | NOT STARTED | |
-| TASK-089 | P4 | Create `docs/manuals/index.md`, `docs/system/index.md`, `docs/architecture/index.md`, `docs/api/index.md`, `docs/security/index.md`, `docs/operations/index.md`, `docs/runbooks/index.md`, `docs/onboarding/index.md` | R14 | — | as named | TASK-058–065 | I | NOT STARTED | |
+| TASK-087 | P2* | Update this plan's statuses and evidence at every task transition; recompute the Live Status Summary | all | this plan | Review at each phase exit | — | I | IN PROGRESS | Ledger updated at P2 exit and P3 exit (2026-09-28) |
+| TASK-088 | P3 | Create `docs/testing/index.md`, `docs/reports/index.md` | R14 | — | as named | TASK-052 | I | DONE | docs/testing/index.md (REF-2026-0033), docs/reports/index.md (REF-2026-0034) |
+| TASK-089 | P4 | Create `docs/manuals/index.md`, `docs/system/index.md`, `docs/architecture/index.md`, `docs/api/index.md`, `docs/security/index.md`, `docs/operations/index.md`, `docs/runbooks/index.md`, `docs/onboarding/index.md` | R14 | — | as named | TASK-058–065 | I | DONE | indexes for manuals, system, architecture, api, security, operations, runbooks, onboarding (c3f0ba7) |
 | TASK-090 | P5 | Create `docs/releases/index.md` | R14 | — | as named | TASK-075 | I | NOT STARTED | |
-| TASK-091 | P4 | Review documents with `review_cycle: on-release` (§34) and bump `next_review_date` | R14 | — | all docs | TASK-070 | M | NOT STARTED | |
-| TASK-092 | P4 | Code ≈ system docs drift check (`vhco doc`); fix or record as a known limitation | R14 | — | Findings | TASK-059 | I | NOT STARTED | |
-| TASK-093 | P3 | Secret-canary scan over every test log, trace export and error body (no token/secret/key contents) | R13, R16 | — | T-09, T-11 artifacts | TASK-047 | I | NOT STARTED | |
-| TASK-094 | P3 | Stage C refusal check: Stage C syntax (FIFO, watch, mTLS TCP, custom codec, reconnect) fails with typed `unsupported.*`, never partially runs | R12 | — | part of T-05 | TASK-047 | I | NOT STARTED | |
+| TASK-091 | P4 | Review documents with `review_cycle: on-release` (§34) and bump `next_review_date` | R14 | — | all docs | TASK-070 | M | IN PROGRESS | P4 docs refresh running |
+| TASK-092 | P4 | Code ≈ system docs drift check (`vhco doc`); fix or record as a known limitation | R14 | — | Findings | TASK-059 | I | IN PROGRESS | P4 docs refresh running |
+| TASK-093 | P3 | Secret-canary scan over every test log, trace export and error body (no token/secret/key contents) | R13, R16 | — | T-09, T-11 artifacts | TASK-047 | I | DONE | cargo test --nocapture (903 lines) scanned: 0 canary hits; in-suite canary assertions in T-08/T-09/T-11 |
+| TASK-094 | P3 | Stage C refusal check: Stage C syntax (FIFO, watch, mTLS TCP, custom codec, reconnect) fails with typed `unsupported.*`, never partially runs | R12 | — | part of T-05 | TASK-047 | I | DONE | mTLS TCP, interactive, FIFO, watch, reconnect → unsupported.* exit 5, effects none, 0 TCP connections |
 | TASK-095 | P5 | Record limitations and known issues (platform sandbox gaps, remote MCP opacity, no persistence/resume) in REL-0.1.0, MAN limitations chapter and docs/README | R11, R12 | — | as named | TASK-075 | I | NOT STARTED | |
 | TASK-096 | P5 | Walk the §34 Release Completion Gate item by item; attach evidence for each; the release is complete only when every box is checked | all | — | §34 checklist copied into REL-0.1.0 | TASK-082 | M | NOT STARTED | |
 
@@ -467,37 +467,37 @@ document `docs/testing/test-2026-00NN-<slug>.md` (NN = the T number) holding its
 
 | Test ID | Type | UC / Req | Scenario (positive / negative / regression) | Exact test file or manual steps | Command / environment | Expected result | Status | Evidence |
 |---|---|---|---|---|---|---|---|---|
-| T-01 | unit + integration | UC-01 / R1, R2 | +: all grammar shapes parse; −: invalid sources run zero effects; spans exact | `tests/conformance_language.rs` | `cargo test conformance_language`; Linux/macOS/Windows | PASS; 0 effects on invalid | NOT STARTED | TEST-2026-0001 |
-| T-02 | integration / e2e | UC-02 / R8, R9 | Same fixture registry over CLI/HTTP/MCP/library; auth filtering; stdout clean | `tests/conformance_surfaces.rs` | `cargo test conformance_surfaces` | Identical params/result/error | NOT STARTED | TEST-2026-0002 |
-| T-03 | fault / resource | UC-03 / R3, R4, R9 | Slow consumer, emit then fail, invalid frame, disconnect | `tests/conformance_streams.rs` | `cargo test conformance_streams` | Bounded queue (≤16), one terminal, cancel observed | NOT STARTED | TEST-2026-0003 |
-| T-04 | security / edge | UC-04 / R5, R11 | Symlink escape, version race, hard link, missing/full disk | `tests/conformance_files.rs` | `cargo test conformance_files` (temp root) | Correct guards; nothing mutated outside the root | NOT STARTED | TEST-2026-0004 |
-| T-05 | integration / fault | UC-05 / R3, R12, R13 | HTTP/socket/process fixtures; early return; EOF; forced cleanup faults; Stage C refusal (TASK-094) | `tests/conformance_resources.rs` | `cargo test conformance_resources` | No live handles after 5 s; primary error kept; `unsupported.*` for Stage C | NOT STARTED | TEST-2026-0005 |
-| T-06 | integration | UC-06 / R7 | MCP stdio/HTTP fixtures; tools/resources/prompts; drift; recursion | `tests/conformance_mcp.rs` | `cargo test conformance_mcp` | Typed faults; hop limit enforced | NOT STARTED | TEST-2026-0006 |
-| T-07 | unit / integration | UC-07 / R10 | Diamond, cycle, fan-out, sibling failure, fail-fast default | `tests/conformance_dag.rs` | `cargo test conformance_dag` | Correct node states and `DagCompletion` | NOT STARTED | TEST-2026-0007 |
-| T-08 | security / compatibility | UC-08 / R11, R13 | No policy.json; empty grants; hard links; junctions; case variants; DNS rebinding; process descendants | `tests/conformance_sandbox.rs` | `cargo test conformance_sandbox` per OS | Zero prohibited brokered effects; unsupported backend refuses before spawn | NOT STARTED | TEST-2026-0008 |
-| T-09 | security / audit | UC-09 / R6, R13 | Every adapter; dynamic/opaque sites; secret canaries; failed sink | `tests/conformance_audit.rs` | `cargo test conformance_audit` | Every site reported; no canary leaks | NOT STARTED | TEST-2026-0009 |
-| T-10 | integration | UC-10 / R1, R3, R9 | Host Tokio runtime; abandoned future; scope exit | `tests/conformance_library.rs` | `cargo test conformance_library` | No nested runtime; cleanup joined | NOT STARTED | TEST-2026-0010 |
-| T-11 | integration / security | UC-11 / R16 | Three flows; state/issuer mismatch; slow_down; device `pending`; rotation race; invalid_grant | `tests/conformance_oauth.rs` | `cargo test conformance_oauth` | Tokens never escape; one refresh per key | NOT STARTED | TEST-2026-0011 |
-| T-12 | integration | UC-12 / R15 | IPv4/IPv6/multicast; drop/reorder/dup; oversized/truncated; denied bind | `tests/conformance_udp.rs` | `cargo test conformance_udp` | Boundaries kept; typed errors | NOT STARTED | TEST-2026-0012 |
-| T-13 | integration / security | UC-13 / R17 | Wrong cert/ALPN; blocked window; FIN/reset; DATAGRAM absent; migration | `tests/conformance_quic.rs` | `cargo test conformance_quic` | TLS checked; no 0-RTT; denied path sends 0 packets | NOT STARTED | TEST-2026-0013 |
-| T-14 | integration | UC-14 / R18 | H3/H2 fixtures; strict vs preference; POST accepted then response lost | `tests/conformance_http3.rs` | `cargo test conformance_http3` | No unsafe downgrade; one mutation | NOT STARTED | TEST-2026-0014 |
-| T-15 | cross-surface / security | UC-11–14 / R15–R18 | Same fixtures over all surfaces; absent/empty/restricted policy.json | `tests/conformance_auth_transport_policy.rs` | `cargo test conformance_auth_transport_policy` | Same values/errors | NOT STARTED | TEST-2026-0015 |
-| T-16 | unit / integration | UC-15 / R20 | Multi-op file; duplicate in second declaration/import; private helper | `tests/conformance_operation_catalog.rs` | `cargo test conformance_operation_catalog` | Atomic load; both spans shown | NOT STARTED | TEST-2026-0016 |
-| T-17 | integration | UC-16 / R19 | Four modes; map/oneof/int64/bytes/Any; late non-OK trailers | `tests/conformance_grpc.rs` | `cargo test conformance_grpc` | Status governs success | NOT STARTED | TEST-2026-0017 |
-| T-18 | e2e | UC-17 / R21 | stdio and HTTP MCP clients; list/call; unauthorized; streaming tools | `tests/conformance_mcp_catalog.rs` | `cargo test conformance_mcp_catalog` | Schemas match other surfaces | NOT STARTED | TEST-2026-0018 |
-| T-19 | e2e / fault | UC-18 / R22 | open/send/read/finish/cancel across CLI/HTTP/poll/WS/MCP/library; duplicate send; stale cursor | `tests/conformance_sessions.rs` | `cargo test conformance_sessions` | Ordered, bounded, principal-bound | NOT STARTED | TEST-2026-0019 |
-| T-20 | unit / e2e | UC-19 / R23 | Scalar/nested/list/open outputs; violation after a committed write | `tests/conformance_outputs.rs` | `cargo test conformance_outputs` | Same schema on every surface; `output.invalid` exit 5 | NOT STARTED | TEST-2026-0020 |
-| T-21 | security | UC-08 / R24 | No file; `{"version":1}`; `--policy`; unknown key; deny > grants; `access` verbs; private ranges | `tests/conformance_policy_file.rs` | `cargo test conformance_policy_file` | Deny-by-default; `policy.invalid` exit 2 | NOT STARTED | TEST-2026-0021 |
-| T-22 | e2e / security | UC-20 / R25 | One serve over REST/SSE/poll/WS/MCP; none/bearer/mTLS; non-loopback+none; ninth WS ref; `rivet.io` exposure rule | `tests/conformance_serve.rs` | `cargo test conformance_serve` | Identical Completion; `serve.auth_required` exit 2 | NOT STARTED | TEST-2026-0022 |
-| T-23 | unit | UC-01 / R1, R2 | Prefix calls, quoted durations, `${a.b}` vs `${a + b}`, escapes, URL encoding, option after body, yield/return | `tests/conformance_syntax.rs` | `cargo test conformance_syntax` | Exact diagnostics | NOT STARTED | TEST-2026-0023 |
-| T-24 | unit / resource | UC-02, UC-07 / R4, R10 | Every registry code on every surface; 65 concurrent calls; depth 17; call cycle; unguarded `.result` | `tests/conformance_errors_limits_dag.rs` | `cargo test conformance_errors_limits_dag` | Registry-consistent exit/HTTP | NOT STARTED | TEST-2026-0024 |
-| T-25 | integration | UC-21, UC-09 / R6, R26 | exact/bounded/param_dependent/dynamic/opaque sites of every kind; views; formats; `--check-policy` exit 3; `--strict` exit 7; `--trace` (+ option-derived sites if TASK-005 is approved) | `tests/conformance_io_manifest.rs` | `cargo test conformance_io_manifest` | Manifest equals the golden JSON | NOT STARTED | TEST-2026-0025 |
-| T-26 | integration | UC-22 / R26 | Draft to stdout; `--output` new/existing; dynamic site | `tests/conformance_policy_generate.rs` | `cargo test conformance_policy_generate` | Least-privilege draft; exit 7 / exit 4 | NOT STARTED | TEST-2026-0026 |
-| T-27 | build / static | all / R1 | fmt, clippy `-D warnings`, `cargo deny`, release build on three OSes | CI or local | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo deny check && cargo build --release` | All green; Capy licence passes deny after G-LIC | NOT STARTED | TEST-2026-0027 |
-| T-28 | architecture | all / R14 | VHCO structure and drift | — | `vhco validate . && vhco sync . && vhco check . && vhco spec .` | validate green; sync 0; check green | NOT STARTED | TEST-2026-0028 |
-| T-29 | regression / corpus | UC-01 / R2, R14 | Every Stage A/B example and demo parses; demo ops run on fixtures | `tests/conformance_samples.rs` | `cargo test conformance_samples` | 100% of in-scope samples pass; Stage C samples refuse | NOT STARTED | TEST-2026-0029 |
+| T-01 | unit + integration | UC-01 / R1, R2 | +: all grammar shapes parse; −: invalid sources run zero effects; spans exact | `tests/conformance_language.rs` | `cargo test conformance_language`; Linux/macOS/Windows | PASS; 0 effects on invalid | PARTIAL (2026-09-28) | TEST-2026-0001 |
+| T-02 | integration / e2e | UC-02 / R8, R9 | Same fixture registry over CLI/HTTP/MCP/library; auth filtering; stdout clean | `tests/conformance_surfaces.rs` | `cargo test conformance_surfaces` | Identical params/result/error | PASS (2026-09-28) | TEST-2026-0002 |
+| T-03 | fault / resource | UC-03 / R3, R4, R9 | Slow consumer, emit then fail, invalid frame, disconnect | `tests/conformance_streams.rs` | `cargo test conformance_streams` | Bounded queue (≤16), one terminal, cancel observed | PASS (2026-09-28) | TEST-2026-0003 |
+| T-04 | security / edge | UC-04 / R5, R11 | Symlink escape, version race, hard link, missing/full disk | `tests/conformance_files.rs` | `cargo test conformance_files` (temp root) | Correct guards; nothing mutated outside the root | PASS (2026-09-28) | TEST-2026-0004 |
+| T-05 | integration / fault | UC-05 / R3, R12, R13 | HTTP/socket/process fixtures; early return; EOF; forced cleanup faults; Stage C refusal (TASK-094) | `tests/conformance_resources.rs` | `cargo test conformance_resources` | No live handles after 5 s; primary error kept; `unsupported.*` for Stage C | PASS (2026-09-28) | TEST-2026-0005 |
+| T-06 | integration | UC-06 / R7 | MCP stdio/HTTP fixtures; tools/resources/prompts; drift; recursion | `tests/conformance_mcp.rs` | `cargo test conformance_mcp` | Typed faults; hop limit enforced | PASS (2026-09-28) | TEST-2026-0006 |
+| T-07 | unit / integration | UC-07 / R10 | Diamond, cycle, fan-out, sibling failure, fail-fast default | `tests/conformance_dag.rs` | `cargo test conformance_dag` | Correct node states and `DagCompletion` | PASS (2026-09-28) | TEST-2026-0007 |
+| T-08 | security / compatibility | UC-08 / R11, R13 | No policy.json; empty grants; hard links; junctions; case variants; DNS rebinding; process descendants | `tests/conformance_sandbox.rs` | `cargo test conformance_sandbox` per OS | Zero prohibited brokered effects; unsupported backend refuses before spawn | PARTIAL (2026-09-28) | TEST-2026-0008 |
+| T-09 | security / audit | UC-09 / R6, R13 | Every adapter; dynamic/opaque sites; secret canaries; failed sink | `tests/conformance_audit.rs` | `cargo test conformance_audit` | Every site reported; no canary leaks | PASS (2026-09-28) | TEST-2026-0009 |
+| T-10 | integration | UC-10 / R1, R3, R9 | Host Tokio runtime; abandoned future; scope exit | `tests/conformance_library.rs` | `cargo test conformance_library` | No nested runtime; cleanup joined | PASS (2026-09-28) | TEST-2026-0010 |
+| T-11 | integration / security | UC-11 / R16 | Three flows; state/issuer mismatch; slow_down; device `pending`; rotation race; invalid_grant | `tests/conformance_oauth.rs` | `cargo test conformance_oauth` | Tokens never escape; one refresh per key | PASS (2026-09-28) | TEST-2026-0011 |
+| T-12 | integration | UC-12 / R15 | IPv4/IPv6/multicast; drop/reorder/dup; oversized/truncated; denied bind | `tests/conformance_udp.rs` | `cargo test conformance_udp` | Boundaries kept; typed errors | PASS (2026-09-28) | TEST-2026-0012 |
+| T-13 | integration / security | UC-13 / R17 | Wrong cert/ALPN; blocked window; FIN/reset; DATAGRAM absent; migration | `tests/conformance_quic.rs` | `cargo test conformance_quic` | TLS checked; no 0-RTT; denied path sends 0 packets | PASS (2026-09-28) | TEST-2026-0013 |
+| T-14 | integration | UC-14 / R18 | H3/H2 fixtures; strict vs preference; POST accepted then response lost | `tests/conformance_http3.rs` | `cargo test conformance_http3` | No unsafe downgrade; one mutation | PASS (2026-09-28) | TEST-2026-0014 |
+| T-15 | cross-surface / security | UC-11–14 / R15–R18 | Same fixtures over all surfaces; absent/empty/restricted policy.json | `tests/conformance_auth_transport_policy.rs` | `cargo test conformance_auth_transport_policy` | Same values/errors | PASS (2026-09-28) | TEST-2026-0015 |
+| T-16 | unit / integration | UC-15 / R20 | Multi-op file; duplicate in second declaration/import; private helper | `tests/conformance_operation_catalog.rs` | `cargo test conformance_operation_catalog` | Atomic load; both spans shown | PASS (2026-09-28) | TEST-2026-0016 |
+| T-17 | integration | UC-16 / R19 | Four modes; map/oneof/int64/bytes/Any; late non-OK trailers | `tests/conformance_grpc.rs` | `cargo test conformance_grpc` | Status governs success | PASS (2026-09-28) | TEST-2026-0017 |
+| T-18 | e2e | UC-17 / R21 | stdio and HTTP MCP clients; list/call; unauthorized; streaming tools | `tests/conformance_mcp_catalog.rs` | `cargo test conformance_mcp_catalog` | Schemas match other surfaces | PASS (2026-09-28) | TEST-2026-0018 |
+| T-19 | e2e / fault | UC-18 / R22 | open/send/read/finish/cancel across CLI/HTTP/poll/WS/MCP/library; duplicate send; stale cursor | `tests/conformance_sessions.rs` | `cargo test conformance_sessions` | Ordered, bounded, principal-bound | PASS (2026-09-28) | TEST-2026-0019 |
+| T-20 | unit / e2e | UC-19 / R23 | Scalar/nested/list/open outputs; violation after a committed write | `tests/conformance_outputs.rs` | `cargo test conformance_outputs` | Same schema on every surface; `output.invalid` exit 5 | PASS (2026-09-28) | TEST-2026-0020 |
+| T-21 | security | UC-08 / R24 | No file; `{"version":1}`; `--policy`; unknown key; deny > grants; `access` verbs; private ranges | `tests/conformance_policy_file.rs` | `cargo test conformance_policy_file` | Deny-by-default; `policy.invalid` exit 2 | PASS (2026-09-28) | TEST-2026-0021 |
+| T-22 | e2e / security | UC-20 / R25 | One serve over REST/SSE/poll/WS/MCP; none/bearer/mTLS; non-loopback+none; ninth WS ref; `rivet.io` exposure rule | `tests/conformance_serve.rs` | `cargo test conformance_serve` | Identical Completion; `serve.auth_required` exit 2 | PASS (2026-09-28) | TEST-2026-0022 |
+| T-23 | unit | UC-01 / R1, R2 | Prefix calls, quoted durations, `${a.b}` vs `${a + b}`, escapes, URL encoding, option after body, yield/return | `tests/conformance_syntax.rs` | `cargo test conformance_syntax` | Exact diagnostics | PASS (2026-09-28) | TEST-2026-0023 |
+| T-24 | unit / resource | UC-02, UC-07 / R4, R10 | Every registry code on every surface; 65 concurrent calls; depth 17; call cycle; unguarded `.result` | `tests/conformance_errors_limits_dag.rs` | `cargo test conformance_errors_limits_dag` | Registry-consistent exit/HTTP | PASS (2026-09-28) | TEST-2026-0024 |
+| T-25 | integration | UC-21, UC-09 / R6, R26 | exact/bounded/param_dependent/dynamic/opaque sites of every kind; views; formats; `--check-policy` exit 3; `--strict` exit 7; `--trace` (+ option-derived sites if TASK-005 is approved) | `tests/conformance_io_manifest.rs` | `cargo test conformance_io_manifest` | Manifest equals the golden JSON | PASS (2026-09-28) | TEST-2026-0025 |
+| T-26 | integration | UC-22 / R26 | Draft to stdout; `--output` new/existing; dynamic site | `tests/conformance_policy_generate.rs` | `cargo test conformance_policy_generate` | Least-privilege draft; exit 7 / exit 4 | PASS (2026-09-28) | TEST-2026-0026 |
+| T-27 | build / static | all / R1 | fmt, clippy `-D warnings`, `cargo deny`, release build on three OSes | CI or local | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo deny check && cargo build --release` | All green; Capy licence passes deny after G-LIC | PARTIAL (2026-09-28) | TEST-2026-0027 |
+| T-28 | architecture | all / R14 | VHCO structure and drift | — | `vhco validate . && vhco sync . && vhco check . && vhco spec .` | validate green; sync 0; check green | PASS (2026-09-28) | TEST-2026-0028 |
+| T-29 | regression / corpus | UC-01 / R2, R14 | Every Stage A/B example and demo parses; demo ops run on fixtures | `tests/conformance_samples.rs` | `cargo test conformance_samples` | 100% of in-scope samples pass; Stage C samples refuse | PASS (2026-09-28) | TEST-2026-0029 |
 | T-30 | manual / e2e | all UCs / R1–R26 | Execute the 12 sample READMEs and DEMO-2026-0014 step by step against the v0.1.0 build, then the release artifact | Manual: follow each README; compare expected output | Clean checkout at the release commit; fixtures running | Every step matches; verification records filled | NOT STARTED | TEST-2026-0030 |
-| T-31 | documentation | R14 | Front matter, IDs, links, anchors, fences, headers, revisions, index membership; ASCII visual presence in manuals/system/API | `scripts/check_docs.py` | `python3 scripts/check_docs.py` | 0 errors | NOT STARTED | TEST-2026-0031 |
+| T-31 | documentation | R14 | Front matter, IDs, links, anchors, fences, headers, revisions, index membership; ASCII visual presence in manuals/system/API | `scripts/check_docs.py` | `python3 scripts/check_docs.py` | 0 errors | PASS (2026-09-28) | TEST-2026-0031 |
 | T-32 | traceability | R1–R26 | Every R → task → file → test → doc → U-NN row; no orphan either way | Manual + script over this plan, RPT and REL | — | No orphans | NOT STARTED | TEST-2026-0032 |
 | T-33 | release | release | Version sync (`Cargo.toml` = `rivet --version` = MCP serverInfo = docs); tag = commit; clean tree | Manual per §32.4 | `git describe --tags --exact-match HEAD` | `v0.1.0`; SHAs equal | NOT STARTED | TEST-2026-0033 |
 
@@ -635,6 +635,10 @@ Every document follows the metadata of DOCUMENTATION §5/§20, the visible heade
 | 2026-09-28 | Finding | TASK-042 | Security defect: the private-range rule did not fire for IP literals in `udp://`, `quic://`, `tcp://` targets (opaque URL hosts); fixed in 2c3d09b with a regression test | Record as incident (TASK-053) | Implementer | INC (to write) |
 | 2026-09-28 | Decision | TASK-049 | `clippy::result_large_err` allowed crate-wide with a stated reason (RivetError is the full error contract; cold path); large enum variants boxed | clippy -D warnings clean | Implementer | src/lib.rs |
 | 2026-09-28 | Decision | TASK-027 | mTLS serve auth refuses to start (`unsupported.serve_mtls`) in v0.1.0: no TLS listener; bearer and loopback-none are supported | Known limitation for release notes | Maintainer to confirm | PROP Increment 17 |
+| 2026-09-28 | Finding | TASK-047–049 | Doc writers and P3 suites found 36 gaps against the approved proposal (G1–G36) and 3 bugs (B1–B3); all fixed in four batches (Fix-A…D, merges 14d09c2, 30b3081, 6dc34e3, f7c6d58) with tests; limitations L1–L11 documented instead | Contract re-reconciled (19bd7c3) | Implementer | RPT-2026-0001 |
+| 2026-09-28 | Finding | TASK-053 / R11 | Security defect: URL grant paths matched as raw string prefixes (`/users/42` covered `/users/420`); now whole-segment (2d581b8) | Incident recorded | Implementer | INC-2026-0005 |
+| 2026-09-28 | Finding | TASK-055 | T-01, T-08, T-27 are PARTIAL: macOS only; Linux/Windows runs need CI (TASK-051) | R1, R2, R11–R13 PARTIAL in RPT-2026-0001; release notes list it | Maintainer (remote) | RPT-2026-0001 |
+| 2026-09-28 | Decision | TASK-031 | vhco docs warnings DOC-DIR-001/DOC-NAME-001 on the 28 required `index.md` pages are accepted (AGENTS.md directory-index rule wins) | 0 errors; warnings only | Implementer | TEST-2026-0031 |
 | 2026-09-28 | Scope | — | Stage C adapters excluded; they need a future PLAN-2026-0002 | Not in v0.1.0 | Maintainer | PROP delivery matrix |
 
 ## Rollout Strategy
@@ -682,32 +686,32 @@ checked (TASK-096).
 
 | Requirement / UC | Implementation tasks | File changes | Tests | Docs / demo | Release update | Final status |
 |---|---|---|---|---|---|---|
-| R1 / UC-01, UC-10 | 010, 014, 016 | PF-01, PF-03, PF-21 | T-01, T-10, T-23, T-27 | D-05, D-15, D-36 | U-01 | NOT STARTED |
-| R2 / UC-01 | 016, 017 | PF-06, PF-21 | T-01, T-23, T-29 | D-36, D-42 | U-02 | NOT STARTED |
-| R3 / UC-03, 05, 10 | 022, 033–035 | PF-08, PF-22 | T-03, T-05, T-10 | D-16 | U-03 | NOT STARTED |
-| R4 / UC-02, 03, 05, 07 | 015, 022, 036 | PF-05, PF-08 | T-03, T-24 | D-28 | U-04 | NOT STARTED |
-| R5 / UC-04 | 023 | PF-09, PF-22 | T-04 | D-36, D-38 | U-05 | NOT STARTED |
-| R6 / UC-09, 21 | 037, 038 | PF-11, PF-22 | T-09, T-25 | D-17, D-38 | U-06 | NOT STARTED |
-| R7 / UC-06 | 040 | PF-10, PF-22 | T-06 | D-23, D-41 | U-07 | NOT STARTED |
-| R8 / UC-02, 10, 21 | 022, 024, 025, 028, 032 | PF-03, PF-04, PF-20 | T-02, T-10 | D-18, D-24–D-27, D-37 | U-08 | NOT STARTED |
-| R9 / UC-02, 03, 10 | 022, 025 | PF-08, PF-20 | T-02, T-03, T-10 | D-27, D-40 | U-09 | NOT STARTED |
-| R10 / UC-07 | 036 | PF-08 | T-07, T-24 | D-16, D-36 | U-10 | NOT STARTED |
-| R11 / UC-04, 06, 08, 09, 21, 22 | 020, 021, 035 | PF-12, PF-22, PF-25 | T-08, T-21 | D-04, D-17, D-29 | U-11 | NOT STARTED |
-| R12 / UC-05 | 033–035, 094 | PF-19, PF-23 | T-05, T-08 | D-19, D-41 | U-12 | NOT STARTED |
-| R13 / UC-05, 08, 09 | 021, 035, 037, 093 | PF-12, PF-22, PF-23 | T-05, T-08, T-09 | D-29 | U-13 | NOT STARTED |
-| R14 / UC-01–22 | 004, 006, 052–072, 083–092 | PF-26, PF-27, PF-G01 | T-28, T-31, T-32 | D-01–D-47 | U-14 | NOT STARTED |
-| R15 / UC-12 | 042 | PF-14, PF-24 | T-12, T-15 | D-19, D-41 | U-15 | NOT STARTED |
-| R16 / UC-11 | 041 | PF-13, PF-24 | T-11, T-15 | D-20, D-41 | U-16 | NOT STARTED |
-| R17 / UC-13 | 043 | PF-15, PF-24 | T-13, T-15 | D-19, D-41 | U-17 | NOT STARTED |
-| R18 / UC-14 | 044 | PF-19, PF-23 | T-14, T-15 | D-19, D-41 | U-18 | NOT STARTED |
-| R19 / UC-16 | 045 | PF-16, PF-24 | T-17 | D-19, D-41 | U-19 | NOT STARTED |
-| R20 / UC-15 | 017, 019 | PF-06, PF-07 | T-16 | D-15, D-36 | U-20 | NOT STARTED |
-| R21 / UC-17 | 032 | PF-20 | T-18 | D-26, D-39 | U-21 | NOT STARTED |
-| R22 / UC-18, 20 | 029–031 | PF-17, PF-18, PF-20, PF-24 | T-19, T-22 | D-21, D-24, D-25, D-39 | U-22 | NOT STARTED |
-| R23 / UC-19 | 018, 019, 022 | PF-06, PF-07, PF-08 | T-20 | D-15, D-36, D-37 | U-23 | NOT STARTED |
-| R24 / UC-08, 22 | 020 | PF-12, PF-22 | T-21 | D-22, D-38 | U-24 | NOT STARTED |
-| R25 / UC-20 | 026–032 | PF-18, PF-20, PF-24 | T-22 | D-18, D-30, D-39 | U-25 | NOT STARTED |
-| R26 / UC-21, 22 | 038, 039 | PF-11, PF-12, PF-22 | T-25, T-26 | D-17, D-38 | U-26 | NOT STARTED |
+| R1 / UC-01, UC-10 | 010, 014, 016 | PF-01, PF-03, PF-21 | T-01, T-10, T-23, T-27 | D-05, D-15, D-36 | U-01 | PARTIAL (RPT-2026-0001) |
+| R2 / UC-01 | 016, 017 | PF-06, PF-21 | T-01, T-23, T-29 | D-36, D-42 | U-02 | PARTIAL (RPT-2026-0001) |
+| R3 / UC-03, 05, 10 | 022, 033–035 | PF-08, PF-22 | T-03, T-05, T-10 | D-16 | U-03 | PASS (RPT-2026-0001) |
+| R4 / UC-02, 03, 05, 07 | 015, 022, 036 | PF-05, PF-08 | T-03, T-24 | D-28 | U-04 | PASS (RPT-2026-0001) |
+| R5 / UC-04 | 023 | PF-09, PF-22 | T-04 | D-36, D-38 | U-05 | PASS (RPT-2026-0001) |
+| R6 / UC-09, 21 | 037, 038 | PF-11, PF-22 | T-09, T-25 | D-17, D-38 | U-06 | PASS (RPT-2026-0001) |
+| R7 / UC-06 | 040 | PF-10, PF-22 | T-06 | D-23, D-41 | U-07 | PASS (RPT-2026-0001) |
+| R8 / UC-02, 10, 21 | 022, 024, 025, 028, 032 | PF-03, PF-04, PF-20 | T-02, T-10 | D-18, D-24–D-27, D-37 | U-08 | PASS (RPT-2026-0001) |
+| R9 / UC-02, 03, 10 | 022, 025 | PF-08, PF-20 | T-02, T-03, T-10 | D-27, D-40 | U-09 | PASS (RPT-2026-0001) |
+| R10 / UC-07 | 036 | PF-08 | T-07, T-24 | D-16, D-36 | U-10 | PASS (RPT-2026-0001) |
+| R11 / UC-04, 06, 08, 09, 21, 22 | 020, 021, 035 | PF-12, PF-22, PF-25 | T-08, T-21 | D-04, D-17, D-29 | U-11 | PARTIAL (RPT-2026-0001) |
+| R12 / UC-05 | 033–035, 094 | PF-19, PF-23 | T-05, T-08 | D-19, D-41 | U-12 | PARTIAL (RPT-2026-0001) |
+| R13 / UC-05, 08, 09 | 021, 035, 037, 093 | PF-12, PF-22, PF-23 | T-05, T-08, T-09 | D-29 | U-13 | PARTIAL (RPT-2026-0001) |
+| R14 / UC-01–22 | 004, 006, 052–072, 083–092 | PF-26, PF-27, PF-G01 | T-28, T-31, T-32 | D-01–D-47 | U-14 | PARTIAL (RPT-2026-0001) |
+| R15 / UC-12 | 042 | PF-14, PF-24 | T-12, T-15 | D-19, D-41 | U-15 | PASS (RPT-2026-0001) |
+| R16 / UC-11 | 041 | PF-13, PF-24 | T-11, T-15 | D-20, D-41 | U-16 | PASS (RPT-2026-0001) |
+| R17 / UC-13 | 043 | PF-15, PF-24 | T-13, T-15 | D-19, D-41 | U-17 | PASS (RPT-2026-0001) |
+| R18 / UC-14 | 044 | PF-19, PF-23 | T-14, T-15 | D-19, D-41 | U-18 | PASS (RPT-2026-0001) |
+| R19 / UC-16 | 045 | PF-16, PF-24 | T-17 | D-19, D-41 | U-19 | PASS (RPT-2026-0001) |
+| R20 / UC-15 | 017, 019 | PF-06, PF-07 | T-16 | D-15, D-36 | U-20 | PASS (RPT-2026-0001) |
+| R21 / UC-17 | 032 | PF-20 | T-18 | D-26, D-39 | U-21 | PASS (RPT-2026-0001) |
+| R22 / UC-18, 20 | 029–031 | PF-17, PF-18, PF-20, PF-24 | T-19, T-22 | D-21, D-24, D-25, D-39 | U-22 | PASS (RPT-2026-0001) |
+| R23 / UC-19 | 018, 019, 022 | PF-06, PF-07, PF-08 | T-20 | D-15, D-36, D-37 | U-23 | PASS (RPT-2026-0001) |
+| R24 / UC-08, 22 | 020 | PF-12, PF-22 | T-21 | D-22, D-38 | U-24 | PASS (RPT-2026-0001) |
+| R25 / UC-20 | 026–032 | PF-18, PF-20, PF-24 | T-22 | D-18, D-30, D-39 | U-25 | PASS (RPT-2026-0001) |
+| R26 / UC-21, 22 | 038, 039 | PF-11, PF-12, PF-22 | T-25, T-26 | D-17, D-38 | U-26 | PASS (RPT-2026-0001) |
 
 ```text
  R-n ──► TASK-xxx ──► PF-xx (src/…) ──► T-n (tests/… + TEST-2026-00nn) ──► D-xx (manual/system/api)
@@ -733,6 +737,7 @@ and their preventive actions, estimate accuracy, and inputs to PLAN-2026-0002 (S
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-28 | Claude | P3 complete: Fix-A…D merged (G1–G36, B1–B3), INC-2026-0005 fixed, contract re-reconciled, TEST documents and RPT-2026-0001 recorded, TASK-093/094 checks; P4 started. |
 | 5 | 2026-09-28 | Claude | P2 complete: all implementation tasks DONE; contract reconciled; vhco assure green; P3 started. |
 | 4 | 2026-09-28 | Claude | P2a foundation implemented (TASK-014–021, 023, 036 DONE); WS-A/B/C started; five implementation findings recorded. |
 | 3 | 2026-09-28 | Claude | P1 complete: TASK-009, 011, 012, 013, 084 DONE; plan approved; PF-25 sandbox files named. |
