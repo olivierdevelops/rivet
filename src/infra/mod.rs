@@ -14,6 +14,7 @@ pub mod policy_file_reader;
 pub mod process_adapter;
 pub mod quic_adapter;
 pub mod registry;
+pub mod request_control;
 #[cfg(target_os = "linux")]
 pub mod sandbox_linux;
 #[cfg(target_os = "macos")]

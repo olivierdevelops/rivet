@@ -160,6 +160,8 @@ struct Inner {
     counter: AtomicU64,
     /// Live sessions (polling, WebSocket refs, `rivet.sessions.*`, library).
     sessions: Arc<SessionHost>,
+    /// Cancellation signals for running top-level requests.
+    requests: Arc<crate::infra::request_control::RunningRequests>,
 }
 
 /// A loaded, compiled bundle ready to serve requests from every surface.
@@ -411,6 +413,7 @@ impl Runtime {
                 )),
                 counter: AtomicU64::new(0),
                 sessions,
+                requests: Arc::new(crate::infra::request_control::RunningRequests::default()),
             }
         });
         inner.driver.set_dispatcher(Arc::new(NestedDispatcher {
@@ -519,14 +522,60 @@ impl Runtime {
         } else {
             None
         };
-        request_operation(
+        if req.depth > 0 {
+            return request_operation(
+                req,
+                self.inner.registry.as_ref(),
+                self.inner.driver.as_ref(),
+                &limits,
+                sink,
+            )
+            .await;
+        }
+        // Top-level requests can be cancelled by ID; dropping the request future
+        // drops its whole scope (tasks, handles, child processes are killed on drop).
+        let request_id = req.request_id.clone();
+        let trace_id = req.trace_id.clone();
+        let cancelled = self.inner.requests.start(&request_id, &req.principal.name);
+        let run = request_operation(
             req,
             self.inner.registry.as_ref(),
             self.inner.driver.as_ref(),
             &limits,
             sink,
+        );
+        let out = tokio::select! {
+            r = run => r,
+            _ = cancelled.notified() => {
+                let mut e = RivetError::new(ErrorKind::Cancelled, "cancelled.request", "the request was cancelled by its caller");
+                e.request_id = Some(request_id.clone());
+                e.trace_id = Some(trace_id);
+                e.effects = crate::domain::errors::EffectsStatus::Unknown;
+                Err(e)
+            }
+        };
+        let state = match &out {
+            Ok(_) => "succeeded",
+            Err(e) if e.kind == ErrorKind::Cancelled => "cancelled",
+            Err(_) => "failed",
+        };
+        self.inner.requests.finish(&request_id, state);
+        out
+    }
+
+    /// Cancel one of the caller's own running top-level requests (idempotent).
+    pub fn cancel(
+        &self,
+        request_id: &str,
+        principal: Principal,
+    ) -> RivetResult<crate::domain::sessions::CancelReceipt> {
+        crate::features::execution::cancel_request::cancel_request(
+            &crate::domain::ports::CancelRequest {
+                request_id: request_id.to_string(),
+                principal,
+            },
+            self.inner.requests.as_ref(),
         )
-        .await
     }
 
     pub fn list(&self) -> RivetResult<Catalog> {
@@ -828,5 +877,33 @@ mod tests {
                 ("final", Value::object([("done", Value::Bool(true))]))
             ])
         );
+    }
+
+    // vhco:test execution.cancel_request -- a running top-level request is cancelled by id; its caller gets cancelled (exit 130) and the state becomes cancelled
+    #[tokio::test]
+    async fn cancel_running_request_by_id() {
+        let r = rt(
+            "operation slow.op\n    output json\n    status = poll every \"50ms\" timeout \"10s\"\n        until false\n        yield 1\n    end\n    return status\nend\n",
+        );
+        let req = r.new_request("slow.op", Value::Null, Principal::local());
+        let id = req.request_id.clone();
+        let r2 = r.clone();
+        let task = tokio::spawn(async move { r2.dispatch_request(req, None).await });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(
+            r.cancel(&id, Principal::local()).unwrap().state,
+            "cancelling"
+        );
+        let e = task.await.unwrap().unwrap_err();
+        assert_eq!(e.exit_code(), 130);
+        assert_eq!(
+            r.cancel(&id, Principal::local()).unwrap().state,
+            "cancelled"
+        );
+        let other = Principal {
+            name: "eve".into(),
+            authenticated_by: "bearer".into(),
+        };
+        assert_eq!(r.cancel(&id, other).unwrap_err().code, "not_found.request");
     }
 }

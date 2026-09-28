@@ -256,3 +256,27 @@ pub trait ServeListener: Send {
 pub trait WsConnection: Send + Sync {
     async fn send(&self, frame: super::serve::WsFrame) -> RivetResult<()>;
 }
+
+// vhco:domain CancelRequest { request_id: string; principal: Principal }
+#[derive(Clone, Debug, PartialEq)]
+pub struct CancelRequest {
+    pub request_id: String,
+    pub principal: super::contracts::Principal,
+}
+
+/// Owner of the running top-level requests' cancellation signals.
+pub trait RequestControl: Send + Sync {
+    /// The principal that owns a running request, or its terminal state if it
+    /// finished recently; `None` when the ID is unknown.
+    fn lookup(&self, request_id: &str) -> Option<RequestState>;
+    /// Signal cancellation; idempotent. Returns false when nothing was running.
+    fn signal(&self, request_id: &str) -> bool;
+}
+
+// vhco:domain RequestState { owner: string; state: string }
+#[derive(Clone, Debug, PartialEq)]
+pub struct RequestState {
+    pub owner: String,
+    /// `running`, `cancelling`, `succeeded`, `failed` or `cancelled`.
+    pub state: String,
+}

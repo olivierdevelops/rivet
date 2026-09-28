@@ -58,7 +58,9 @@ fn option_key(func: &str) -> String {
     if func == "auth_use" {
         "auth".into()
     } else {
-        func.trim_start_matches("opt_").to_string()
+        func.trim_start_matches("opt_")
+            .trim_end_matches("_block")
+            .to_string()
     }
 }
 
@@ -166,12 +168,45 @@ impl Lowerer {
 
     fn option_line(&mut self, node: &SyntaxNode) -> OptionLine {
         let args = self.args(node, "rest");
-        let children = node
-            .children()
-            .iter()
-            .filter(|c| is_option(&c.func))
-            .map(|c| self.option_line(c))
-            .collect();
+        let mut children = Vec::new();
+        for c in node.children() {
+            if is_option(&c.func) {
+                children.push(self.option_line(c));
+            } else if matches!(
+                c.func.as_str(),
+                "field" | "field_block" | "file" | "file_block"
+            ) {
+                // multipart parts: `field NAME VALUE`, `file NAME PATH [TYPE]`
+                let mut args = Vec::new();
+                if c.func.starts_with("field") {
+                    args.push(Arg::Word(
+                        c.text("name").to_string(),
+                        c.capture_span("name"),
+                    ));
+                }
+                args.extend(self.args(c, "rest"));
+                let key = if c.func.starts_with("field") {
+                    "field"
+                } else {
+                    "file"
+                };
+                children.push(OptionLine {
+                    key: key.into(),
+                    args,
+                    span: c.span.clone(),
+                    children: Vec::new(),
+                });
+            } else {
+                self.syntax(
+                    "syntax.option_expected",
+                    format!(
+                        "`{}` is not valid inside an option block",
+                        display_func(&c.func)
+                    ),
+                    &c.span,
+                );
+            }
+        }
         OptionLine {
             key: option_key(&node.func),
             args,
@@ -1114,12 +1149,10 @@ impl Lowerer {
                         &span,
                     );
                 }
-                let args = self.args(n, "rest");
                 let text = n.text("rest");
                 let cond = match parse_expr(text, &map_for(n, "rest")) {
                     Ok(e) => e,
                     Err(e) => {
-                        let _ = args;
                         self.fail(e);
                         return None;
                     }

@@ -265,7 +265,7 @@ end
 
 # results = map item in [..] limit N \n ... yield v \n end
 function assign_map
-    priority 10
+    priority 20
     arg capture var ident
     arg literal "="
     arg literal "map"
@@ -278,7 +278,7 @@ end
 
 # status = poll every "1s" until … \n … end
 function assign_poll
-    priority 10
+    priority 20
     arg capture var ident
     arg literal "="
     arg literal "poll"
@@ -353,6 +353,15 @@ end
 function opt_body
     arg literal "body"
     arg capture rest tail default ""
+    when_not_followed_by indent
+end
+
+# body multipart … end: `field NAME VALUE` and `file NAME PATH [TYPE]` part lines
+function opt_body_block
+    arg literal "body"
+    arg capture rest tail default ""
+    when_followed_by indent
+    block_closer end
 end
 
 function opt_framing
