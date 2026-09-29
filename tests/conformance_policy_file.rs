@@ -982,9 +982,20 @@ fn policy_explain_params_evaluates_concrete_targets() {
         }
         rivet(tmp.path(), &args)
     };
+    // Allowed: the ok envelope on stdout (data = the explanation). Denied: an
+    // error envelope on stderr (status error, kind permission, exit 3) whose
+    // error.details holds the same explanation (INC-2026-0012 item 12).
     let decisions = |o: &Out| -> Vec<(String, String)> {
-        let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();
-        j["data"]["sites"]
+        let j: Json = if o.code == 3 {
+            let e: Json = serde_json::from_str(o.stderr.trim()).unwrap();
+            assert_eq!(e["status"], "error");
+            assert_eq!(e["error"]["kind"], "permission");
+            e["error"]["details"].clone()
+        } else {
+            let j: Json = serde_json::from_str(o.stdout.trim()).unwrap();
+            j["data"].clone()
+        };
+        j["sites"]
             .as_array()
             .unwrap()
             .iter()

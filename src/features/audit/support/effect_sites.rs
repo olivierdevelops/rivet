@@ -11,8 +11,8 @@
 //! ```
 
 use crate::domain::io_manifest::{
-    CallSite, EffectCatalog, EffectSite, Knowledge, OperationEffects, Phase, SiteKind, SiteOrigin,
-    SiteTarget,
+    CallArg, CallSite, EffectCatalog, EffectSite, Knowledge, OperationEffects, Phase, SiteKind,
+    SiteOrigin, SiteTarget,
 };
 use crate::domain::ir::{
     Arg, BinOp, CompiledProgram, Declaration, EffectForm, EffectKind, Expr, MemberCall, Operation,
@@ -618,7 +618,8 @@ impl<'a> Walker<'a> {
                         })
                     })
                 {
-                    self.call(&id, span);
+                    let bound = self.call_args(args.get(1));
+                    self.call(&id, span, bound);
                 }
                 for a in args {
                     self.expr(a);
@@ -635,13 +636,37 @@ impl<'a> Walker<'a> {
         }
     }
 
-    fn call(&mut self, id: &str, span: &SourceSpan) {
+    /// The statically known arguments of a call's `{key: …}` object: a bare
+    /// caller param (`{id: id}`) or a constant (`{id: 3}`, a global).
+    fn call_args(&self, data: Option<&Expr>) -> Vec<CallArg> {
+        let Some(Expr::Object(pairs)) = data else {
+            return Vec::new();
+        };
+        pairs
+            .iter()
+            .filter_map(|(k, v)| match v {
+                Expr::Path(p, _) if p.len() == 1 && self.param(&p[0]).is_some() => Some(CallArg {
+                    param: k.clone(),
+                    from_param: Some(p[0].clone()),
+                    value: None,
+                }),
+                _ => self.constant(v).map(|c| CallArg {
+                    param: k.clone(),
+                    from_param: None,
+                    value: Some(c),
+                }),
+            })
+            .collect()
+    }
+
+    fn call(&mut self, id: &str, span: &SourceSpan, args: Vec<CallArg>) {
         if self.program.operation(id).is_some() {
             self.calls.push(CallSite {
                 operation_id: self.op.id.clone(),
                 callee: id.to_string(),
                 connector: None,
                 source: span_rel(span, self.root),
+                args,
             });
             return;
         }
@@ -656,6 +681,7 @@ impl<'a> Walker<'a> {
             callee: id.to_string(),
             connector: Some(conn_name.to_string()),
             source: span_rel(span, self.root),
+            args: Vec::new(),
         });
         let conn = conn.clone();
         let before = self.sites.len();

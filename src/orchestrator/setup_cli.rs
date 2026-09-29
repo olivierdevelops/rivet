@@ -2,14 +2,14 @@
 
 // vhco:surface cli kind cli calls language/compile_program, language/compile_globals, language/resolve_imports, registry/describe_operations, registry/inspect_outputs, execution/request_operation, execution/cancel_request, policy/load_policy, serve/start_serve, serve/parse_input, audit/inspect_effects, audit/build_graph, audit/read_trace, policy/generate_policy, connectors/invoke_mcp, auth/begin_authorization, auth/complete_authorization, auth/credential_status, auth/disconnect_account, auth/cancel_authorization, language/highlight_source
 // vhco:trigger cli auth/begin_authorization = rivet auth begin PROFILE --account ACCOUNT | rivet request rivet.auth.begin --data JSON
-// vhco:trigger cli auth/complete_authorization = rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON
+// vhco:trigger cli auth/complete_authorization = rivet auth complete --data-file PATH [--timeout D] | rivet auth complete --data JSON (aliases --params-file, --params)
 // vhco:trigger cli auth/credential_status = rivet auth status PROFILE --account ACCOUNT
 // vhco:trigger cli auth/disconnect_account = rivet auth disconnect PROFILE --account ACCOUNT
 // vhco:trigger cli auth/cancel_authorization = rivet auth cancel TRANSACTION_ID
 // vhco:api cli auth/begin_authorization rivet auth begin PROFILE --account ACCOUNT -- start a code (PKCE S256) or device transaction; stdout is the ResponseEnvelope (operation rivet.auth.begin) whose data is the AuthChallenge (no verifier, state secret or token)
 // vhco:request { "profile": "string", "account": "string" }
 // vhco:response { "request_id": "string", "trace_id": "string", "operation": "rivet.auth.begin", "type": "result", "status": "ok", "data": "{transaction_id, authorization_url?, verification_uri?, user_code?, expires_at, interval_seconds?}", "error": "null", "effects": "none|committed", "data_count": "0" }
-// vhco:api cli auth/complete_authorization rivet auth complete --params-file PATH [--timeout D] -- finish a transaction; envelope whose data is the connected CredentialStatus, or {"state":"pending"} when the deadline came first (transaction kept)
+// vhco:api cli auth/complete_authorization rivet auth complete --data-file PATH [--timeout D] -- finish a transaction; envelope whose data is the connected CredentialStatus, or {"state":"pending"} when the deadline came first (transaction kept)
 // vhco:request { "transaction_id": "string", "callback": "{code, state, redirect_uri, issuer?}?", "wait": "bool" }
 // vhco:response { "request_id": "string", "trace_id": "string", "operation": "rivet.auth.complete", "type": "result", "status": "ok", "data": "{profile, account, state: connected|pending, scopes, expires_at, generation}", "error": "null", "effects": "none|committed", "data_count": "0" }
 // vhco:trigger cli execution/request_operation = rivet request ID --data JSON [--stream] [--input-jsonl - --stream] | rivet request --input FILE|- | rivet --endpoint URL [--token-file PATH] request ID …
@@ -396,6 +396,23 @@ async fn run(cli: Cli) -> i32 {
         }
     };
     let source = runtime.bundle().files.first().map(|f| f.text.clone());
+    // A module's ignored policy.json is announced once at load by every
+    // command that runs the bundle, not by `rivet check` only (R24;
+    // INC-2026-0012 item 14). `check` prints all its warnings itself.
+    if matches!(cli.command, Command::Request(_) | Command::Serve(_)) {
+        for w in runtime
+            .program()
+            .warnings
+            .iter()
+            .filter(|w| w.code == crate::domain::errors::codes::MODULE_POLICY_IGNORED)
+        {
+            eprintln!(
+                "{}",
+                w.render(own_source(w).as_deref().or(source.as_deref()))
+                    .replacen("error[", "warning[", 1)
+            );
+        }
+    }
     let mut stdout = std::io::stdout();
     match &cli.command {
         Command::Request(args) => {
@@ -589,9 +606,13 @@ async fn run(cli: Cli) -> i32 {
             0
         }
         Command::Policy {
-            command: PolicyCommand::Explain { id, params },
+            command: PolicyCommand::Explain { id, data },
         } => {
-            let params = match params.as_deref().map(parse_params).transpose() {
+            let params = match data
+                .as_deref()
+                .map(|t| parse_json_flag("--data", t))
+                .transpose()
+            {
                 Ok(p) => p,
                 Err(e) => return fail_as(Some("rivet.policy.explain"), &e, None, cli.json),
             };
@@ -613,6 +634,17 @@ async fn run(cli: Cli) -> i32 {
                 },
                 None => None,
             };
+            // G9: with --data the sites are that call's concrete targets; any denial
+            // means the call would be refused → exit 3 (permission).
+            let denied_sites: Vec<&crate::domain::io_manifest::EffectSite> = match &report {
+                Some(r) if params.is_some() => r
+                    .manifest
+                    .sites
+                    .iter()
+                    .filter(|s| s.decision.as_deref() == Some("denied"))
+                    .collect(),
+                _ => Vec::new(),
+            };
             if cli.json {
                 let p = runtime.policy();
                 // `"*"` is an explicit broad target; flag every grant that uses it (S67).
@@ -628,39 +660,60 @@ async fn run(cli: Cli) -> i32 {
                 if let Some(r) = &report {
                     v["sites"] = r.manifest.to_json()["sites"].clone();
                 }
-                print_envelope(&payload(&runtime, "rivet.policy.explain", v));
+                if denied_sites.is_empty() {
+                    print_envelope(&payload(&runtime, "rivet.policy.explain", v));
+                } else {
+                    // The envelope agrees with exit 3 (API-2026-0006: status error,
+                    // kind permission → exit 3): an error envelope on stderr whose
+                    // details carry the full explanation and the denied sites.
+                    let denied: Vec<serde_json::Value> = denied_sites
+                        .iter()
+                        .map(|s| {
+                            serde_json::json!({
+                                "effect_id": s.effect_id,
+                                "capability": s.capability.as_str(),
+                                "target": s.target.template,
+                                "access": s.access_label(),
+                            })
+                        })
+                        .collect();
+                    v["denied"] = serde_json::Value::Array(denied);
+                    let ids = payload(&runtime, "rivet.policy.explain", serde_json::Value::Null);
+                    let mut e = RivetError::new(
+                        crate::domain::ErrorKind::Permission,
+                        "permission.denied",
+                        format!(
+                            "{} effect site(s) of this call would be denied by the policy",
+                            denied_sites.len()
+                        ),
+                    )
+                    .with_details(Value::from_json(&v));
+                    e.operation_id = id.clone();
+                    e.request_id = Some(ids.request_id);
+                    e.trace_id = Some(ids.trace_id);
+                    eprintln!(
+                        "{}",
+                        ResponseEnvelope::from_error(Some("rivet.policy.explain"), &e)
+                            .render(format())
+                    );
+                    return 3;
+                }
             } else {
                 let _ = write!(stdout, "{}", render_policy(runtime.policy()));
                 if let Some(r) = &report {
                     let _ = write!(stdout, "\n{}", r.rendered);
                 }
             }
-            // G9: with --params the sites are that call's concrete targets; any denial
-            // means the call would be refused → exit 3 (permission).
-            let denied = report.as_ref().is_some_and(|r| {
-                r.manifest
-                    .sites
-                    .iter()
-                    .any(|s| s.decision.as_deref() == Some("denied"))
-            });
-            if params.is_some() && denied {
-                if let Some(r) = &report {
-                    for s in &r.manifest.sites {
-                        if s.decision.as_deref() == Some("denied") {
-                            eprintln!(
-                                "denied: {} {} {} ({})",
-                                s.effect_id,
-                                s.capability.as_str(),
-                                s.target.template,
-                                s.access_label()
-                            );
-                        }
-                    }
-                }
-                3
-            } else {
-                0
+            for s in &denied_sites {
+                eprintln!(
+                    "denied: {} {} {} ({})",
+                    s.effect_id,
+                    s.capability.as_str(),
+                    s.target.template,
+                    s.access_label()
+                );
             }
+            if denied_sites.is_empty() { 0 } else { 3 }
         }
         #[cfg(feature = "serve")]
         Command::Serve(args) => {
@@ -924,22 +977,22 @@ pub(super) fn auth_request(
             None,
         ),
         AuthCommand::Complete {
-            params,
-            params_file,
+            data,
+            data_file,
             timeout,
         } => {
-            let text = match (params, params_file) {
+            let text = match (data, data_file) {
                 (Some(p), None) => p.clone(),
                 (None, Some(f)) => std::fs::read_to_string(f).map_err(|e| {
                     RivetError::validation(
                         "validation.usage",
-                        format!("--params-file {f}: {}", e.kind()),
+                        format!("--data-file {f}: {}", e.kind()),
                     )
                 })?,
                 _ => {
                     return Err(RivetError::validation(
                         "validation.usage",
-                        "auth complete needs exactly one of --params JSON or --params-file PATH",
+                        "auth complete needs exactly one of --data JSON or --data-file PATH",
                     ));
                 }
             };

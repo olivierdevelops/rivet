@@ -16,6 +16,10 @@
 //!      ├─ rt.request(id, Value, sink)       ─▶ Result<Completion>  (Rust-idiomatic `?`)
 //!      ├─ rt.scope(|s| s.stream / s.duplex) ─▶ Envelope records    (emits / receives)
 //!      ├─ rt.load(path) / load_as           ─▶ Module              (module.call / operations)
+//!      ├─ rt.open_session / send_input / read_events / finish_input / cancel_session
+//!      │                                    ─▶ rivet::types::Session*  (polling-style sessions)
+//!      ├─ rt.trace(request_id)              ─▶ TraceResult          (decision/attempt trace)
+//!      ├─ rivet::serve::start(rt, ServeOptions) ─▶ ServeHandle      (feature `serve`)
 //!      └─ rivet::highlight::tokens(src)     ─▶ Vec<HighlightToken>
 //! ```
 //!
@@ -83,13 +87,31 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// The crate version (the workspace version shared with `rivet-ffi`).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The decision/attempt trace of one request (`Runtime::trace`).
+pub use domain::io_manifest::{TraceEvent, TraceResult};
+
 /// Argument and report types of `Runtime` methods (queries, catalogs,
-/// manifests, drafts, session limits, principals and source spans).
+/// manifests, drafts, sessions, requests, principals and source spans).
 pub mod types {
     pub use crate::domain::call_graph::GraphQuery;
-    pub use crate::domain::contracts::{Catalog, OutputReport, Principal, RegistryEntry};
-    pub use crate::domain::io_manifest::{IoQuery, IoReport, PolicyDraft};
+    pub use crate::domain::contracts::{Catalog, OutputReport, Principal, RegistryEntry, Request};
+    pub use crate::domain::io_manifest::{IoQuery, IoReport, PolicyDraft, TraceQuery};
     pub use crate::domain::modules::ModuleSummary;
-    pub use crate::domain::sessions::SessionLimits;
+    /// `Runtime::{open_session, send_input, finish_input, read_events, cancel_session}`.
+    pub use crate::domain::sessions::{
+        CancelReceipt, SessionAck, SessionBatch, SessionEvent, SessionLimits, SessionOpenInput,
+        SessionReadInput, SessionReceipt, SessionRef, SessionSendInput,
+    };
     pub use crate::domain::source::SourceSpan;
+}
+
+/// Serve a runtime on one listener (REST, SSE, polling, WebSocket, MCP), as
+/// `rivet serve` does: `rivet::serve::start(rt, ServeOptions { listen: … })`.
+#[cfg(feature = "serve")]
+pub mod serve {
+    /// Host authentication callback of `ServeOptions::authenticator`.
+    pub use crate::domain::ports::Authenticator;
+    /// The listener's receipt (`ServeHandle::receipt`) and the authenticator input.
+    pub use crate::domain::serve::{AuthnInput, ServeReceipt};
+    pub use crate::orchestrator::setup_serve::{AccessLogSink, ServeHandle, ServeOptions, start};
 }

@@ -139,10 +139,13 @@ pub fn inspect_effects(query: &IoQuery, ports: &AuditPorts) -> RivetResult<IoRep
     // vhco:todo check_policy -- when asked, evaluate every access verb of every site through PolicyEvaluator (effective policy; nothing performed): allowed when all verbs are granted; for param_dependent targets an arbitrary instance that is granted is allowed, otherwise partial when some grant selector instance falls inside the derived glob/origin and is itself allowed, else denied; bounded targets check every bound value; dynamic and opaque_native are unknown; record the policy file and sha256
     // vhco:step policy PolicyEvaluator.evaluate -- static evaluator: no decision log, no trace event
     let root = program.root.clone();
-    // vhco:step concrete params -- policy explain ID --params: each entry-operation site whose placeholders are all params present in the call's params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets
+    // vhco:step concrete params -- policy explain ID --params: the call's params bind the entry operation, and each literal call edge passes them on through its statically known arguments (CallSite.args: a caller param or a constant), so a callee reached as `(users.fetch {id: id})` is bound too; each site whose placeholders are all bound params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets
     if let Some(params) = &query.params {
-        for s in sites.iter_mut().filter(|s| s.call_chain.len() == 1) {
-            fill_params(s, params);
+        let bound = bind_params(&entries, params, &catalog.operations);
+        for s in sites.iter_mut() {
+            if let Some(p) = bound.get(&s.operation_id) {
+                fill_params(s, p);
+            }
         }
     }
     if query.check_policy {
@@ -764,6 +767,68 @@ fn url_component(s: &str) -> String {
         }
     }
     out
+}
+
+/// The params each operation runs with for one call of the entries: the
+/// entries get `params`; a callee gets what its call edge passes (a caller
+/// param's value or a constant). An operation reached with two different
+/// bindings is left unbound (its targets stay param-dependent).
+fn bind_params(
+    entries: &[String],
+    params: &crate::domain::Value,
+    operations: &[crate::domain::io_manifest::OperationEffects],
+) -> HashMap<String, crate::domain::Value> {
+    use crate::domain::Value as V;
+    let mut bound: HashMap<String, V> = HashMap::new();
+    let mut conflict: BTreeSet<String> = BTreeSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for e in entries {
+        bound.insert(e.clone(), params.clone());
+        queue.push(e.clone());
+    }
+    let mut steps = 0usize;
+    while let Some(op) = queue.pop() {
+        steps += 1;
+        if steps > 4096 {
+            break;
+        }
+        let Some(from) = bound.get(&op).cloned() else {
+            continue;
+        };
+        let Some(effects) = operations.iter().find(|o| o.operation_id == op) else {
+            continue;
+        };
+        for call in effects.calls.iter().filter(|c| c.connector.is_none()) {
+            let fields: Vec<(String, V)> = call
+                .args
+                .iter()
+                .filter_map(|a| {
+                    let v = match (&a.from_param, &a.value) {
+                        (Some(p), _) => from.get(p).cloned(),
+                        (None, Some(v)) => Some(v.clone()),
+                        _ => None,
+                    }?;
+                    Some((a.param.clone(), v))
+                })
+                .collect();
+            let next = V::Object(fields);
+            if conflict.contains(&call.callee) || entries.contains(&call.callee) {
+                continue;
+            }
+            match bound.get(&call.callee) {
+                Some(prev) if *prev == next => {}
+                Some(_) => {
+                    bound.remove(&call.callee);
+                    conflict.insert(call.callee.clone());
+                }
+                None => {
+                    bound.insert(call.callee.clone(), next);
+                    queue.push(call.callee.clone());
+                }
+            }
+        }
+    }
+    bound
 }
 
 /// Fill a site's `{param}` placeholders with one call's params. Sites with a

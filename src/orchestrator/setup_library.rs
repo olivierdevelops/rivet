@@ -274,14 +274,26 @@ impl Scope {
         let (tx, rx) = tokio::sync::mpsc::channel::<Envelope>(STREAM_QUEUE);
         let rt = self.rt.clone();
         let task = tokio::spawn(async move {
-            let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink { tx: tx.clone() });
+            let sent = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink {
+                tx: tx.clone(),
+                sent: Arc::clone(&sent),
+            });
             let (rid, tid, op) = (
                 req.request_id.clone(),
                 req.trace_id.clone(),
                 req.operation_id.clone(),
             );
             let out = rt.dispatch_request(req, Some(sink)).await;
-            let _ = tx.send(terminal(out, rid, tid, op)).await;
+            let _ = tx
+                .send(terminal(
+                    out,
+                    rid,
+                    tid,
+                    op,
+                    sent.load(std::sync::atomic::Ordering::SeqCst) + 1,
+                ))
+                .await;
         });
         self.own(request_id.clone(), task);
         Ok(StreamHandle {
@@ -310,14 +322,26 @@ impl Scope {
         let (in_tx, in_rx) = tokio::sync::mpsc::channel::<Value>(STREAM_QUEUE);
         let rt = self.rt.clone();
         let task = tokio::spawn(async move {
-            let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink { tx: tx.clone() });
+            let sent = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let sink: Arc<dyn DataSink> = Arc::new(EnvelopeSink {
+                tx: tx.clone(),
+                sent: Arc::clone(&sent),
+            });
             let (rid, tid, op) = (
                 req.request_id.clone(),
                 req.trace_id.clone(),
                 req.operation_id.clone(),
             );
             let out = rt.dispatch_session(req, sink, in_rx).await;
-            let _ = tx.send(terminal(out, rid, tid, op)).await;
+            let _ = tx
+                .send(terminal(
+                    out,
+                    rid,
+                    tid,
+                    op,
+                    sent.load(std::sync::atomic::Ordering::SeqCst) + 1,
+                ))
+                .await;
         });
         self.own(request_id.clone(), task);
         Ok(DuplexHandle {
@@ -342,11 +366,14 @@ impl Scope {
     }
 }
 
+/// The terminal envelope of a scope stream; `seq` follows the last data item
+/// forwarded (its record carries `seq` like every other surface's).
 fn terminal(
     out: RivetResult<Completion>,
     request_id: String,
     trace_id: String,
     operation: String,
+    seq: u64,
 ) -> Envelope {
     match out {
         Ok(c) => Envelope::Result(c),
@@ -354,7 +381,7 @@ fn terminal(
             request_id,
             trace_id,
             operation,
-            seq: 0,
+            seq,
             error: Box::new(e),
         },
     }
@@ -364,6 +391,8 @@ fn terminal(
 /// the request ends `cancelled`, never `consumer_failed`.
 struct EnvelopeSink {
     tx: tokio::sync::mpsc::Sender<Envelope>,
+    /// Data items forwarded so far (numbers the terminal record).
+    sent: Arc<std::sync::atomic::AtomicU64>,
 }
 
 #[async_trait::async_trait]
@@ -372,7 +401,9 @@ impl DataSink for EnvelopeSink {
         self.tx
             .send(Envelope::Data(event))
             .await
-            .map_err(|_| RivetError::consumer_stop())
+            .map_err(|_| RivetError::consumer_stop())?;
+        self.sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
     }
 }
 
@@ -515,9 +546,22 @@ impl Runtime {
             path: path.to_string(),
             alias,
         };
-        let summary = self.with_catalog_store(|store| {
-            crate::features::registry::load_module::load_module(&input, store)
-        })?;
+        // A host load is a runtime call (`rivet.load`): a refusal carries
+        // minted request and trace ids like every other runtime envelope; its
+        // kind is the registry's (`check.*` → syntax, exit 2) as `rivet check`
+        // reports it (INC-2026-0012 item 13).
+        let summary = self
+            .with_catalog_store(|store| {
+                crate::features::registry::load_module::load_module(&input, store)
+            })
+            .map_err(|mut e| {
+                if e.request_id.is_none() {
+                    let ids = self.new_request("rivet.load", Value::Null, Principal::local());
+                    e.request_id = Some(ids.request_id);
+                    e.trace_id = Some(ids.trace_id);
+                }
+                e
+            })?;
         Ok(Module {
             rt: self.clone(),
             summary,

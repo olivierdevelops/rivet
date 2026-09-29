@@ -476,11 +476,12 @@ impl RemoteEndpoint for RemoteClient {
         const REF: &str = "cli";
         let send = |j: Json| Message::Text(j.to_string().into());
         let ws_err = |e: tokio_tungstenite::tungstenite::Error| io_err(format!("WebSocket: {e}"));
-        tx.send(send(
-            json!({"type": "request", "ref": REF, "operation": call.id, "data": call.params.to_json()}),
-        ))
-        .await
-        .map_err(ws_err)?;
+        let mut request = json!({"type": "request", "ref": REF, "operation": call.id, "data": call.params.to_json()});
+        // `--timeout` bounds the ref like it bounds REST requests (INC-2026-0012 item 11).
+        if let Some(d) = call.deadline_ms {
+            request["deadline_ms"] = json!(d);
+        }
+        tx.send(send(request)).await.map_err(ws_err)?;
         let mut seq = 0u64;
         let mut input_open = true;
         let mut cancel_open = true;

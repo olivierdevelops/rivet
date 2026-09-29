@@ -127,14 +127,16 @@ pub enum AuthCommand {
         #[arg(long)]
         account: String,
     },
-    /// Complete a transaction. Pass callback codes with --params-file, never argv.
+    /// Complete a transaction. Pass callback codes with --data-file, never argv.
     Complete {
-        /// {"transaction_id": ..., "callback": {...}} or {"transaction_id": ..., "wait": true}.
-        #[arg(long)]
-        params: Option<String>,
-        /// Read the same JSON object from a file (keeps codes out of argv and history).
-        #[arg(long)]
-        params_file: Option<String>,
+        /// {"transaction_id": ..., "callback": {...}} or {"transaction_id": ..., "wait": true}
+        /// (`--params` is accepted as an alias).
+        #[arg(long = "data", visible_alias = "params")]
+        data: Option<String>,
+        /// Read the same JSON object from a file (keeps codes out of argv and history;
+        /// `--params-file` is accepted as an alias).
+        #[arg(long = "data-file", visible_alias = "params-file")]
+        data_file: Option<String>,
         /// Request deadline, e.g. "2m"; a device poll still pending then returns {"state":"pending"}.
         #[arg(long)]
         timeout: Option<String>,
@@ -228,10 +230,11 @@ pub enum PolicyCommand {
     /// Explain the effective policy (and, with an ID, what that operation needs).
     Explain {
         id: Option<String>,
-        /// Params of one concrete call: its param-dependent targets are filled and
-        /// evaluated; exit 3 when any would be denied.
-        #[arg(long)]
-        params: Option<String>,
+        /// Data of one concrete call: its param-dependent targets (and those of the
+        /// operations it calls with these values) are filled and evaluated; exit 3
+        /// when any would be denied. `--params` is accepted as an alias.
+        #[arg(long = "data", visible_alias = "params")]
+        data: Option<String>,
     },
     /// Generate a least-privilege policy.json draft from the I/O manifest.
     Generate {

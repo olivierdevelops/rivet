@@ -47,7 +47,7 @@ pub async fn complete_authorization(
         (OAuthFlow::AuthorizationCode, None) => {
             return Err(RivetError::validation(
                 "validation.auth_callback",
-                "an authorization_code transaction completes with {transaction_id, callback:{code, state, redirect_uri, issuer?}} (use --params-file, never argv)",
+                "an authorization_code transaction completes with {transaction_id, callback:{code, state, redirect_uri, issuer?}} (use --data-file, never argv)",
             ));
         }
         (OAuthFlow::DeviceCode, Some(_)) => {

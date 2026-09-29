@@ -360,7 +360,19 @@ impl EffectSite {
     }
 }
 
-// vhco:domain CallSite { operation_id: string; callee: string; connector?: string; source: SourceSpan }
+// vhco:domain CallArg { param: string; from_param?: string; value?: Value }
+/// One statically known argument of a call edge: the callee's `param` is the
+/// caller's param `from_param`, or the constant `value` (a literal or a
+/// global). `policy explain CALLER --params` follows these to fill the
+/// callee's `{param}` targets.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CallArg {
+    pub param: String,
+    pub from_param: Option<String>,
+    pub value: Option<crate::domain::Value>,
+}
+
+// vhco:domain CallSite { operation_id: string; callee: string; connector?: string; source: SourceSpan; args: CallArg[] }
 /// A literal `(request "id" …)` edge: shown as a `(calls X)` row, never a site.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallSite {
@@ -369,6 +381,9 @@ pub struct CallSite {
     /// Set when the callee is an imported connector method (`crm.tools.search`).
     pub connector: Option<String>,
     pub source: SourceSpan,
+    /// Arguments of a `{key: …}` object literal whose value is a caller param
+    /// or a constant (others are omitted: not statically known).
+    pub args: Vec<CallArg>,
 }
 
 // vhco:domain OperationEffects { operation_id: string; private: bool; sites: EffectSite[]; calls: CallSite[] }
