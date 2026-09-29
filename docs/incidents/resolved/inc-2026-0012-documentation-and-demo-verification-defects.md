@@ -13,7 +13,7 @@ start_time: 2026-09-29T06:00:00Z
 end_time: 2026-09-29T12:00:00Z
 root_cause_status: identified
 systems: [Rivet]
-components: [envelope, serve, ws, mcp, poll, library, ffi, cli, language, highlight_source, audit, policy, sessions]
+components: [serve, ws, mcp, poll, library, ffi, cli, language, highlight_source, audit, policy, sessions]
 affected_versions:
   from: "0.2.0-rc"
   to: "0.2.0-rc"
@@ -33,7 +33,7 @@ tags: [rivet, incident, implementation, v0.2.0, envelope, websocket, mcp]
 > **Last Updated:** 2026-09-29
 > **Affected Versions:** 0.2.0 release candidate (unreleased)
 > **Owner:** Project maintainer
-> **Affected Components:** envelope, serve, ws, mcp, poll, library, ffi, cli, language, highlight_source, audit, policy, sessions
+> **Affected Components:** serve, ws, mcp, poll, library, ffi, cli, language, highlight_source, audit, policy, sessions
 
 ## Incident Summary
 
