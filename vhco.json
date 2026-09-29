@@ -3,7 +3,7 @@
   "module": "rivet-runtime",
   "language": "rust",
   "overview": {
-    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling. PLAN-2026-0002 (v0.2.0, PROP-2026-0002 / ADR-0004) contract delta applied at P1 (TASK-004): one ResponseEnvelope and one InputEnvelope on every surface (serve.parse_input, legacy id/params aliases with deprecation signals), opt-in pretty JSON, immutable `global` constants (language.compile_globals), syntax highlighting (language.highlight_source), the `ffi` surface (C ABI through orchestrator/setup_ffi.rs) and the capability report's build features and ABI version.",
+    "summary": "APPROVED (ADR-0001) and IMPLEMENTED through PLAN-2026-0001 P2 (2026-09-28): Rust/Capy runtime with described operations, declared outputs, policy.json-only authority (deny-by-default), one `rivet serve` for REST/SSE/polling/WebSocket/MCP, the generated I/O manifest and least-privilege policy drafts, file CRUD, HTTP/1.1-2-3, TCP/Unix/WebSocket, processes with OS sandbox backends, UDP, QUIC, gRPC (four modes), OAuth 2.0 (three flows), MCP client connectors and sessions. Contract reconciled with the implementation at P2 exit (PLAN-2026-0001 TASK-086): use cases, ports, domain types, adapters, surfaces and flows are the implemented ones; todo texts keep the reviewed wording. Design deltas: scope_supervisor folded into execution_driver (with-block cleanup), policy_authenticator folded into the serve.authenticate_principal use case over policy.json; adapters added: h3_client, net_tls, remote_client, request_control, sandbox_linux/macos/unsupported, source_loader, wire_codec, effect_args. Re-reconciled after the post-P3 fix batches (Fix-A…D, 2026-09-28): audit.build_graph (rivet graph), trace export, per-request restrict, W3C traceparent, structured cancellation, secret taint on every sink, if/else, scoped file handles (files.open_file_stream), rivet.capabilities (registry.describe_capabilities), library scope/stream/duplex and host ceiling. PLAN-2026-0002 (v0.2.0, PROP-2026-0002 / ADR-0004) contract delta applied at P1 (TASK-004): one ResponseEnvelope and one InputEnvelope on every surface (serve.parse_input, legacy id/params aliases with deprecation signals), opt-in pretty JSON, immutable `global` constants (language.compile_globals), syntax highlighting (language.highlight_source), the `ffi` surface (C ABI through orchestrator/setup_ffi.rs) and the capability report's build features and ABI version. Documentation delta 2026-09-29: added the orchestrator and cross-package review standard; this changes review practice only and adds no runtime feature, use case, port, surface, flow or domain type.",
     "why": "Provide a root commands.perch that wraps existing Cargo, Python and VHCO workflows. Each command runs from ${script_dir}, declares cargo/bman/python3/vhco as optional binaries and CARGO_TARGET_DIR/CARGO_HOME/RUSTUP_HOME as optional environment variables, propagates failures, and uses the checked-in Cargo.lock for Cargo build/check/test/clippy/install. build produces the release binary; build_debug produces the debug binary; install first builds with cargo build --locked --release --bin rivet --target-dir ${script_dir}/target, then runs bman add with the quoted absolute ${script_dir}/target/release/rivet path (rivet.exe on Windows). The explicit target directory prevents CARGO_TARGET_DIR from selecting a different artifact; installation stops if the build fails and propagates bman failures. bman manages the global command destination. The main command prints available tasks (perch main, or the script-file invocation perch commands.perch); perch --help lists descriptions. Bare perch displays the installed CLI usage. The test wrapper is named tests because test is a reserved Perch built-in. gates runs fmt_check, check, clippy, tests, docs_check and architecture sequentially and stops on the first failure. Architecture runs vhco validate, sync and check; model/explorer generation remains explicit. clean removes Cargo build artifacts only when explicitly requested. No runtime feature, use case, port, surface, flow or domain delta is needed: these are developer wrappers outside the runtime model. Verification covers perch --check and --help, command dispatch from paths with spaces, Cargo environment forwarding, fail-fast gate behavior, release build/install, Rust formatting/type/lint/tests, documentation links and VHCO architecture/sync/guarantees. README.md and installation/contributor documentation describe the implemented tasks.",
     "status": "Runtime and Perch developer commands implemented. Perch command set approved by the maintainer on 2026-09-28; installation changed to bman add at the maintainer's explicit request; verified with the installed CLI, real release build/install, Rust checks, documentation checks and VHCO gates.",
     "quickstart": [
@@ -34,7 +34,7 @@
         "title": "Rivet",
         "path": "README.md",
         "kind": "readme",
-        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: active\ncreated_date: 2026-09-27\nlast_updated: 2026-09-28\ndocument_revision: 10\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, execution, cli, http, mcp, library, policy]\naffected_versions:\n  from: \"0.1.0\"\n  to: null\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Current Rivet runtime, source build, installation and developer workflows; no published release claim.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current state: implemented, unreleased (`0.1.0-dev`).** The repository contains the Rust library,\n`rivet` binary, conformance tests and runnable source-build workflows. The approved design and implementation\nplan are recorded in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md) and\n[PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).\nStart with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and\n[installation guide](docs/manuals/man-2026-0002-installation-and-quickstart.md).\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/implemented/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n\n## Build, install and develop\n\nWith Perch on `PATH`, run these from the checkout root. Rust 1.90.0, rustfmt and Clippy are pinned in\n`rust-toolchain.toml`; Python 3 and VHCO are needed for documentation and architecture checks.\n\n```sh\nperch --help           # list all commands and descriptions\nperch build            # optimized binary: target/release/rivet (cargo build --release --features cli)\nperch build_debug      # debug binary: target/debug/rivet\nperch install          # build release, then bman add \"\u003cabsolute binary path\u003e\"\nperch tests            # cargo test --locked --workspace --all-targets --all-features\nperch features         # the library with no default features and with each Cargo feature alone\nperch gates            # formatting, type-check, lint, tests, docs and VHCO\n```\n\nInstallation requires `bman` on `PATH` and runs `bman add` with the quoted absolute release-binary path.\nBman manages the global bin directory; `bman help` shows its location. The install task explicitly builds\ninto this checkout's `target/` so it always installs that artifact. Other builds respect Cargo configuration,\nincluding `CARGO_TARGET_DIR`. The first build may fetch dependencies from the network.\n\nThe checkout is a Cargo workspace: package `rivet-runtime` (library `rivet`; the `rivet` binary needs the\n`cli` Cargo feature) and `ffi/` (`rivet-ffi`). Default features are `serve`, `grpc`, `quic` and `oauth`.\n\nOther commands: `check`, `clippy`, `fmt`, `fmt_check`, `docs_check`, `architecture`, `help_cli`, `live`,\n`spec`, `docs`, `clean`, and `main`. `perch main` prints a short task list; bare `perch` shows Perch usage.\n`gates` stops at the first failure. `fmt` edits Rust files, `clean` removes Cargo build artifacts, and\n`spec` / `docs` regenerate `vhco.json` / `vhco.html`. `live` runs until interrupted.\n\nFrom another directory, select the file explicitly:\n\n```sh\nperch -f /path/to/rivet/commands.perch build\n```\n\nEvery task runs from the command file's directory. See the\n[complete command table](docs/onboarding/onb-2026-0001-contributor-setup.md#perch-development-commands).\nDirect Cargo and VHCO invocations remain available.\n\n## Quickstart (verified)\n\nThe following was verified on macOS with the current build; request and trace IDs vary. Save this as `app.rivet`:\n\n```rivet\noperation demo.add\n    description \"Add two integers.\"\n    param a integer required description \"First addend.\"\n    param b integer required description \"Second addend.\"\n    output integer description \"The sum.\"\n    return a + b\nend\n\noperation notes.save\n    description \"Save a note to ./out/note.json.\"\n    param text text required description \"The note.\"\n    output json\n    file create \"./out/note.json\" json {text: text}\n    return {saved: true}\nend\n```\n\n```text\n $ mkdir out\n $ rivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'\n {\"request_id\":\"req_…\",\"trace_id\":\"tr_…\",\"result\":5,\"data_count\":0,\"effects\":\"none\"}          exit 0\n\n $ rivet --file app.rivet request notes.save --params '{\"text\":\"hi\"}'     # no policy.json yet\n {… \"error\":{\"kind\":\"permission\",\"code\":\"permission.denied\",\n   \"message\":\"allow_write create on ./out/note.json denied: no policy.json: …\"}}           exit 3\n\n $ rivet --file app.rivet io                                              # every I/O site, nothing runs\n OPERATION   KIND  ACCESS  TARGET           KNOWLEDGE  SOURCE\n notes.save  file  create  ./out/note.json  exact      app.rivet:13\n\n $ rivet --file app.rivet policy generate \u003e policy.draft.json            # review, then adopt\n $ mv policy.draft.json policy.json\n $ rivet --file app.rivet io --check-policy\n notes.save  file  create  ./out/note.json  exact  app.rivet:13  allowed\n\n $ rivet --file app.rivet request notes.save --params '{\"text\":\"hi\"}'\n {\"request_id\":\"req_…\",\"trace_id\":\"tr_…\",\"result\":{\"saved\":true},\"data_count\":0,\"effects\":\"committed\"}\n```\n\n```text\n  no policy.json ──► deny-by-default (exit 3, effects none)\n        │\n  rivet io ──► rivet policy generate ──► human review ──► policy.json ──► request succeeds\n```\n\nWrite the draft to a separate file. Redirecting straight into `policy.json` truncates it before Rivet reads it.\n\n## Runtime overview\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+\n      |            |           |               |           |           |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::request\n      |            |           |               |           |           |\n      +------------+-----------+-------+-------+-----------+-----------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Runtime interface |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nRuntime command examples (provide your own `app.rivet` and policy):\n\n```sh\nrivet --file app.rivet request demo.add --params '{\"a\":2,\"b\":3}'          # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --params '{\"id\":42}'\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Status and platform limits\n\nThe maintainer authorized the Capy dependency in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md).\nValidation results are in [RPT-2026-0001](docs/reports/rpt-2026-0001-validation-of-plan-2026-0001.md): every\nrequirement passes on macOS, and Linux and Windows runs wait on CI.\n\n| Not in this version | What happens |\n|---|---|\n| mTLS serve authentication | `serve` refuses to start: `unsupported.serve_mtls` (exit 5); use bearer tokens |\n| Process sandbox on Linux / Windows | Linux backend gated until verified on kernel ≥ 6.12; others unsupported: `unsupported.sandbox_backend` |\n| Multi-file bundles (`import`) | One entry `.rivet` file per bundle |\n| `finally` | `try … catch … end` only; `with` blocks always close their handles |\n| Stage C forms (FIFO, file watch, TCP TLS, interactive processes, reconnect) | Typed `unsupported.*` (exit 5), no effects |\n| Persistent trace store | Traces live for the process; `rivet trace export REQ --output PATH` saves one |\n\nDetails: [protocol manual](docs/manuals/man-2026-0008-protocols-and-connectors.md).\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nChanges follow the human contract review defined by [AGENTS.md](AGENTS.md). Run `perch architecture` for\n`vhco validate`, `sync` and `check`; run `perch gates` for the development checks. The Perch command set was\napproved by the maintainer on 2026-09-28.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 10 | 2026-09-28 | Claude | TASK-069: verified quickstart (deny-by-default → io → policy generate → allowed) and the current limitations table. |\n| 9 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |\n| 8 | 2026-09-28 | Codex | Added approved Perch build/install/development commands and corrected the obsolete pre-implementation status. |\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
+        "content": "---\ndocument_id: REF-2026-0003\ntitle: \"Rivet project status\"\ndocument_type: reference\nstatus: active\ncreated_date: 2026-09-27\nlast_updated: 2026-09-29\ndocument_revision: 12\nauthors: [Codex, Claude]\nowner: Project maintainer\nreviewers: [Project maintainer]\nsystems: [Rivet]\ncomponents: [language, execution, cli, http, mcp, library, policy, ffi]\naffected_versions:\n  from: \"0.1.0\"\n  to: null\napplicable_environments: [development, embedded, server]\naudience: [maintainers, developers, reviewers]\nscope: Current Rivet runtime (release 0.1.0; 0.2.0 in progress), source build, installation and developer workflows, and links to the 0.2.0 documentation.\nreason: Record the project brief and requested changes as reviewable contracts and examples.\ndependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]\nrelated_documents: [\"PROP-2026-0001\", \"PROP-2026-0002\", \"PLAN-2026-0002\", \"MIG-2026-0001\", \"API-2026-0006\", \"API-2026-0007\", \"MAN-2026-0009\", \"MAN-2026-0010\", \"INC-2026-0011\", \"STD-2026-0001\", \"REF-2026-0001\", \"REF-2026-0002\"]\nsupersedes: null\nsuperseded_by: null\ntags: [rivet, rust, capy, design]\nconfidentiality: internal\nreview_cycle: on-design-change\nnext_review_date: 2026-10-27\n---\n\n# Rivet\n\nRivet is a Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.\n\n**Current release: 0.1.0** (tag `v0.1.0`, [REL-0.1.0](docs/releases/rel-0.1.0-release-notes.md)). **0.2.0 is in\nprogress** ([PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md): implemented and\ndocumented on `main`, release pending). The repository contains the Rust library, the `rivet` binary, the C ABI\nlibrary `librivet`, editor support, conformance tests and runnable source-build workflows. **Supported platforms:\nmacOS and Linux** (CI green on both); Windows is not supported\n([INC-2026-0011](docs/incidents/active/inc-2026-0011-windows-port-failures.md)).\nStart with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and\n[installation guide](docs/manuals/man-2026-0002-installation-and-quickstart.md).\n\n```text\n 0.1.0 (released)                               0.2.0 (in progress on main)\n ────────────────                               ───────────────────────────\n per-surface JSON shapes (\"result\", …)   ──▶    one response envelope everywhere (breaking; MIG-2026-0001)\n {id, params} · --params                 ──▶    {operation, data} · --data · --input (old keys deprecated)\n one file per bundle                     ──▶    global constants · import \"./x.rivet\" as x · rt.load\n package rivet, all modules public       ──▶    package rivet-runtime, facade, Cargo features\n Rust only                               ──▶    + C ABI librivet (C, Python, Go)\n —                                       ──▶    rivet highlight · TextMate grammar · VS Code .vsix\n```\n\n| 0.2.0 document | What it covers |\n|---|---|\n| [What's New in 0.2.0](docs/manuals/man-2026-0001-rivet-manual.md#whats-new-in-020) | every addition, with instructions and demos |\n| [MIG-2026-0001](docs/migrations/mig-2026-0001-response-and-input-envelopes.md) | migrating 0.1.0 clients to the envelopes; rollback |\n| [API-2026-0006](docs/api/api-2026-0006-envelopes.md) | the response and input envelopes (+ JSON Schemas) |\n| [API-2026-0007](docs/api/api-2026-0007-c-abi.md) · [MAN-2026-0009](docs/manuals/man-2026-0009-c-abi-and-ffi.md) | the C ABI and calling Rivet from C, Python and Go |\n| [MAN-2026-0010](docs/manuals/man-2026-0010-editor-support-and-highlighting.md) | editor support and `rivet highlight` |\n| [MAN-2026-0003 §Globals / §Modules](docs/manuals/man-2026-0003-language-guide.md#globals) | `global` constants and file modules |\n| [MAN-2026-0007](docs/manuals/man-2026-0007-embedding-library.md) | the Cargo dependency, features, facade and `Runtime::call` / `load` |\n\n- [Proposal: runtime, syntax, interfaces and security boundaries](docs/proposals/implemented/prop-2026-0001-rivet-runtime.md)\n- [Sample folders: source files and usage READMEs](docs/demos/README.md) ([status and reading order](docs/demos/index.md))\n- [Reference: numbered usage examples](docs/references/ref-2026-0002-language-and-usage.md)\n- [Original request and inspected sources](docs/references/ref-2026-0001-request-and-evidence.md)\n- [Original project brief](PROJECT.md)\n- [Hand-authored design contract](vhco-contract.json)\n- [Documentation current state](docs/README.md) and [navigation](docs/index.md)\n- [Orchestrator and cross-package implementation standard](docs/standards/std-2026-0001-orchestrator-and-cross-package-review.md) ([STD-2026-0001](docs/standards/std-2026-0001-orchestrator-and-cross-package-review.md))\n\n## Build, install and develop\n\nWith Perch on `PATH`, run these from the checkout root. Rust 1.90.0, rustfmt and Clippy are pinned in\n`rust-toolchain.toml`; Python 3 and VHCO are needed for documentation and architecture checks.\n\n```sh\nperch --help           # list all commands and descriptions\nperch build            # optimized binary: target/release/rivet (cargo build --release --features cli)\nperch build_debug      # debug binary: target/debug/rivet\nperch install          # build release, then bman add \"\u003cabsolute binary path\u003e\"\nperch tests            # cargo test --locked --workspace --all-targets --all-features\nperch features         # the library with no default features and with each Cargo feature alone\nperch gates            # formatting, type-check, lint, tests, docs and VHCO\n```\n\nInstallation requires `bman` on `PATH` and runs `bman add` with the quoted absolute release-binary path.\nBman manages the global bin directory; `bman help` shows its location. The install task explicitly builds\ninto this checkout's `target/` so it always installs that artifact. Other builds respect Cargo configuration,\nincluding `CARGO_TARGET_DIR`. The first build may fetch dependencies from the network.\n\nThe checkout is a Cargo workspace: package `rivet-runtime` (library `rivet`; the `rivet` binary needs the\n`cli` Cargo feature) and `ffi/` (`rivet-ffi`). Default features are `serve`, `grpc`, `quic` and `oauth`.\n\nOther commands: `check`, `clippy`, `ffi` (build `librivet`, verify `rivet.h`, run the C and Python examples),\n`ffi_header`, `fmt`, `fmt_check`, `docs_check`, `architecture`, `help_cli`, `live`, `spec`, `docs`, `clean`, and\n`main`. `perch main` prints a short task list; bare `perch` shows Perch usage.\n`gates` stops at the first failure. `fmt` edits Rust files, `clean` removes Cargo build artifacts, and\n`spec` / `docs` regenerate `vhco.json` / `vhco.html`. `live` runs until interrupted.\n\nFrom another directory, select the file explicitly:\n\n```sh\nperch -f /path/to/rivet/commands.perch build\n```\n\nEvery task runs from the command file's directory. See the\n[complete command table](docs/onboarding/onb-2026-0001-contributor-setup.md#perch-development-commands).\nDirect Cargo and VHCO invocations remain available.\n\nWithout Perch, install the binary from the git tag with Cargo (the `cli` feature is required for the binary):\n\n```sh\ncargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli   # once P5 tags v0.2.0\ncargo build --release -p rivet-ffi              # librivet (C ABI): target/release/librivet.{a,dylib|so}\npython3 editors/vscode/package_vsix.py          # the VS Code extension: dist/rivet-\u003cversion\u003e.vsix\n```\n\nA Rust project depends on `rivet = { package = \"rivet-runtime\", git = \"https://github.com/olivierdevelops/rivet\", tag = \"v0.2.0\" }`\n([MAN-2026-0007](docs/manuals/man-2026-0007-embedding-library.md)).\n\n## Quickstart (verified)\n\nVerified on 2026-09-29 (macOS) with the 0.2.0 release candidate (`cargo build --release --features cli`); **request\nand trace IDs vary on every run**. With 0.1.0 use `--params` instead of `--data` and expect the 0.1.0 output shape.\nSave this as `app.rivet`:\n\n```rivet\noperation demo.add\n    description \"Add two integers.\"\n    param a integer required description \"First addend.\"\n    param b integer required description \"Second addend.\"\n    output integer description \"The sum.\"\n    return a + b\nend\n\noperation notes.save\n    description \"Save a note to ./out/note.json.\"\n    param text text required description \"The note.\"\n    output json\n    file create \"./out/note.json\" json {text: text}\n    return {saved: true}\nend\n```\n\n```text\n $ mkdir out\n $ rivet --file app.rivet request demo.add --data '{\"a\":2,\"b\":3}'\n {\"request_id\":\"req_010bf5f2ed\",\"trace_id\":\"tr_010bf5f2ed\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}      exit 0\n\n $ rivet --file app.rivet request notes.save --data '{\"text\":\"hi\"}'       # no policy.json yet (stderr)\n {\"request_id\":\"req_010a217d8d\",…,\"operation\":\"notes.save\",\"type\":\"result\",\"status\":\"error\",\"data\":null,\n  \"error\":{\"kind\":\"permission\",\"code\":\"permission.denied\",\n   \"message\":\"allow_write create on ./out/note.json denied: no policy.json: allow_write is denied by default (add a grant for ./out/note.json)\",…},\n  \"effects\":\"none\",\"data_count\":0}                                                                             exit 3\n\n $ rivet --file app.rivet io                                              # every I/O site, nothing runs\n OPERATION   KIND  ACCESS  TARGET           KNOWLEDGE  SOURCE\n notes.save  file  create  ./out/note.json  exact      app.rivet:13\n\n $ rivet --file app.rivet policy generate \u003e policy.draft.json            # review, then adopt\n $ mv policy.draft.json policy.json\n $ rivet --file app.rivet io --check-policy\n OPERATION   KIND  ACCESS  TARGET           KNOWLEDGE  SOURCE        DECISION\n notes.save  file  create  ./out/note.json  exact      app.rivet:13  allowed\n 1 allowed\n\n $ rivet --file app.rivet request notes.save --data '{\"text\":\"hi\"}'\n {\"request_id\":\"req_010769d155\",\"trace_id\":\"tr_010769d155\",\"operation\":\"notes.save\",\"type\":\"result\",\"status\":\"ok\",\"data\":{\"saved\":true},\"error\":null,\"effects\":\"committed\",\"data_count\":0}\n```\n\n```text\n  no policy.json ──► deny-by-default (exit 3, effects none)\n        │\n  rivet io ──► rivet policy generate ──► human review ──► policy.json ──► request succeeds\n```\n\nWrite the draft to a separate file. Redirecting straight into `policy.json` truncates it before Rivet reads it.\n\n## Runtime overview\n\n```text\n                       app.rivet  (many described operations per file)\n                           |\n             Capy Library::parse  -\u003e  Rivet SyntaxTree  -\u003e  immutable catalog\n                           |                (inputs, declared outputs, errors, effects)\n                           v\n   policy.json ---\u003e Policy (host ceiling ∩ policy.json ∩ per-request narrowing)\n   (absent = deny-by-default)          |\n                                       v\n      +------------+-----------+-------+-------+-----------+-----------+-------------+\n      |            |           |               |           |           |             |\n     CLI         REST/SSE    polling       WebSocket      MCP       Rust library   C ABI\n   rivet ...   /v1/request  /v1/requests    /v1/ws        /mcp      Runtime::call  librivet\n      |            |           |               |           |           |             |\n      +------------+-----------+-------+-------+-----------+-----------+-------------+\n                                       |\n                    one dispatcher -\u003e scoped resources -\u003e brokered effects\n                                       |\n      input  {operation, data, deadline_ms?, restrict?}  ──  output {request_id, trace_id, operation, type,\n                                                               status, data, error, effects, data_count}\n```\n\nEvery effect in the catalog is also visible before anything runs:\n\n```text\n  app.rivet --parse/lower--\u003e effect sites --normalize--\u003e IoManifest --+--\u003e rivet io --by operation|target|capability\n                                  |                                   +--\u003e rivet io --check-policy   (\u003c-- policy.json)\n                                  |                                   +--\u003e rivet policy generate --\u003e draft policy.json\n                                  +--effect_id--\u003e runtime trace ------+--\u003e rivet io --trace REQ    (planned vs actual)\n```\n\n| Topic | Runtime interface |\n|---|---|\n| Operations | Any number of named, described operations per file, one immutable catalog shared by every surface. From 0.2.0, `global NAME = …` constants per file and `import \"./x.rivet\" as x [public]` modules (namespaced `x.ID`, one policy). |\n| Envelopes (0.2.0) | Every surface accepts `{operation, data, …}` and answers one response envelope; `--pretty` / `?pretty=true` indent it ([API-2026-0006](docs/api/api-2026-0006-envelopes.md)). |\n| Call syntax | Capy **prefix calls**: `(request \"math.double\" {value: a})`; durations are quoted strings (`timeout \"10s\"`). |\n| Declared outputs | Each operation may declare a described output (`output integer description \"...\"`) or a structured `output object ... end` block of `field` lines, plus `error \"code\" description \"...\"` lines. The runtime validates the result against it (`output.invalid`, exit 5). |\n| Viewing outputs | `rivet outputs ID [--json]`, `rivet outputs --all`, `rivet describe ID` (Output section), `rivet list --outputs`, `GET /v1/operations/{id}/outputs`, MCP built-in tool `rivet.outputs`, `Runtime::outputs(id)`. |\n| Policy | Configured **only** by a `policy.json` file beside the entry `.rivet` file, or selected with `--policy PATH`. No grant strings on the command line. No file means deny-by-default for new application I/O; pure operations still run. |\n| I/O manifest | `rivet io` lists every effect site with its target (URL, path, host:port, env var, connector method), access verbs (read, create, update, delete, connect, bind, call …) and the capability that permits it. It can be viewed `--by operation\\|target\\|capability`, filtered with `--kind`/`--access`, rendered as table/json/markdown/csv and checked with `--check-policy` (exit 3 on a denied site). No I/O is performed. Also available as `GET /v1/io`, MCP `rivet.io` and `rt.io`. |\n| Policy draft | `rivet policy generate [ID ...]` turns the manifest into a least-privilege policy.json draft: one grant per (capability, target), narrowed with the new optional `access` list. It never grants dynamic/opaque sites (exit 7) and never overwrites a file. The draft is for human review, not approval. |\n| Serving | One `rivet serve [--listen 127.0.0.1:8080]` mounts HTTP, SSE, polling, WebSocket and MCP on one listener; `rivet serve --stdio` serves MCP over stdio. One authentication -\u003e principal -\u003e operation authorization path for every surface. |\n| Protocols | HTTP/1.1-3, WebSocket, TCP, UDP, QUIC, gRPC (all four modes), MCP client and server, OAuth 2.0 — all required scope. From 0.2.0, `grpc`, `quic` (and HTTP/3), `oauth` and `serve` are Cargo features (default on); a build without one refuses the bundle with `unsupported.feature`. |\n| Embedding (0.2.0) | Rust: the `rivet-runtime` facade (`Runtime::call`, `load`, `Module`). C, Python, Go: `librivet` (`rivet_request`, call handles, `rivet_load`). |\n| Highlighting (0.2.0) | `rivet highlight FILE --format ansi\\|html\\|json`, a generated TextMate grammar and a VS Code `.vsix` ([MAN-2026-0010](docs/manuals/man-2026-0010-editor-support-and-highlighting.md)). |\n| Errors | One registry: code -\u003e kind -\u003e HTTP status -\u003e exit code -\u003e retryable. |\n\n```text\n  output object description \"The requested user.\"          rivet outputs users.get\n      field id    integer required description \"...\"   ==\u003e   users.get — Get a user\n      field name  text    required description \"...\"          output  object  The requested user.\n      field email text    optional description \"...\"            id     integer  required  ...\n  end                                                           name   text     required  ...\n  error \"users.not_found\" description \"No user has this ID.\"  errors\n                                                                users.not_found  No user has this ID.\n```\n\nRuntime command examples (provide your own `app.rivet` and policy):\n\n```sh\nrivet --file app.rivet request demo.add --data '{\"a\":2,\"b\":3}'            # uses ./policy.json if present\nrivet --file app.rivet --policy ./policies/ci.json request users.get --data '{\"id\":42}'\necho '{\"operation\":\"demo.add\",\"data\":{\"a\":2,\"b\":3}}' | rivet --file app.rivet request --input -\nrivet --file app.rivet request demo.add --data '{\"a\":2,\"b\":3}' --pretty\nrivet highlight app.rivet --format html \u003e app.html\nrivet --file app.rivet outputs demo.add --json\nrivet --file app.rivet io --by target --check-policy                          # what every URL/path is used for\nrivet --file app.rivet policy generate \u003e policy.draft.json                    # least-privilege draft to review\nrivet --file app.rivet serve --listen 127.0.0.1:8080\n```\n\nRemote MCP effects and unconfined native/process code are identified as trust boundaries, not misrepresented as locally enforceable. Sandbox guarantees apply to script-initiated effects through brokered adapters; the fixed runtime bootstrap I/O list is shown by `rivet io --include-bootstrap`.\n\n## Status and platform limits\n\nThe maintainer authorized the Capy dependency in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md).\n0.1.0 validation results are in [RPT-2026-0001](docs/reports/rpt-2026-0001-validation-of-plan-2026-0001.md). For\n0.2.0, CI is green on **macOS and Linux**; Windows was dropped from CI and from the supported platforms, and its\nthirteen failures are catalogued in [INC-2026-0011](docs/incidents/active/inc-2026-0011-windows-port-failures.md).\n\n```text\n platform   build + tests   process sandbox                              status\n macOS      CI green        Seatbelt, active                             supported\n Linux      CI green        Landlock + seccomp, gated:                   supported\n                            unsupported.sandbox_backend (exit 5 / 501)\n Windows    —               none                                         not supported (INC-2026-0011)\n```\n\n| Not in this version | What happens |\n|---|---|\n| mTLS serve authentication | `serve` refuses to start: `unsupported.serve_mtls` (exit 5); use bearer tokens |\n| Windows | Not a supported platform (INC-2026-0011) |\n| Process sandbox on Linux | Backend gated until verified on kernel ≥ 6.12: `unsupported.sandbox_backend` (exit 5) |\n| URL imports, hot reload of modules | Imports are local files under the root (0.2.0); `rt.load` adds modules at run time |\n| `finally` | `try … catch … end` only; `with` blocks always close their handles |\n| Stage C forms (FIFO, file watch, TCP TLS, interactive processes, reconnect) | Typed `unsupported.*` (exit 5), no effects |\n| Persistent trace store | Traces live for the process; `rivet trace export REQ --output PATH` saves one |\n\nDetails: [Known Limitations](docs/manuals/man-2026-0001-rivet-manual.md#known-limitations) and the\n[protocol manual](docs/manuals/man-2026-0008-protocols-and-connectors.md). (0.1.0 had no `import`; 0.2.0 adds file\nmodules.)\n\n## Reviewing the contract\n\nReview the contract with the installed VHCO tool:\n\n```sh\nvhco live vhco-contract.json --port 7787\n```\n\nChanges follow the human contract review defined by [AGENTS.md](AGENTS.md). Run `perch architecture` for\n`vhco validate`, `sync` and `check`; run `perch gates` for the development checks. The Perch command set was\napproved by the maintainer on 2026-09-28.\n\n## Change History\n\n| Revision | Date | Author | Change |\n|---|---|---|---|\n| 12 | 2026-09-29 | Claude | TASK-080 / D-49: current release 0.1.0 with 0.2.0 in progress (0.1.0 → 0.2.0 diagram and links to MIG-0001, API-0006/0007, MAN-0009/0010, globals/modules, facade); Cargo install with `--features cli`, librivet and `.vsix`; quickstart re-captured as 0.2.0 envelopes with `--data`; runtime overview adds the C ABI and envelopes; platforms macOS and Linux, Windows unsupported (INC-2026-0011), Linux sandbox gated; STD-2026-0001 and Perch content kept. |\n| 11 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard. |\n| 10 | 2026-09-28 | Claude | TASK-069: verified quickstart (deny-by-default → io → policy generate → allowed) and the current limitations table. |\n| 9 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |\n| 8 | 2026-09-28 | Codex | Added approved Perch build/install/development commands and corrected the obsolete pre-implementation status. |\n| 7 | 2026-09-28 | Claude | Design approved (ADR-0001): design revision 8, 159 examples, G-LIC closed, PLAN-2026-0001 in P1. |\n| 6 | 2026-09-28 | Claude | Revision 6 (UQ-18/R26): design revision 6; I/O manifest (`rivet io` targets, access verbs, views, `--check-policy`) and `rivet policy generate` rows, commands and diagram line. |\n| 5 | 2026-09-28 | Claude | Revision 5 (UQ-17): declared outputs and `rivet outputs`, policy.json-only configuration, one `serve` for every surface, Capy prefix-call syntax, G-LIC licence gate and parser spike gate; example count left for the coordinator. |\n| 4 | 2026-09-28 | Codex | Added twelve draft sample folders with source files, fixtures, request bodies and usage READMEs (UQ-16). |\n| 3 | 2026-09-28 | Codex | Added gRPC, documented multi-operation catalogs, incoming MCP tools and duplex sessions; expanded reference to 120 examples. |\n| 2 | 2026-09-28 | Codex | Added UDP, OAuth 2.0, QUIC/HTTP3 design coverage, traceability and 22 examples; updated current-state navigation. |\n| 1 | 2026-09-27 | Codex | Added accurate design-phase entry point. |\n"
       }
     ]
   },
@@ -1886,6 +1886,23 @@
       ]
     },
     {
+      "name": "CallArg",
+      "fields": [
+        {
+          "name": "param",
+          "type": "string"
+        },
+        {
+          "name": "from_param?",
+          "type": "string"
+        },
+        {
+          "name": "value?",
+          "type": "Value"
+        }
+      ]
+    },
+    {
       "name": "CallSite",
       "fields": [
         {
@@ -1903,6 +1920,10 @@
         {
           "name": "source",
           "type": "SourceSpan"
+        },
+        {
+          "name": "args",
+          "type": "CallArg[]"
         }
       ]
     },
@@ -5519,42 +5540,42 @@
       "kind": "domain",
       "name": "RegistryEntry",
       "file": "src/domain/contracts.rs",
-      "line": 273,
+      "line": 281,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "CatalogQuery",
       "file": "src/domain/contracts.rs",
-      "line": 453,
+      "line": 461,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "Catalog",
       "file": "src/domain/contracts.rs",
-      "line": 460,
+      "line": 468,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "ExecutionPlan",
       "file": "src/domain/contracts.rs",
-      "line": 466,
+      "line": 474,
       "code": "/// Validated request handed to the execution driver."
     },
     {
       "kind": "domain",
       "name": "RunOutcome",
       "file": "src/domain/contracts.rs",
-      "line": 474,
+      "line": 482,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OutputReport",
       "file": "src/domain/contracts.rs",
-      "line": 482,
+      "line": 490,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -5624,14 +5645,14 @@
       "kind": "domain",
       "name": "InputEnvelope",
       "file": "src/domain/envelope.rs",
-      "line": 402,
+      "line": 414,
       "code": "/// One request as every surface accepts it. `aliases` lists the deprecated"
     },
     {
       "kind": "domain",
       "name": "RawInput",
       "file": "src/domain/envelope.rs",
-      "line": 478,
+      "line": 490,
       "code": "/// A request body handed to `serve.parse_input`. `legacy_ok` accepts the 0.1.0"
     },
     {
@@ -5639,7 +5660,7 @@
       "name": "execution.request_operation",
       "note": "R1 key order on ok, error, data and ws records; pretty keeps the order",
       "file": "src/domain/envelope.rs",
-      "line": 516,
+      "line": 528,
       "code": "#[test]"
     },
     {
@@ -5876,135 +5897,142 @@
     },
     {
       "kind": "domain",
-      "name": "CallSite",
+      "name": "CallArg",
       "file": "src/domain/io_manifest.rs",
       "line": 363,
+      "code": "/// One statically known argument of a call edge: the callee's `param` is the"
+    },
+    {
+      "kind": "domain",
+      "name": "CallSite",
+      "file": "src/domain/io_manifest.rs",
+      "line": 375,
       "code": "/// A literal `(request \"id\" …)` edge: shown as a `(calls X)` row, never a site."
     },
     {
       "kind": "domain",
       "name": "OperationEffects",
       "file": "src/domain/io_manifest.rs",
-      "line": 374,
+      "line": 389,
       "code": "/// The lowered, non-transitive effect sites of one operation."
     },
     {
       "kind": "domain",
       "name": "EffectCatalog",
       "file": "src/domain/io_manifest.rs",
-      "line": 384,
+      "line": 399,
       "code": "/// Every operation's sites, computed once from the immutable compiled program."
     },
     {
       "kind": "domain",
       "name": "FileDigest",
       "file": "src/domain/io_manifest.rs",
-      "line": 401,
+      "line": 416,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "TargetSummary",
       "file": "src/domain/io_manifest.rs",
-      "line": 414,
+      "line": 429,
       "code": "/// One `--by target` / `--by capability` row: sites grouped on (target, capability)."
     },
     {
       "kind": "domain",
       "name": "FileStatus",
       "file": "src/domain/io_manifest.rs",
-      "line": 453,
+      "line": 468,
       "code": "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
     },
     {
       "kind": "domain",
       "name": "NeededFile",
       "file": "src/domain/io_manifest.rs",
-      "line": 475,
+      "line": 490,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "OperationNeeds",
       "file": "src/domain/io_manifest.rs",
-      "line": 505,
+      "line": 520,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "IoManifest",
       "file": "src/domain/io_manifest.rs",
-      "line": 522,
+      "line": 537,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "IoQuery",
       "file": "src/domain/io_manifest.rs",
-      "line": 556,
+      "line": 571,
       "code": "/// `rivet io` / `rivet.io` / `rt.io` query (the contract's `EffectQuery`)."
     },
     {
       "kind": "domain",
       "name": "IoReport",
       "file": "src/domain/io_manifest.rs",
-      "line": 605,
+      "line": 620,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "TraceEvent",
       "file": "src/domain/io_manifest.rs",
-      "line": 618,
+      "line": 633,
       "code": "/// One broker decision/attempt recorded for a request (secret values never included)."
     },
     {
       "kind": "domain",
       "name": "TraceQuery",
       "file": "src/domain/io_manifest.rs",
-      "line": 659,
+      "line": 674,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "TraceResult",
       "file": "src/domain/io_manifest.rs",
-      "line": 677,
+      "line": 692,
       "code": "#[derive(Clone, Debug, PartialEq, Default)]"
     },
     {
       "kind": "domain",
       "name": "FileProbeInput",
       "file": "src/domain/io_manifest.rs",
-      "line": 700,
+      "line": 715,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "FileProbeResult",
       "file": "src/domain/io_manifest.rs",
-      "line": 708,
+      "line": 723,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyDraft",
       "file": "src/domain/io_manifest.rs",
-      "line": 715,
+      "line": 730,
       "code": "/// A least-privilege policy.json v1 draft (`policy generate`, `rt.generate_policy`)."
     },
     {
       "kind": "domain",
       "name": "PolicyDraftFile",
       "file": "src/domain/io_manifest.rs",
-      "line": 776,
+      "line": 791,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
       "kind": "domain",
       "name": "PolicyDraftReceipt",
       "file": "src/domain/io_manifest.rs",
-      "line": 783,
+      "line": 798,
       "code": "#[derive(Clone, Debug, PartialEq)]"
     },
     {
@@ -7141,7 +7169,7 @@
       "name": "join_trace",
       "note": "with trace_request_id read that request from TraceStore (absent store or request = not_found, exit 4), join events on effect_id into attempts {count, last_decision, last_phase}; events with no planned site are kept as unplanned",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 154,
+      "line": 157,
       "code": "let mut unplanned = Vec::new();"
     },
     {
@@ -7149,7 +7177,7 @@
       "name": "unknown_request",
       "note": "no trace store, or the store has no such request",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 155,
+      "line": 158,
       "code": "let mut unplanned = Vec::new();"
     },
     {
@@ -7157,7 +7185,7 @@
       "name": "group_view",
       "note": "TargetSummary per (grant target, capability): union of verbs, methods, protocols, origins, phases and operations; needs_file yes/no/`yes: verbs`/null; USED BY lists each operation, `entry (via op)` for transitive users and connector `op (via method)`; the decision is the worst site decision (denied \u003e partial \u003e unknown \u003e allowed); rows ordered by first appearance, capabilities of one target in vocabulary order",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 190,
+      "line": 193,
       "code": "let targets = group_targets(\u0026sites, \u0026program, target_key);"
     },
     {
@@ -7165,7 +7193,7 @@
       "name": "needs_view",
       "note": "with needs or check_files: one OperationNeeds per selected entry (id order) listing its requires_existing file sites and those of reachable callees (via = callee), deduplicated by path; param_dependent paths shown as templates; with include_bootstrap a leading `bundle load` group lists connector descriptor/schema files",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 200,
+      "line": 203,
       "code": "let mut needs = Vec::new();"
     },
     {
@@ -7173,7 +7201,7 @@
       "name": "check_files",
       "note": "with check_files: each distinct exact path is authorized as allow_read/stat through PolicyEvaluator first (denied = not_permitted, path untouched), then probed once through FileProbe (metadata + readability only, never opened); non-exact paths are not_checkable; statuses are shown under every operation needing the path",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 249,
+      "line": 252,
       "code": "let mut probe_counts: BTreeMap\u003c\u0026'static str, usize\u003e = BTreeMap::new();"
     },
     {
@@ -7181,7 +7209,7 @@
       "name": "render_inventory",
       "note": "render table (by operation / target / capability, or the needs listing), markdown (same tables) or csv (one row per site) from the manifest, json = the manifest itself; stderr gets decision counts, probe counts and the incompleteness list; exit 3 when check_policy found denied/partial or check_files found not_permitted/unreadable, else 4 when a needed file is missing, else 7 when strict and incomplete, else 0",
       "file": "src/features/audit/inspect_effects.rs",
-      "line": 334,
+      "line": 337,
       "code": "let opts = RenderOptions {"
     },
     {
@@ -7264,7 +7292,7 @@
       "name": "audit.inspect_effects",
       "note": "normalization helpers: derived globs, lexical paths and bundle-relative source files",
       "file": "src/features/audit/support/effect_sites.rs",
-      "line": 1418,
+      "line": 1444,
       "code": "#[test]"
     },
     {
@@ -8452,7 +8480,7 @@
       "kind": "usecase",
       "name": "language.highlight_source",
       "file": "src/features/language/highlight_source.rs",
-      "line": 536,
+      "line": 578,
       "code": "pub fn highlight_source("
     },
     {
@@ -8460,7 +8488,7 @@
       "name": "parse_spans",
       "note": "parse the file once through the Parser port (the same Capy grammar `check` uses); walk every statement node, its body, `else` section and closer; each node's leading keyword, capture spans (id, var, name, kind, value, cond, iter, rest, …) and the literals between captures are lexed at their exact byte offsets, so every token's line/col/len comes from a real parser span and lies inside the source",
       "file": "src/features/language/highlight_source.rs",
-      "line": 548,
+      "line": 590,
       "code": "let tree = match parser.parse(input) {"
     },
     {
@@ -8468,15 +8496,15 @@
       "name": "classify",
       "note": "classify each lexeme with editors/keywords.json (generated from rivet.capy): a statement's leading literal is keyword (declaration/control), option (opt_* lines) or effect (`file`); operation/pipeline IDs and `(ID …)` calls are operation_id; built-ins after `(` and true/false/null are keyword; and/or/not/in/as and punctuation are operator; an effect head in an assignment value (`http`) and its verb (`get`) are effect; option tails mark option words, modifiers and types; names declared by `global` are global everywhere; other names are variable; strings split into string and `${…}` interpolation; `#` comments and `else` come from a scan of the text no node covers; brackets, commas, colons and object keys are not tokens",
       "file": "src/features/language/highlight_source.rs",
-      "line": 568,
+      "line": 610,
       "code": "for n in \u0026tree.nodes {"
     },
     {
       "kind": "todo",
       "name": "partial_on_error",
-      "note": "when the tree has diagnostics, the earliest one (by line, column) is the error: keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing",
+      "note": "when the tree has diagnostics, the earliest one (by line, column) is the error: lines no node covers (the header of an unclosed block) are lexed as statement lines, then keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing",
       "file": "src/features/language/highlight_source.rs",
-      "line": 574,
+      "line": 617,
       "code": "let mut diags: Vec\u003c\u0026SyntaxDiagnostic\u003e = tree.diagnostics.iter().collect();"
     },
     {
@@ -8484,7 +8512,7 @@
       "name": "syntax",
       "note": "the source does not parse",
       "file": "src/features/language/highlight_source.rs",
-      "line": 575,
+      "line": 618,
       "code": "let mut diags: Vec\u003c\u0026SyntaxDiagnostic\u003e = tree.diagnostics.iter().collect();"
     },
     {
@@ -8492,7 +8520,7 @@
       "name": "language.highlight_source",
       "note": "the span lexer keeps dotted/index paths (`xs.0`) and floats whole, finds `${…}` interpolations inside strings and stops comments at the line end",
       "file": "src/features/language/highlight_source.rs",
-      "line": 596,
+      "line": 639,
       "code": "#[test]"
     },
     {
@@ -8500,7 +8528,7 @@
       "name": "language.highlight_source",
       "note": "the embedded editors/keywords.json loads: statement literals, classes and their R17 highlight classes",
       "file": "src/features/language/highlight_source.rs",
-      "line": 613,
+      "line": 656,
       "code": "#[test]"
     },
     {
@@ -9254,14 +9282,14 @@
       "note": "the surface parses JSON text frames (request frames through serve.parse_input: {operation, data}, deprecated {id, params}); a malformed frame (bad JSON, unknown type, missing ref, bad envelope) arrives here as an error and is answered with an error record {ref, …, type:\"result\", status:\"error\", error} (validation, 422 semantics) without closing the socket",
       "file": "src/features/serve/multiplex_ws.rs",
       "line": 17,
-      "code": "let frame = match input.frame {"
+      "code": "let in_flight = |r: \u0026str| !r.is_empty() \u0026\u0026 input.open_refs.iter().any(|(x, _)| x == r);"
     },
     {
       "kind": "todo",
       "name": "open_ref",
       "note": "type request: a ref already in flight is conflict.ref (409); a 9th concurrent ref is limit.ws_refs (429, max 8 per connection); authorize the operation for the connection's principal (403); then SessionDriver.open with connection_owned=true (bounded 16-frame event log) and report the new (ref, session_id) so the host starts its event pump",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 37,
+      "line": 44,
       "code": "WsFrameType::Request =\u003e {"
     },
     {
@@ -9269,7 +9297,7 @@
       "name": "duplicate_ref",
       "note": "the ref is already in flight",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 38,
+      "line": 45,
       "code": "WsFrameType::Request =\u003e {"
     },
     {
@@ -9277,7 +9305,7 @@
       "name": "ninth_ref",
       "note": "8 refs already in flight",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 39,
+      "line": 46,
       "code": "WsFrameType::Request =\u003e {"
     },
     {
@@ -9285,7 +9313,7 @@
       "name": "route_input",
       "note": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 99,
+      "line": 118,
       "code": "kind =\u003e {"
     },
     {
@@ -9293,7 +9321,7 @@
       "name": "unknown_ref",
       "note": "input/finish_input/cancel for a ref not in flight",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 100,
+      "line": 119,
       "code": "kind =\u003e {"
     },
     {
@@ -9301,7 +9329,7 @@
       "name": "refused_input",
       "note": "the session refused an input/finish_input frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 133,
+      "line": 152,
       "code": "match routed {"
     },
     {
@@ -9309,7 +9337,7 @@
       "name": "stream_out",
       "note": "the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:\"data\", seq, data, error:null}, then exactly one terminal record {ref, …, type:\"result\", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 149,
+      "line": 168,
       "code": "Ok(outcome)"
     },
     {
@@ -9317,7 +9345,7 @@
       "name": "close_cancels",
       "note": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 150,
+      "line": 169,
       "code": "Ok(outcome)"
     },
     {
@@ -9325,7 +9353,7 @@
       "name": "serve.multiplex_ws",
       "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 244,
+      "line": 277,
       "code": "#[tokio::test]"
     },
     {
@@ -9352,43 +9380,51 @@
       "code": "let Some(body) = input.body.as_object() else {"
     },
     {
+      "kind": "error",
+      "name": "named_refusal",
+      "note": "the body names an operation string but is refused (wrong-typed deadline_ms/stream/pretty, mixed keys)",
+      "file": "src/features/serve/parse_input.rs",
+      "line": 61,
+      "code": "let named = [\"operation\", \"id\"]"
+    },
+    {
       "kind": "todo",
       "name": "operation_alias",
       "note": "`operation` (non-empty string) names the operation; the alias `id` only when legacy_ok; both → validation.input_envelope; neither → validation.required with details.field = \"operation\"; a non-string value → validation.input_envelope",
       "file": "src/features/serve/parse_input.rs",
-      "line": 61,
-      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+      "line": 78,
+      "code": "let operation = match pick(body, \"operation\", \"id\", legacy_ok, \u0026mut aliases)? {"
     },
     {
       "kind": "error",
       "name": "mixed_keys",
       "note": "`operation` with `id`, or `data` with `params`",
       "file": "src/features/serve/parse_input.rs",
-      "line": 63,
-      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+      "line": 80,
+      "code": "let operation = match pick(body, \"operation\", \"id\", legacy_ok, \u0026mut aliases)? {"
     },
     {
       "kind": "error",
       "name": "no_operation",
       "note": "neither `operation` nor `id`",
       "file": "src/features/serve/parse_input.rs",
-      "line": 64,
-      "code": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+      "line": 81,
+      "code": "let operation = match pick(body, \"operation\", \"id\", legacy_ok, \u0026mut aliases)? {"
     },
     {
       "kind": "todo",
       "name": "data_alias",
       "note": "`data` is the operation input and defaults to {} when absent or null; the alias `params` only when legacy_ok; `data` with `params` → validation.input_envelope",
       "file": "src/features/serve/parse_input.rs",
-      "line": 83,
-      "code": "let data = match pick(body, \"data\", \"params\", input.legacy_ok, \u0026mut aliases)? {"
+      "line": 100,
+      "code": "let data = match pick(body, \"data\", \"params\", legacy_ok, \u0026mut aliases)? {"
     },
     {
       "kind": "todo",
       "name": "options",
       "note": "deadline_ms (non-negative integer, clamped to 1..=600000), restrict (passed through; the runtime validates it), stream and pretty (bools); a wrong type → validation.input_envelope naming the key",
       "file": "src/features/serve/parse_input.rs",
-      "line": 89,
+      "line": 106,
       "code": "let deadline_ms = match body.get(\"deadline_ms\") {"
     },
     {
@@ -9396,7 +9432,7 @@
       "name": "report_aliases",
       "note": "return the InputEnvelope with `aliases` listing every deprecated key used (\"id\", \"params\") so the surface emits its deprecation signal (HTTP Deprecation: true + access log deprecated=1, CLI warning on stderr, trace note); pure, no ports",
       "file": "src/features/serve/parse_input.rs",
-      "line": 112,
+      "line": 129,
       "code": "Ok(InputEnvelope {"
     },
     {
@@ -9404,7 +9440,7 @@
       "name": "serve.parse_input",
       "note": "{operation,data} parses; data defaults to {}; options typed and clamped; aliases reported; mixing, `error`, non-objects and missing operation refused",
       "file": "src/features/serve/parse_input.rs",
-      "line": 134,
+      "line": 151,
       "code": "#[test]"
     },
     {
@@ -10092,7 +10128,7 @@
       "kind": "infra",
       "name": "file_access",
       "file": "src/infra/file_access.rs",
-      "line": 608,
+      "line": 610,
       "code": "impl crate::domain::ports::FileProbe for ConfinedFiles {"
     },
     {
@@ -10100,7 +10136,7 @@
       "name": "read stat \u003cbundle root\u003e/**",
       "note": "`io --check-files` metadata probes of needed paths (never opened or read)",
       "file": "src/infra/file_access.rs",
-      "line": 609,
+      "line": 611,
       "code": "impl crate::domain::ports::FileProbe for ConfinedFiles {"
     },
     {
@@ -10108,7 +10144,7 @@
       "name": "files.apply_file_operation",
       "note": "G32 concurrent `update … if_version V` from many threads: exactly one compare-and-replace wins per round, every other updater gets conflict.version, and the file holds the winner's bytes (no lost update)",
       "file": "src/infra/file_access.rs",
-      "line": 698,
+      "line": 706,
       "code": "#[cfg(unix)]"
     },
     {
@@ -10116,7 +10152,7 @@
       "name": "files.apply_file_operation",
       "note": "G32 an update waits for another holder of the file lock and then re-checks the version (a writer that changed the file under the lock makes the stale guard fail)",
       "file": "src/infra/file_access.rs",
-      "line": 742,
+      "line": 750,
       "code": "#[cfg(unix)]"
     },
     {
@@ -10390,7 +10426,7 @@
       "name": "serve.multiplex_ws",
       "note": "G6: each ref has its own 16-frame lane: a full lane blocks only its ref, other refs and replies still flow; the first terminal frame closes the lane so a later terminal frame for that ref is discarded",
       "file": "src/infra/serve_listener.rs",
-      "line": 249,
+      "line": 267,
       "code": "#[tokio::test]"
     },
     {
@@ -10405,7 +10441,7 @@
       "name": "sessions.cancel_session",
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "file": "src/infra/session_driver.rs",
-      "line": 792,
+      "line": 814,
       "code": "#[tokio::test]"
     },
     {
@@ -10524,7 +10560,7 @@
     },
     {
       "kind": "api",
-      "name": " rivet auth complete --params-file PATH [--timeout D]",
+      "name": " rivet auth complete --data-file PATH [--timeout D]",
       "note": "finish a transaction; envelope whose data is the connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
       "file": "src/orchestrator/setup_cli.rs",
       "line": 12,
@@ -10792,7 +10828,7 @@
       "owner": "file_access",
       "provenance": "annotated",
       "file": "src/infra/file_access.rs",
-      "line": 609
+      "line": 611
     },
     {
       "kind": "file",
@@ -11031,7 +11067,7 @@
       "note": "R1 key order on ok, error, data and ws records; pretty keeps the order",
       "code": "#[test]",
       "file": "src/domain/envelope.rs",
-      "line": 516
+      "line": 528
     },
     {
       "subject": "language.highlight_source",
@@ -11087,7 +11123,7 @@
       "note": "normalization helpers: derived globs, lexical paths and bundle-relative source files",
       "code": "#[test]",
       "file": "src/features/audit/support/effect_sites.rs",
-      "line": 1418
+      "line": 1444
     },
     {
       "subject": "auth.acquire_credential",
@@ -11290,14 +11326,14 @@
       "note": "the span lexer keeps dotted/index paths (`xs.0`) and floats whole, finds `${…}` interpolations inside strings and stops comments at the line end",
       "code": "#[test]",
       "file": "src/features/language/highlight_source.rs",
-      "line": 596
+      "line": 639
     },
     {
       "subject": "language.highlight_source",
       "note": "the embedded editors/keywords.json loads: statement literals, classes and their R17 highlight classes",
       "code": "#[test]",
       "file": "src/features/language/highlight_source.rs",
-      "line": 613
+      "line": 656
     },
     {
       "subject": "language.compile_program",
@@ -11381,14 +11417,14 @@
       "note": "G17/G27: a refused input frame sends that ref's terminal error frame with the specific code (conflict.input_sequence) before the session is cancelled; unknown refs get a reply, not a ref frame",
       "code": "#[tokio::test]",
       "file": "src/features/serve/multiplex_ws.rs",
-      "line": 244
+      "line": 277
     },
     {
       "subject": "serve.parse_input",
       "note": "{operation,data} parses; data defaults to {}; options typed and clamped; aliases reported; mixing, `error`, non-objects and missing operation refused",
       "code": "#[test]",
       "file": "src/features/serve/parse_input.rs",
-      "line": 134
+      "line": 151
     },
     {
       "subject": "serve.start_serve",
@@ -11514,14 +11550,14 @@
       "note": "G32 concurrent `update … if_version V` from many threads: exactly one compare-and-replace wins per round, every other updater gets conflict.version, and the file holds the winner's bytes (no lost update)",
       "code": "#[cfg(unix)]",
       "file": "src/infra/file_access.rs",
-      "line": 698
+      "line": 706
     },
     {
       "subject": "files.apply_file_operation",
       "note": "G32 an update waits for another holder of the file lock and then re-checks the version (a writer that changed the file under the lock makes the stale guard fail)",
       "code": "#[cfg(unix)]",
       "file": "src/infra/file_access.rs",
-      "line": 742
+      "line": 750
     },
     {
       "subject": "policy.generate_policy",
@@ -11542,14 +11578,14 @@
       "note": "G6: each ref has its own 16-frame lane: a full lane blocks only its ref, other refs and replies still flow; the first terminal frame closes the lane so a later terminal frame for that ref is discarded",
       "code": "#[tokio::test]",
       "file": "src/infra/serve_listener.rs",
-      "line": 249
+      "line": 267
     },
     {
       "subject": "sessions.cancel_session",
       "note": "G16: a cancel that arrives before the terminal event is recorded wins the race: a run that still completes successfully afterwards ends the session `cancelled` (effects kept)",
       "code": "#[tokio::test]",
       "file": "src/infra/session_driver.rs",
-      "line": 792
+      "line": 814
     },
     {
       "subject": "audit.read_trace",
@@ -11601,7 +11637,7 @@
     {
       "surface": "cli",
       "action": "auth.complete_authorization",
-      "path": "rivet auth complete --params-file PATH [--timeout D]",
+      "path": "rivet auth complete --data-file PATH [--timeout D]",
       "description": "finish a transaction; envelope whose data is the connected CredentialStatus, or {\"state\":\"pending\"} when the deadline came first (transaction kept)",
       "request": "{ \"transaction_id\": \"string\", \"callback\": \"{code, state, redirect_uri, issuer?}?\", \"wait\": \"bool\" }",
       "response": "{ \"request_id\": \"string\", \"trace_id\": \"string\", \"operation\": \"rivet.auth.complete\", \"type\": \"result\", \"status\": \"ok\", \"data\": \"{profile, account, state: connected|pending, scopes, expires_at, generation}\", \"error\": \"null\", \"effects\": \"none|committed\", \"data_count\": \"0\" }",
@@ -12046,31 +12082,31 @@
                 "id": "join_trace",
                 "todo": "with trace_request_id read that request from TraceStore (absent store or request = not_found, exit 4), join events on effect_id into attempts {count, last_decision, last_phase}; events with no planned site are kept as unplanned",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 154
+                "line": 157
               },
               {
                 "id": "group_view",
                 "todo": "TargetSummary per (grant target, capability): union of verbs, methods, protocols, origins, phases and operations; needs_file yes/no/`yes: verbs`/null; USED BY lists each operation, `entry (via op)` for transitive users and connector `op (via method)`; the decision is the worst site decision (denied \u003e partial \u003e unknown \u003e allowed); rows ordered by first appearance, capabilities of one target in vocabulary order",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 190
+                "line": 193
               },
               {
                 "id": "needs_view",
                 "todo": "with needs or check_files: one OperationNeeds per selected entry (id order) listing its requires_existing file sites and those of reachable callees (via = callee), deduplicated by path; param_dependent paths shown as templates; with include_bootstrap a leading `bundle load` group lists connector descriptor/schema files",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 200
+                "line": 203
               },
               {
                 "id": "check_files",
                 "todo": "with check_files: each distinct exact path is authorized as allow_read/stat through PolicyEvaluator first (denied = not_permitted, path untouched), then probed once through FileProbe (metadata + readability only, never opened); non-exact paths are not_checkable; statuses are shown under every operation needing the path",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 249
+                "line": 252
               },
               {
                 "id": "render_inventory",
                 "todo": "render table (by operation / target / capability, or the needs listing), markdown (same tables) or csv (one row per site) from the manifest, json = the manifest itself; stderr gets decision counts, probe counts and the incompleteness list; exit 3 when check_policy found denied/partial or check_files found not_permitted/unreadable, else 4 when a needed file is missing, else 7 when strict and incomplete, else 0",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 334
+                "line": 337
               }
             ],
             "failures": [
@@ -12098,7 +12134,7 @@
                 "code": "not_found.trace (exit 4)",
                 "propagates": "returns",
                 "file": "src/features/audit/inspect_effects.rs",
-                "line": 155,
+                "line": 158,
                 "snippet": "let mut unplanned = Vec::new();"
               }
             ]
@@ -13895,19 +13931,19 @@
                 "id": "parse_spans",
                 "todo": "parse the file once through the Parser port (the same Capy grammar `check` uses); walk every statement node, its body, `else` section and closer; each node's leading keyword, capture spans (id, var, name, kind, value, cond, iter, rest, …) and the literals between captures are lexed at their exact byte offsets, so every token's line/col/len comes from a real parser span and lies inside the source",
                 "file": "src/features/language/highlight_source.rs",
-                "line": 548
+                "line": 590
               },
               {
                 "id": "classify",
                 "todo": "classify each lexeme with editors/keywords.json (generated from rivet.capy): a statement's leading literal is keyword (declaration/control), option (opt_* lines) or effect (`file`); operation/pipeline IDs and `(ID …)` calls are operation_id; built-ins after `(` and true/false/null are keyword; and/or/not/in/as and punctuation are operator; an effect head in an assignment value (`http`) and its verb (`get`) are effect; option tails mark option words, modifiers and types; names declared by `global` are global everywhere; other names are variable; strings split into string and `${…}` interpolation; `#` comments and `else` come from a scan of the text no node covers; brackets, commas, colons and object keys are not tokens",
                 "file": "src/features/language/highlight_source.rs",
-                "line": 568
+                "line": 610
               },
               {
                 "id": "partial_on_error",
-                "todo": "when the tree has diagnostics, the earliest one (by line, column) is the error: keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing",
+                "todo": "when the tree has diagnostics, the earliest one (by line, column) is the error: lines no node covers (the header of an unclosed block) are lexed as statement lines, then keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing",
                 "file": "src/features/language/highlight_source.rs",
-                "line": 574
+                "line": 617
               }
             ],
             "failures": [
@@ -13917,7 +13953,7 @@
                 "code": "syntax.* (exit 2) with the tokens before the error",
                 "propagates": "returns",
                 "file": "src/features/language/highlight_source.rs",
-                "line": 575,
+                "line": 618,
                 "snippet": "let mut diags: Vec\u003c\u0026SyntaxDiagnostic\u003e = tree.diagnostics.iter().collect();"
               }
             ]
@@ -14968,34 +15004,34 @@
                 "id": "open_ref",
                 "todo": "type request: a ref already in flight is conflict.ref (409); a 9th concurrent ref is limit.ws_refs (429, max 8 per connection); authorize the operation for the connection's principal (403); then SessionDriver.open with connection_owned=true (bounded 16-frame event log) and report the new (ref, session_id) so the host starts its event pump",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 37
+                "line": 44
               },
               {
                 "id": "route_input",
                 "todo": "input {seq, data} -\u003e SessionDriver.send with the session sequence rules; finish_input -\u003e SessionDriver.finish_input; cancel -\u003e SessionDriver.cancel (the ref's pump then delivers exactly one terminal `cancelled` error frame); a frame for an unknown ref gets an error frame; a refused input or finish first sends that ref's terminal error frame with the specific code (conflict.input_sequence, validation.input, conflict.input_closed …) and only then cancels its session, so the ref still ends with exactly one terminal frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 99
+                "line": 118
               },
               {
                 "id": "stream_out",
                 "todo": "the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:\"data\", seq, data, error:null}, then exactly one terminal record {ref, …, type:\"result\", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 149
+                "line": 168
               },
               {
                 "id": "close_cancels",
                 "todo": "on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 150
+                "line": 169
               }
             ],
             "failures": [
               {
                 "id": "duplicate_ref",
                 "when": "the ref is already in flight",
-                "code": "conflict.ref error frame",
+                "code": "conflict.ref refusal with ref \"\" and details.ref (not a terminal record of the in-flight ref)",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 38,
+                "line": 45,
                 "snippet": "WsFrameType::Request =\u003e {"
               },
               {
@@ -15003,7 +15039,7 @@
                 "when": "8 refs already in flight",
                 "code": "limit.ws_refs error frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 39,
+                "line": 46,
                 "snippet": "WsFrameType::Request =\u003e {"
               },
               {
@@ -15011,7 +15047,7 @@
                 "when": "input/finish_input/cancel for a ref not in flight",
                 "code": "not_found.ref error frame",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 100,
+                "line": 119,
                 "snippet": "kind =\u003e {"
               },
               {
@@ -15019,7 +15055,7 @@
                 "when": "the session refused an input/finish_input frame",
                 "code": "that error (e.g. conflict.input_sequence, validation.input) as the ref's terminal frame, then the session is cancelled",
                 "file": "src/features/serve/multiplex_ws.rs",
-                "line": 133,
+                "line": 152,
                 "snippet": "match routed {"
               }
             ]
@@ -15056,25 +15092,25 @@
                 "id": "operation_alias",
                 "todo": "`operation` (non-empty string) names the operation; the alias `id` only when legacy_ok; both → validation.input_envelope; neither → validation.required with details.field = \"operation\"; a non-string value → validation.input_envelope",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 61
+                "line": 78
               },
               {
                 "id": "data_alias",
                 "todo": "`data` is the operation input and defaults to {} when absent or null; the alias `params` only when legacy_ok; `data` with `params` → validation.input_envelope",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 83
+                "line": 100
               },
               {
                 "id": "options",
                 "todo": "deadline_ms (non-negative integer, clamped to 1..=600000), restrict (passed through; the runtime validates it), stream and pretty (bools); a wrong type → validation.input_envelope naming the key",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 89
+                "line": 106
               },
               {
                 "id": "report_aliases",
                 "todo": "return the InputEnvelope with `aliases` listing every deprecated key used (\"id\", \"params\") so the surface emits its deprecation signal (HTTP Deprecation: true + access log deprecated=1, CLI warning on stderr, trace note); pure, no ports",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 112
+                "line": 129
               }
             ],
             "failures": [
@@ -15088,13 +15124,22 @@
                 "snippet": "let Some(body) = input.body.as_object() else {"
               },
               {
+                "id": "named_refusal",
+                "when": "the body names an operation string but is refused (wrong-typed deadline_ms/stream/pretty, mixed keys)",
+                "code": "the error carries operation_id = that string",
+                "propagates": "returns",
+                "file": "src/features/serve/parse_input.rs",
+                "line": 61,
+                "snippet": "let named = [\"operation\", \"id\"]"
+              },
+              {
                 "id": "mixed_keys",
                 "when": "`operation` with `id`, or `data` with `params`",
                 "code": "validation.input_envelope",
                 "propagates": "returns",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 63,
-                "snippet": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+                "line": 80,
+                "snippet": "let operation = match pick(body, \"operation\", \"id\", legacy_ok, \u0026mut aliases)? {"
               },
               {
                 "id": "no_operation",
@@ -15102,8 +15147,8 @@
                 "code": "validation.required (details.field operation)",
                 "propagates": "returns",
                 "file": "src/features/serve/parse_input.rs",
-                "line": 64,
-                "snippet": "let operation = match pick(body, \"operation\", \"id\", input.legacy_ok, \u0026mut aliases)? {"
+                "line": 81,
+                "snippet": "let operation = match pick(body, \"operation\", \"id\", legacy_ok, \u0026mut aliases)? {"
               }
             ]
           },
@@ -16541,7 +16586,7 @@
         {
           "layer": "concrete",
           "ref": "params",
-          "role": "policy explain ID --params: each entry-operation site whose placeholders are all params present in the call's params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets"
+          "role": "policy explain ID --params: the call's params bind the entry operation, and each literal call edge passes them on through its statically known arguments (CallSite.args: a caller param or a constant), so a callee reached as `(users.fetch {id: id})` is bound too; each site whose placeholders are all bound params becomes that exact target (knowledge exact, the template kept as expression), so check_policy evaluates the call's concrete targets"
         },
         {
           "layer": "probe",
@@ -16742,7 +16787,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON"
+          "invocation": "rivet auth complete --data-file PATH [--timeout D] | rivet auth complete --data JSON (aliases --params-file, --params)"
         },
         {
           "surface": "http",
@@ -17535,6 +17580,11 @@
           "layer": "classify",
           "ref": "classify",
           "role": "node walk (leading keyword, captures, glue), then the gap scan for comments and `else`"
+        },
+        {
+          "layer": "recover",
+          "ref": "gaps",
+          "role": "with diagnostics, uncovered lines before the error (the header of an unclosed block) are lexed as statement lines, so no token before the error is lost"
         }
       ]
     },
@@ -18086,6 +18136,11 @@
           "lane": "conn"
         },
         {
+          "layer": "detach",
+          "ref": "detached",
+          "role": "a malformed frame naming a ref that is in flight is refused with ref \"\" and details.ref, so it never looks like that ref's terminal record"
+        },
+        {
           "layer": "authorize",
           "ref": "require_operation",
           "role": "same principal rules as every surface"
@@ -18165,6 +18220,12 @@
           "layer": "no_error",
           "ref": "body.get",
           "role": "`error` belongs to output envelopes only",
+          "lane": "body"
+        },
+        {
+          "layer": "name_refusals",
+          "ref": "body.get",
+          "role": "a refusal after this point names the operation the body gives as a string (`operation`, else `id`), so the error envelope's `operation` echoes it instead of null",
           "lane": "body"
         },
         {
