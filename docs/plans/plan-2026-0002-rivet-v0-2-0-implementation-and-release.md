@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 9
+document_revision: 10
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -24,7 +24,7 @@ scope: >-
 reason: The maintainer approved PROP-2026-0002 and asked for a plan, then implementation, tests and release, with
   every documentation deliverable included ("ensure plan contains all docs documentation to add", 2026-09-28).
 dependencies: [PROP-2026-0002, ADR-0004, PLAN-2026-0001, REL-0.1.0, vhco-contract.json, AGENTS.md, DOCUMENTATION.md]
-related_documents: [PROP-2026-0002, ADR-0004, REL-0.1.0, RPT-2026-0001, DEMO-2026-0015]
+related_documents: [PROP-2026-0002, ADR-0004, REL-0.1.0, RPT-2026-0001, DEMO-2026-0015, RPT-2026-0015]
 supersedes: null
 superseded_by: null
 tags: [rivet, plan, v0.2.0, envelope, globals, library, ffi, highlighting, modules, documentation]
@@ -126,14 +126,22 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 24 | P3, P4 remainder, P5 |
-| IN PROGRESS | 1 | P4 docs (part A running), TASK-096 CI |
+| NOT STARTED | 19 | P4 task rows TASK-070…082 (documentation work under way, rows updated at P4 exit), P5 TASK-090…095 |
+| IN PROGRESS | 1 | TASK-096 CI (post-release verification at P5) |
 | BLOCKED | 0 | |
-| DONE | 48 | P1, P2a–P2f |
+| DONE | 53 | P1, P2a–P2f, P3 (TASK-060…064) |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
-- **Current phase:** P2 complete (476 tests); CI green on macOS + Linux (run 36483001760); P4 documentation in progress; P3 records next.
+```text
+ P1 ✔ ─ P2a–P2f ✔ ─ P3 ✔ (RPT-2026-0015: 22 PASS · 2 PARTIAL · 0 FAIL) ─ P4 ◐ docs/demos ─ P5 ○ version, tag, REL
+```
+
+- **Current phase:** P3 complete at `14750b8`. Records are in `f5a1beb` (TEST documents) and `9678de1` (RPT-2026-0015).
+  - Tests: 493 passed, 0 failed; CI run 36505156729 is green at the same commit on ubuntu-latest, macos-latest, the feature matrix and deny.
+  - T-01…T-20 PASS; T-27…T-29, T-31, T-32 and T-34 PASS; T-30 PARTIAL.
+  - Validation: R12 and R18 are PARTIAL (R12: tag and G-PUB after P5; R18: P4 not exited); every other requirement is PASS.
+  - Next: P4 exit (D-rows; T-30 re-run on the fixed build), then P5.
 - **Platforms:** macOS and Linux supported; Windows dropped (INC-2026-0011).
 - **Remote:** `origin` https://github.com/olivierdevelops/rivet (main pushed after each verified phase).
 - **Last updated:** 2026-09-29.
@@ -143,30 +151,30 @@ recommendations (ADR-0004).
 
 | Req / UC | Why it exists | Planned outcome (how it is satisfied) | Acceptance criteria | Owning phase | Status |
 |---|---|---|---|---|---|
-| R1 / UC-01, UC-02 | UQ-03/05: one output shape | `ResponseEnvelope` serializer used by every surface | T-01 schema over CLI, HTTP, SSE, NDJSON, polling, WS, MCP, library, FFI | P2a | DONE (P2a; FFI part in P2d) |
-| R2 / UC-01 | UQ-05: status and error semantics | `status` ok/error/cancelled/accepted; `type` result/data; `effects` at the top level | T-01 over every API-2026-0005 code | P2a | DONE (P2a) |
-| R3 / UC-01 | UQ-03: every JSON output | Built-ins, GET routes and CLI `--json` outputs enveloped | T-03 | P2a | DONE (P2a) |
-| R4 / UC-01 | UQ-06: one input shape | `InputEnvelope::parse` shared by every surface; `--data`, `--input` | T-02 | P2a | DONE (P2a; FFI part in P2d) |
-| R5 / UC-09 | Compatibility for 0.1.0 clients | `id`/`params` aliases in 0.2.x with deprecation signals; mixed keys refused | T-15 | P2a | DONE (P2a) |
-| R6 / UC-03 | UQ-04: readable JSON | `--pretty`, `?pretty=true`, `to_json_pretty`, FFI `pretty`; refused on NDJSON/SSE | T-05 | P2a | DONE (P2a; FFI part in P2d) |
-| R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | DONE (P2b; docs P4) |
-| R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | DONE (P2b; docs P4) |
-| R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | DONE (P2b; see the R9 deviation; docs P4) |
-| R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | DONE (P2c; docs P4) |
-| R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | DONE (P2c; docs P4) |
-| R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | DONE (P2c: packaging prepared; publication DEFERRED to G-PUB; docs P4) |
-| R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | DONE (P2d; docs P4) |
-| R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | DONE (P2d; docs P4) |
-| R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | DONE (P2d; docs P4) |
-| R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | DONE (P2e; docs P4) |
-| R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | DONE (P2e; FFI `rivet_highlight` in P2d; docs P4) |
-| R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | NOT STARTED |
-| R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | DONE (P2f; docs P4) |
-| R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | DONE (P2f; docs P4) |
-| R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | DONE (P2f; docs P4) |
-| R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | DONE (P2f; Module::stream/duplex take a Scope; docs P4) |
-| R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | DONE (P2d; docs P4) |
-| R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | DONE (P2f; docs P4) |
+| R1 / UC-01, UC-02 | UQ-03/05: one output shape | `ResponseEnvelope` serializer used by every surface | T-01 schema over CLI, HTTP, SSE, NDJSON, polling, WS, MCP, library, FFI | P2a | DONE (P2a; FFI part in P2d; validated **PASS**, RPT-2026-0015 / TEST 0034, 0037, T-34) |
+| R2 / UC-01 | UQ-05: status and error semantics | `status` ok/error/cancelled/accepted; `type` result/data; `effects` at the top level | T-01 over every API-2026-0005 code | P2a | DONE (P2a; validated **PASS**, RPT-2026-0015 / TEST 0034) |
+| R3 / UC-01 | UQ-03: every JSON output | Built-ins, GET routes and CLI `--json` outputs enveloped | T-03 | P2a | DONE (P2a; validated **PASS**, RPT-2026-0015 / TEST 0036) |
+| R4 / UC-01 | UQ-06: one input shape | `InputEnvelope::parse` shared by every surface; `--data`, `--input` | T-02 | P2a | DONE (P2a; FFI part in P2d; validated **PASS**, RPT-2026-0015 / TEST 0035) |
+| R5 / UC-09 | Compatibility for 0.1.0 clients | `id`/`params` aliases in 0.2.x with deprecation signals; mixed keys refused | T-15 | P2a | DONE (P2a; validated **PASS**, RPT-2026-0015 / TEST 0048) |
+| R6 / UC-03 | UQ-04: readable JSON | `--pretty`, `?pretty=true`, `to_json_pretty`, FFI `pretty`; refused on NDJSON/SSE | T-05 | P2a | DONE (P2a; FFI part in P2d; validated **PASS**, RPT-2026-0015 / TEST 0038) |
+| R7 / UC-04 | UQ-07: reuse values | `global NAME = EXPR`, load-time, read-only | T-06 | P2b | DONE (P2b; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0039, 0029) |
+| R8 / UC-04 | UQ-07: safe globals | `syntax.global`, `check.global_*` codes with spans | T-07 | P2b | DONE (P2b; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0040) |
+| R9 / UC-04 | Manifest precision | Global substitution in the manifest and call graph | T-08 | P2b | DONE (P2b; see the R9 deviation; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0041) |
+| R10 / UC-05 | UQ-02: Cargo dependency | `rivet-runtime` package, `rivet` facade, hidden internals | T-09 | P2c | DONE (P2c; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0042) |
+| R11 / UC-05 | UQ-02: lean builds | Features `serve,grpc,quic,oauth,cli`; `unsupported.feature` | T-10 | P2c | DONE (P2c; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0043) |
+| R12 / UC-05 | UQ-02: publication path | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB | T-10 (packaging list) | P2c | DONE (code; packaging PASS) — validation **PARTIAL** (RPT-2026-0015: the `v0.2.0` tag dependency is verifiable only after P5; crates.io publication DEFERRED to G-PUB) |
+| R13 / UC-06 | UQ-08: C ABI | `rivet-ffi` cdylib + staticlib, `rivet.h`, `rivet.pc`, `rivet_abi_version` | T-11 | P2d | DONE (P2d; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0044) |
+| R14 / UC-06 | FFI safety | Panic, null, UTF-8 and JSON guards; ownership rules; thread safety | T-12 | P2d | DONE (P2d; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0045) |
+| R15 / UC-06 | FFI streams | Pull call handle: start, next, send, finish_input, cancel, free | T-11 | P2d | DONE (P2d; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0044) |
+| R16 / UC-07 | UQ-01: editors | Generated TextMate grammar; VS Code extension `.vsix` | T-13 | P2e | DONE (P2e; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0046) |
+| R17 / UC-08 | UQ-01: terminal/HTML | `rivet highlight`, `rivet::highlight::tokens` | T-14 | P2e | DONE (P2e; FFI `rivet_highlight` in P2d; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0047) |
+| R18 / all | DOCUMENTATION §§29–31 | Every document in the Documentation and Demo Checklist | T-30, T-31, T-32 | P4 | IN PROGRESS (P4) — validation **PARTIAL** (RPT-2026-0015: T-31, T-32 PASS; T-30 PARTIAL — demo records predate the INC-2026-0012 fixes, tagged run P5; D-rows open) |
+| R19 / UC-10 | UQ-09: files as modules | `import "PATH" as ALIAS [public]`; root-confined bootstrap reads | T-16 | P2f | DONE (P2f; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0049) |
+| R20 / UC-10 | UQ-09: namespaced by alias | `ALIAS.ID`; internal by default, `public` to expose; transitive namespacing | T-16 | P2f | DONE (P2f; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0049) |
+| R21 / UC-10 | Safe imports | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | T-17 | P2f | DONE (P2f; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0050) |
+| R22 / UC-11 | UQ-09: host object (Rust) | `Runtime::load/load_as` → `Module`; builder without an entry file; catalog snapshot swap | T-18 | P2f | DONE (P2f; Module::stream/duplex take a Scope; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0051) |
+| R23 / UC-11 | UQ-09: host object (C/Python) | `rivet_load`, `rivet_module_*`; Python wrapper example | T-19 | P2d | DONE (P2d; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0052) |
+| R24 / UC-10, UC-11 | UQ-09: loader's policy only | One policy; module `policy.json` ignored with a warning; manifest/graph/explain/generate cover modules | T-20 | P2f | DONE (P2f; docs P4; validated **PASS**, RPT-2026-0015 / TEST 0053) |
 
 ## Applicable Project Standards
 
@@ -224,7 +232,7 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 | P2d | C ABI (incl. module handles, R23) | P2c and P2f exit | T-11, T-12 green (shared and static, macOS; Linux in CI when available) | P2c | DONE (`f9af92a`; T-11, T-12, T-19 PASS on macOS; Linux via CI) |
 | P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | DONE (`9ec2a39`, `0d6c2ea`; T-13, T-14 PASS) |
 | P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | DONE (`2942066`) |
-| P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | NOT STARTED |
+| P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | DONE (`f5a1beb`, `9678de1`; 493 tests, CI run 36505156729; T-01–T-20, T-27–T-29, T-34 PASS; T-30 PARTIAL, T-31/T-32 PASS; `vhco sync` 0; RPT-2026-0015: 22 PASS, 2 PARTIAL) |
 | P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
 | P5 | Version, release commit, tag, REL | P4 exit | §34 gate walked; T-33 | P4 | NOT STARTED |
 
@@ -321,11 +329,11 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-060 | P3 | Full gates: `cargo fmt --check`, `clippy --workspace --all-targets --all-features -D warnings`, `cargo test --workspace --all-features`, feature matrix, `cargo deny check`, release build of both crates, `vhco assure` | all | — | T-27, T-28, T-34 | P2* | I | NOT STARTED | |
-| TASK-061 | P3 | TEST documents for new tests TEST-2026-0034…0053 (T-01…T-20) and re-record the regression suites TEST-2026-0001…0033 at the RC commit (revision bump; results for v0.2.0) | all | docs | T-32 | TASK-060 | I | NOT STARTED | |
-| TASK-062 | P3 | Validation report RPT-2026-0015 (R1–R18 PASS/PARTIAL/FAIL; deviations; unintended behaviour; limitations) | all | docs | T-32 | TASK-061 | I | NOT STARTED | |
-| TASK-063 | P3 | Record every unexpected defect as INC-2026-0009+ and reusable problems as TRBL-2026-0004+ | — | docs | T-31 | ongoing | I | NOT STARTED | |
-| TASK-064 | P3 | Security checks: secret-canary scan of all test output (`--nocapture`), FFI misuse suite, confirmation that a global cannot hold a secret | R14, R8 | — | T-12 | TASK-060 | I | NOT STARTED | |
+| TASK-060 | P3 | Full gates: `cargo fmt --check`, `clippy --workspace --all-targets --all-features -D warnings`, `cargo test --workspace --all-features`, feature matrix, `cargo deny check`, release build of both crates, `vhco assure` | all | — | T-27, T-28, T-34 | P2* | I | DONE | `14750b8`, 2026-09-29, macOS 26.4.1 arm64 + CI run 36505156729 (same commit; ubuntu-latest, macos-latest, features ×6, deny: success). fmt 0; clippy `--workspace --all-targets --all-features -D warnings` 0; build `--workspace --all-features` 0; `cargo test --workspace --all-targets --all-features --no-fail-fast` **493 passed, 0 failed** (37 targets); `cargo deny check` advisories/bans/licenses/sources ok; release build of both crates 0 (51.7 s, 0 warnings); feature matrix none/cli/serve/grpc/quic/oauth build, 0 warnings each; `vhco validate` ✔, `sync` 0 gaps, `check` ✔, `assure` ✔; check_docs 0 problems; `vhco docs check` 0 errors (66 warnings). TEST-2026-0027/0028 PASS |
+| TASK-061 | P3 | TEST documents for new tests TEST-2026-0034…0053 (T-01…T-20) and re-record the regression suites TEST-2026-0001…0033 at the RC commit (revision bump; results for v0.2.0) | all | docs | T-32 | TASK-060 | I | DONE | `f5a1beb`: TEST-2026-0034…0053 created (T-01…T-20, all PASS; executed test names listed per `--list`); TEST-2026-0001…0032 re-recorded at revision 2 with the v0.1.0 run kept: 0001…0026 (T-34) PASS, 0027 PASS, 0028 PASS, 0029 PASS, 0030 PARTIAL, 0031 PASS, 0032 PASS (0001, 0008, 0027 PARTIAL → PASS: Linux green in CI, Windows unsupported; 0008 Linux sandbox refusal-before-spawn satisfies T-08). TEST-2026-0033 left for P5. `docs/testing/index.md` rev 2 |
+| TASK-062 | P3 | Validation report RPT-2026-0015 (R1–R18 PASS/PARTIAL/FAIL; deviations; unintended behaviour; limitations) | all | docs | T-32 | TASK-061 | I | DONE | `9678de1`: [RPT-2026-0015](../reports/rpt-2026-0015-validation-of-plan-2026-0002.md) (status completed) over R1–R24: 22 PASS, 2 PARTIAL (R12, R18), 0 FAIL, 0 NOT APPLICABLE; deviations, unintended behaviour (INC-2026-0009/0010/0012), unresolved INC-2026-0011, limitations, follow-up; reports index rev 2 |
+| TASK-063 | P3 | Record every unexpected defect as INC-2026-0009+ and reusable problems as TRBL-2026-0004+ | — | docs | T-31 | ongoing | I | DONE | No new unexpected defect in P3 (gates, suite and security checks green on first run). Incidents of this plan: INC-2026-0009, INC-2026-0010, INC-2026-0012 resolved; INC-2026-0011 (Windows) active. Troubleshooting: TRBL-2026-0004…0007. The local ASan hang is a tooling limit, recorded in TEST-2026-0045/RPT-2026-0015, not an incident |
+| TASK-064 | P3 | Security checks: secret-canary scan of all test output (`--nocapture`), FFI misuse suite, confirmation that a global cannot hold a secret | R14, R8 | — | T-12 | TASK-060 | I | DONE | RPT-2026-0015 §Security Checks: `cargo test … -- --nocapture` (1122 lines, 493 passed) grepped for every test canary (`CANARY-*`, base64 of the T-08 canary, `s3cr3t*`, `super-secret`, any-case `canary`): **0 hits**. Global secret: `t07_not_constant` + CLI check at `14750b8` — `env`, `secret` statement and `(secret …)` call are `check.global_not_constant`, a `secret` reusing a global is `check.global_shadow` (exit 2). FFI misuse suite 8/8 and C examples: macOS `leaks --atExit` **0 leaks**; ASan (nightly, macOS arm64) did not start — follow-up |
 
 ### P4 — Documentation and demos
 
@@ -420,34 +428,34 @@ TEST-2026-0034 (T-01) … TEST-2026-0053 (T-20). The regression suites keep TEST
 
 | Test ID | Type | UC / Req | Scenario (positive / negative / regression) | Exact test file or manual steps | Command / environment | Expected result | Status | Evidence |
 |---|---|---|---|---|---|---|---|---|
-| T-01 | integration | UC-01 / R1, R2 | Envelope schema on every surface for ok, error, cancelled, accepted | `tests/conformance_envelope.rs` | `cargo test --test conformance_envelope` | Every output validates; key order fixed | PASS (`conformance_envelope`) | TEST-2026-0034 |
-| T-02 | integration | UC-01 / R4 | One input file on CLI `--input`, HTTP, WS, polling, MCP, library, FFI | same | same | Identical `data` | PASS (FFI leg in P2d) | TEST-2026-0035 |
-| T-03 | integration | UC-01 / R3 | Built-ins, GET routes and `--json` outputs enveloped | same | same | Schema valid | PASS | TEST-2026-0036 |
-| T-04 | integration | UC-02 / R1 | Stream records then exactly one result; consumer stop → cancelled | same | same | Sequence and statuses | PASS | TEST-2026-0037 |
-| T-05 | integration | UC-03 / R6 | Pretty goldens; pretty + stream refused | same | same | Indent 2; validation.usage / 400 | PASS | TEST-2026-0038 |
-| T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | PASS (`conformance_globals`, 3 tests) | TEST-2026-0039 |
-| T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | PASS (`conformance_globals`, 7 tests) | TEST-2026-0040 |
-| T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | PASS (`conformance_globals`, 2 tests) | TEST-2026-0041 |
-| T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | PASS (`cargo run --example embed`: envelopes, stream, outputs, manifest, draft; facade only) | TEST-2026-0042 |
-| T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | PASS (local: `--no-default-features` and each single feature build with 0 warnings; `conformance_features` under all features (3), none (6), serve (6), grpc/quic/oauth (5), cli (7); `cargo package --list`; `vhco validate`/`sync` green on the workspace) | TEST-2026-0043 |
-| T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | PASS on macOS (`conformance_ffi` t11_*, 5 tests: 18 `rivet_*` exports only, install name `@rpath`, C shared + static, Python, header, pkg-config); Linux in CI | TEST-2026-0044 |
-| T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | PASS (`ffi/tests/ffi_safety.rs`, 8 tests; ASan not run) | TEST-2026-0045 |
-| T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | PASS (`conformance_highlight` t13_*, 3 tests: `check_keywords.py`, `check_grammar.py` over 107 samples, `package_vsix.py`; Node tools replaced, see deviation) | TEST-2026-0046 |
-| T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | PASS (`conformance_highlight` t14_*, 5 tests) | TEST-2026-0047 |
-| T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | PASS | TEST-2026-0048 |
-| T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | PASS (`conformance_modules`, 4 tests) | TEST-2026-0049 |
-| T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | PASS (`conformance_modules`, 7 tests) | TEST-2026-0050 |
-| T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | PASS (`conformance_modules`, 3 tests) | TEST-2026-0051 |
-| T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | PASS on macOS (`conformance_ffi` t19_*, 2 tests: C shared + static, Python module attributes) | TEST-2026-0052 |
-| T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | PASS (`conformance_modules`, 2 tests) | TEST-2026-0053 |
-| T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | NOT STARTED | TEST-2026-0027 (re-recorded) |
-| T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | NOT STARTED | TEST-2026-0028 (re-recorded) |
-| T-29 | corpus | R7, R16 | REF-2026-0002 and demo sources parse (with `global`) | `tests/conformance_samples.rs` | `cargo test --test conformance_samples` | All parse | NOT STARTED | TEST-2026-0029 (re-recorded) |
-| T-30 | manual / e2e | all | Demos 01–16 and DEMO-2026-0020 executed step by step against the RC | READMEs | manual | Every step matches | NOT STARTED | TEST-2026-0030 (re-recorded) |
-| T-31 | documentation | R18 | `check_docs`, `vhco docs check` | `scripts/check_docs.py` | `python3 scripts/check_docs.py && vhco docs check .` | 0 problems / 0 errors | NOT STARTED | TEST-2026-0031 (re-recorded) |
-| T-32 | traceability | R1–R18 | R → task → PF → T → D → U; no orphans | script over this plan, RPT, REL | — | No orphans | NOT STARTED | TEST-2026-0032 (re-recorded) |
+| T-01 | integration | UC-01 / R1, R2 | Envelope schema on every surface for ok, error, cancelled, accepted | `tests/conformance_envelope.rs` | `cargo test --test conformance_envelope` | Every output validates; key order fixed | PASS (P3: `conformance_envelope` t01 + FFI legs; macOS + Linux CI) | [TEST-2026-0034](../testing/test-2026-0034-envelope-schema.md) |
+| T-02 | integration | UC-01 / R4 | One input file on CLI `--input`, HTTP, WS, polling, MCP, library, FFI | same | same | Identical `data` | PASS (P3: t02 incl. FFI leg in `conformance_ffi`) | [TEST-2026-0035](../testing/test-2026-0035-input-envelope.md) |
+| T-03 | integration | UC-01 / R3 | Built-ins, GET routes and `--json` outputs enveloped | same | same | Schema valid | PASS (P3) | [TEST-2026-0036](../testing/test-2026-0036-builtin-json-envelopes.md) |
+| T-04 | integration | UC-02 / R1 | Stream records then exactly one result; consumer stop → cancelled | same | same | Sequence and statuses | PASS (P3; + INC-2026-0012 `seq` regressions) | [TEST-2026-0037](../testing/test-2026-0037-stream-records.md) |
+| T-05 | integration | UC-03 / R6 | Pretty goldens; pretty + stream refused | same | same | Indent 2; validation.usage / 400 | PASS (P3) | [TEST-2026-0038](../testing/test-2026-0038-pretty-json.md) |
+| T-06 | integration | UC-04 / R7 | Globals visible everywhere; concurrent requests equal | `tests/conformance_globals.rs` | `cargo test --test conformance_globals` | Values equal | PASS (P3: `conformance_globals`, 3 tests) | [TEST-2026-0039](../testing/test-2026-0039-globals-values.md) |
+| T-07 | failure | UC-04 / R8 | Every `check.global_*` / `syntax.global` code with its span | same | same | Code, line, column; exit 2 | PASS (P3: 7 tests; global cannot hold a secret confirmed, TASK-064) | [TEST-2026-0040](../testing/test-2026-0040-globals-diagnostics.md) |
+| T-08 | integration | UC-04 / R9 | Manifest exactness; exact `policy generate` grants | same | same | `exact` targets | PASS (P3: 2 tests; R9 deviation recorded) | [TEST-2026-0041](../testing/test-2026-0041-globals-manifest.md) |
+| T-09 | build | UC-05 / R10 | An external crate uses only the facade | `examples/embed.rs`, scratch crate | `cargo run --example embed --features …` | Builds, prints an envelope | PASS (P3: `cargo run --example embed` exit 0; facade regression) | [TEST-2026-0042](../testing/test-2026-0042-library-facade.md) |
+| T-10 | build | UC-05 / R11, R12 | Feature matrix; `unsupported.feature`; `cargo package --list`; vhco accepts the workspace | `tests/conformance_features.rs`, CI | `cargo build --no-default-features`, per-feature, `vhco validate .` | All green | PASS (P3: matrix 6/6 local, 0 warnings, and 6 CI jobs; `conformance_features` 3 under all features) | [TEST-2026-0043](../testing/test-2026-0043-cargo-features.md) |
+| T-11 | integration | UC-06 / R13, R15 | C (shared and static) and Python examples; stream, input, cancel | `tests/conformance_ffi.rs`, `examples/c`, `examples/python` | `make -C examples/c test`; `python3 examples/python/demo.py` | Envelopes; correct lifecycle | PASS (P3: 5 tests macOS; Linux `.so`/`.a` in CI; header `--verify` in CI) | [TEST-2026-0044](../testing/test-2026-0044-c-abi.md) |
+| T-12 | failure / security | UC-06 / R14 | Null, bad UTF-8, bad JSON, panic, double free, free-while-running | `ffi/tests/` | `cargo test -p rivet-ffi` (+ ASan on Linux CI) | Error envelopes; no crash, no leak | PASS (P3: `ffi/src/tests.rs` 8 tests; macOS `leaks` 0 leaks; ASan not run — deviation) | [TEST-2026-0045](../testing/test-2026-0045-ffi-safety.md) |
+| T-13 | regression | UC-07 / R16 | Keyword drift; TextMate snapshots over REF blocks and demos; `.vsix` packages | `editors/tests/`, `editors/check_keywords.py` | `python3 editors/check_keywords.py`; `npx vscode-tmgrammar-test …`; `npx @vscode/vsce package` | No drift; snapshots stable; `.vsix` built | PASS (P3: 3 tests; Python tooling deviation) | [TEST-2026-0046](../testing/test-2026-0046-editor-grammar.md) |
+| T-14 | integration | UC-08 / R17 | `rivet highlight` ansi/html/json goldens; syntax error → partial tokens | `tests/conformance_highlight.rs` | `cargo test --test conformance_highlight` | Goldens match | PASS (P3: 5 tests + unclosed-block regression) | [TEST-2026-0047](../testing/test-2026-0047-highlight-cli.md) |
+| T-15 | compatibility | UC-09 / R5 | Legacy `{id, params}` with deprecation signals; mixed keys refused | `tests/conformance_envelope.rs` | same | Header/warning; 422 | PASS (P3) | [TEST-2026-0048](../testing/test-2026-0048-legacy-input.md) |
+| T-16 | integration | UC-10 / R19, R20 | Imports compile once; `ALIAS.ID`; internal vs `public`; `(alias.id …)` and `request`; nested imports; per-module globals | `tests/conformance_modules.rs` | `cargo test --test conformance_modules` | As specified | PASS (P3: 4 tests) | [TEST-2026-0049](../testing/test-2026-0049-file-modules.md) |
+| T-17 | failure | UC-10 / R21 | Every import error code with its span; the cycle path in the message | same | same | Exact codes and exits | PASS (P3: 7 tests + URL-import and load-ID regressions) | [TEST-2026-0050](../testing/test-2026-0050-import-errors.md) |
+| T-18 | integration | UC-11 / R22 | `load`/`load_as`, `operations`, `call`, streams; builder without an entry file; concurrent load during requests | same | same | Envelopes; no race | PASS (P3: 3 tests) | [TEST-2026-0051](../testing/test-2026-0051-host-module-load.md) |
+| T-19 | integration | UC-11 / R23 | C module example; Python module wrapper | `tests/conformance_ffi.rs`, `examples/c/modules.c`, `examples/python/modules.py` | `make -C examples/c modules`; `python3 examples/python/modules.py` | Envelopes | PASS (P3: 2 tests + `module_handles`; 0 leaks) | [TEST-2026-0052](../testing/test-2026-0052-ffi-modules.md) |
+| T-20 | security | UC-10, UC-11 / R24 | Loader policy governs modules; module policy.json ignored with a warning; manifest/graph/generate cover modules with module spans | `tests/conformance_modules.rs` | same | Denials as by the loader; warning; spans | PASS (P3: 2 tests + module-policy warning regression) | [TEST-2026-0053](../testing/test-2026-0053-module-policy.md) |
+| T-27 | build / static | all | fmt, clippy (`--all-features`), deny, release build of both crates | CI or local | `cargo fmt --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check && cargo build --release --workspace --all-features` | All green | PASS (P3, `14750b8`: fmt, clippy, deny, release build; Linux CI; PARTIAL → PASS) | [TEST-2026-0027](../testing/test-2026-0027-build-static.md) (re-recorded) |
+| T-28 | architecture | all | VHCO structure and zero drift | — | `vhco validate . && vhco sync . && vhco check .` | Green; sync 0 | PASS (P3: validate, sync 0, check, assure) | [TEST-2026-0028](../testing/test-2026-0028-architecture.md) (re-recorded) |
+| T-29 | corpus | R7, R16 | REF-2026-0002 and demo sources parse (with `global`) | `tests/conformance_samples.rs` | `cargo test --test conformance_samples` | All parse | PASS (P3: `conformance_samples` 3 tests) | [TEST-2026-0029](../testing/test-2026-0029-samples.md) (re-recorded) |
+| T-30 | manual / e2e | all | Demos 01–16 and DEMO-2026-0020 executed step by step against the RC | READMEs | manual | Every step matches | PARTIAL (P3: demo records PASS on macOS but predate the INC-2026-0012 fix commits; tagged-build run is P5; re-run at P4 exit) | [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) (re-recorded) |
+| T-31 | documentation | R18 | `check_docs`, `vhco docs check` | `scripts/check_docs.py` | `python3 scripts/check_docs.py && vhco docs check .` | 0 problems / 0 errors | PASS (P3: check_docs 0 problems; `vhco docs check` 0 errors; re-run at P4 exit) | [TEST-2026-0031](../testing/test-2026-0031-documentation.md) (re-recorded) |
+| T-32 | traceability | R1–R18 | R → task → PF → T → D → U; no orphans | script over this plan, RPT, REL | — | No orphans | PASS (P3: trace script, 0 orphans over R1–R24) | [TEST-2026-0032](../testing/test-2026-0032-traceability.md) (re-recorded) |
 | T-33 | release | release | Version sync across Cargo, `--version`, MCP serverInfo, capabilities, `rivet_version()`, vsix; tag = commit; clean tree | `scripts/check_version.py --tag` | — | All `0.2.0`; SHAs equal | NOT STARTED | TEST-2026-0033 (re-recorded) |
-| T-34 | regression | R1 | Every 0.1.0 suite (T-01…T-26 of PLAN-2026-0001) green on the new envelopes with no behaviour change | `tests/conformance_*.rs` | `cargo test --workspace --all-features` | 400+ tests pass | PASS (409/409 at P2a) | TEST-2026-0001…0026 (re-recorded) |
+| T-34 | regression | R1 | Every 0.1.0 suite (T-01…T-26 of PLAN-2026-0001) green on the new envelopes with no behaviour change | `tests/conformance_*.rs` | `cargo test --workspace --all-features` | 400+ tests pass | PASS (P3: 493/493 at `14750b8`; every 0.1.0 suite green; macOS + Linux CI) | [TEST-2026-0001…0026](../testing/index.md) (re-recorded) |
 
 ## Documentation and Demo Checklist
 
@@ -484,10 +492,10 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-02 | decision | `docs/decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md` + index | Approval | Gates, Q resolutions | — | DONE | T-31 |
 | D-03 | decision | `docs/decisions/adr-0005-workspace-package-and-features.md` + index | Packaging decision after E1–E3 | Workspace layout, `rivet-runtime`, feature set, fallback | Cargo | DONE | T-31 |
 | D-04 | research | `docs/research/res-2026-0004-workspace-ffi-and-feature-experiments.md` + index | P1 evidence | E1–E3 results, symbol lists, native static libs per OS, build-size observation | FFI, features | DONE | T-31 |
-| D-05 | incidents | `docs/incidents/resolved/inc-2026-0009…` + indexes | §25 | One per unexpected defect | — | NOT STARTED | T-31 |
+| D-05 | incidents | `docs/incidents/resolved/inc-2026-0009…` + indexes | §25 | One per unexpected defect | — | DONE | T-31 |
 | D-06 | troubleshooting | `docs/troubleshooting/trbl-2026-0004…` + index | §26 | Linking, symbol export, feature-gate pitfalls as found | — | DONE | T-31 |
-| D-07 | tests | `docs/testing/test-2026-0034-envelope-schema.md` … `test-2026-0048-legacy-input.md` + re-records of 0001…0033 + `docs/testing/index.md` | §27 | Definition, requirement, environment, result, evidence | all | NOT STARTED | T-32 |
-| D-08 | validation | `docs/reports/rpt-2026-0015-validation-of-plan-2026-0002.md` + index | §28 | R1–R18 results | all | NOT STARTED | T-32 |
+| D-07 | tests | `docs/testing/test-2026-0034-envelope-schema.md` … `test-2026-0048-legacy-input.md` + re-records of 0001…0033 + `docs/testing/index.md` | §27 | Definition, requirement, environment, result, evidence | all | DONE | T-32 |
+| D-08 | validation | `docs/reports/rpt-2026-0015-validation-of-plan-2026-0002.md` + index | §28 | R1–R18 results | all | DONE | T-32 |
 | D-09 | migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` + **new** `docs/migrations/index.md` (REF-2026-0037) | §4.21 | Before/after per surface (CLI, HTTP, SSE, polling, WS, MCP, library); `jq` mapping; deprecation timeline 0.2 → 0.3; client checklist; rollback (pin v0.1.0) | all surfaces | NOT STARTED | T-31 |
 | D-10 | API | `docs/api/api-2026-0006-envelopes.md` | Canonical envelope reference | Response, input, stream record; status/type tables; key order; pretty; error object; per-surface wrapping (WS `ref`, MCP `structuredContent`); JSON Schemas | all | NOT STARTED | T-01, T-31 |
 | D-11 | API schema | `docs/api/schemas/{response,input,stream-record}.schema.json` | Machine-readable contract | JSON Schema 2020-12 | all | DONE | T-01 |
@@ -658,6 +666,12 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-29 | Finding | TASK-043 | `cargo test` leaves the cdylib and staticlib in `target/<profile>/deps` (no uplift to `target/<profile>`); `conformance_ffi` looks there first and needs `cargo test --workspace` (TRBL-2026-0006). The Linux `Libs.private` list (`-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc`) and ASan are unverified locally (no Linux host): the first CI run checks the list | Linux static link verified by CI | P3 (TASK-060, TASK-064) | TRBL-2026-0006 |
 | 2026-09-29 | Finding | P2c, P2d | 476 tests pass (455 + 3 `conformance_features` + 1 `FfiOptions` unit + 2 `setup_ffi` unit + 8 `ffi_safety` + 7 `conformance_ffi`); fmt, clippy `--workspace --all-targets --all-features -D warnings`, feature matrix, `vhco validate`, `vhco check` green; `vhco sync` 0; check_docs 0 problems; `vhco docs check` 0 errors. Parallel uncommitted edits by another agent (STD-2026-0001, the contract `overview.summary`, README and docs indexes) were left unstaged; the contract was staged hunk by hunk | P2c and P2d exits met | — | `10c8130`, `f9af92a` |
 | 2026-09-29 | Finding | P4 verification (TASK-075…077, D-34…D-47) | INC-2026-0012: 19 defects found by the 0.2.0 documentation/demo verification fixed before P3/P5 — envelope consistency (WS refused-input terminal `seq`/`data_count`, library terminal `seq`, rejected input echoes `operation`, MCP `rivet.request` errors name the target, `mcp.session_required` `operation: null`, no nested `effects`, WS/polling open refusals carry IDs, WS `conflict.ref` detached as `ref: ""`), language (highlight keeps unclosed-block headers, inline `open true` honoured, gRPC `unsupported.feature` at the call site, URL imports `syntax.import`), CLI/library (`policy explain --data` + params through module calls + `--json` denial error envelope, `auth complete --data/--data-file`, WS `deadline_ms` from `--timeout`, load refusals carry IDs, `check.module_policy_ignored` on `request`/`serve`, facade `rivet::serve`, session types, `TraceResult`), and T-29 (import-aware demo compile, `global`/`import` blocks as whole files). Decisions: unary WS results keep `seq` (every ref is a session, API-2026-0002); `policy explain --json` denial is a `status: error` / kind `permission` envelope on stderr (exit 3); inline `open` honoured. Contract hand-edited (`CallArg`, `CallSite.args`, flow steps `detach`, `name_refusals`, `recover`); 493 tests pass (476 + 17 `conformance_verification_defects`); `vhco sync` 0 | Pre-release defects closed; docs updated to fixed behaviour | Implementer | INC-2026-0012, `fad2940`, `4122353`, `1034636`, `4a34537` |
+| 2026-09-29 | Finding | TASK-060 / T-27, T-28 | P3 gates at `14750b8`, all green: fmt, clippy `-D warnings`, build, 493/493 tests, deny, release build, feature matrix 6/6 with 0 warnings, and vhco validate/sync 0/check/assure. CI run 36505156729 is green at the same commit. | P3 exit met | — | TEST-2026-0027, TEST-2026-0028 |
+| 2026-09-29 | Decision | TASK-061 / T-08 (PLAN-2026-0001) | The Linux sandbox stays gated (ADR-0003), and Linux CI asserts `unsupported.sandbox_backend` before spawn with no side effect. This meets the T-08 criterion "unsupported backend refuses before spawn", so TEST-2026-0008 is PASS. The gated backend remains a release limitation. Windows is unsupported (INC-2026-0011), so it is not a PARTIAL reason for T-01, T-08 or T-27. | 0.1.0 PARTIALs closed | REL-0.2.0 Known Issues (P5) | TEST-2026-0001, 0008, 0027 |
+| 2026-09-29 | Deviation | TASK-064 / T-12, R14 | CI has no ASan job, and the local nightly AddressSanitizer build (macOS arm64) compiled, but its test binary hung before the harness started (even for `versions_agree`). The "no leak" criterion was instead verified with macOS `leaks --atExit`: 0 leaks for the 8 misuse tests and for the static C examples. | Use-after-free detection by ASan missing | Follow-up: Linux CI ASan job | TEST-2026-0045, RPT-2026-0015 |
+| 2026-09-29 | Finding | TASK-061 / T-30 | TEST-2026-0030 is PARTIAL. The demo verification records (8031baa, 166a98b) predate the INC-2026-0012 fix commits; the docs were updated in 55b9e73, but the changed steps were not re-executed. The tagged-build row of DEMO-2026-0020 is P5. | R18 PARTIAL | P4 exit re-run; P5 tagged run | TEST-2026-0030 |
+| 2026-09-29 | Finding | TASK-064 | Secret-canary scan: 0 hits in 1122 lines of `--nocapture` output. A global cannot hold a secret: `env`, the `secret` statement and a `(secret …)` call are `check.global_not_constant`, and a `secret` reusing a global's name is `check.global_shadow`. | Security checks pass | — | RPT-2026-0015 |
+| 2026-09-29 | Finding | PF-G01 | `vhco spec .` shows `vhco.json` is stale: it lacks the INC-2026-0012 contract edits (`CallArg`, `CallSite.args`) and it embeds documentation text. Regenerating it and `vhco.html` is left until the P4 documentation settles, so the artifact is not churned. | Generated artifact only; `vhco sync` 0 | P4/P5 | PF-G01 |
 
 ## Rollout Strategy
 
@@ -697,30 +711,30 @@ is walked in REL-0.2.0 (TASK-094). TASK-095/096 may stay BLOCKED on the remote, 
 
 | Requirement / UC | Implementation tasks | File changes | Tests | Docs / demo | Release update | Final status |
 |---|---|---|---|---|---|---|
-| R1 / UC-01, 02 | 010–016, 018 | PF-01–PF-04 | T-01, T-04, T-34 | D-10, D-11, D-40–D-42, D-46–D-63 | U-01 | CODE + TESTS DONE (docs P4, release P5) |
-| R2 / UC-01 | 010, 017 | PF-01, PF-02 | T-01 | D-10, D-44 | U-02 | CODE + TESTS DONE (docs P4, release P5) |
-| R3 / UC-01 | 011, 012 | PF-03 | T-03 | D-23, D-40 | U-03 | CODE + TESTS DONE (docs P4, release P5) |
-| R4 / UC-01 | 010–015, 019 | PF-01, PF-03, PF-T07 | T-02 | D-10, D-23, D-40–D-42, D-50, D-59 | U-04 | CODE + TESTS DONE (docs P4, release P5) |
-| R5 / UC-09 | 010–012, 014 | PF-01, PF-03 | T-15 | D-09, D-44 | U-05 | CODE + TESTS DONE (docs P4, release P5) |
-| R6 / UC-03 | 010–012 | PF-01, PF-03 | T-05 | D-10, D-23, D-25 | U-06 | CODE + TESTS DONE (docs P4, release P5) |
-| R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | CODE + TESTS DONE (docs P4, release P5) |
-| R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | CODE + TESTS DONE (docs P4, release P5) |
-| R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | CODE + TESTS DONE (docs P4, release P5) |
-| R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | CODE + TESTS DONE (docs P4, release P5) |
-| R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | CODE + TESTS DONE (docs P4, release P5) |
-| R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | CODE DONE; publication DEFERRED (G-PUB) |
-| R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | CODE + TESTS DONE (docs P4, release P5) |
-| R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | CODE + TESTS DONE (docs P4, release P5) |
-| R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | CODE + TESTS DONE (docs P4, release P5) |
-| R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | CODE + TESTS DONE (P2e); docs P4 |
-| R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | CODE + TESTS DONE (P2e); docs P4 |
-| R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | NOT STARTED |
-| R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | CODE + TESTS DONE (docs P4, release P5) |
-| R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | CODE + TESTS DONE (docs P4, release P5) |
-| R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | CODE + TESTS DONE (docs P4, release P5) |
-| R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | CODE + TESTS DONE (docs P4, release P5) |
-| R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | CODE + TESTS DONE (docs P4, release P5) |
-| R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | CODE + TESTS DONE (docs P4, release P5) |
+| R1 / UC-01, 02 | 010–016, 018 | PF-01–PF-04 | T-01, T-04, T-34 | D-10, D-11, D-40–D-42, D-46–D-63 | U-01 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R2 / UC-01 | 010, 017 | PF-01, PF-02 | T-01 | D-10, D-44 | U-02 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R3 / UC-01 | 011, 012 | PF-03 | T-03 | D-23, D-40 | U-03 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R4 / UC-01 | 010–015, 019 | PF-01, PF-03, PF-T07 | T-02 | D-10, D-23, D-40–D-42, D-50, D-59 | U-04 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R5 / UC-09 | 010–012, 014 | PF-01, PF-03 | T-15 | D-09, D-44 | U-05 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R6 / UC-03 | 010–012 | PF-01, PF-03 | T-05 | D-10, D-23, D-25 | U-06 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R7 / UC-04 | 020–022 | PF-05–PF-07 | T-06, T-29 | D-17, D-22, D-45 | U-07 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R8 / UC-04 | 021, 022 | PF-06 | T-07 | D-22, D-44 | U-08 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R9 / UC-04 | 023 | PF-08 | T-08 | D-24, D-33 | U-09 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R10 / UC-05 | 030, 031, 033 | PF-09, PF-10, PF-17 | T-09 | D-26, D-43, D-61 | U-10 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R11 / UC-05 | 032, 034 | PF-10, PF-16 | T-10 | D-03, D-27, D-35 | U-11 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R12 / UC-05 | 030, 035, 038 | PF-10 | T-10 | D-03, D-26 | U-12 | CODE DONE; validation PARTIAL (tag after P5; publication DEFERRED, G-PUB) |
+| R13 / UC-06 | 040–042, 044 | PF-11, PF-12, PF-17 | T-11 | D-12, D-13, D-15, D-18 | U-13 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R14 / UC-06 | 040, 043 | PF-11, PF-12 | T-12 | D-12, D-37 | U-14 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R15 / UC-06 | 040, 042 | PF-11, PF-17 | T-11 | D-12, D-13 | U-15 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R16 / UC-07 | 050, 051, 053 | PF-14, PF-G02 | T-13 | D-14, D-16, D-19, D-69 | U-16 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R17 / UC-08 | 052, 053 | PF-13 | T-14 | D-14, D-16, D-23 | U-17 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R18 / all | 070–082 | docs | T-30, T-31, T-32 | D-01…D-72 | U-18 | IN PROGRESS (P4); validation PARTIAL (T-30) |
+| R19 / UC-10 | 100, 101, 102 | PF-19, PF-20 | T-16 | D-22, D-45, D-71 | U-19 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R20 / UC-10 | 102, 103 | PF-20 | T-16 | D-22, D-31, D-71 | U-20 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R21 / UC-10 | 102 | PF-20 | T-17 | D-22, D-44 | U-21 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R22 / UC-11 | 105, 106 | PF-22, PF-17 | T-18 | D-26, D-43, D-71 | U-22 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R23 / UC-11 | 045 | PF-11, PF-12, PF-17 | T-19 | D-12, D-13, D-15, D-71 | U-23 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
+| R24 / UC-10, UC-11 | 102, 104 | PF-21 | T-20 | D-24, D-33, D-37 | U-24 | CODE + TESTS DONE; validated PASS (RPT-2026-0015); docs P4, release P5 |
 
 ```text
  R-n ──► TASK-0xx ──► PF-xx ──► T-nn (TEST-2026-00nn) ──► D-xx (docs/demo) ──► U-nn (DEMO-2026-0020) ──► REL-0.2.0
@@ -741,6 +755,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 10 | 2026-09-29 | Claude | P3 done: TASK-060…064 DONE with evidence (`14750b8` gates, 493 tests, CI run 36505156729; TEST-2026-0034…0053 created and 0001…0032 re-recorded in `f5a1beb`; RPT-2026-0015 in `9678de1`); P3 phase row DONE; requirement statuses per RPT-2026-0015 (22 PASS, R12 and R18 PARTIAL); Test checklist status and evidence for T-01…T-32, T-34; D-05, D-07, D-08 DONE; final traceability statuses; P3 findings (T-08 Linux criterion, T-12 ASan deviation, T-30 PARTIAL, canary scan, vhco.json staleness); live status refreshed. |
 | 9 | 2026-09-29 | Claude | INC-2026-0012 findings row: 19 verification defects fixed before P3/P5, decisions (unary WS `seq`, `policy explain --json` denial envelope, inline `open`), contract hand edits, 493 tests. |
 | 8 | 2026-09-29 | Claude | CI green on macOS + Linux (run 36483001760); Windows dropped (INC-2026-0011); INC-2026-0010; live status. |
 | 7 | 2026-09-29 | Claude | P2c and P2d done: TASK-030…035 (`10c8130`) and TASK-040…045 (`f9af92a`) DONE with evidence; phase rows P2c/P2d DONE; R10–R15, R23 code and tests done (R12 publication deferred to G-PUB); PF-09–PF-12, PF-T03, PF-T04 DONE, PF-16/PF-17 in progress; T-09–T-12, T-19 PASS (476 tests); findings and deviations recorded (internal module layout, breaking API list, feature refusal rules, ABI deviations, macOS deployment target, deps-dir libraries); TRBL-2026-0006; live status refreshed. |
