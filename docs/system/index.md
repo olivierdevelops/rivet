@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -171,16 +171,14 @@ Current known limitations (the complete list is the
 [manual's Known Limitations](../manuals/man-2026-0001-rivet-manual.md#known-limitations)), recorded in the relevant
 documents. The supported platforms are **macOS and Linux**, and CI is green on both. **Windows is not supported**
 in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)). The limitations are:
-mTLS for `serve`, the gated Linux sandbox, no URL imports and no module unloading, `finally`, unused `approved.overlaps`, `*` matching `rivet.auth.*`, `--timeout` over the
-WebSocket duplex path, MCP 401 without retry, Alt-Svc HTTP/3 discovery, connection pooling, a persistent trace
+mTLS for `serve`, the gated Linux sandbox, no URL imports and no module unloading, `finally`, unused `approved.overlaps`, `*` matching `rivet.auth.*`, MCP 401 without retry, Alt-Svc HTTP/3 discovery, connection pooling, a persistent trace
 store, MCP resource templates and the legacy MCP HTTP+SSE transport, Stage C forms.
 
 Issues found by the 0.2.0 envelope sweep and recorded in the documents:
 
-- SYS-0004 and SYS-0007: a WebSocket `conflict.ref` refusal is a `type: "result"` record on the in-flight ref.
-- SYS-0005: a lean build's `unsupported.feature` span for gRPC calls points at the connector's `endpoint` line.
-- SYS-0005: nested `suppressed` error objects still carry `effects`.
-- SYS-0003: `policy explain` keeps a `--params` flag that is not the deprecated alias.
+- Resolved in [INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md):
+  WebSocket `conflict.ref` for an in-flight ref is detached (`ref: ""`, `details.ref`); gRPC `unsupported.feature`
+  points at the call site; nested errors carry no `effects`; `policy explain` takes `--data` (alias `--params`).
 
 Drift found by TASK-092 at `829ca43` (the `rivet.trace.export` built-in had no dispatcher handler and MCP
 `tools/list` omitted `rivet.capabilities` and `rivet.trace.export`) was fixed in commit `2a751ab` (INC-2026-0007).
@@ -201,3 +199,4 @@ Drift found by TASK-092 at `829ca43` (the `rivet.trace.export` built-in had no d
 | 1 | 2026-09-28 | Claude | Created the system/ index for PLAN-2026-0001 D-15 to D-23. |
 | 2 | 2026-09-28 | Claude | Recorded the fix-batch revision of all nine documents (TASK-092, commits 829ca43 and 2a751ab), the current limitations and the drift found and fixed. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 P4: rows and map entries for SYS-2026-0010 (FFI, packaging, features) and SYS-2026-0011 (highlighting); revision 3 of SYS-0001…0009 recorded (D-31…D-36, D-47); reading order, limitations (macOS/Linux only; Windows unsupported), sweep findings. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: sweep issues resolved; WS `--timeout` limitation removed. |

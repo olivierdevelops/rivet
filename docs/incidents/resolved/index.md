@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -49,10 +49,12 @@ Incidents in the `resolved` lifecycle state. See the [incidents index](../index.
 | [INC-2026-0008](inc-2026-0008-documentation-verification-defects.md) | S3 | resolved | Seven defects found by documentation verification |
 | [INC-2026-0009](inc-2026-0009-numeric-index-paths-do-not-parse.md) | S4 | resolved | Numeric index paths (`xs.0`) did not parse; the message named `assign_map` (fixed `93388c1`, PLAN-2026-0002 P2e) |
 | [INC-2026-0010](inc-2026-0010-ffi-rlib-output-collision.md) | S3 | resolved | rivet-ffi and rivet-runtime both produced `librivet.rlib` (fixed `6f9943f`) |
+| [INC-2026-0012](inc-2026-0012-documentation-and-demo-verification-defects.md) | S3 | resolved | 19 defects found by v0.2.0 documentation and demo verification (fixed `fad2940`…`4a34537`) |
 
 ## Recently added or updated
 
 - 2026-09-29: INC-2026-0010 resolved.
+- 2026-09-29: INC-2026-0012 resolved.
 - 2026-09-28: INC-2026-0009 resolved (PLAN-2026-0002 P2e, commit `93388c1`).
 - 2026-09-28: created during PLAN-2026-0001 P3.
 
@@ -68,6 +70,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-29 | Claude | INC-2026-0012 resolved. |
 | 3 | 2026-09-29 | Claude | INC-2026-0010 resolved. |
 | 2 | 2026-09-28 | Claude | INC-2026-0009 resolved. |
 | 1 | 2026-09-28 | Claude | Created. |

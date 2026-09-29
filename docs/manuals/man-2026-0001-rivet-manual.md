@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -549,8 +549,6 @@ tasks). Each row was checked against the source at `6f9943f`.
 | serve | **mTLS is not supported**: `serve.auth` type `mtls` refuses to start (`unsupported.serve_mtls`, exit 5). | Use `bearer` behind a TLS-terminating proxy. |
 | policy | **`approved.overlaps` is unused**: the key is accepted and validated as a string list but nothing reads it. | Leave it empty. |
 | serve | **The `*` principal pattern matches `rivet.auth.*`**: `serve.principals` `["*"]` lets that principal call `rivet.auth.begin/complete/status/disconnect/cancel`; what they may do is then governed only by `allow_auth` grants. (Sensitive built-ins still need an exact entry.) | List operations explicitly (`demo.*`) instead of `*` for principals that must not manage OAuth accounts, and keep `allow_auth` narrow. |
-| WebSocket | **`--timeout` is not applied on the WebSocket duplex path** (`rivet --endpoint … request --stream --input-jsonl -`): the server honours a request frame's `deadline_ms` from 0.2.0, but the remote CLI does not send one, so the ref runs under the default 30 s. | Set deadlines inside the operation (`timeout "…"`, `scope timeout`), send `deadline_ms` from your own WS client, or use polling with `deadline_ms`. |
-| envelopes | **Known deviations** (found by the 0.2.0 sweep, reported for a fix): a WS ref ended by a refused input gets a terminal record without `seq` and with `data_count: 0`; library `record()` terminal records have no `seq`; a rejected input envelope answers `operation: null` even when it named one; nested `suppressed[]` errors still carry `effects`. | Treat any `type: "result"` record as terminal; match on `error.code`. |
 | MCP client | **An MCP 401 invalidates the lease without retry**: when an HTTP MCP connector answers 401 to a bearer, Rivet drops the cached token and returns `http.status` (401); the *next* call reacquires. | Retry the call once at the caller. |
 | HTTP/3 | **No Alt-Svc discovery**: HTTP/3 is used only when requested (`version 3` or `version prefer [3, 2]`). | Request it explicitly. |
 | transports | **No connection pooling**: every attempt opens its own connection (HTTP one connection per attempt). | Expect a handshake per request. |
@@ -626,3 +624,4 @@ surfaces (MAN-2026-0006) expose every operation.
 | 1 | 2026-09-28 | Claude | Initial root manual for the implemented 0.1.0 build: catalogue, concepts, limitations, glossary; every command verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (TASK-095 doc part): What's New and catalogue rows for `else`, `with file open`, `check` warnings, `graph`, `trace export`, `rivet.capabilities`, `restrict`, ceiling, health/access log/drain, `traceparent`, secret taint on every sink, `if_version`, buffered-bytes budget; configuration and error rows; new **Known Limitations** chapter listing exactly the current limitations; known defects linked. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-20, D-46): **What's New in 0.2.0** (0.1.0 table kept as "Introduced in 0.1.0"; 0.2.0 marked in progress); catalogue rows for envelopes, input envelope and `--data`/`--input`, deprecation, pretty output, globals, modules, the Cargo dependency with features, the facade, the C ABI and highlighting, with why/when and demo paths 14–17; reading path adds MAN-0009/0010 and MIG-0001; concepts, mental model and configuration for envelopes, globals, modules and features; error rows for the new codes; Known Limitations: removed "no `import`", added macOS/Linux support and Windows unsupported (INC-2026-0011), Linux sandbox gated (`unsupported.sandbox_backend`), no URL imports / hot reload, compiled-out features, envelope deviations; version applicability. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: removed the WS `--timeout` limitation and the envelope known-deviation row (both fixed). |

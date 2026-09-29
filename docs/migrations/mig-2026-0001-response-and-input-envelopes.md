@@ -5,7 +5,7 @@ document_type: migration
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -387,7 +387,7 @@ fn f() -> rivet::Result<()> { Ok(()) }            // rivet::Error = the old Rive
 | `rivet::domain::contracts::{Catalog, OutputReport, Principal, RegistryEntry}` | `rivet::types::…` |
 | `rivet::domain::sessions::SessionLimits`, `rivet::domain::source::SourceSpan` | `rivet::types::…` |
 | `rivet::{domain, features, io, infra, orchestrator}::…` (anything else) | `rivet::internal::…` — hidden, not a stable API |
-| `rivet::orchestrator::setup_serve::{ServeOptions, start}` | `rivet::internal::orchestrator::setup_serve::{ServeOptions, start}` (not in the facade) |
+| `rivet::orchestrator::setup_serve::{ServeOptions, start}` | `rivet::serve::{ServeOptions, start}` (feature `serve`); session types, `Request`, `TraceQuery` → `rivet::types::…`; `TraceResult` → `rivet::TraceResult` |
 | `rt.bundle()` → `&SourceBundle` | `rt.bundle()` → `SourceBundle` (owned; gains `modules`) |
 | — | `rt.call(InputEnvelope) -> ResponseEnvelope`, `rt.call_json(&str)`, `rt.load` / `load_as` → `Module`, `Runtime::builder().root(dir)`, `rivet::highlight`, `rivet::build_features()`, `rivet::VERSION`, `rivet::ABI_VERSION` |
 
@@ -479,3 +479,4 @@ for a missing `id`). No data or state migration is involved: policies, `.rivet` 
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | Initial migration guide (TASK-074, D-09): before/after per surface, jq mapping, timeline, checklist, rollback |
+| 2 | 2026-09-29 | Claude | INC-2026-0012: serving, session and trace types are in the facade (`rivet::serve`, `rivet::types`, `rivet::TraceResult`). |

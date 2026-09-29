@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -100,10 +100,12 @@ Moving an existing host: [MIG-2026-0001 §Rust library](../migrations/mig-2026-0
 | `Value` (`from_json`, `to_json`) | `rivet::Value` | `rivet::domain::Value` |
 | `Error`, `ErrorKind`, `Result<T>` | `rivet::Error`, `rivet::ErrorKind`, `rivet::Result` | `rivet::domain::{RivetError, RivetResult}` |
 | `DataSink` (async trait) | `rivet::DataSink` | `rivet::domain::ports::DataSink` |
-| `IoQuery`, `IoReport`, `PolicyDraft`, `Catalog`, `OutputReport`, `Principal`, `GraphQuery`, `SessionLimits`, `ModuleSummary` | `rivet::types::…` | `rivet::domain::…` |
+| `IoQuery`, `IoReport`, `PolicyDraft`, `Catalog`, `OutputReport`, `Principal`, `GraphQuery`, `SessionLimits`, `ModuleSummary`, `Request`, `TraceQuery`, session inputs and results (`SessionOpenInput`, `SessionSendInput`, `SessionReadInput`, `SessionRef`, `SessionReceipt`, `SessionAck`, `SessionBatch`, `SessionEvent`, `CancelReceipt`) | `rivet::types::…` | `rivet::domain::…` |
+| `TraceResult`, `TraceEvent` (`rt.trace(id)`) | `rivet::…` | `rivet::domain::io_manifest::…` |
+| `start`, `ServeOptions`, `ServeHandle`, `ServeReceipt`, `Authenticator`, `AuthnInput`, `AccessLogSink` (feature `serve`) | `rivet::serve::…` | `rivet::orchestrator::setup_serve::…` |
 | `highlight::{tokens, highlight}` | `rivet::highlight` | — (new) |
 | `build_features()`, `VERSION`, `ABI_VERSION` | `rivet::…` | — (new) |
-| `start`, `ServeOptions`, `ServeHandle`; `policy_from_json`; `Request`, `TraceResult`, session inputs | `rivet::internal::…` (**not** in the facade; may change) | `rivet::orchestrator::…` / `rivet::domain::…` |
+| `policy_from_json` | `rivet::internal::…` (**not** in the facade; use `Policy::from_json`) | `rivet::orchestrator::…` |
 
 ## Installation and Setup
 
@@ -122,7 +124,7 @@ async-trait = "0.1"          # only to implement DataSink
 
 | Feature | Default | Pulls in | Needed for |
 |---|---|---|---|
-| `serve` | yes | axum | embedding `serve` (`rivet::internal::orchestrator::setup_serve::start`) |
+| `serve` | yes | axum | embedding `serve` (`rivet::serve::start`) |
 | `grpc` | yes | tonic, prost, prost-reflect | bundles with `connector … grpc` / `grpc X.Method` |
 | `quic` | yes | quinn, h3 | `with quic …`, HTTP/3 (`version 3`, `version prefer [3, …]`) |
 | `oauth` | yes | keyring stores | `auth NAME oauth2` profiles, `store keychain` |
@@ -157,12 +159,12 @@ same dependency versions that were tested. Platforms: macOS and Linux; Windows i
 
 ### Complete host program
 
-This program uses only the facade (plus `rivet::internal` for `serve`, which is not in the facade in 0.2.0). It was
+This program uses only the facade (`rivet::serve` for serving; before INC-2026-0012 it imported the same `start`/`ServeOptions` from `rivet::internal`). It was
 compiled with `cargo build --release` in a scratch Cargo project depending on the repository by path (default
 features) and run with the two demo bundles as arguments.
 
 ```rust
-use rivet::internal::orchestrator::setup_serve::{ServeOptions, start};
+use rivet::serve::{ServeOptions, start};
 use rivet::types::IoQuery;
 use rivet::{DataEvent, DataSink, InputEnvelope, Policy, Runtime, Value};
 use serde_json::json;
@@ -297,7 +299,8 @@ The second program — a host ceiling, `scope.stream`, `scope.duplex`, a typed s
 
 Records from `StreamHandle::next` render with `env.record()` as stream records
 (`{"request_id",…,"operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}`); the library's terminal
-`type: "result"` record has no `seq` (a known difference from the other surfaces, API-2026-0006).
+`type: "result"` record carries `seq` (`data_count + 1`), like every other surface (API-2026-0006):
+`{…,"operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}`.
 
 ### Load files as module objects
 
@@ -488,8 +491,8 @@ with `kind` (`rivet::ErrorKind`), `code`, `message`, `details`, `effects`, `oper
 
 ### Serve the same runtime
 
-`rivet::internal::orchestrator::setup_serve::start(runtime, ServeOptions { listen, stdio, authenticator, access_log })`
-(needs the `serve` feature; not in the facade in 0.2.0) mounts every surface allowed by the
+`rivet::serve::start(runtime, ServeOptions { listen, stdio, authenticator, access_log })`
+(needs the `serve` feature) mounts every surface allowed by the
 runtime's `serve` policy plus `GET /v1/health` and returns a `ServeHandle` (`addr`, `receipt`,
 `shutdown().await` — the SIGTERM drain). An `authenticator` (`Arc<dyn Authenticator>`) replaces the policy's
 `serve.auth` for library hosts; `access_log` (`Arc<dyn Fn(&str) + Send + Sync>`) receives one JSON access-log line
@@ -522,14 +525,13 @@ on 2026-09-29 against the 0.2.0 release candidate (source `6f9943f`), and the AP
 
 ## Limitations
 
-- Not published to crates.io; depend on the git tag. `rivet::internal::…` (serve embedding, `Request`, session
-  input types) is not a stable API in 0.2.x.
+- Not published to crates.io; depend on the git tag. `rivet::internal::…` is not a stable API in 0.2.x; everything
+  a host needs (sessions, traces, serving) is in the facade.
 - No persistent trace store: traces are in the runtime's memory and bounded (a
   [known limitation](man-2026-0001-rivet-manual.md#known-limitations)); export them with `export_trace` from the
   runtime that ran the request.
 - Processes are sandboxed only on macOS (the Linux sandbox is gated: `unsupported.sandbox_backend`, exit 5);
   macOS and Linux are the supported platforms, Windows is not ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
-- Library terminal stream records (`env.record()`) have no `seq`; the other surfaces' do.
 
 ## Version Applicability
 
@@ -556,3 +558,4 @@ on 2026-09-29 against the 0.2.0 release candidate (source `6f9943f`), and the AP
 | 1 | 2026-09-28 | Claude | Initial library guide for 0.1.0 with a host program compiled and run against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Policy::from_file/from_json`, `.ceiling`, `Runtime::scope` with stream/duplex handles, typed `DataSink` stop, `request_restricted`, `export_trace`, `graph`, structured cancellation, `shutdown`, `ServeOptions.access_log`; second program compiled and run; host program re-run unchanged; obsolete limitation removed. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-26, D-46): Cargo dependency on the git tag (`rivet-runtime`) with a features table and lean-build flow; facade path table (0.2.0 vs 0.1.0); `call`/`call_json` envelopes; host program ported to the facade and re-run on the 0.2.0-rc; scopes/ceilings program linked to API-2026-0004 (not duplicated); new **Load files as module objects** section with `examples/modules.rs` and its real output; `.root`; errors, limitations and version rows. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: session types, `Request`, `TraceQuery` under `rivet::types`, `TraceResult`/`TraceEvent` at the root and `rivet::serve::{start, ServeOptions, …}` in the facade; library terminal records carry `seq`. |

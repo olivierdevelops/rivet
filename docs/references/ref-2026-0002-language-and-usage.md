@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-29
-document_revision: 9
+document_revision: 10
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -785,7 +785,7 @@ Global `--file` selects a trusted bundle input. Policy comes only from a policy.
 | `io [ID ...] [--all] [--transitive] [--include-bootstrap] [--by operation\|target\|capability] [--kind KIND] [--access VERB,…] [--format table\|json\|markdown\|csv] [--check-policy] [--strict] [--trace REQ] [--needs] [--check-files]` | `rivet.io {ids?,all?,by?,kind?,access?,check_policy?,needs?}` | IoManifest: every site's target, access verbs and capability; exit 3 on denied/partial with `--check-policy`, 7 on unknowns with `--strict`; `--needs` lists files each operation needs; `--check-files` probes them (exit 4 missing, 3 not permitted) ([I/O manifest](#io-manifest-rivet-io)) |
 | `policy generate [ID ...\|--all] [--output PATH]` | `rivet.policy.generate {ids?,all?}` | Least-privilege policy.json draft on stdout (or a new file); review items on stderr, exit 7 if any; never overwrites (exit 4) |
 | `graph ID [--all] [--json]` | `rivet.graph {id}` — **CLI and `Runtime::graph` only, no built-in** (0.1.0 and 0.2.0) | DAG/call/effect graph |
-| `policy explain ID --params JSON --json` | `rivet.policy.explain {id,params}` — **CLI only, no built-in** (0.2.0: `--json` prints an envelope labelled `rivet.policy.explain`; the flag stays `--params`) | Concrete targets evaluated without issuing a permit; exit 3 when denied |
+| `policy explain ID --params JSON --json` | `rivet.policy.explain {id,params}` — **CLI only, no built-in** (0.2.0: `--json` prints an envelope labelled `rivet.policy.explain`, an error envelope with kind `permission` when denied; `--data`, alias `--params`) | Concrete targets evaluated without issuing a permit; exit 3 when denied |
 | `trace show REQUEST --json` | `rivet.trace.show {request_id}` | Authorized trace from current host store |
 | `trace export REQUEST --output PATH` | `rivet.trace.export {request_id,path}` (0.1.0 also accepts `output` for `path`) | Brokered sanitized export (new file only) |
 | `connectors sync NAME --output PATH` | `rivet.connectors.sync {name,path}` — **implemented data `{name, output}`** (0.1.0 and 0.2.0) | Authorized discovery and candidate snapshot |
@@ -5598,6 +5598,7 @@ S01–S159 is gapless and index, headings and anchors agree.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 10 | 2026-09-29 | Claude | INC-2026-0012: `policy explain --data` (alias `--params`) and its `--json` denial envelope. |
 | 9 | 2026-09-29 | Claude | PLAN-2026-0002 D-45 (TASK-078, TASK-070): `import`, `global` and numeric path-segment rows; section "Globals, file modules and list indexes" with real 0.2.0 captures (incl. the INC-2026-0009 list-index example); CLI mapping for `--data`, `--input`, `--pretty`, `highlight` and deprecated `--params`; result contract and envelope examples; every sample converted to `{operation, data}` / `--data` and 0.2.0 envelopes (S133–S138, S105, S127, S128, S147 re-captured on the RC); every status line re-marked for 0.2.0 (127 verified, 27 with differences, 4 Stage C, 1 not implemented). |
 | 8 | 2026-09-28 | Claude | TASK-066: every example marked with its 0.1.0 status (commit 2a751ab) and summary table; `else` and `with file open` rows in the syntax table, `finally`/`with file watch` marked; CLI mapping annotated where 0.1.0 differs; D2 corrections to S12 (`not_found.env`), S35/S139 (`stat` for `update`), S147 (`details.pointer`), S108 (integer schema form); status active. |
 | 7 | 2026-09-28 | Claude | TASK-005 (approved in ADR-0001): `tls server_name/ca_file/cert_file/key_file` options for http, websocket, quic and grpc/mcp connectors; file-valued options as I/O sites; `origin`/`phase`/`requires_existing`/`secret` fields; `--needs`/`--check-files` flags, error-registry row and `rivet.io {needs}`; TLS fixture bundle; S24 manifest rows (Stage C noted); ORIGIN/PHASE/NEEDS FILE columns in S141, S143, S145; new S154–S159; `auth cancel` in the CLI mapping (TASK-006). |

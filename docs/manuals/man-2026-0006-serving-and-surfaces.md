@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -499,11 +499,11 @@ Captured frames (`18950`):
 |---|---|
 | upgrade without `Sec-WebSocket-Protocol: rivet.v1` | HTTP 422 `validation.subprotocol` (an envelope) |
 | `input`/`finish_input`/`cancel` for an unknown ref | `{"ref":"zz","request_id":"","trace_id":"","operation":null,"type":"result","status":"error",…,"error":{…"code":"not_found.ref",…}}` |
-| reusing a ref that is in flight | `conflict.ref` "ref \`c3\` is already in flight" |
+| reusing a ref that is in flight | `conflict.ref` "ref \`c3\` is already in flight", sent with `ref: ""` and `error.details.ref: "c3"` (not a terminal record of `c3`) |
 | a ninth concurrent ref | `limit.ws_refs` error record (`retryable: true`) |
 | a request frame without `operation`, or with `operation` + `id` | `validation.required` / `validation.input_envelope` error record |
 | `cancel` on a running ref | terminal `{"ref":"e2",…,"type":"result","seq":1,"status":"cancelled",…,"error":{"kind":"cancelled","code":"cancelled.session",…}}` |
-| `input` with a skipped `seq` | terminal record `status: "error"`, `conflict.input_sequence` "expected send_seq 2, got 3" |
+| `input` with a skipped `seq` | terminal record `status: "error"`, `conflict.input_sequence` "expected send_seq 2, got 3", with the next `seq` and the real `data_count` |
 | `input` that does not match `receives` | terminal record `validation.input` "input item 1 at $ must be text, got integer" |
 | `input` after `finish_input` | terminal record `conflict.input_closed` |
 
@@ -683,10 +683,6 @@ The serving rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.
 
 - No mTLS (`unsupported.serve_mtls`, exit 5) and no TLS listener: terminate TLS in a proxy and use bearer auth.
 - The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`).
-- `--timeout` is not applied over the WebSocket duplex path (the server honours a frame's `deadline_ms`, the CLI does
-  not send one); deadlines inside the operation still apply.
-- Known envelope deviations (reported for a fix): a WS ref ended by a refused input gets a terminal record without
-  `seq` and with `data_count: 0`; a rejected input answers `operation: null` even when it named one.
 - Platforms: macOS and Linux; Windows is not supported ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
 - MCP server exposes tools only (no resources, resource templates or prompts); no legacy HTTP+SSE MCP transport.
 - No persistent trace store; sessions and OAuth transactions are in memory only.
@@ -718,3 +714,4 @@ The serving rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.
 | 1 | 2026-09-28 | Claude | Initial serving and surfaces guide for 0.1.0, captured from a live 0.1.0-dev (commit f40d4aa) server. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: health/access-log/shutdown section, `traceparent`, `restrict`, bare `/v1/io`, polling `deadline_ms`, sweeper, cancel after finish, WebSocket lanes and specific refusal frames, MCP `tools/list` built-ins, `rivet.capabilities` and `rivet.trace.export` (dispatched and listed since 2a751ab); limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-25, D-46): new **Envelopes on every surface** (per-surface wrapping table and diagram, `?pretty=true` and its SSE refusal) and **Deprecation monitoring** (`deprecation: true`, `"deprecated":1`, jq recipes, 0.3.0 gate) sections; every example re-captured as envelopes on the 0.2.0-rc (REST, SSE incl. a mid-stream failure, polling, WebSocket records, MCP `structuredContent`, built-ins, `--endpoint`, access log with bearer principals); input envelope in all requests; API reference, errors, limitations and version rows updated. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: removed the WS `--timeout` limitation and the envelope deviations (fixed). |

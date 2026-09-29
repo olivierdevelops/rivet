@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -146,9 +146,11 @@ Schema: [`schemas/response.schema.json`](schemas/response.schema.json).
  ┌ ref          WebSocket frames only, always first
  ├ request_id   "req_…"  ("" when the input never became a request)
  ├ trace_id     "tr_…"   ("" likewise)
- ├ operation    the operation or built-in ID; null only when the input named none
+ ├ operation    the operation or built-in ID; null only when the input named none (a refused
+ │              envelope that names an operation string echoes it)
  ├ type         "result"
- ├ seq          stream terminal records only (the sequence after the last data record)
+ ├ seq          stream terminal records only (the sequence after the last data record) — on every
+ │              surface, library `record()` included; every WS ref is a session, so WS terminals have it
  ├ status       "ok" | "error" | "cancelled" | "accepted"
  ├ data         the result (ok), the receipt (accepted) or null
  ├ error        null (ok/accepted) or the error object (error/cancelled)
@@ -219,6 +221,9 @@ The error object sits at `error` and keeps the 0.1.0 fields; `effects` moved fro
 | `cause` | wrapped errors | The underlying error object |
 | `suppressed` | multi-error checks | Further diagnostics, source order |
 
+`effects` never appears inside the error object, nor inside a nested `cause` or `suppressed[]` error: it is reported
+once, at the envelope's top level.
+
 ```text
 $ rivet --file docs/demos/01-catalog/app.rivet request demo.add --data '{"a":"two"}' --pretty
 {
@@ -245,7 +250,9 @@ $ echo $?
 2
 ```
 
-An input that never became a request has empty IDs and, when it named no operation, `operation: null`:
+An input that never became a request has empty IDs and, when it named no operation, `operation: null`. When the
+refused envelope names an operation string, `operation` echoes it (e.g. a wrong-typed `deadline_ms`:
+`{"request_id":"","trace_id":"","operation":"demo.add",…,"error":{…,"code":"validation.input_envelope","message":"\`deadline_ms\` must be a non-negative integer",…,"operation_id":"demo.add"},…}`):
 
 ```json
 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input_envelope","message":"use `operation` or the deprecated `id`, not both","retryable":false,"details":{"key":"operation","alias":"id"}},"effects":"none","data_count":0}
@@ -338,8 +345,11 @@ rivet --file app.rivet request demo.add --data '{"a":2,"b":3}' 2>&1 \
 - Polling sub-routes (`…/events`, `…/input`, `…/finish_input`, `…/cancel`) keep their session bodies
   (`{session_id, events, last_seq, terminal}`, acks, cancel receipts); their records are envelopes.
 - The script-level `completion` object of a request stream inside `.rivet` keeps its 0.1.0 shape (language API).
-- The Rust `Scope::stream` terminal `Envelope::Result` record rendered with `record()` has no `seq` key, while the
-  CLI, SSE, WebSocket, polling and C ABI terminal records carry it (recorded as a finding in the P4 report).
+- The Rust `Scope::stream` terminal record rendered with `record()` carries `seq` (= `data_count + 1`), like the
+  CLI, SSE, WebSocket, polling and C ABI terminal records (fixed in 0.2.0, INC-2026-0012).
+- Protocol-level refusals that request no operation (MCP `mcp.session_required`, `not_found.mcp_session`,
+  `mcp.protocol_version`, a refused Origin) have `operation: null`; MCP `rivet.request` errors name the requested
+  operation, like its successes.
 
 ## Related Documents
 
@@ -357,3 +367,4 @@ rivet --file app.rivet request demo.add --data '{"a":2,"b":3}' 2>&1 \
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | Initial envelope reference (TASK-071, D-10) with real 0.2.0-rc captures on every surface |
+| 2 | 2026-09-29 | Claude | INC-2026-0012: `seq` on library terminal records and WS refused-input terminals; refused envelopes echo a named operation; no `effects` in nested errors; MCP protocol refusals `operation: null`, `rivet.request` errors name the target. |

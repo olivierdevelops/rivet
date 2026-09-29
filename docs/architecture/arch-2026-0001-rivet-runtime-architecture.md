@@ -5,7 +5,7 @@ document_type: architecture
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -127,7 +127,7 @@ PLAN-2026-0002 findings). The shim crate stays thin. Details: [SYS-2026-0010](..
 
 The buckets' folders and paths did not move: `src/internal.rs` declares them with `#[path]`. `rivet::domain::X` in
 0.1.0 code becomes `rivet::X` (or `rivet::internal::domain::X`); [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md)
-lists the moves. Embedding `rivet serve` still needs `rivet::internal::orchestrator::setup_serve` (not in the facade).
+lists the moves. Embedding `rivet serve` uses `rivet::serve::{start, ServeOptions}` (feature `serve`); session and trace types are in the facade too (INC-2026-0012).
 
 ## The envelope edge layer (0.2.0)
 
@@ -533,3 +533,4 @@ Architecture drift found at `829ca43` (TASK-092) — `BUILTIN_IDS` listed `rivet
 | 1 | 2026-09-28 | Claude | Initial architecture from the src tree at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: 40 use cases (`build_graph`, `open_file_stream`, `describe_capabilities`), new domain modules (`cancel`, `call_graph`, `capabilities`), host ceiling and restriction stack in the broker flow, structured cancellation, secret taint, DAG timestamps, serve health/access log/drain/`traceparent`, WS lanes and byte budget, library scopes; limitations aligned with the manual; drift recorded (fixed in 2a751ab). |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-30 (TASK-079): workspace and packages, facade boundary (`src/internal.rs`), envelope edge layer, Cargo feature gates, file modules and catalog snapshots, the `ffi` surface (diagrams); 45 use cases and new domain/infra modules; lifecycle, data flow and deployment shapes (C ABI) updated; macOS/Linux only. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: serve embedding is in the facade (`rivet::serve`). |

@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -186,14 +186,14 @@ The program's assertions pass (`demo.add` → `data` 5 and `status` ok; `{"a":"t
 {"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":1,"data":1,"error":null}
 {"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":2,"data":2,"error":null}
 {"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":3,"data":3,"error":null}
-{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"result","status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 {"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]}
 {"bundle":{"file":"app.rivet","sha256":"36aa9cf790e354a2500efabe5ae70e12e7b27944ea296c7e5a7fc46f0308e045"},"policy":{"file":"policy.json","sha256":"sha256:55326b2ffb3d392f99d424e3ddda1d91dffd0a8e307b616d947c1069f9995d38"},"complete":true,"sites":[],"targets":[],"needs":[],"bootstrap":[]}
 {"version":1,"grants":[],"network":{"deny_private_ranges":true}}
 build features: ["serve", "grpc", "quic", "oauth"]
 ```
 
-The first two blocks are `rt.call(InputEnvelope)`: the same ResponseEnvelope, key for key, as `rivet request` prints (step 1), `to_json_pretty()` for the success and `to_json_string()` for the failure. The four stream lines are `env.record().to_json_string()`, the same records as NDJSON; the library's terminal record has no `seq` (the CLI's has `"seq":4`, see Known Caveats). Then `rt.outputs(Some("demo.add"), false)` (the `data` entry of `rivet outputs --all --json`), `rt.io(&IoQuery{ids: ["demo.add"], format: "json"})` (the bare IoManifest, no sites, `complete: true`; the CLI wraps it in a `rivet.io` envelope), `rt.generate_policy(&["events.count"])` (identical to `rivet --file app.rivet policy generate events.count`, whose stderr adds `policy generate: 0 grants, 0 review items`) and `rivet::build_features()`: this dependency uses the default features (`serve, grpc, quic, oauth`); the CLI build adds `cli`.
+The first two blocks are `rt.call(InputEnvelope)`: the same ResponseEnvelope, key for key, as `rivet request` prints (step 1), `to_json_pretty()` for the success and `to_json_string()` for the failure. The four stream lines are `env.record().to_json_string()`, the same records as NDJSON; the terminal record carries `"seq":4` like the CLI's (fixed in INC-2026-0012). Then `rt.outputs(Some("demo.add"), false)` (the `data` entry of `rivet outputs --all --json`), `rt.io(&IoQuery{ids: ["demo.add"], format: "json"})` (the bare IoManifest, no sites, `complete: true`; the CLI wraps it in a `rivet.io` envelope), `rt.generate_policy(&["events.count"])` (identical to `rivet --file app.rivet policy generate events.count`, whose stderr adds `policy generate: 0 grants, 0 review items`) and `rivet::build_features()`: this dependency uses the default features (`serve, grpc, quic, oauth`); the CLI build adds `cli`.
 
 ```text
   library call                                   CLI equivalent
@@ -283,7 +283,6 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 ## Known Caveats
 
 - The embedding is kept as `embedding.rs.txt` and compiled in a scratch crate. Its compiled twin is `examples/embed.rs` (`cargo run --example embed`), which takes the demo directory as an argument.
-- The library's terminal stream record (`Envelope::Result(..).record()`) omits `seq`, while the CLI's terminal NDJSON record carries it (`"seq":4`); data records carry `seq` on both. Reported to the maintainer from TASK-076.
 - `scope.duplex` (live input) is described in the program's comments; it is exercised against the gRPC fixture by TEST-2026-0010, not here.
 
 ## Related Documents
@@ -298,6 +297,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012: the library terminal record carries `"seq":4` like the CLI's; the step-2 terminal line is updated to the fixed shape (IDs from the TASK-076 run; the `seq` key is verified by `conformance_verification_defects::library_terminal_records_carry_seq`, the scratch program was not re-run); `seq` caveat removed. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-61): embedding.rs.txt rewritten against the 0.2.0 facade (`rivet::{Runtime, Policy, Value, InputEnvelope, Completion, Envelope}`, `rivet::types::IoQuery`, `rivet::Result`, `.file`, `Runtime::call`, `to_json_pretty`, `build_features`), matching `examples/embed.rs`; scratch crate depends on `package = "rivet-runtime"`; CLI step uses `--data` and 0.2.0 envelopes; 0.1.0→0.2.0 migration table; 0.2.0 Release Updates; terminal-record `seq` caveat; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: compiled embedding.rs.txt as a scratch crate against 0.1.0-dev (829ca43) and ran it from this folder; pasted the real output (outputs, manifest, draft) and the CLI comparison; replaced the outdated sketch (`.source(src)`, `json!` params, `rt.outputs("demo.add")`) with the real API (`.source(path, src, root)`, `Value::from_json`, `.ceiling`, `rt.outputs(Some(id), false)`); removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` header gains ORIGIN, PHASE, NEEDS FILE (still no sites); verified-against revision 8. |

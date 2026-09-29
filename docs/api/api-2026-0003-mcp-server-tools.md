@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -261,15 +261,20 @@ tools/call nope.x          → {"jsonrpc":"2.0","id":13,"error":{"code":-32602,"
 resources/list             → {"jsonrpc":"2.0","id":14,"error":{"code":-32601,"message":"method not found: resources/list"}}
 body [1]                   → 400 {"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"expected one JSON-RPC message object (batches are not supported)"}}
 body x                     → 400 {"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"parse error: expected value at line 1 column 1"}}
-POST without session id    → 422 {"request_id":"","trace_id":"","operation":"tools/list","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.session_required","message":"MCP-Session-Id header is required after initialize","retryable":false},"effects":"none","data_count":0}
+POST without session id    → 422 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.session_required","message":"MCP-Session-Id header is required after initialize","retryable":false},"effects":"none","data_count":0}
 MCP-Protocol-Version: 2024-11-05 → 422 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.protocol_version","message":"unsupported MCP-Protocol-Version 2024-11-05; this server speaks 2025-11-25","retryable":false},"effects":"none","data_count":0}
 Origin: https://evil.example → 403 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"Origin is not allowed for /mcp","retryable":false},"effects":"none","data_count":0}
 GET /mcp                   → 405, allow: POST, DELETE
 DELETE /mcp (live session) → 204;  again → 404 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.mcp_session","message":"unknown or expired MCP session","retryable":false},"effects":"none","data_count":0}
 ```
 
-Note that the `mcp.session_required` refusal names the JSON-RPC method (`tools/list`) in `operation`, not an
-operation ID; the other transport refusals leave it `null`.
+Transport refusals request no operation, so `operation` is `null` (the JSON-RPC method is not an operation ID).
+A failing `rivet.request` call names the operation it ran, like a successful one:
+
+```text
+tools/call rivet.request {"operation":"demo.add","data":{"b":2}}
+→ structuredContent {"request_id":"req_12dc2051b4","trace_id":"tr_12dc2051b4","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}, isError true
+```
 
 ## Rate Limits
 
@@ -391,3 +396,4 @@ MCP sessions are held in memory by the serving process; they do not survive a re
 | 1 | 2026-09-28 | Claude | Initial MCP server contract with exchanges captured from `rivet serve` (HTTP and stdio) at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `tools/list` lists every built-in the principal may call (20, including `rivet.trace.export` and `rivet.capabilities`); emits/receives descriptions; `restrict` on `tools/call`; `traceparent` in/out. |
 | 3 | 2026-09-29 | Claude | 0.2.0 envelope sweep (D-42, TASK-070): `structuredContent` and the text block are the ResponseEnvelope (`accepted` for streaming tools; `isError` for `error` and `cancelled`); `outputSchema` is the envelope schema; `rivet.request` / `rivet.sessions.open` take `{operation, data}` (deprecated `{id, params}` with the `deprecation` header); transport refusals as envelopes; all exchanges re-captured on the 0.2.0-rc (source `6f9943f`); platform and feature notes. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: `mcp.session_required` answers `operation: null`; `rivet.request` error envelopes name the requested operation (captured). |

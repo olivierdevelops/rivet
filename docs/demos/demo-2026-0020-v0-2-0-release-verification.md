@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -280,10 +280,10 @@ Cancelling an open live session yields one `cancelled.session` record with `stat
 "$TMPDIR/rivet-verify-venv/bin/python" fixtures/ws_client.py ws://127.0.0.1:18860/v1/ws < requests/ws-frames.jsonl
 ```
 
-Every frame is the envelope plus `ref`. The invalid `c3` fails on its own ref while `c1` and `c2` succeed:
+Every frame is the envelope plus `ref`. The invalid `c3` fails on its own ref (with request and trace IDs, like the CLI, REST and MCP; the `c3` line was re-captured after INC-2026-0012 with the same frame) while `c1` and `c2` succeed. A unary WS result keeps `"seq":1`: every WS ref is a session (API-2026-0002):
 
 ```json
-{"ref":"c3","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"ref":"c3","request_id":"req_02d42e141a","trace_id":"tr_02d42e141a","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
 {"ref":"c1","request_id":"req_0584dcb419","trace_id":"tr_0584dcb419","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 {"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
 {"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
@@ -356,7 +356,7 @@ Success: [16-editor](16-editor/README.md) steps 1–4 (`.vsix` built with Python
   Linux x86_64      CI run 36483001760 (ubuntu-latest,    not executed here          supported, verified in CI
                     feature matrix, conformance_ffi)
   Windows           dropped from CI                       —                          unsupported (INC-2026-0011)
-  * conformance_samples, caused by the new 17-modules app.rivet (Known Caveats)
+  * conformance_samples, caused by the new 17-modules app.rivet (fixed in INC-2026-0012)
 ```
 
 - **macOS** (26.4.1, arm64): every demo and every example on this page, Seatbelt process sandbox, `librivet.dylib` and `librivet.a`, VS Code 1.108.1.
@@ -381,6 +381,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 |---|---|---|---|
 | Build: `cargo build --release --workspace --all-features` | Claude (TASK-077) | 2026-09-29, commit 166a98b (source = 8031baa), macOS 26.4.1 arm64 | PASS |
 | Test suite: `cargo test --release --workspace --all-features --no-fail-fast` (37 targets: 475 passed, 1 failed) | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS except `conformance_samples::every_demo_bundle_compiles`, which fails on the new 17-modules app.rivet (test compiles demos without resolving imports; Known Caveats) |
+| Test suite after the INC-2026-0012 fixes: `cargo test --workspace --all-targets --all-features --no-fail-fast` | Claude | 2026-09-29, commit 4a34537, macOS 26.4.1 arm64 | PASS (493 passed, 0 failed; `conformance_samples` green) |
 | `conformance_highlight` (8 passed) | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | U-01…U-06 envelopes: per-surface examples above (CLI, HTTP, SSE, polling, WS, MCP) | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | U-01…U-06 through folders 01–13 (re-verified) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS (see each folder's record) |
@@ -399,16 +400,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 ## Known Caveats
 
 - **Tag and commit.** Both are `TBD at P5`. The steps were recorded on the release candidate (`--version` prints `rivet 0.1.0` until the bump). Rerun at least the per-surface examples, 15-ffi step 1 and 16-editor step 1 against the tagged build and add a row to the Verification Record.
-- **`conformance_samples` and modules.** `tests/conformance_samples.rs` compiles every `docs/demos/*/app.rivet` on its own without resolving imports, so [17-modules](17-modules/README.md)'s app.rivet fails it with `check.unknown_function` for `users.get`, `billing.invoice` and `users.fetch`. `rivet check` on the same file exits 0. The test must resolve imports (coordinator); the demo is unchanged.
-- **Known product findings, documented as current behaviour, to be fixed in a later pass:**
-  - `check.import_duplicate` from a host load (`rt.load`, `rivet_load`) reports kind `syntax` with empty `request_id` and `trace_id` ([17-modules](17-modules/README.md) step 7, [15-ffi](15-ffi/README.md) step 3).
-  - The MCP `rivet.request` built-in's error envelope names `rivet.request` in `operation`, not the requested operation.
-  - `policy explain` has no `--data` flag; it still takes `--params` (without a deprecation warning), unlike `request`.
-  - Library stream terminal records (`env.record()`) lack `seq`, while the CLI, SSE, polling, WS and C records carry it ([12-library](12-library/README.md) step 2).
-- **Observed while writing this page** (recorded, not fixed):
-  - A WebSocket request rejected by validation (`c3` above) carries empty `request_id`/`trace_id`, while the same request on the CLI, REST and MCP gets IDs; a unary WS result carries `"seq":1`.
-  - `check.module_policy_ignored` is printed by `rivet check` only; `request` and `serve` load the bundle silently.
-  - `policy explain CALLER --params …` does not propagate params through a call into a module, so `report.remote` keeps `users.fetch`'s target `param_dependent` while `policy explain users.fetch --params '{"id":3}'` is `exact` ([17-modules](17-modules/README.md) Known Caveats).
+- **Fixed before release (INC-2026-0012).** The findings this page first listed here — the `conformance_samples` import gap, `check.import_duplicate` IDs on host loads, MCP `rivet.request` error `operation`, `policy explain --data` and params through modules, library terminal `seq`, WS validation IDs, `check.module_policy_ignored` on `request`/`serve` — are fixed, each with a regression test ([INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md)). The unary WS `"seq":1` is by design (decision in INC-2026-0012).
 - **R9 deviation.** A target that contains a param stays `param_dependent` even when the rest comes from globals ([14-globals](14-globals/README.md) Known Caveats).
 - **Not reproduced in the demos:** `unsupported.feature` (needs a lean build), `limit.imports` (257 files), the git-tag dependency (needs the P5 tag). Each is covered by its conformance suite.
 - **Public APIs.** [13-real-world-apis](13-real-world-apis/README.md) depends on third-party services and is not part of the pass/fail decision.
@@ -426,3 +418,4 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | TASK-077 (PLAN-2026-0002 D-64): created the 0.2.0 release verification guide: header with tag/commit `TBD at P5`; U-01…U-24 (one per R1…R24) with inciting UQ, command, expected result and recorded evidence; per-surface success and failure (CLI, HTTP/SSE, polling, WebSocket, MCP, Rust library, C ABI, Python, editor) re-run at 166a98b; platform coverage (macOS here, Linux CI run 36483001760, Windows unsupported per INC-2026-0011); cleanup; verification record; caveats including the `conformance_samples` import gap. |
+| 2 | 2026-09-29 | Claude | INC-2026-0012: caveat findings fixed and removed; WS `c3` line re-captured with IDs; unary WS `seq` decision recorded. |

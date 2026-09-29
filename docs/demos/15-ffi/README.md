@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -340,8 +340,8 @@ rm -f docs/demos/15-ffi/misuse
 - Request and trace IDs vary between runs.
 - On macOS, the static link prints "built for newer macOS" warnings from ring's assembly. They are harmless;
   build the library and the program with the same `MACOSX_DEPLOYMENT_TARGET` to silence them.
-- A refused module load reports `kind: syntax` for `check.import_duplicate` and empty request and trace IDs. This
-  is recorded as a finding for the v0.2.0 fix pass.
+- A refused module load reports the registry kind `syntax` for `check.import_duplicate` (exit 2, as `rivet check`)
+  and, from INC-2026-0012, minted request and trace IDs (elided as `…` in step 3).
 - Windows is not supported (INC-2026-0011).
 
 ## Related Documents
@@ -354,3 +354,4 @@ rm -f docs/demos/15-ffi/misuse
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | Created: shared/static links, request, stream, input, cancel, module objects, Python and misuse, all executed. |
+| 2 | 2026-09-29 | Claude | INC-2026-0012: a refused `rivet_load` now carries request/trace IDs; caveat updated. |

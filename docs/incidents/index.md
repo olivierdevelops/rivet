@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-28
-document_revision: 4
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -50,6 +50,7 @@ Unexpected defects, regressions and abnormal behaviour (DOCUMENTATION §4.19, §
 | [INC-2026-0009](resolved/inc-2026-0009-numeric-index-paths-do-not-parse.md) | S4 | resolved | Numeric index paths (`xs.0`) did not parse; misleading `assign_map` message (fixed `93388c1`) |
 | [INC-2026-0010](resolved/inc-2026-0010-ffi-rlib-output-collision.md) | S3 | resolved | `librivet.rlib` output collision between rivet-ffi and rivet-runtime (fixed `6f9943f`) |
 | [INC-2026-0011](active/inc-2026-0011-windows-port-failures.md) | S3 | active | Windows port failures W-01…W-13; Windows dropped from CI and support for v0.2.0 |
+| [INC-2026-0012](resolved/inc-2026-0012-documentation-and-demo-verification-defects.md) | S3 | resolved | 19 defects found by v0.2.0 documentation and demo verification (envelope `seq`/IDs/`operation`, WS refusals, `policy explain --data`, highlight, facade), fixed before release |
 
 ```text
  active/        none
@@ -61,6 +62,7 @@ Unexpected defects, regressions and abnormal behaviour (DOCUMENTATION §4.19, §
 ## Recently added or updated
 
 - 2026-09-29: INC-2026-0010 (resolved) and INC-2026-0011 (active, Windows) recorded.
+- 2026-09-29: INC-2026-0012 recorded and resolved.
 - 2026-09-28: INC-2026-0009 resolved (PLAN-2026-0002 P2e, `93388c1`) and moved to `resolved/`.
 - 2026-09-28: INC-2026-0009 recorded (PLAN-2026-0002 P2b).
 - 2026-09-28: created during PLAN-2026-0001 P3.
@@ -77,6 +79,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-29 | Claude | INC-2026-0012. |
 | 4 | 2026-09-29 | Claude | INC-2026-0010 and INC-2026-0011. |
 | 3 | 2026-09-28 | Claude | INC-2026-0009 resolved. |
 | 2 | 2026-09-28 | Claude | INC-2026-0009 (active). |

@@ -5,7 +5,7 @@ document_type: operations
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -489,7 +489,7 @@ The operational rows of the [manual's Known Limitations](../manuals/man-2026-000
 mTLS serve (refuses to start, exit 5); no persistent trace store; no connection pooling for outbound HTTP; the Linux
 sandbox is gated until verified on kernel ≥ 6.12 (process-spawning operations under a policy are refused on Linux);
 Windows is not a supported platform in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md));
-WebSocket frames with legacy input raise no deprecation signal; `--timeout` is not applied over the WebSocket duplex path; the `"*"`
+WebSocket frames with legacy input signal deprecation only through the request's trace note (no per-frame header); the `"*"`
 principal pattern matches `rivet.auth.*`. Configuration is not reloaded without a restart (by design).
 
 ## Related Documents
@@ -511,3 +511,4 @@ principal pattern matches `rivet.auth.*`. Configuration is not reloaded without 
 | 1 | 2026-09-28 | Claude | Initial operations guide, verified against 0.1.0-dev (f40d4aa). |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `/v1/health` probes, per-request access log, SIGTERM drains (exit 0) and upgrade steps use it, enforced `max_buffered_bytes`, `--timeout` cap, 8 MiB outbound bounds, `traceparent`, `restrict`; limitations aligned with the manual. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-38 (TASK-079): `cli` feature install and feature checks, one policy per multi-file bundle, `Deprecation` monitoring (header, `"deprecated":1`, trace rows, CLI warnings), envelope examples re-captured on the 0.2.0-rc (bearer, trace, access log, health, startup refusals, drain), 0.1.x→0.2.0 upgrade order, macOS/Linux only. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: WS `--timeout` limitation removed (the remote CLI sends `deadline_ms`); WS legacy-input deprecation signal is the trace note. |

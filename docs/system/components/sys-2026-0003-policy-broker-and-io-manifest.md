@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -530,8 +530,10 @@ The worst verb decides the site (`denied` > `partial` > `unknown` > `allowed`). 
 `allow_network` connect on the group, then `allow_listen` `bind` and `multicast_join` on the **bind address**
 (the `bind` option, or the unspecified address on the group's port), so the static verdict and the run agree.
 
-With `policy explain ID --params JSON`, param-dependent sites of the entry operation are first filled with the
-call's values, so they are evaluated as `exact` targets (scratch bundle, `demo.read` =
+With `policy explain ID --data JSON` (alias `--params`), param-dependent sites of the entry operation — and of the
+operations it calls with statically known arguments (`(users.fetch {id: id})`, a constant or a global) — are first
+filled with the call's values, so they are evaluated as `exact` targets. With `--json`, a denial prints a
+`status: "error"` envelope (kind `permission`, exit 3) on stderr whose `error.details` holds the explanation (scratch bundle, `demo.read` =
 `return file read path as text`, policy granting `allow_read ./data/**`; the policy header lines are omitted):
 
 ```text
@@ -937,3 +939,4 @@ vary per run and per file.
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-17). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): host ceiling and per-request restriction in the decision flow, URL path segments, `policy explain --params` (exit 3), multicast manifest mirrors the runtime, file decisions carry source spans, `Runtime::export_trace`, `rivet graph`, bare `/v1/io`; limitations reduced to the current ones; export defect fixed in 2a751ab. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-33/D-47 (TASK-073, TASK-070): global substitution into targets (`exact` vs `param_dependent`), one policy across file modules (module `policy.json` ignored; io/generate/explain/graph over every file; run-time loads), bootstrap rows per imported file (the `(+ imports)` placeholder is gone); `--json` outputs as envelopes; `policy explain --params` flag noted; captures re-run on the 0.2.0-rc; macOS/Linux only. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: `policy explain --data` (alias `--params`), params followed along call edges, `--json` denial envelope. |

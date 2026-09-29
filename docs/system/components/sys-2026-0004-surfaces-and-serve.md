@@ -5,7 +5,7 @@ document_type: system
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -872,7 +872,7 @@ deprecation: true
 …"structuredContent":{"request_id":"req_040aaa5e44","trace_id":"tr_040aaa5e44","operation":"demo.add","type":"result","status":"ok","data":3,"error":null,"effects":"none","data_count":0},"isError":false}}
 
 $ curl -s -w ' [%{http_code}]' -X POST 127.0.0.1:18902/mcp -d @requests/list.mcp.json      # no session header
-{"request_id":"","trace_id":"","operation":"tools/list","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.session_required","message":"MCP-Session-Id header is required after initialize","retryable":false},"effects":"none","data_count":0} [422]
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.session_required","message":"MCP-Session-Id header is required after initialize","retryable":false},"effects":"none","data_count":0} [422]
 
 $ curl -s -w ' [%{http_code}]' -X POST 127.0.0.1:18902/mcp -H 'mcp-protocol-version: 2024-11-05' -d @requests/list.mcp.json
 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.protocol_version","message":"unsupported MCP-Protocol-Version 2024-11-05; this server speaks 2025-11-25","retryable":false},"effects":"none","data_count":0} [422]
@@ -1255,11 +1255,10 @@ From the [manual's Known Limitations](../../manuals/man-2026-0001-rivet-manual.m
   no TLS.
 - Supported platforms are macOS and Linux; Windows is not supported in 0.2.0
   ([INC-2026-0011](../../incidents/active/inc-2026-0011-windows-port-failures.md)).
-- WebSocket request frames with legacy `id`/`params` raise no deprecation signal (there is no per-frame header).
+- WebSocket request frames with legacy `id`/`params` have no per-frame deprecation header; the signal is the
+  request's trace note (phase `input`, decision `deprecated`), as on HTTP and MCP.
 - `rivet serve` cannot load modules at run time; only library and C hosts can (`Runtime::load`, `rivet_load`).
 - The `*` principal pattern matches `rivet.auth.*` (governed by `allow_auth`).
-- `--timeout` is not applied on the WebSocket duplex path (`--endpoint … --input-jsonl - --stream`): a `request`
-  frame carries no deadline.
 - MCP server: no resources, resource templates or prompts, and no legacy HTTP+SSE transport.
 - No persistent trace store; all serve state is in memory and lost on restart.
 
@@ -1315,3 +1314,4 @@ trace, session and MCP session IDs differ on every run.
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-18). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): `/v1/health`, access log, SIGTERM drain, `traceparent`, `restrict` on every surface, bare `/v1/io`, polling `deadline_ms` and cancel-after-finish, WS per-ref lanes and specific refusal frames, MCP `tools/list` built-ins, `rivet.capabilities`, `rivet.trace.export` (dispatched since 2a751ab), library scope/ceiling/shutdown/access_log, `graph` and `trace export` CLI, 32 MiB remote client budget; limitations reduced to the current ones plus the recorded drift. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-34/D-47 (TASK-073, TASK-070): the wire edge (`serve.parse_input`, envelope writer, pretty, `Deprecation` header/log/trace/CLI warnings, envelope-aware remote client with 0.1.x detection); `--data`/`--input`/`--pretty`/`highlight`; every REST, SSE, polling, WebSocket, MCP, stdio, remote-CLI, bearer and startup capture re-run on the 0.2.0-rc; `cli`/`serve` feature gates; facade paths; macOS/Linux only. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012: `mcp.session_required` answers `operation: null`; WS legacy frames signal deprecation through the trace note; the remote CLI sends `deadline_ms` over WebSocket (limitation removed). |

@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -105,7 +105,7 @@ receipt also go to **stderr**.
 |---|---|---|
 | 0 | success | — |
 | 2 | syntax, validation, usage or configuration error | `syntax.*`, `check.*` (incl. `check.global_*`, `check.import_*`), `validation.*` (incl. `validation.input_envelope`), `policy.invalid`, `stream.*`, `serve.auth_required` |
-| 3 | permission or authentication | `permission.denied`, `permission.import_outside_root`, `file.hardlink_refused`, `auth.required`, `auth.invalid`; `io --check-policy` found a denied/unknown site; `io --check-files` found a file not permitted; `policy explain ID --params …` found a denied concrete target |
+| 3 | permission or authentication | `permission.denied`, `permission.import_outside_root`, `file.hardlink_refused`, `auth.required`, `auth.invalid`; `io --check-policy` found a denied/unknown site; `io --check-files` found a file not permitted; `policy explain ID --data …` found a denied concrete target |
 | 4 | not found or conflict | `not_found.*` (incl. `not_found.import`), `conflict.*`; `io --check-files` found a missing file |
 | 5 | dependency, runtime, unsupported, output_invalid, limit | `http.status`, `dns.resolve`, `process.exit`, `unsupported.*` (incl. `unsupported.feature`, `unsupported.sandbox_backend` on Linux), `output.invalid`, `limit.*` (incl. `limit.imports`), application `fail` codes |
 | 6 | timeout | `timeout.request`, `timeout.poll`, `timeout.scope` |
@@ -461,14 +461,15 @@ table, json, markdown or csv"; `--access frob` → "not an access verb". With `-
 
 ### rivet policy explain
 
-`rivet policy explain [ID] [--params JSON]` — the effective policy; with an ID, each of its sites and the
-decision. With `--params`, the call's **param-dependent targets are filled in** from those params and evaluated:
-the TARGET column shows the concrete path/URL (`KNOWLEDGE exact`) and the command **exits 3 when any would be
-denied** (plus a `denied: …` line). Without `--params` a param-dependent site shows its template (`{path}`) and
-the exit code is 0.
+`rivet policy explain [ID] [--data JSON]` — the effective policy; with an ID, each of its sites and the
+decision. With `--data` (alias `--params`), the call's **param-dependent targets are filled in** from that data and
+evaluated — also in the operations it calls with those values (`report.remote` passing `{id: id}` to
+`users.fetch`) — the TARGET column shows the concrete path/URL (`KNOWLEDGE exact`) and the command **exits 3 when
+any would be denied** (plus a `denied: …` line). Without `--data` a param-dependent site shows its template
+(`{path}`) and the exit code is 0.
 
 ```text
-  policy explain ID                 policy explain ID --params '{"path":"app.rivet"}'
+  policy explain ID                 policy explain ID --data '{"path":"app.rivet"}'
   TARGET {path}  param_dependent    TARGET app.rivet  exact  DECISION denied   ──► exit 3
 ```
 
@@ -488,16 +489,16 @@ notes.update  file  update  ./out/note.json  exact      app.rivet:30  allowed
 ```
 
 With concrete params (scratch bundle, `demo.read` = `return file read path as text`, policy granting
-`allow_read ./data/**`). **`policy explain --params` is not deprecated**: it is this command's own flag, unlike
-`request --params`:
+`allow_read ./data/**`). `--data` is the primary flag; **`policy explain --params` is an alias, not deprecated**
+(no warning): it is this command's own flag, unlike `request --params`:
 
 ```text
-$ rivet --file app.rivet policy explain demo.read --params '{"path":"data/a.txt"}'          [exit 0]
+$ rivet --file app.rivet policy explain demo.read --data '{"path":"data/a.txt"}'            [exit 0]
 …
 OPERATION  KIND  ACCESS  TARGET      KNOWLEDGE  SOURCE        DECISION
 demo.read  file  read    data/a.txt  exact      app.rivet:44  allowed
 
-$ rivet --file app.rivet policy explain demo.read --params '{"path":"app.rivet"}'           [exit 3]
+$ rivet --file app.rivet policy explain demo.read --data '{"path":"app.rivet"}'             [exit 3]
 …
 denied: demo.read#1 allow_read app.rivet (read)
 
@@ -507,6 +508,14 @@ demo.read  file  read    app.rivet  exact      app.rivet:44  denied
 
 `--json` prints the `rivet.policy.explain` envelope (01-catalog, no policy):
 `{…,"operation":"rivet.policy.explain",…,"data":{"present":false,"file":null,"sha256":null,"grants":0,"deny":0,"broad":[]},…}`.
+When `--data` makes a site denied, `--json` agrees with exit 3: a `status: "error"` envelope (kind `permission`,
+code `permission.denied`) on stderr, whose `error.details` holds the same explanation plus `denied[]`
+(scratch bundle `f.read` = `file read "./data/${name}"`, policy granting `./data/a.txt`):
+
+```text
+$ rivet --file app.rivet --json policy explain f.read --data '{"name":"b.txt"}'             [exit 3]
+{"request_id":"req_012a299dc5","trace_id":"tr_012a299dc5","operation":"rivet.policy.explain","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"1 effect site(s) of this call would be denied by the policy","retryable":false,"operation_id":"f.read","details":{"present":true,"file":"./policy.json",…,"sites":[…],"denied":[{"effect_id":"f.read#1","capability":"allow_read","target":"./data/b.txt","access":"read"}]}},"effects":"none","data_count":0}
+```
 
 A `"*"` target is flagged: `grant    allow_network *   ⚠ broad: "*" allows every target`. Failure: an invalid
 policy → `error[policy.invalid]: policy.json /version: \`version\` must be 1` (exit 2). Refused with
@@ -593,7 +602,7 @@ OAuth account management through the `rivet.auth.*` built-ins; tokens are never 
 | Subcommand | Syntax | Result |
 |---|---|---|
 | `begin` | `auth begin PROFILE --account A` | authorization_code: `{transaction_id, expires_at, authorization_url}`; device_code: `{transaction_id, expires_at, verification_uri, user_code, interval_seconds}` |
-| `complete` | `auth complete --params JSON \| --params-file PATH [--timeout D]` (this command's own `--params`, not deprecated) | `{"transaction_id":…,"callback":{…}}` or `{"transaction_id":…,"wait":true}`; connected status, or `{"state":"pending",…}` when the deadline arrives first |
+| `complete` | `auth complete --data JSON \| --data-file PATH [--timeout D]` (aliases `--params`, `--params-file`: this command's own flags, not deprecated) | `{"transaction_id":…,"callback":{…}}` or `{"transaction_id":…,"wait":true}`; connected status, or `{"state":"pending",…}` when the deadline arrives first |
 | `status` | `auth status PROFILE --account A` | `{profile, account, state, scopes, expires_at, generation}` (never refreshes) |
 | `disconnect` | `auth disconnect PROFILE --account A` | `{…,"local_only":true,"generation":N}` |
 | `cancel` | `auth cancel TRANSACTION_ID` | cancels an open transaction |
@@ -734,9 +743,17 @@ error: invalid value 'yaml' for '--format <FORMAT>'
   [possible values: ansi, html, json]
 ```
 
-Known deviation: when the failing statement sits in a block that is never closed (no `end`), the tokens of that
-block's header line are not printed (for `operation x.y` / `name "X"` / `return (` only line 2 comes out). Reported
-as a bug in PLAN-2026-0002 P4.
+An unclosed block keeps every token before the error, its header included (fixed in 0.2.0, INC-2026-0012):
+
+```text
+$ printf 'operation x.y\n    name "X"\n    return (\n' > b.rivet; rivet highlight b.rivet --format json   [exit 2]
+{"line":1,"col":1,"len":9,"class":"keyword","text":"operation"}
+{"line":1,"col":11,"len":3,"class":"operation_id","text":"x.y"}
+{"line":2,"col":5,"len":4,"class":"keyword","text":"name"}
+{"line":2,"col":10,"len":3,"class":"string","text":"\"X\""}
+error[syntax.expression]: the expression after `return` does not parse
+  --> b.rivet:3:5
+```
 
 ## Complete CLI Reference
 
@@ -749,7 +766,7 @@ as a bug in PLAN-2026-0002 P4.
 | `check` | compile only | `check [--strict-docs] [--json]` | bundle, modules, policy | `ok: …` + stderr warnings / `rivet.check` envelope; 0,2,3,4,5 | syntax, check.*, docs, import codes, unsupported.feature | `check --strict-docs` | 0.1.0 (`--json` envelope 0.2.0) |
 | `graph` | static call graph | `graph ID [--all] [--json]` | bundle | tree/JSON; 0,2,4 | not_found.operation | `graph report.total` | 0.1.0 |
 | `io` | I/O manifest | `io [IDS…] [--all] [--by …] [--kind K] [--access V] [--format …] [--check-policy] [--strict] [--needs] [--check-files] [--include-bootstrap] [--trace REQ]` | bundle, policy, files (probe) | table/JSON/MD/CSV; 0,2,3,4,7 | validation.usage | `io --by target` | 0.1.0 |
-| `policy explain` | effective policy + decisions | `policy explain [ID] [--params JSON]` | bundle, policy | table; 0,2,3 | policy.invalid | `policy explain demo.read --params '{"path":"data/a.txt"}'` | 0.1.0 |
+| `policy explain` | effective policy + decisions | `policy explain [ID] [--data JSON]` (alias `--params`) | bundle, policy | table; 0,2,3 | policy.invalid, permission.denied (`--json`) | `policy explain demo.read --data '{"path":"data/a.txt"}'` | 0.1.0 (`--data` 0.2.0) |
 | `policy generate` | least-privilege draft | `policy generate [IDS…] [--all] [--output PATH]` | manifest | JSON; 0,4,7 | conflict.exists | `policy generate --all --output p.json` | 0.1.0 |
 | `trace show` | decisions of one request | `trace show REQ` | server trace store | JSON; 0,4 | not_found.trace | `--endpoint URL trace show req_…` | 0.1.0 |
 | `trace export` | save one trace to a new file | `trace export REQ --output PATH` | trace store; `allow_write create` | receipt JSON; 0,3,4 | not_found.trace, conflict.already_exists | `--endpoint URL trace export req_… --output ./audit/t.json` | 0.1.0 |
@@ -775,10 +792,8 @@ The CLI-relevant rows of the [manual's Known Limitations](man-2026-0001-rivet-ma
 
 - No persistent trace store: `trace show`/`trace export` without `--endpoint` never find a trace (in-memory,
   per-process store).
-- `--timeout` is not applied over the WebSocket duplex path (`--stream --input-jsonl -` with `--endpoint`).
 - macOS and Linux only; Windows is not supported ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
 - Processes are sandboxed only on macOS; on Linux the sandbox is gated (`unsupported.sandbox_backend`, exit 5).
-- `highlight` drops the header tokens of an unclosed block before a syntax error (see [rivet highlight](#rivet-highlight)).
 
 ## Version Applicability
 
@@ -787,7 +802,7 @@ The CLI-relevant rows of the [manual's Known Limitations](man-2026-0001-rivet-ma
 | All commands and flags above except those below | 0.1.0 | 0.2.0: JSON outputs are envelopes; errors of `request` go to stderr | — | macOS, Linux |
 | `--data`, `--input`, `--pretty`, `highlight` | 0.2.0 | — | — | macOS, Linux |
 | `request --params` | 0.1.0 | — | deprecated 0.2.0 (`warning[deprecated.params]`), removed 0.3.0 | macOS, Linux |
-| `policy explain --params`, `auth complete --params` | 0.1.0 | — | — (their own flags, not deprecated) | macOS, Linux |
+| `policy explain --params`, `auth complete --params`/`--params-file` | 0.1.0 | — | — (aliases of `--data`/`--data-file` from 0.2.0; not deprecated) | macOS, Linux |
 
 ## Related Documents
 
@@ -803,3 +818,4 @@ The CLI-relevant rows of the [manual's Known Limitations](man-2026-0001-rivet-ma
 | 1 | 2026-09-28 | Claude | Initial CLI reference for 0.1.0, every command executed against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `rivet graph`, `rivet trace export` (remote form verified after the 2a751ab fix), emits/receives descriptions, `check` warnings and `check.unknown_function`, `policy explain --params` (exit 3), `--timeout` 10m cap, `connectors sync` output check before discovery and `mcp.schema_drift`, serve access log/health/drain, exit-code flow diagram; limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-23, D-46): `--data`, `--input FILE\|-`, `--pretty`, the `--params` deprecation warning (and the non-deprecated `policy explain`/`auth complete --params`), `rivet highlight` (formats, failures, a known deviation), envelopes for every JSON output (`list`, `describe`, `outputs`, `check`, `graph`, `io`, `policy explain/generate`, `trace`), stdout/stderr split, exit codes for the new codes; every example re-captured on the 0.2.0-rc (source `6f9943f`); `connectors sync` check order corrected; macOS/Linux. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012 fixes: `policy explain --data` (alias `--params`), params followed into called modules, `--json` denial = error envelope (exit 3); `auth complete --data/--data-file` (aliases `--params`/`--params-file`); `highlight` keeps the header tokens of an unclosed block (real output); WS `--timeout` limitation removed. |

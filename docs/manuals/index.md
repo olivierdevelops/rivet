@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -128,10 +128,9 @@ None.
   remaining limitations are the [Known Limitations](man-2026-0001-rivet-manual.md#known-limitations) chapter.
 - The two defects found at `829ca43` (`rivet.trace.export` not dispatched; MCP `tools/list` missing two built-ins)
   were fixed in commit `2a751ab` (INC-2026-0007).
-- Defects found by the 0.2.0 sweep, documented where they show and reported for triage (not fixed here): WS
-  refused-input terminal records lack `seq` and report `data_count: 0`; `rivet highlight` drops the header tokens of
-  an unclosed block; inline `output object … open true` is accepted but ignored; the remote CLI sends no `deadline_ms`
-  over WebSocket.
+- Defects found by the 0.2.0 sweep (WS refused-input terminal `seq`, `rivet highlight` on unclosed blocks, inline
+  `open true`, the remote CLI's WS `deadline_ms`, and more) were fixed before release
+  ([INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md)).
 
 ## Related directories
 
@@ -143,6 +142,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | Sweep defects resolved (INC-2026-0012); MAN-0001, MAN-0004, MAN-0006, MAN-0007 updated to the fixed behaviour. |
 | 6 | 2026-09-29 | Claude | Envelope sweep finished (TASK-070/072): MAN-0001…0008 re-captured on the 0.2.0-rc (source `6f9943f`) with their new 0.2.0 sections; verification line corrected; sweep defects listed. |
 | 5 | 2026-09-29 | Claude | 0.2.0: MAN-2026-0009 and MAN-2026-0010 rows; reading-order diagram with ten volumes; status re-verified on the 0.2.0 release candidate |
 | 4 | 2026-09-28 | Claude | Recorded the fix-batch update of all eight volumes (commits 829ca43 and 2a751ab) and the Known Limitations chapter. Perch entries unchanged. |

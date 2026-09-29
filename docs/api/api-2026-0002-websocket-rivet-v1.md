@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 3
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -87,7 +87,7 @@ Integrators that need many concurrent or bidirectional requests over one connect
 | client → server | `finish_input` | `ref` | Half-close the ref's input |
 | client → server | `cancel` | `ref` | Cancel the ref |
 | server → client | record `type: "data"` | `ref`, `request_id`, `trace_id`, `operation`, `type`, `seq`, `data`, `error: null` | One emitted item |
-| server → client | record `type: "result"` | `ref`, `request_id`, `trace_id`, `operation`, `type`, `seq`, `status`, `data`, `error`, `effects`, `data_count` | Terminal record of a ref (`status` `ok`, `error` or `cancelled`), **or** the refusal of a frame for a ref that is not in flight (`status: "error"`, empty IDs, no `seq`) |
+| server → client | record `type: "result"` | `ref`, `request_id`, `trace_id`, `operation`, `type`, `seq`, `status`, `data`, `error`, `effects`, `data_count` | Terminal record of a ref (`status` `ok`, `error` or `cancelled`; always with `seq` — every ref is a session, so a unary ref ends with `seq: 1`), **or** the refusal of a frame that opened no ref (`status: "error"`, no `seq`; `ref: ""` when the frame named a ref that is already in flight) |
 
 ```text
   per-ref state machine (server side)
@@ -125,7 +125,7 @@ Rules:
 | `request` names an operation (`operation`, or the deprecated `id`) | `validation.required` (`details.field: "operation"`) |
 | `request` does not mix a key with its alias (`operation` + `id`, `data` + `params`) | `validation.input_envelope` (`details {key, alias}`) |
 | `input` has integer `seq` | `validation.frame` |
-| `request` ref not already in flight | `conflict.ref` (409 semantics) |
+| `request` ref not already in flight | `conflict.ref` (409 semantics), sent with `ref: ""` and `error.details.ref` so it never reads as that ref's terminal record |
 | ≤ 8 refs in flight per connection | 9th → `limit.ws_refs` (retryable) |
 | `input` / `finish_input` / `cancel` target an in-flight ref | `not_found.ref` |
 | `input.seq` = next expected (1, 2, …); identical retry of the last seq is accepted | otherwise the ref ends with `conflict.input_sequence` (then its session is cancelled) |
@@ -133,8 +133,10 @@ Rules:
 | no `input` after `finish_input` | otherwise the ref ends with `conflict.input_closed` |
 | `restrict` (optional) is `{grants:[…]}` | other keys / malformed grants → `policy.invalid` (`details.pointer` under `/restrict`) for that ref |
 
-The deprecated 0.1.0 request keys `id` and `params` are still accepted through 0.2.x (there is no per-frame
-deprecation header on a socket; the HTTP routes signal it, see [API-2026-0006](api-2026-0006-envelopes.md#deprecation-signals-02x)).
+The deprecated 0.1.0 request keys `id` and `params` are still accepted through 0.2.x. A socket has no per-frame
+header and the record shape is fixed by the schema, so the signal is the request's trace note (`rivet.trace.show`:
+phase `input`, decision `deprecated`, target `id,params`), as on HTTP and MCP
+([API-2026-0006](api-2026-0006-envelopes.md#deprecation-signals-02x)).
 From 0.2.0 a request frame's `deadline_ms` bounds that ref (0.1.0 frames had none); without it the ref runs under
 the default request deadline (30 s):
 
@@ -175,7 +177,7 @@ data record never carries `status`; the terminal record always does:
 
 ## Error Format
 
-The `error` object is the same one every surface uses ([API-2026-0005](api-2026-0005-error-registry.md), [API-2026-0006](api-2026-0006-envelopes.md#error-format)): `kind`, `code`, `message`, `retryable`, plus optional `operation_id`, `details`, `hint`, `source`, `cause`, `suppressed`; `effects` sits at the top level of the record. A refused frame never closes the socket; it gets an error record for its `ref` (or `""` when no ref could be read). Frame-level refusals for a ref that was never opened (`validation.frame`, `not_found.ref`, `conflict.ref`, `limit.ws_refs`, a bad envelope) have empty `request_id`/`trace_id`, no `seq`, and do **not** count as that ref's terminal record. A refused `input` or `finish_input` on an open ref **is** that ref's terminal record and carries the specific code.
+The `error` object is the same one every surface uses ([API-2026-0005](api-2026-0005-error-registry.md), [API-2026-0006](api-2026-0006-envelopes.md#error-format)): `kind`, `code`, `message`, `retryable`, plus optional `operation_id`, `details`, `hint`, `source`, `cause`, `suppressed`; `effects` sits at the top level of the record only (never inside `cause` or `suppressed[]`). A refused frame never closes the socket; it gets an error record for its `ref` (or `""` when no ref could be read, or when the frame named a ref that is already in flight — then `error.details.ref` names it). Frame-level refusals for a ref that was never opened (`validation.frame`, `not_found.ref`, `conflict.ref`, `limit.ws_refs`, a bad envelope) have no `seq` and do **not** count as that ref's terminal record; they have empty `request_id`/`trace_id` unless the frame became a request (a request refused at open — `validation.required` on its params, `not_found.operation`, `permission.denied` — carries its request and trace IDs, like REST). A refused `input` or `finish_input` on an open ref **is** that ref's terminal record: it carries the specific code, the next `seq` and the real `data_count`.
 
 ## Rate Limits
 
@@ -219,12 +221,12 @@ mid-stream failure (`->` client, `<-` server):
 -> {"type":"input","ref":"c3","seq":1,"data":"hi"}
 <- {"ref":"c3","request_id":"req_0834168ce0","trace_id":"tr_0834168ce0","operation":"chat.echo","type":"data","seq":1,"data":"hi","error":null}
 -> {"type":"request","ref":"c3","operation":"demo.add","data":{"a":1}}
-<- {"ref":"c3","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.ref","message":"ref `c3` is already in flight","retryable":false},"effects":"none","data_count":0}
+<- {"ref":"","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.ref","message":"ref `c3` is already in flight","retryable":false,"details":{"ref":"c3"}},"effects":"none","data_count":0}
 -> {"type":"input","ref":"c3","seq":3,"data":"skip"}
-<- {"ref":"c3","request_id":"req_0834168ce0","trace_id":"tr_0834168ce0","operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false},"effects":"none","data_count":0}
+<- {"ref":"c3","request_id":"req_0834168ce0","trace_id":"tr_0834168ce0","operation":"chat.echo","type":"result","seq":2,"status":"error","data":null,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false},"effects":"none","data_count":1}
 -> {"type":"request","ref":"c4","operation":"chat.echo","data":{}}
 -> {"type":"input","ref":"c4","seq":1,"data":5}
-<- {"ref":"c4","request_id":"req_0957da492d","trace_id":"tr_0957da492d","operation":"chat.echo","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"details":{"seq":1,"path":"$","expected":"text","found":"integer"}},"effects":"none","data_count":0}
+<- {"ref":"c4","request_id":"req_0957da492d","trace_id":"tr_0957da492d","operation":"chat.echo","type":"result","seq":1,"status":"error","data":null,"error":{"kind":"validation","code":"validation.input","message":"input item 1 at $ must be text, got integer","retryable":false,"details":{"seq":1,"path":"$","expected":"text","found":"integer"}},"effects":"none","data_count":0}
 -> {"type":"request","ref":"c5","operation":"chat.echo","data":{}}
 -> {"type":"finish_input","ref":"c5"}
 <- {"ref":"c5","request_id":"req_10a6b9cc92","trace_id":"tr_10a6b9cc92","operation":"chat.echo","type":"result","seq":1,"status":"ok","data":{"echoed":0},"error":null,"effects":"none","data_count":0}
@@ -239,11 +241,9 @@ mid-stream failure (`->` client, `<-` server):
 <- (close frame, code 1000)
 ```
 
-Known deviation (reported for a fix, PLAN-2026-0002 P4 findings): the terminal record of a ref **ended by a refused
-input** (`c3`, `c4` above) has no `seq` and reports `data_count: 0` even when data records were already sent (`c3`
-sent `seq 1`). Every other terminal record carries `seq` and the real `data_count`, as
-[`stream-record.schema.json`](schemas/stream-record.schema.json) requires. Clients should treat any record with
-`type: "result"` for an open ref as terminal, with or without `seq`.
+The terminal record of a ref **ended by a refused input** (`c3`, `c4` above) carries the next `seq` and the real
+`data_count` (`c3` had sent `seq 1`, so it ends with `seq 2`, `data_count 1`), as
+[`stream-record.schema.json`](schemas/stream-record.schema.json) requires (fixed in 0.2.0, INC-2026-0012).
 
 Captured session 2 — finish, cancel, malformed frames, bad envelopes, limits, close:
 
@@ -267,7 +267,7 @@ Captured session 2 — finish, cancel, malformed frames, bad envelopes, limits, 
 -> {"type":"cancel","ref":"zz"}
 <- {"ref":"zz","request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.ref","message":"ref `zz` is not in flight","retryable":false},"effects":"none","data_count":0}
 -> {"type":"request","ref":"d1","operation":"demo.nope"}
-<- {"ref":"d1","request_id":"","trace_id":"","operation":"demo.nope","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false},"effects":"none","data_count":0}
+<- {"ref":"d1","request_id":"req_035762f467","trace_id":"tr_035762f467","operation":"demo.nope","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `demo.nope`","retryable":false,"operation_id":"demo.nope"},"effects":"none","data_count":0}
 -> {"type":"request","ref":"d2"}
 <- {"ref":"d2","request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"the input envelope needs `operation`","retryable":false,"details":{"field":"operation"}},"effects":"none","data_count":0}
 -> {"type":"request","ref":"d3","operation":"demo.add","id":"demo.add"}
@@ -297,7 +297,7 @@ content-type: application/json
 
 **Refused input.** A refused `input` or `finish_input` (sequence gap, an item that does not match `receives`, input already closed) sends that ref's terminal error record with the specific code first and then cancels its session, so the ref still ends with exactly one terminal record — the same codes polling reports.
 
-**Remote CLI.** `rivet --endpoint URL request ID --stream --input-jsonl -` uses this route: one `request` frame, one `input` frame per stdin line, `finish_input` at EOF (or `cancel` on Ctrl-C), and prints each record as NDJSON without `ref`. `--timeout` is not applied over this duplex path (a known limitation; the CLI sends no `deadline_ms`, so the ref runs under the default 30 s request deadline).
+**Remote CLI.** `rivet --endpoint URL request ID --stream --input-jsonl - [--timeout D]` uses this route: one `request` frame (with `deadline_ms` from `--timeout`), one `input` frame per stdin line, `finish_input` at EOF (or `cancel` on Ctrl-C), and prints each record as NDJSON without `ref`. With `--timeout 300ms` the ref ends with `timeout.request` ("`demo.relay` exceeded its 300 ms deadline", exit 6).
 
 **Platforms.** macOS and Linux; Windows is not supported in 0.2.0 ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
 
@@ -315,3 +315,4 @@ content-type: application/json
 | 1 | 2026-09-28 | Claude | Initial rivet.v1 contract with frames captured from `rivet serve` at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: per-ref 16-frame lanes, specific refusal frames (`conflict.input_sequence`, `validation.input`, `conflict.input_closed`), `receives` item validation, `restrict` on request frames, `traceparent` on the upgrade, host byte budget, drain on SIGTERM; frames re-captured. |
 | 3 | 2026-09-29 | Claude | 0.2.0 envelope sweep (D-41, TASK-070): request frames carry `operation`/`data` (deprecated `id`/`params` accepted); every server frame is an envelope record with `ref` first (no `completion`, no `type:"error"`); new refusals `validation.required` / `validation.input_envelope`; per-ref `deadline_ms` (captured); reading diagram; versioning timeline; all frames re-captured on the 0.2.0-rc (source `6f9943f`); known deviation of refused-input terminal records (no `seq`, `data_count` 0); platform note. |
+| 4 | 2026-09-29 | Claude | INC-2026-0012 fixes: refused-input terminal records carry `seq` and the real `data_count`; `conflict.ref` for an in-flight ref is sent with `ref: ""` + `details.ref`; refusals at open carry request/trace IDs; unary refs keep `seq: 1` (decision recorded in INC-2026-0012); legacy frames' trace-note deprecation signal; remote CLI sends `deadline_ms`; frames `c3`, `c4`, `d1` re-captured. |

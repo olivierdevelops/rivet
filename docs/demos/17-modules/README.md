@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -436,10 +436,16 @@ As JSON the error is a `rivet.check` envelope. Every `check.*` code has kind `sy
 {"request_id":"","trace_id":"","operation":"rivet.check","type":"result","status":"error","data":null,"error":{"kind":"syntax","code":"check.import_duplicate","message":"alias `h` is imported twice in duplicate.rivet","retryable":false,"source":{"file":"duplicate.rivet","line":3,"column":1,"end_line":3,"end_column":28}},"effects":"none","data_count":0}
 ```
 
-The module whose policy is ignored still runs, under the entry bundle's policy (none here: deny-by-default, which a pure module never needs). `request` prints nothing on stderr: the warning comes from `rivet check` only:
+The module whose policy is ignored still runs, under the entry bundle's policy (none here: deny-by-default, which a pure module never needs). `request` (and `serve`) print the same warning on stderr once at load, then the result:
 
-```json
-{"request_id":"req_0150bd732d","trace_id":"tr_0150bd732d","operation":"top","type":"result","status":"ok","data":{"pong":true},"error":null,"effects":"none","data_count":0}
+```text
+warning[check.module_policy_ignored]: the policy.json beside sub/m.rivet is ignored: module `m` runs under the loader's policy
+  --> module_policy.rivet:2:1
+   |
+  2| import "./sub/m.rivet" as m
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: grant what the module needs in the entry bundle's policy.json (or the host policy)
+{"request_id":"req_01be09672d","trace_id":"tr_01be09672d","operation":"top","type":"result","status":"ok","data":{"pong":true},"error":null,"effects":"none","data_count":0}
 ```
 
 | Code | Kind | Exit | HTTP | Cause |
@@ -551,11 +557,17 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
 
 ## Known Caveats
 
-- `tests/conformance_samples.rs` (`every_demo_bundle_compiles`) compiles each `docs/demos/*/app.rivet` on its own without resolving imports, so it reports `check.unknown_function` for `users.get`, `billing.invoice` and `users.fetch` in this folder's app.rivet. The CLI resolves the imports (step 1: exit 0). The test is to be fixed by the coordinator; the demo is correct.
-- `check.import_duplicate` from a host load (`rt.load`, `rivet_load`) reports kind `syntax` and empty request and trace IDs, like every load-time `check.*` error (step 7, 15-ffi step 3). To be revisited in a later pass.
-- `policy explain` takes `--params`, not `--data`. With `--params '{"id":3}'`, `policy explain users.fetch` shows the concrete `…/users/3.json` as `exact`, but `policy explain report.remote` keeps the callee's target `param_dependent` (`{id}`): params are not propagated through a call into a module.
+- `check.import_duplicate` from a host load (`rt.load`, `rivet_load`) keeps the registry kind `syntax` (exit 2, as `rivet check` reports it) and, from INC-2026-0012, carries request and trace IDs like every runtime envelope (step 7, 15-ffi step 3).
+- `policy explain` takes `--data` (alias `--params`). Params flow through a call into a module: `policy explain report.remote --data '{"id":3}'` fills the callee's target, like `policy explain users.fetch --data '{"id":3}'`:
+
+  ```text
+  $ rivet --file app.rivet policy explain report.remote --data '{"id":3}'                          [exit 0]
+  …
+  OPERATION      KIND     ACCESS       TARGET                                KNOWLEDGE  SOURCE          DECISION
+  report.remote  (calls users.fetch — see above)                                        app.rivet:22
+  users.fetch    network  connect GET  https://api.example.com/users/3.json  exact      users.rivet:27  allowed
+  ```
 - An error raised inside a module names the module's internal operation in `error.operation_id` (`users.fetch`) while the envelope's `operation` is the requested one (`report.remote`).
-- `check.module_policy_ignored` is printed by `rivet check`; `request` (and so `serve`) loads the same bundle without printing it, so run `check` after adding a module that has its own `policy.json`.
 - `limit.imports` (more than 256 files or depth over 16) is covered by `tests/conformance_modules.rs`, not reproduced here.
 - The release candidate still prints version `0.1.0`; the bump happens at P5.
 
@@ -572,3 +584,4 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-71): new demo; entry bundle with an internal and a public import (the public module imports the internal one), list/request/serve across files, `io`, `--by target`, bootstrap, `policy generate`, `graph`, module-global retarget, six import errors and the ignored module policy warning, `examples/modules.rs`; executed against 0.2.0-dev (166a98b, source = 8031baa). |
+| 2 | 2026-09-29 | Claude | INC-2026-0012: `request` prints `check.module_policy_ignored` (re-captured); `policy explain --data` with params followed into `users.fetch` (captured); load refusals carry IDs; the `conformance_samples` caveat removed (test fixed). |

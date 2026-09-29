@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 8
+document_revision: 9
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -657,6 +657,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-29 | Finding | TASK-042 | Static linking on macOS prints `ld: warning: object file … was built for newer 'macOS' version (26.4) than being linked (26.0)` for ring's assembly when librivet is built without `MACOSX_DEPLOYMENT_TARGET` (RES-2026-0004 E2); the link and the programs are correct. Release artifacts (P5) must build librivet and link C with one `MACOSX_DEPLOYMENT_TARGET` | Noise only | P5 (TASK-093) | examples/c/Makefile |
 | 2026-09-29 | Finding | TASK-043 | `cargo test` leaves the cdylib and staticlib in `target/<profile>/deps` (no uplift to `target/<profile>`); `conformance_ffi` looks there first and needs `cargo test --workspace` (TRBL-2026-0006). The Linux `Libs.private` list (`-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc`) and ASan are unverified locally (no Linux host): the first CI run checks the list | Linux static link verified by CI | P3 (TASK-060, TASK-064) | TRBL-2026-0006 |
 | 2026-09-29 | Finding | P2c, P2d | 476 tests pass (455 + 3 `conformance_features` + 1 `FfiOptions` unit + 2 `setup_ffi` unit + 8 `ffi_safety` + 7 `conformance_ffi`); fmt, clippy `--workspace --all-targets --all-features -D warnings`, feature matrix, `vhco validate`, `vhco check` green; `vhco sync` 0; check_docs 0 problems; `vhco docs check` 0 errors. Parallel uncommitted edits by another agent (STD-2026-0001, the contract `overview.summary`, README and docs indexes) were left unstaged; the contract was staged hunk by hunk | P2c and P2d exits met | — | `10c8130`, `f9af92a` |
+| 2026-09-29 | Finding | P4 verification (TASK-075…077, D-34…D-47) | INC-2026-0012: 19 defects found by the 0.2.0 documentation/demo verification fixed before P3/P5 — envelope consistency (WS refused-input terminal `seq`/`data_count`, library terminal `seq`, rejected input echoes `operation`, MCP `rivet.request` errors name the target, `mcp.session_required` `operation: null`, no nested `effects`, WS/polling open refusals carry IDs, WS `conflict.ref` detached as `ref: ""`), language (highlight keeps unclosed-block headers, inline `open true` honoured, gRPC `unsupported.feature` at the call site, URL imports `syntax.import`), CLI/library (`policy explain --data` + params through module calls + `--json` denial error envelope, `auth complete --data/--data-file`, WS `deadline_ms` from `--timeout`, load refusals carry IDs, `check.module_policy_ignored` on `request`/`serve`, facade `rivet::serve`, session types, `TraceResult`), and T-29 (import-aware demo compile, `global`/`import` blocks as whole files). Decisions: unary WS results keep `seq` (every ref is a session, API-2026-0002); `policy explain --json` denial is a `status: error` / kind `permission` envelope on stderr (exit 3); inline `open` honoured. Contract hand-edited (`CallArg`, `CallSite.args`, flow steps `detach`, `name_refusals`, `recover`); 493 tests pass (476 + 17 `conformance_verification_defects`); `vhco sync` 0 | Pre-release defects closed; docs updated to fixed behaviour | Implementer | INC-2026-0012, `fad2940`, `4122353`, `1034636`, `4a34537` |
 
 ## Rollout Strategy
 
@@ -740,6 +741,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-29 | Claude | INC-2026-0012 findings row: 19 verification defects fixed before P3/P5, decisions (unary WS `seq`, `policy explain --json` denial envelope, inline `open`), contract hand edits, 493 tests. |
 | 8 | 2026-09-29 | Claude | CI green on macOS + Linux (run 36483001760); Windows dropped (INC-2026-0011); INC-2026-0010; live status. |
 | 7 | 2026-09-29 | Claude | P2c and P2d done: TASK-030…035 (`10c8130`) and TASK-040…045 (`f9af92a`) DONE with evidence; phase rows P2c/P2d DONE; R10–R15, R23 code and tests done (R12 publication deferred to G-PUB); PF-09–PF-12, PF-T03, PF-T04 DONE, PF-16/PF-17 in progress; T-09–T-12, T-19 PASS (476 tests); findings and deviations recorded (internal module layout, breaking API list, feature refusal rules, ABI deviations, macOS deployment target, deps-dir libraries); TRBL-2026-0006; live status refreshed. |
 | 6 | 2026-09-28 | Claude | P2e done: TASK-050…053 DONE (`9ec2a39`, `0d6c2ea`); phase row P2e DONE; R16/R17 code and tests done; PF-13, PF-14, PF-T05, PF-G02 DONE; T-13, T-14 PASS (455 tests); INC-2026-0009 resolved (`93388c1`, `6af5c27`); deviations (Python `.vsix` packager and TextMate engine instead of Node tools; library trigger contract edit) and findings recorded; live status refreshed. |
