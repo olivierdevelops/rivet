@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 7
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -298,8 +298,8 @@ Sandbox guarantees apply to **script-initiated effects through brokered adapters
 #### Command / Request
 
 ```sh
-rivet --file app.rivet policy explain telemetry.receive --params '{}'
-rivet --file app.rivet --policy ./policies/receive.json policy explain telemetry.receive --params '{}'
+rivet --file app.rivet policy explain telemetry.receive --data '{}'
+rivet --file app.rivet --policy ./policies/receive.json policy explain telemetry.receive --data '{}'
 ```
 
 #### Expected Output / Response
@@ -321,7 +321,7 @@ denied: telemetry.receive#1 allow_listen udp://127.0.0.1:7001 (bind)
 
 Under receive.json (exit 0): `policy ./policies/receive.json …`, `base ./policies`, grants
 `allow_listen udp://127.0.0.1:7001` and `allow_network udp://127.0.0.1:7002`, bind `allowed`, reply `unknown`.
-Hashes vary with file content. `policy explain` keeps `--params` in 0.2.0 (it has no `--data`); the `--params` argument is what makes it evaluate one concrete call and exit 3 on a denial.
+Hashes vary with file content. `--data` (alias `--params`, no warning) is what makes `policy explain` evaluate one concrete call and exit 3 on a denial; without it the same table prints and the exit is 0. With `--json`, the denial is a `status: error` envelope of kind `permission` on stderr (exit 3).
 
 ## Local fixture run
 
@@ -561,6 +561,7 @@ cd - && rm -rf "$WORK"
 | `io --check-policy` (steps 4–5: exit 3 default; 0 / 3 / 7 under receive.json; 3 for `--check-policy --strict` under the default) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | `io --check-files` (step 4); `--include-bootstrap` (no `(+ imports)`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. Explain the policy decision (`--params '{}'`: exit 3 / 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. (re-run after INC-2026-0012) `policy explain … --data '{}'`: default policy exit 3 (same table and `denied:` line), receive.json exit 0; `--json` denial envelope on stderr (exit 3); without `--data` exit 0 | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 7. `telemetry.status` unicast request/reply | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 8. `telemetry.receive` denied under default policy | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 9. `telemetry.receive` under receive.json with authorized reply | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
@@ -570,7 +571,7 @@ cd - && rm -rf "$WORK"
 | 13. Oversized reply — `udp.truncated` (CLI and serve, HTTP 502) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | Multicast | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | NOT APPLICABLE — this bundle declares no multicast operation; see tests/conformance_udp.rs |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder (or the scratch copy named in Local fixture run) and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder (or the scratch copy named in Local fixture run) and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below. Step 6 was re-run with `policy explain --data` on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; its output above is from that run.
 
 ## Known Caveats
 
@@ -599,6 +600,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 6 uses `policy explain --data` (alias `--params`) and was re-run (output unchanged); the `--json` denial envelope on stderr noted; one Verification Record row. |
 | 7 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-57): re-executed every step against the 0.2.0 release candidate (8031baa) with the local UDP fixture; `--params` dropped on `request` (kept on `policy explain`), HTTP body `{operation, data}`; results and errors replaced by 0.2.0 envelopes; `outputs --all --json` as an envelope; the bootstrap row now names `./app.rivet` (INC-2026-0008 placeholder gone); full policy hash; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 6 | 2026-09-28 | Claude | TASK-067 re-verification at 829ca43 (after the INC-2026-0005/0006 fixes): every step re-run, output identical except IDs and hashes; commit references updated; linked the release verification guide DEMO-2026-0015 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (073d944); added fixtures/udp_fixture.py and a Local fixture run (ports remapped to 18800–18803); pasted real output for check, outputs (both entries), `io --by target` (row order), `io --check-policy` (summary line, receive.json whole-bundle denial of status, `--strict` exit 7, denied-beats-dynamic exit 3), `policy explain`, and every request outcome (status, denial, authorized reply, unexpected peer, both timeouts, `udp.truncated` exit 5 / HTTP 502); removed draft disclaimers; status active; verified_against 0.1.0. |

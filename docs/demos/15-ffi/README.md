@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -216,7 +216,8 @@ free-again 1
 
 `examples/c/modules.c` starts a runtime rooted in `examples/modules/` and loads `users.rivet` and `billing.rivet` as
 module objects. It lists and calls their operations, and shows two refusals: a failed validation and loading an
-alias twice.
+alias twice. Both refusals carry request and trace IDs; the refused load (`rivet.load`) keeps the registry kind `syntax`
+(INC-2026-0012).
 
 ```sh
 make -C examples/c all        # also builds modules and modules_static
@@ -224,13 +225,13 @@ cd examples/c && ./modules
 ```
 
 ```text
-operations [{"id":"get","operation":"users.get","name":"users.get","description":"One user by id.","emits":false,"receives":false},{"id":"list","operation":"users.list",…}]
-call {"request_id":"req_…","trace_id":"tr_…","operation":"users.get","type":"result","status":"ok","data":{"id":42,"name":"Hello, user 42"},"error":null,"effects":"none","data_count":0}
-bad-call {…"operation":"users.get","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.min","message":"parameter `id` must be ≥ 1",…}…}
-call {…"operation":"billing.invoice","type":"result","status":"ok","data":{"user":{"id":7,"name":"Hello, user 7"},"amount":20.0},…}
-duplicate {…"operation":"rivet.load","type":"result","status":"error","data":null,"error":{"kind":"syntax","code":"check.import_duplicate","message":"a module named `users` is already loaded; use load_as(path, alias)",…}…}
-record {…"operation":"users.list","type":"result","seq":1,"status":"ok","data":[{"id":1,…},{"id":2,…}],…}
-request {…"operation":"users.get","type":"result","status":"ok","data":{"id":7,"name":"Hello, user 7"},…}
+operations [{"id":"get","operation":"users.get","name":"users.get","description":"One user by id.","emits":false,"receives":false},{"id":"list","operation":"users.list","name":"users.list","description":"The first two users (calls inside a module use its own IDs).","emits":false,"receives":false}]
+call {"request_id":"req_01ab71dad5","trace_id":"tr_01ab71dad5","operation":"users.get","type":"result","status":"ok","data":{"id":42,"name":"Hello, user 42"},"error":null,"effects":"none","data_count":0}
+bad-call {"request_id":"req_022af25eba","trace_id":"tr_022af25eba","operation":"users.get","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.min","message":"parameter `id` must be ≥ 1","retryable":false,"operation_id":"users.get"},"effects":"none","data_count":0}
+call {"request_id":"req_03a97828c7","trace_id":"tr_03a97828c7","operation":"billing.invoice","type":"result","status":"ok","data":{"user":{"id":7,"name":"Hello, user 7"},"amount":20.0},"error":null,"effects":"none","data_count":0}
+duplicate {"request_id":"req_0429937b74","trace_id":"tr_0429937b74","operation":"rivet.load","type":"result","status":"error","data":null,"error":{"kind":"syntax","code":"check.import_duplicate","message":"a module named `users` is already loaded; use load_as(path, alias)","retryable":false},"effects":"none","data_count":0}
+record {"request_id":"req_05a8b4c5e1","trace_id":"tr_05a8b4c5e1","operation":"users.list","type":"result","seq":1,"status":"ok","data":[{"id":1,"name":"Hello, user 1"},{"id":2,"name":"Hello, user 2"}],"error":null,"effects":"none","data_count":0}
+request {"request_id":"req_062f76e80e","trace_id":"tr_062f76e80e","operation":"users.get","type":"result","status":"ok","data":{"id":7,"name":"Hello, user 7"},"error":null,"effects":"none","data_count":0}
 module-free-again 1
 ```
 
@@ -333,6 +334,7 @@ rm -f docs/demos/15-ffi/misuse
 | 3. Module objects from C | Claude (coordinator) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | 4. Python ctypes | Claude (coordinator) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | 5. Misuse | Claude (coordinator) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
+| 3. (re-run after INC-2026-0012) `modules` built with `make -C examples/c OUT=<scratch>` against `target/release/librivet.dylib` and run from `examples/c`: `duplicate` is `check.import_duplicate`, kind `syntax`, with request/trace IDs; other lines unchanged; exit 0 | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | Linux | CI (`conformance_ffi`) | run 36483001760 | PASS |
 
 ## Known Caveats
@@ -341,7 +343,7 @@ rm -f docs/demos/15-ffi/misuse
 - On macOS, the static link prints "built for newer macOS" warnings from ring's assembly. They are harmless;
   build the library and the program with the same `MACOSX_DEPLOYMENT_TARGET` to silence them.
 - A refused module load reports the registry kind `syntax` for `check.import_duplicate` (exit 2, as `rivet check`)
-  and, from INC-2026-0012, minted request and trace IDs (elided as `…` in step 3).
+  and, from INC-2026-0012, minted request and trace IDs (step 3, `duplicate` line).
 - Windows is not supported (INC-2026-0011).
 
 ## Related Documents
@@ -355,3 +357,4 @@ rm -f docs/demos/15-ffi/misuse
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | Created: shared/static links, request, stream, input, cancel, module objects, Python and misuse, all executed. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: a refused `rivet_load` now carries request/trace IDs; caveat updated. |
+| 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 re-run; its output is pasted in full from that run (the `duplicate` refusal shows its request/trace IDs); one Verification Record row. |

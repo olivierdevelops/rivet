@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -136,7 +136,7 @@ All exit 0.
 rivet --file app.rivet io --by target
 rivet --file app.rivet io --check-policy
 rivet --file app.rivet io --check-files
-rivet --file app.rivet policy explain contacts.list --params '{}' --json
+rivet --file app.rivet policy explain contacts.list --data '{}' --json
 ```
 
 #### Expected Output / Response
@@ -165,7 +165,7 @@ contacts.list  network     connect GET   https://api.example.com/contacts  exact
 6 allowed
 ```
 
-`io --check-files` prints `contacts.list needs no existing files.` and `0 files` (exit 0). `policy explain --json` (exit 0) prints a `rivet.policy.explain` envelope whose `data` lists the six sites with `"decision":"allowed"`; the env site carries `"origin":{"option":"client_secret env"}` and `"secret":true`. The manifest never contains a secret value or a token.
+`io --check-files` prints `contacts.list needs no existing files.` and `0 files` (exit 0). `policy explain --json` (exit 0; `--data` takes the call's parameters, `--params` is an alias) prints a `rivet.policy.explain` envelope whose `data` lists the six sites with `"decision":"allowed"`; the env site carries `"origin":{"option":"client_secret env"}` and `"secret":true`. The manifest never contains a secret value or a token.
 
 ### 3. Local fixture run: rewrite both origins
 
@@ -366,13 +366,14 @@ Stopping the server disposes of the memory credential store. Stopping a client d
 |---|---|---|---|
 | 1. `check --strict-docs`, `outputs` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 2. `io --by target`, `io --check-policy` (0), `io --check-files` (0), `policy explain --json` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. (re-run after INC-2026-0012) `policy explain contacts.list --data '{}' --json` (exit 0): `rivet.policy.explain` envelope, six sites `allowed`, env site `"origin":{"option":"client_secret env"}` and `"secret":true` | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 3. Scratch copy, fixture, rewritten `io --check-policy` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 4. Missing secret, rejected client, success | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 5. Reuse through serve, trace, `ws 404`, `auth status` denied, no token in logs | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. Missing `allow_env` grant | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. `timeout.auth_token` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below. The step 2 `policy explain` command was re-run with `policy explain --data` on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; its output above is from that run.
 
 ## Known Caveats
 
@@ -391,6 +392,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 2 `policy explain` uses `--data` (alias `--params`) and was re-run; one Verification Record row. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-56): re-executed every step against the 0.2.0 release candidate (8031baa) with the local OAuth fixture; `--params` dropped (no parameters); results and every auth, permission and timeout error replaced by 0.2.0 envelopes; `outputs`, `policy explain` and `trace show` JSON as envelopes; token still never leaks (`grep -c DEMO-AT` 0); 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/oauth_fixture.py (ports 18870/18871) and a scratch-copy run; executed every step against 0.1.0-dev (829ca43) and pasted real output: check, outputs (`(open: extra fields allowed)`), manifest (summary line, `use` row before `read, write`), `auth.client_secret_missing`, `auth.token_endpoint_failed`, success, reuse through serve, trace, token-leak grep, `allow_env` denial, `timeout.auth_token`; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`client_secret env`, `auth`, `token_url`, `http get`), PHASE and NEEDS FILE. |

@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 8
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -63,7 +63,7 @@ One [app.rivet](app.rivet) declares four pure operations, each with a declared, 
 
 ## Verified Against Version
 
-0.2.0. Verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped from 0.1.0 to 0.2.0 at release, P5, so `rivet --version` and `serverInfo.version` still print 0.1.0), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Every output block below was pasted from that run; the verification run listened on `127.0.0.1:18800` instead of 8080. Request, trace and session IDs, timestamps, hashes and ports vary from run to run.
+0.2.0. Steps 7 and 8 were re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; their output above is from that run. The other steps were verified on 0.2.0-dev at commit `8031baa`, the release candidate (the version string is bumped from 0.1.0 to 0.2.0 at release, P5, so `rivet --version` and `serverInfo.version` still print 0.1.0), with `target/release/rivet` on macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29. Every output block below was pasted from that run; the verification run listened on `127.0.0.1:18800` instead of 8080. Request, trace and session IDs, timestamps, hashes and ports vary from run to run.
 
 What changed from 0.1.0 ([migration guide](../../migrations/mig-2026-0001-response-and-input-envelopes.md), [envelope reference](../../api/api-2026-0006-envelopes.md)):
 
@@ -556,15 +556,31 @@ The client connects with subprotocol `rivet.v1`, sends each line as one text fra
 Every server frame is a stream record (the same envelope as NDJSON and SSE) with `ref` first. There is no separate `error` frame and no nested `completion`. The order of different refs varies between runs; the order within a ref does not:
 
 ```json
-{"ref":"c3","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
-{"ref":"c1","request_id":"req_15449bbcd3","trace_id":"tr_15449bbcd3","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
-{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
-{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
-{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
-{"ref":"c2","request_id":"req_16c56c4c98","trace_id":"tr_16c56c4c98","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+{"ref":"c3","request_id":"req_0330526a9f","trace_id":"tr_0330526a9f","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"ref":"c2","request_id":"req_02b31861fa","trace_id":"tr_02b31861fa","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
+{"ref":"c1","request_id":"req_0132c3fccd","trace_id":"tr_0132c3fccd","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"ref":"c2","request_id":"req_02b31861fa","trace_id":"tr_02b31861fa","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
+{"ref":"c2","request_id":"req_02b31861fa","trace_id":"tr_02b31861fa","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
+{"ref":"c2","request_id":"req_02b31861fa","trace_id":"tr_02b31861fa","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 ```
 
-The validation failure of `c3` is refused before a request is created, so its `request_id` and `trace_id` are empty (the HTTP 422 of step 4 does assign IDs).
+The validation failure of `c3` happens after the request is created, so it carries request and trace IDs like the HTTP 422 of step 4 (INC-2026-0012). A unary WS result keeps `"seq":1`: every WS ref is a session (API-2026-0002). Only a frame that never became a request keeps empty IDs, and a refusal that is not a ref's terminal record has `ref: ""`:
+
+```text
+  frame                                            reply                                      IDs    ref
+  request demo.add {b:3}              (c3)   -->   validation.required terminal record         yes    "c3"
+  second request on in-flight ref     (d1)   -->   conflict.ref, error.details.ref = "d1"      empty  ""
+  `operation` and `id` together       (e1)   -->   validation.input_envelope, operation echoed empty  "e1"
+  not JSON                                   -->   validation.frame, operation null            empty  ""
+```
+
+```json
+{"ref":"","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"conflict","code":"conflict.ref","message":"ref `d1` is already in flight","retryable":false,"details":{"ref":"d1"}},"effects":"none","data_count":0}
+{"ref":"e1","request_id":"","trace_id":"","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.input_envelope","message":"use `operation` or the deprecated `id`, not both","retryable":false,"operation_id":"demo.add","details":{"key":"operation","alias":"id"}},"effects":"none","data_count":0}
+{"ref":"","request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.frame","message":"frame is not JSON: expected ident at line 1 column 2","retryable":false},"effects":"none","data_count":0}
+```
+
+These three lines came from sending `{"type":"request","ref":"d1","operation":"demo.countdown","data":{}}`, the same `ref` again with `demo.add`, `{"type":"request","ref":"e1","operation":"demo.add","id":"demo.add","data":{"a":1}}` and `not json` on one connection; `d1`'s countdown then completed normally (`seq` 1–4).
 
 A connection may hold at most 8 in-flight refs; each ref has a bounded 16-frame queue. Closing the socket cancels and joins all of its refs. Unlike polling sessions, WebSocket requests are owned by the connection.
 
@@ -599,7 +615,7 @@ The bodies are [initialized](requests/initialized.mcp.json), [list](requests/lis
 ```text
 HTTP/1.1 200 OK
 content-type: application/json
-mcp-session-id: mcp_1d9bddc0650692315
+mcp-session-id: mcp_126a8c57f065c6f75
 …
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
 ```
@@ -613,8 +629,23 @@ mcp-session-id: mcp_1d9bddc0650692315
 `demo.countdown` is a session tool (`"_meta":{"rivet/delivery":"session"}`): calling it returns an envelope whose `data` is a SessionReceipt, read with `rivet.sessions.read`. The direct `demo.add` call and `rivet.outputs` return the ResponseEnvelope in `structuredContent` (and as text); `isError` is true when `status` is `error` or `cancelled`:
 
 ```json
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_17a45216dd\",\"trace_id\":\"tr_17a45216dd\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_17a45216dd","trace_id":"tr_17a45216dd","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
-{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_182b40b5b2","trace_id":"tr_182b40b5b2","operation":"rivet.outputs","type":"result","status":"ok","data":{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0411129554\",\"trace_id\":\"tr_0411129554\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_0411129554","trace_id":"tr_0411129554","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_059161dbc9","trace_id":"tr_059161dbc9","operation":"rivet.outputs","type":"result","status":"ok","data":{"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]},"error":null,"effects":"none","data_count":0},"isError":false}}
+```
+
+A failing call through the built-in `rivet.request` names the target operation, like a success (INC-2026-0012), and a protocol-level refusal (here `tools/list` without the `MCP-Session-Id` header, HTTP 422) has `operation: null` and empty IDs:
+
+```sh
+curl -sS http://127.0.0.1:8080/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H "MCP-Session-Id: $RIVET_DEMO_SESSION" -H 'MCP-Protocol-Version: 2025-11-25' \
+  --data '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"rivet.request","arguments":{"operation":"demo.add","data":{"b":3}}}}'; echo
+curl -sS -w ' %{http_code}\n' http://127.0.0.1:8080/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2025-11-25' --data '{"jsonrpc":"2.0","id":6,"method":"tools/list"}'
+```
+
+```text
+{"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_0684cfb12e","trace_id":"tr_0684cfb12e","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0},"isError":true}}
+{"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"mcp.session_required","message":"MCP-Session-Id header is required after initialize","retryable":false},"effects":"none","data_count":0} 422
 ```
 
 For an MCP client that launches Rivet as a subprocess, use stdio instead. It serves MCP only; stdout carries only protocol messages and the startup record goes to stderr:
@@ -626,7 +657,7 @@ For an MCP client that launches Rivet as a subprocess, use stdio instead. It ser
 
 ```json
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0170b71c45\",\"trace_id\":\"tr_0170b71c45\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_0170b71c45","trace_id":"tr_0170b71c45","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_014a894aad\",\"trace_id\":\"tr_014a894aad\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_014a894aad","trace_id":"tr_014a894aad","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
 ### 9. Authentication and narrowed surfaces (alternate policy file)
@@ -831,6 +862,8 @@ Stop any server you started with Ctrl-C (or `kill -TERM`, which drains the same 
 | 6. Polling open (202 `accepted`), events, unary job, cancel after finish | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. WebSocket three refs via fixtures/ws_client.py (envelope frames with `ref`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 8. MCP initialize, initialized, tools/list (`outputSchema` = envelope), direct tool, `rivet.outputs`, stdio | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 7. (re-run after INC-2026-0012) WebSocket three refs: `c3` refusal carries request/trace IDs; extra frames: `conflict.ref` for in-flight `d1` detached (`ref: ""`, `error.details.ref`), `validation.input_envelope` echoes `operation`, not-JSON frame keeps empty IDs; server on 127.0.0.1:18801 | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 8. (re-run after INC-2026-0012) MCP initialize, initialized, tools/list, direct tool, `rivet.outputs`, stdio; `rivet.request` error names `demo.add`; `mcp.session_required` has `operation: null` | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 9. team.json: ada 200, ci 403, no/wrong token 401, ws 404, `--endpoint`, non-loopback refusal | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | `check --strict-docs`, `check --json` (exit 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | `io --check-policy` (exit 0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
@@ -855,6 +888,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 7 re-run, `c3` now has request/trace IDs, added the detached `conflict.ref`, `operation`-echoing envelope refusal and not-JSON frame; step 8 re-run (new IDs), added the `rivet.request` error naming the target and `mcp.session_required` with `operation: null`; two Verification Record rows. |
 | 8 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-50): re-executed every step against the 0.2.0 release candidate (8031baa). Commands use `--data` (plus `--input -`, `--pretty`, the `--params` deprecation warning and the refusals); every output replaced by 0.2.0 ResponseEnvelopes and stream records: GET routes, `describe`/`outputs`/`check`/`io` JSON, SSE `event: result`, polling `accepted` receipt, WS envelope frames with `ref`, MCP `structuredContent` and `outputSchema`; legacy-body `Deprecation` example; `(+ imports)` placeholder replaced by the real bootstrap table; `build_features`/`abi_version` in `rivet.capabilities`; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 7 | 2026-09-28 | Claude | TASK-067 re-verification at 829ca43 (after the INC-2026-0005/0006 fixes): every step re-run with the release binary on 127.0.0.1:18800; output identical except IDs, timestamps and ports; commit references updated; linked the release verification guide DEMO-2026-0015 |
 | 6 | 2026-09-28 | Codex | Repaired two links to the absent release-verification guide by linking the current CLI reference. |

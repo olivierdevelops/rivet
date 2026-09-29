@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -333,12 +333,45 @@ A send acknowledgment means queue acceptance, not remote processing; re-posting 
 #### Expected Output / Response
 
 ```json
-{"ref":"chat1","request_id":"req_04ee521dd4","trace_id":"tr_04ee521dd4","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null}
-{"ref":"chat1","request_id":"req_04ee521dd4","trace_id":"tr_04ee521dd4","operation":"chat.exchange","type":"data","seq":2,"data":{"text":"goodbye"},"error":null}
-{"ref":"chat1","request_id":"req_04ee521dd4","trace_id":"tr_04ee521dd4","operation":"chat.exchange","type":"result","seq":3,"status":"ok","data":{"initial_metadata":{},"trailers":{},"status":"OK","status_code":0,"data_count":2},"error":null,"effects":"committed","data_count":2}
+{"ref":"chat1","request_id":"req_012af56bed","trace_id":"tr_012af56bed","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+{"ref":"chat1","request_id":"req_012af56bed","trace_id":"tr_012af56bed","operation":"chat.exchange","type":"data","seq":2,"data":{"text":"goodbye"},"error":null}
+{"ref":"chat1","request_id":"req_012af56bed","trace_id":"tr_012af56bed","operation":"chat.exchange","type":"result","seq":3,"status":"ok","data":{"initial_metadata":{},"trailers":{},"status":"OK","status_code":0,"data_count":2},"error":null,"effects":"committed","data_count":2}
 ```
 
 If the socket closes before the result frame, Rivet cancels `chat1` and joins its cleanup; unlike a polling session, it cannot be resumed.
+
+An input frame that skips a sequence number ends the ref. Its terminal record is numbered after the data records already sent and carries the real `data_count` (INC-2026-0012); here the client waited for the `hello` echo before sending `seq` 3:
+
+```text
+ client                                   server
+ request chat2 · input seq 1 "hello" ──▶  chat2 data   seq 1 {"text":"hello"}
+ input seq 3 "skipped"               ──▶  chat2 result seq 2 status error conflict.input_sequence, data_count 1
+```
+
+```json
+{"ref":"chat2","request_id":"req_06dc7203d6","trace_id":"tr_06dc7203d6","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+{"ref":"chat2","request_id":"req_06dc7203d6","trace_id":"tr_06dc7203d6","operation":"chat.exchange","type":"result","seq":2,"status":"error","data":null,"error":{"kind":"conflict","code":"conflict.input_sequence","message":"expected send_seq 2, got 3","retryable":false},"effects":"none","data_count":1}
+```
+
+A request refused at open (a wrong param type, an unknown operation) became a request, so it carries request and trace IDs; on polling the same refusal is HTTP 422 with IDs:
+
+```json
+{"ref":"u1","request_id":"req_04b6d62a54","trace_id":"tr_04b6d62a54","operation":"users.grpc_get","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.type","message":"parameter `id` must be text, got integer","retryable":false,"operation_id":"users.grpc_get","details":{"field":"id"}},"effects":"none","data_count":0}
+{"ref":"u2","request_id":"req_0530740ac9","trace_id":"tr_0530740ac9","operation":"nope.nope","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.operation","message":"no operation `nope.nope`","retryable":false,"operation_id":"nope.nope"},"effects":"none","data_count":0}
+```
+
+The CLI as a remote client drives the same WebSocket route for live input, and `--timeout` travels in the request frame as `deadline_ms`:
+
+```sh
+(echo '{"text":"hello"}'; sleep 6) | rivet --endpoint http://127.0.0.1:18881 request chat.exchange --input-jsonl - --stream --timeout 2s
+```
+
+```json
+{"request_id":"req_1093b9fbc2","trace_id":"tr_1093b9fbc2","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null}
+{"request_id":"req_1093b9fbc2","trace_id":"tr_1093b9fbc2","operation":"chat.exchange","type":"result","seq":2,"status":"error","data":null,"error":{"kind":"timeout","code":"grpc.deadline_exceeded","message":"gRPC /example.Users/Chat ended with DEADLINE_EXCEEDED (4): deadline of 1999 ms exceeded","retryable":false,"source":{"file":"app.rivet","line":78,"column":17,"end_line":80,"end_column":20},"operation_id":"chat.exchange","details":{"grpc_status":4,"grpc_code":"DEADLINE_EXCEEDED","grpc_message":"deadline of 1999 ms exceeded","method":"users/example.Users/Chat","data_count":1,"trailers":{}}},"effects":"committed","data_count":1}
+```
+
+The deadline fires after 2 s and the exit code is 6. The process itself exits only when stdin reaches EOF (after 6 s here), even though the terminal record has already arrived (see Known Caveats). Without `--timeout`, `rivet --endpoint http://127.0.0.1:18881 request chat.exchange --input-jsonl - --stream < chat-input.jsonl` prints the same three records as step 4 (exit 0).
 
 ### 8. MCP session tools
 
@@ -361,15 +394,19 @@ The bodies are [open](requests/open.mcp.json) (direct tool `chat.exchange`), [se
 
 #### Expected Output / Response
 
-`tools/call chat.exchange` returns an `accepted` envelope in `structuredContent` whose `data` is the SessionReceipt (`"session_id":"ses_042f23b6fc"`, `input_schema`, `emits_schema`, `next_send_seq:1`, `expires_at`). Each `rivet.sessions.*` call returns an envelope of that built-in whose `data` is the ack or batch:
+`tools/call chat.exchange` returns an `accepted` envelope in `structuredContent` whose `data` is the SessionReceipt (`"session_id":"ses_078e0be28b"`, `input_schema`, `emits_schema`, `next_send_seq:1`, `expires_at`). Each `rivet.sessions.*` call returns an envelope of that built-in whose `data` is the ack or batch:
 
 ```json
-{"jsonrpc":"2.0","id":11,"result":{"content":["…"],"structuredContent":{"request_id":"req_062cf9491e","trace_id":"tr_062cf9491e","operation":"rivet.sessions.send","type":"result","status":"ok","data":{"session_id":"ses_042f23b6fc","accepted_seq":1,"input_closed":false},"error":null,"effects":"none","data_count":0},"isError":false}}
-{"jsonrpc":"2.0","id":12,"result":{"content":["…"],"structuredContent":{"request_id":"req_07a2b285fb","trace_id":"tr_07a2b285fb","operation":"rivet.sessions.finish_input","type":"result","status":"ok","data":{"session_id":"ses_042f23b6fc","accepted_seq":null,"input_closed":true},"error":null,"effects":"none","data_count":0},"isError":false}}
-{"jsonrpc":"2.0","id":13,"result":{"content":["…"],"structuredContent":{"request_id":"req_08264e3158","trace_id":"tr_08264e3158","operation":"rivet.sessions.read","type":"result","status":"ok","data":{"session_id":"ses_042f23b6fc","events":[{"request_id":"req_05ae7e2ea9","trace_id":"tr_05ae7e2ea9","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null},{"request_id":"req_05ae7e2ea9","trace_id":"tr_05ae7e2ea9","operation":"chat.exchange","type":"result","seq":2,"status":"ok","data":{"initial_metadata":{},"trailers":{},"status":"OK","status_code":0,"data_count":1},"error":null,"effects":"committed","data_count":1}],"last_seq":2,"terminal":true},"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":11,"result":{"content":["…"],"structuredContent":{"request_id":"req_138df806a1","trace_id":"tr_138df806a1","operation":"rivet.sessions.send","type":"result","status":"ok","data":{"session_id":"ses_078e0be28b","accepted_seq":1,"input_closed":false},"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":12,"result":{"content":["…"],"structuredContent":{"request_id":"req_140b9f8bee","trace_id":"tr_140b9f8bee","operation":"rivet.sessions.finish_input","type":"result","status":"ok","data":{"session_id":"ses_078e0be28b","accepted_seq":null,"input_closed":true},"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":13,"result":{"content":["…"],"structuredContent":{"request_id":"req_158a8e17a3","trace_id":"tr_158a8e17a3","operation":"rivet.sessions.read","type":"result","status":"ok","data":{"session_id":"ses_078e0be28b","events":[{"request_id":"req_12027fa26c","trace_id":"tr_12027fa26c","operation":"chat.exchange","type":"data","seq":1,"data":{"text":"hello"},"error":null},{"request_id":"req_12027fa26c","trace_id":"tr_12027fa26c","operation":"chat.exchange","type":"result","seq":2,"status":"ok","data":{"initial_metadata":{},"trailers":{},"status":"OK","status_code":0,"data_count":1},"error":null,"effects":"committed","data_count":1}],"last_seq":2,"terminal":true},"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
-Unary `users.grpc_get` is an ordinary direct tool: `"structuredContent":{…,"operation":"users.grpc_get","type":"result","status":"ok","data":{"id":"42","name":"Ada"},"error":null,"effects":"committed","data_count":0},"isError":false`.
+Unary `users.grpc_get` is an ordinary direct tool: `"structuredContent":{…,"operation":"users.grpc_get","type":"result","status":"ok","data":{"id":"42","name":"Ada"},"error":null,"effects":"committed","data_count":0},"isError":false`. Called through the built-in instead (`{"name":"rivet.request","arguments":{"operation":"users.grpc_get","data":{"id":"7"}}}`), the error envelope names the target operation, not `rivet.request` (INC-2026-0012), and `isError` is true:
+
+```json
+{"request_id":"req_177004c16d","trace_id":"tr_177004c16d","operation":"users.grpc_get","type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"grpc.not_found","message":"gRPC /example.Users/GetUser ended with NOT_FOUND (5): no user 7","retryable":false,"source":{"file":"app.rivet","line":15,"column":5,"end_line":18,"end_column":8},"operation_id":"users.grpc_get","details":{"grpc_status":5,"grpc_code":"NOT_FOUND","grpc_message":"no user 7","method":"users/example.Users/GetUser","data_count":0,"trailers":{}}},"effects":"none","data_count":0}
+```
 
 ## Effects and policy
 
@@ -431,13 +468,16 @@ rm -rf "$TMPDIR/rivet-grpc-venv"             # optional
 | 6. Polling open, input, finish, events, cancel | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. WebSocket `chat1` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 8. MCP direct session tool and `rivet.sessions.*` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 7. (re-run after INC-2026-0012) WebSocket `chat1`; refused input `chat2` (terminal `seq` 2, `data_count` 1); open refusals `u1`/`u2` with IDs; polling open refusal 422 with IDs; remote CLI `--timeout 2s` over WS → `grpc.deadline_exceeded` after 2 s (exit 6) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 8. (re-run after INC-2026-0012) MCP direct session tool, `rivet.sessions.*`, `users.grpc_get`; `rivet.request` error names `users.grpc_get` | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy (grpcio fixture, descriptor from `protoc`) and the output pasted from that run. The request fixtures under `requests/` were already in the 0.2.0 input-envelope form (TASK-019) and needed no change. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy (grpcio fixture, descriptor from `protoc`) and the output pasted from that run. Steps 7 and 8 were re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes, with the same scratch copy, fixture (port 18880) and server (port 18881); their output above is from that run. The request fixtures under `requests/` were already in the 0.2.0 input-envelope form (TASK-019) and needed no change. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
 
 ## Known Caveats
 
 - The fixture is plaintext HTTP/2 (h2c) on loopback; a real service uses `https://` with a trusted certificate (or `tls ca_file`, see [09-quic](../09-quic/README.md)).
 - `users.pb` is generated, not committed; the conformance tests compile the same `.proto`.
+- The remote CLI (`--endpoint … --input-jsonl -`) exits only when stdin reaches EOF, even after the terminal record has arrived (INC-2026-0012 Remaining Risks; pre-existing).
 
 ## Related Documents
 
@@ -451,6 +491,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: steps 7–8 re-run against the grpcio fixture; step 7 adds the refused-input terminal record (`seq`, real `data_count`), open refusals with IDs and the remote CLI `--timeout` over WS (`deadline_ms`); step 8 re-captured and adds the `rivet.request` error naming the target; remote-CLI stdin caveat; two Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-59): re-executed every step against the 0.2.0 release candidate (8031baa) with the grpcio fixture; `--params` → `--data`; CLI NDJSON, gRPC errors, polling (`accepted` receipt envelope, batches, cancelled terminal record), WebSocket envelope frames with `ref` and MCP session-tool `structuredContent` replaced by 0.2.0 output; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/grpc_fixture.py (port 18880), fixtures/ws_client.py and MCP session request bodies; executed every step against 0.1.0-dev (829ca43) and pasted real output: `not_found.descriptor`, check/list/outputs, manifest (summary line), four call modes, `grpc.not_found` (exit 4), `grpc.unavailable`, `stream.input_required`, `validation.input`, polling (receipt with `input_schema`, ack, batch, cancel), WebSocket frames (with `request_id`/`trace_id`), MCP session tools; completion shape is `{initial_metadata, trailers, status, status_code, data_count}`; websocat replaced by the bundled client; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`endpoint`, `grpc`, `with grpc`), PHASE and NEEDS FILE; connector `descriptor` shown as a bootstrap `load` read with new fields; `io --needs --include-bootstrap` excerpt. |

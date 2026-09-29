@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -275,8 +275,11 @@ contacts.find needs no existing files.
 #### Command / Request
 
 ```sh
-rivet --file app.rivet policy explain contacts.find --params '{"query":"Ada"}'
+rivet --file app.rivet policy explain contacts.find --data '{"query":"Ada"}'
+rivet --file app.rivet --policy ./policies/sync.json policy explain contacts.find --data '{"query":"Ada"}' --json
 ```
+
+`--data` takes the parameters of one concrete call, as on `request`; `--params` is still accepted as an alias, without a warning.
 
 #### Expected Output / Response
 
@@ -294,7 +297,13 @@ contacts.find  network  connect POST  http://127.0.0.1:18860/mcp  exact         
 contacts.find  mcp      call tool     crm/tools/search            opaque_remote  app.rivet:17  allowed
 ```
 
-Exit 0.
+Exit 0. Under policies/sync.json the tool call is denied. With `--json`, stdout stays empty and stderr carries a `status: error` envelope of kind `permission` (exit 3). Its `error.details` holds the full explanation (`present`, `file`, `sha256`, `grants`, `deny`, `broad`, `sites`) plus `denied[]`. The two `sites` entries are elided here:
+
+```json
+{"request_id":"req_0156cb8925","trace_id":"tr_0156cb8925","operation":"rivet.policy.explain","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"1 effect site(s) of this call would be denied by the policy","retryable":false,"operation_id":"contacts.find","details":{"present":true,"file":"./policies/sync.json","sha256":"sha256:f7717ef03d41dde72c6bf87200032b2a1c4c59087e2ebdc95f098f30acf9ea31","grants":3,"deny":0,"broad":[],"sites":[…],"denied":[{"effect_id":"contacts.find#2","capability":"allow_mcp","target":"crm/tools/search","access":"call tool"}]}},"effects":"none","data_count":0}
+```
+
+Without `--json` the same denial prints the table with `denied` in the last row, then `denied: contacts.find#2 allow_mcp crm/tools/search (call tool)` (exit 3).
 
 ### 6. Call the bridged tool
 
@@ -311,13 +320,13 @@ rivet --file app.rivet request contacts.find --data '{"query":"Bob"}'
 The McpResult is preserved as the envelope's `data`; `effects` is `unknown` because the remote side is opaque (exit 0). The imported tool called directly returns the same `data` (with `"operation":"crm.tools.search"`):
 
 ```json
-{"request_id":"req_0185bcf69d","trace_id":"tr_0185bcf69d","operation":"contacts.find","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"error":null,"effects":"unknown","data_count":0}
+{"request_id":"req_01a52e5bc5","trace_id":"tr_01a52e5bc5","operation":"contacts.find","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"error":null,"effects":"unknown","data_count":0}
 ```
 
 A remote `isError: true` becomes `mcp.tool_failed` (kind `application`, exit 5). The envelope names the operation you called (`contacts.find`, with the outer request ID); `error.operation_id` names the nested call that failed:
 
 ```json
-{"request_id":"req_01826307c5","trace_id":"tr_01826307c5","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0}
+{"request_id":"req_01a4e321ad","trace_id":"tr_01a4e321ad","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0}
 ```
 
 Each call logs `initialize`, `notifications/initialized`, `tools/list` (the drift check), `tools/call`, `DELETE (session end)` in `fixture.log`.
@@ -336,7 +345,7 @@ rivet --file app.rivet request contacts.find --data '{"query":"Ada"}'
 The live `tools/list` no longer matches the approved snapshot, so no `tools/call` is sent (exit 5):
 
 ```json
-{"request_id":"req_0132ba24f5","trace_id":"tr_0132ba24f5","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"protocol","code":"mcp.schema_drift","message":"connector `crm`: the live server no longer matches the approved snapshot (search: inputSchema changed); run `rivet connectors sync` and review the new snapshot","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"connector":"crm","tools":[{"name":"search","difference":"inputSchema changed"}]}},"effects":"none","data_count":0}
+{"request_id":"req_0148d93e05","trace_id":"tr_0148d93e05","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"protocol","code":"mcp.schema_drift","message":"connector `crm`: the live server no longer matches the approved snapshot (search: inputSchema changed); run `rivet connectors sync` and review the new snapshot","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"connector":"crm","tools":[{"name":"search","difference":"inputSchema changed"}]}},"effects":"none","data_count":0}
 ```
 
 The drift session in `fixture.log` ends after `MCP tools/list` with `MCP DELETE (session end)`.
@@ -365,13 +374,19 @@ kill $SV $FX
 `tools/list` names `contacts.find` and `crm.tools.search` first, then the `rivet.*` built-ins (`rivet.request` … `rivet.auth.cancel`). The success call (abbreviated) returns the ResponseEnvelope in `structuredContent` with `"isError":false`; the remote McpResult is its `data`:
 
 ```json
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_02126d2d82","trace_id":"tr_02126d2d82","operation":"contacts.find","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"error":null,"effects":"unknown","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_01e6c03065","trace_id":"tr_01e6c03065","operation":"contacts.find","type":"result","status":"ok","data":{"content":[{"type":"text","text":"{\"contacts\":[{\"id\":\"42\",\"name\":\"Ada\"}]}"}],"structuredContent":{"contacts":[{"id":"42","name":"Ada"}]},"isError":false},"error":null,"effects":"unknown","data_count":0},"isError":false}}
 ```
 
 The failure is an MCP tool error (`"isError":true`) whose `structuredContent` is the `mcp.tool_failed` envelope with `"status":"error"`:
 
 ```json
-{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_039382be97","trace_id":"tr_039382be97","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed", …,"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0},"isError":true}}
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"…"}],"structuredContent":{"request_id":"req_02656e43c2","trace_id":"tr_02656e43c2","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0},"isError":true}}
+```
+
+The same call through the built-in, `{"name":"rivet.request","arguments":{"operation":"contacts.find","data":{"query":"Bob"}}}`, returns the same error envelope. It names `contacts.find`, not `rivet.request` (INC-2026-0012), and `isError` is true:
+
+```json
+{"request_id":"req_03e382559f","trace_id":"tr_03e382559f","operation":"contacts.find","type":"result","status":"error","data":null,"error":{"kind":"application","code":"mcp.tool_failed","message":"MCP tool `crm.tools.search` returned isError: true","retryable":false,"source":{"file":"app.rivet","line":17,"column":13,"end_line":17,"end_column":20},"operation_id":"crm.tools.search","details":{"tool":"search","content":[{"type":"text","text":"no match"}]}},"effects":"unknown","data_count":0}
 ```
 
 `DELETE /mcp` returns `204`.
@@ -433,8 +448,11 @@ Nothing is written to this folder; the candidate and the approved snapshot exist
 | 6. `contacts.find` Ada, direct `crm.tools.search`, `mcp.tool_failed` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. `mcp.schema_drift` with `--drift` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 8. Incoming MCP: tools/list, success, tool error (`structuredContent` envelopes), DELETE 204 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 5. (re-run after INC-2026-0012) `policy explain --data` (exit 0, same table); `--params` alias (exit 0, no warning); denial under sync.json with `--json` → empty stdout, error envelope on stderr, exit 3; text denial exit 3 | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 6.–7. (re-run after INC-2026-0012) Ada, `mcp.tool_failed` (exit 5), `mcp.schema_drift` (exit 5) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 8. (re-run after INC-2026-0012) incoming MCP tools/list, success, tool error, `rivet.request` error names `contacts.find`, DELETE 204 | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. The fixture and its replay files did not need changes (D-55): remote MCP responses stay MCP-shaped. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. Steps 5–8 were re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes, in a fresh scratch copy (sync, promote, approve as in steps 2–3); their output above is from that run. The fixture and its replay files did not need changes (D-55): remote MCP responses stay MCP-shaped. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
 
 ## Known Caveats
 
@@ -454,6 +472,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 5 uses `policy explain --data` (`--params` alias noted) and adds the `--json` denial envelope on stderr (exit 3) under sync.json; steps 6–8 re-run (new IDs); step 8 adds the `rivet.request` error naming `contacts.find`; three Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-55): re-executed every step against the 0.2.0 release candidate (8031baa) with the unchanged fixture (same snapshot sha256); `--params` → `--data` on `request`; `connectors sync`, results, `mcp.tool_failed`, `mcp.schema_drift` and incoming-MCP `structuredContent` replaced by 0.2.0 envelopes (a failed nested call now reports the outer request ID and operation); 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/crm_mcp.py (port 18860) and a scratch-copy run; the snapshot format is now real (`rivet.mcp.snapshot/1`), created by `connectors sync`, promoted and approved in the walkthrough; executed every step against 0.1.0-dev (829ca43) and pasted real output: `not_found.mcp_snapshot`, sync (denied / written / never overwritten), `mcp.snapshot_unapproved`, check/list/outputs (imported tool listed), manifest, `policy explain`, success, `mcp.tool_failed`, `mcp.schema_drift`, incoming MCP; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE; connector `schema` shown as a bootstrap `load` read with new fields; `io --needs --include-bootstrap` `bundle load needs` excerpt. |

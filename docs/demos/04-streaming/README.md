@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -292,22 +292,22 @@ rivet --file app.rivet request socket.ping
 In this folder, the auto-discovered policy.json grants no network (exit 3):
 
 ```json
-{"request_id":"req_0107220275","trace_id":"tr_0107220275","operation":"socket.ping","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect wss://api.example.com:443/realtime denied: no grant for allow_network wss://api.example.com:443/realtime","retryable":false,"source":{"file":"app.rivet","line":35,"column":5,"end_line":40,"end_column":8},"operation_id":"socket.ping","details":{"capability":"allow_network","access":"connect","target":"wss://api.example.com:443/realtime"}},"effects":"none","data_count":0}
+{"request_id":"req_01fc44bca5","trace_id":"tr_01fc44bca5","operation":"socket.ping","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"allow_network connect wss://api.example.com:443/realtime denied: no grant for allow_network wss://api.example.com:443/realtime","retryable":false,"source":{"file":"app.rivet","line":35,"column":5,"end_line":40,"end_column":8},"operation_id":"socket.ping","details":{"capability":"allow_network","access":"connect","target":"wss://api.example.com:443/realtime"}},"effects":"none","data_count":0}
 ```
 
 In the scratch copy under websocket.json, the fixture's extra field is accepted by `open true` (exit 0):
 
 ```json
-{"request_id":"req_01aa647d75","trace_id":"tr_01aa647d75","operation":"socket.ping","type":"result","status":"ok","data":{"type":"pong","fixture":"04-streaming"},"error":null,"effects":"committed","data_count":0}
+{"request_id":"req_01bb0d1cb5","trace_id":"tr_01bb0d1cb5","operation":"socket.ping","type":"result","status":"ok","data":{"type":"pong","fixture":"04-streaming"},"error":null,"effects":"committed","data_count":0}
 ```
 
 Without `--policy` the same call is denied for `ws://127.0.0.1:18840/realtime` (exit 3; the message says to grant the loopback address literally). `fixture.log` shows the socket closed when the scope ended:
 
 ```text
 ws fixture on ws://127.0.0.1:18840/realtime
-open  ('127.0.0.1', 52220) /realtime
+open  ('127.0.0.1', 61515) /realtime
 recv  {'type': 'ping'}
-close ('127.0.0.1', 52220) code=1005
+close ('127.0.0.1', 61515) code=1005
 ```
 
 ### 7. Timeout and Ctrl-C cleanup
@@ -326,13 +326,13 @@ rivet --file app.rivet --policy ./policies/websocket.json request socket.ping   
 The silent fixture never answers. `--timeout 2s` stops the receive (exit 6):
 
 ```json
-{"request_id":"req_013b5fe35d","trace_id":"tr_013b5fe35d","operation":"socket.ping","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout.receive","message":"receive did not complete before its deadline","retryable":false,"source":{"file":"app.rivet","line":38,"column":9,"end_line":38,"end_column":36},"operation_id":"socket.ping"},"effects":"committed","data_count":0}
+{"request_id":"req_0154afd5e5","trace_id":"tr_0154afd5e5","operation":"socket.ping","type":"result","status":"error","data":null,"error":{"kind":"timeout","code":"timeout.receive","message":"receive did not complete before its deadline","retryable":false,"source":{"file":"app.rivet","line":38,"column":9,"end_line":38,"end_column":36},"operation_id":"socket.ping"},"effects":"committed","data_count":0}
 ```
 
 Ctrl-C cancels (exit 130). The envelope's `status` is `cancelled`, not `error`:
 
 ```json
-{"request_id":"req_01c31cd3cd","trace_id":"tr_01c31cd3cd","operation":"socket.ping","type":"result","status":"cancelled","data":null,"error":{"kind":"cancelled","code":"cancelled.request","message":"`socket.ping` was cancelled","retryable":false,"source":{"file":"app.rivet","line":38,"column":9,"end_line":38,"end_column":36},"operation_id":"socket.ping"},"effects":"committed","data_count":0}
+{"request_id":"req_01dbc8d5bd","trace_id":"tr_01dbc8d5bd","operation":"socket.ping","type":"result","status":"cancelled","data":null,"error":{"kind":"cancelled","code":"cancelled.request","message":"`socket.ping` was cancelled","retryable":false,"source":{"file":"app.rivet","line":38,"column":9,"end_line":38,"end_column":36},"operation_id":"socket.ping"},"effects":"committed","data_count":0}
 ```
 
 In both cases `fixture.log` gains an `open … recv … close` triple: the socket is closed by scope cleanup, not left open. `effects` is `committed` because the ping was already sent.
@@ -397,8 +397,10 @@ Nothing is written to this folder (step 5 removes its `serve.err`).
 | 5. SSE for both streams (`event: result`); `stream.required` 422 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. `socket.ping` denied, then pong from the fixture; loopback denied without `--policy` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. `--timeout 2s` exit 6 (`status: error`); SIGINT exit 130 (`status: cancelled`); socket closed | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 6. (re-run after INC-2026-0012) `socket.ping` denied in this folder (exit 3), pong under websocket.json in a scratch copy (exit 0), loopback denial without `--policy` (exit 3), fixture open/recv/close | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 7. (re-run after INC-2026-0012) `--timeout 2s` exit 6 `timeout.receive`; SIGINT exit 130 `status: cancelled`; socket closed each time | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. Ctrl-C was sent as `kill -INT` to the CLI process. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder or the scratch copy and the output pasted from that run. Ctrl-C was sent as `kill -INT` to the CLI process. Steps 6–7 were re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; their IDs above are from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
 
 ## Known Caveats
 
@@ -417,6 +419,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: the outbound WebSocket steps 6–7 re-run; output unchanged except request/trace IDs and the fixture's client port (none of the INC-2026-0012 fixes changes this path); two Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-53): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` dropped (no parameters), HTTP bodies `{operation}`; NDJSON and SSE records, the `stream.required` refusal and every result replaced by 0.2.0 stream records and envelopes (`status: cancelled` on Ctrl-C); `outputs --all --json` as an envelope; record diagram; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: `files.chunks` uses `with file open … mode read` (G35); added fixtures/ws_fixture.py and a scratch-copy WebSocket run; executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: `outputs` shows `emits integer` without the description and bytes items as a tagged base64 object; `--check-policy` summary lines; the CLI without `--stream` returns the Completion (only HTTP refuses with `stream.required`); added timeout (exit 6) and Ctrl-C (exit 130) cleanup; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE (`with file open` read needs its file). |

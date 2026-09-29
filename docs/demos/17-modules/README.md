@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -445,8 +445,10 @@ warning[check.module_policy_ignored]: the policy.json beside sub/m.rivet is igno
   2| import "./sub/m.rivet" as m
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = hint: grant what the module needs in the entry bundle's policy.json (or the host policy)
-{"request_id":"req_01be09672d","trace_id":"tr_01be09672d","operation":"top","type":"result","status":"ok","data":{"pong":true},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_010e7fe20d","trace_id":"tr_010e7fe20d","operation":"top","type":"result","status":"ok","data":{"pong":true},"error":null,"effects":"none","data_count":0}
 ```
+
+`rivet --file module_policy.rivet serve --listen 127.0.0.1:18852` prints the same warning on stderr once, before its startup record, and then serves `top` normally (HTTP 200 `{"pong":true}`).
 
 | Code | Kind | Exit | HTTP | Cause |
 |---|---|---|---|---|
@@ -478,8 +480,8 @@ cargo run --release --example modules
 get — One user by id.
 list — The first two users (calls inside a module use its own IDs).
 {
-  "request_id": "req_01764eb6b5",
-  "trace_id": "tr_01764eb6b5",
+  "request_id": "req_01e8804c8d",
+  "trace_id": "tr_01e8804c8d",
   "operation": "users.get",
   "type": "result",
   "status": "ok",
@@ -492,8 +494,8 @@ list — The first two users (calls inside a module use its own IDs).
   "data_count": 0
 }
 {
-  "request_id": "req_02f7a85f42",
-  "trace_id": "tr_02f7a85f42",
+  "request_id": "req_026690bf9a",
+  "trace_id": "tr_026690bf9a",
   "operation": "billing.invoice",
   "type": "result",
   "status": "ok",
@@ -508,7 +510,7 @@ list — The first two users (calls inside a module use its own IDs).
   "effects": "none",
   "data_count": 0
 }
-{"request_id":"req_03749d30d7","trace_id":"tr_03749d30d7","operation":"users.list","type":"result","status":"ok","data":[{"id":1,"name":"Hello, user 1"},{"id":2,"name":"Hello, user 2"}],"error":null,"effects":"none","data_count":0}
+{"request_id":"req_03e5d461df","trace_id":"tr_03e5d461df","operation":"users.list","type":"result","status":"ok","data":[{"id":1,"name":"Hello, user 1"},{"id":2,"name":"Hello, user 2"}],"error":null,"effects":"none","data_count":0}
 check.import_duplicate (syntax): a module named `users` is already loaded; use load_as(path, alias)
 ```
 
@@ -554,6 +556,9 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
 | 6. Six import errors with their exits; `--json` envelope; ignored module policy warning | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | 7. `cargo run --release --example modules` | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | C and Python module objects | Claude (coordinator), see [15-ffi](../15-ffi/README.md) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
+| 6. (re-run after INC-2026-0012) six import errors, identical diagnostics and exits (2, 4, 3, 2, 2, 2) and the warning with `check` (exit 0); `check --json` envelope (exit 2, empty IDs: `check` is not a request); `request top` prints `check.module_policy_ignored` then the result (exit 0); `serve` prints it once at load (port 18852) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| 7. (re-run after INC-2026-0012) `cargo run --release --example modules`: same output except IDs; duplicate load `check.import_duplicate (syntax)` | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
+| Known Caveats: `policy explain report.remote --data '{"id":3}'` fills `users.fetch`'s target `…/users/3.json` `exact` (exit 0); `users.fetch --data` same; `--params` alias same | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
 ## Known Caveats
 
@@ -585,3 +590,4 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-71): new demo; entry bundle with an internal and a public import (the public module imports the internal one), list/request/serve across files, `io`, `--by target`, bootstrap, `policy generate`, `graph`, module-global retarget, six import errors and the ignored module policy warning, `examples/modules.rs`; executed against 0.2.0-dev (166a98b, source = 8031baa). |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: `request` prints `check.module_policy_ignored` (re-captured); `policy explain --data` with params followed into `users.fetch` (captured); load refusals carry IDs; the `conformance_samples` caveat removed (test fixed). |
+| 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 6 (import errors, `--json`, `request` warning), `serve` printing the warning at load, step 7 (`examples/modules.rs`) and the `policy explain --data` caveat re-run; new IDs pasted; three Verification Record rows. |

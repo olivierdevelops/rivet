@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -182,7 +182,7 @@ Both exit 0.
 
 ```sh
 rivet --file app.rivet io --check-policy
-rivet --file app.rivet policy explain notes.delete --params '{}' --json
+rivet --file app.rivet policy explain notes.delete --data '{}' --json
 ```
 
 #### Expected Output / Response
@@ -201,10 +201,10 @@ notes.update  file  update  ./out/note.json  exact      app.rivet:30  allowed
 Exit 0. `policy explain … --json` (exit 0) prints one `rivet.policy.explain` envelope; its `data` is the explanation:
 
 ```json
-{"request_id":"req_01ba5e366d","trace_id":"tr_01ba5e366d","operation":"rivet.policy.explain","type":"result","status":"ok","data":{"present":true,"file":"./policy.json","sha256":"sha256:deccf2027323af83c9798a05d6cac1adb657a81852e54ac7b99ce3eca4b0bef3","grants":3,"deny":0,"broad":[],"sites":[{"effect_id":"notes.delete#1","operation_id":"notes.delete","kind":"file","access":["delete"],"method":null,"protocol":null,"capability":"allow_delete","target":{"template":"./out/note.json","expression":null,"scheme":null,"host":null,"port":null,"path":"./out/note.json","glob":null,"params":[]},"knowledge":"exact","condition":null,"call_chain":["notes.delete"],"secrets":[],"source":{"file":"app.rivet","line":40,"column":5},"origin":{"statement":"file delete"},"phase":"body","requires_existing":false,"secret":false,"via":null,"decision":"allowed","attempts":null}]},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_01eb513ea5","trace_id":"tr_01eb513ea5","operation":"rivet.policy.explain","type":"result","status":"ok","data":{"present":true,"file":"./policy.json","sha256":"sha256:deccf2027323af83c9798a05d6cac1adb657a81852e54ac7b99ce3eca4b0bef3","grants":3,"deny":0,"broad":[],"sites":[{"effect_id":"notes.delete#1","operation_id":"notes.delete","kind":"file","access":["delete"],"method":null,"protocol":null,"capability":"allow_delete","target":{"template":"./out/note.json","expression":null,"scheme":null,"host":null,"port":null,"path":"./out/note.json","glob":null,"params":[]},"knowledge":"exact","condition":null,"call_chain":["notes.delete"],"secrets":[],"source":{"file":"app.rivet","line":40,"column":5},"origin":{"statement":"file delete"},"phase":"body","requires_existing":false,"secret":false,"via":null,"decision":"allowed","attempts":null}]},"error":null,"effects":"none","data_count":0}
 ```
 
-`policy explain` takes the parameters of one concrete call with `--params JSON`: its param-dependent targets are filled in, and it exits 3 when any would be denied. Unlike `request`, `policy explain` has no `--data` flag in 0.2.0 and its `--params` prints no deprecation warning.
+`policy explain` takes the parameters of one concrete call with `--data JSON`, as `request` does. Its param-dependent targets are filled in, and it exits 3 when any would be denied. `--params` is still accepted as an alias, with no deprecation warning (it is this command's own flag, not the deprecated `request --params`). On a denial, `--json` prints nothing on stdout. It prints a `status: error` envelope of kind `permission` on stderr, and `error.details` holds the explanation plus `denied[]` (see [06-mcp-bridge](../06-mcp-bridge/README.md) step 5).
 
 ### 4. Files each operation needs
 
@@ -423,12 +423,13 @@ rmdir out
 | 1. `check --strict-docs`, `outputs`, `outputs --all --json` (envelope) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 2. `io --by target`, `io --access` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 3. `io --check-policy` (exit 0), `policy explain --json` (envelope) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. (re-run after INC-2026-0012) `io --check-policy` (exit 0); `policy explain notes.delete --data '{}' --json` (exit 0, same envelope); `--params` alias (exit 0, no warning); with an empty `--policy` the denial is an error envelope on stderr, stdout empty (exit 3) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 4. `io --needs`, `io --check-files` (exit 4 before setup, 0 after create) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 5. Create, read, update, read, list, delete with `--data` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. Missing update, duplicate create, repeated delete, read after delete | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. No policy, create-only grant, no delete grant, hard-link refusal (update and delete) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder (step 7 in a scratch copy) and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder (step 7 in a scratch copy) and the output pasted from that run. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below. Step 3 was re-run with `policy explain --data` on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; its output above is from that run.
 
 ## Known Caveats
 
@@ -446,6 +447,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 re-run; `policy explain` uses `--data` (`--params` is an alias) and the denial `--json` behaviour is described; one Verification Record row. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-51): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` → `--data` on `request` (none for parameterless calls); every result and error replaced by the 0.2.0 ResponseEnvelope; `outputs --all --json` and `policy explain --json` shown as envelopes; `policy explain` keeps `--params '{}'` (it has no `--data`); 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: `io --by target` now shows one row per target and capability (the old single mixed row was wrong); `--check-policy` summary line; `io --check-files` step (exit 4 before setup); failure outputs for missing update, duplicate create, no policy, create-only `access`, missing `allow_delete` and hard links; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN, PHASE, NEEDS FILE (mixed `yes: read, stat, update` row); added `io --needs` output. |

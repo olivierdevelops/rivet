@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 7
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -172,8 +172,8 @@ The program's assertions pass (`demo.add` → `data` 5 and `status` ok; `{"a":"t
 
 ```text
 {
-  "request_id": "req_01f7a76a35",
-  "trace_id": "tr_01f7a76a35",
+  "request_id": "req_0134df92ad",
+  "trace_id": "tr_0134df92ad",
   "operation": "demo.add",
   "type": "result",
   "status": "ok",
@@ -182,11 +182,11 @@ The program's assertions pass (`demo.add` → `data` 5 and `status` ok; `{"a":"t
   "effects": "none",
   "data_count": 0
 }
-{"request_id":"req_027669cb0a","trace_id":"tr_027669cb0a","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.type","message":"parameter `a` must be an integer, got text","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
-{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":1,"data":1,"error":null}
-{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":2,"data":2,"error":null}
-{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"data","seq":3,"data":3,"error":null}
-{"request_id":"req_04742aa524","trace_id":"tr_04742aa524","operation":"events.count","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+{"request_id":"req_02b538cdf2","trace_id":"tr_02b538cdf2","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.type","message":"parameter `a` must be an integer, got text","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"request_id":"req_04b69b4984","trace_id":"tr_04b69b4984","operation":"events.count","type":"data","seq":1,"data":1,"error":null}
+{"request_id":"req_04b69b4984","trace_id":"tr_04b69b4984","operation":"events.count","type":"data","seq":2,"data":2,"error":null}
+{"request_id":"req_04b69b4984","trace_id":"tr_04b69b4984","operation":"events.count","type":"data","seq":3,"data":3,"error":null}
+{"request_id":"req_04b69b4984","trace_id":"tr_04b69b4984","operation":"events.count","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 {"id":"demo.add","output":{"type":"integer","description":"Sum of a and b."},"emits":null,"receives":null,"errors":[]}
 {"bundle":{"file":"app.rivet","sha256":"36aa9cf790e354a2500efabe5ae70e12e7b27944ea296c7e5a7fc46f0308e045"},"policy":{"file":"policy.json","sha256":"sha256:55326b2ffb3d392f99d424e3ddda1d91dffd0a8e307b616d947c1069f9995d38"},"complete":true,"sites":[],"targets":[],"needs":[],"bootstrap":[]}
 {"version":1,"grants":[],"network":{"deny_private_ranges":true}}
@@ -277,8 +277,9 @@ Nothing is written to this folder.
 | 1. CLI `check --strict-docs`, request with `--data`, stream, outputs | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 2. embedding.rs.txt (0.2.0 facade) compiled against `rivet-runtime` and run from this folder | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 3. `io --by target`, `io --check-policy` (0), `io --check-files` (0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 2. (re-run after INC-2026-0012) scratch crate built against the repository (`cargo build`, rivet-runtime path dependency) and run from this folder: assertions pass, exit 0; library terminal record `"seq":4,…,"data_count":3`; rest of the output unchanged except IDs | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features` for the CLI); the embedding was built with `cargo build` in a scratch crate depending on the repository by path (`package = "rivet-runtime"`) and run from this folder. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features` for the CLI); the embedding was built with `cargo build` in a scratch crate depending on the repository by path (`package = "rivet-runtime"`) and run from this folder. The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in revision 5 below. Step 2 was re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; its output above is from that run.
 
 ## Known Caveats
 
@@ -297,6 +298,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: the scratch embedding crate was compiled and run again; step 2 output replaced by that run (terminal record `"seq":4` confirmed by the program itself); one Verification Record row. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012: the library terminal record carries `"seq":4` like the CLI's; the step-2 terminal line is updated to the fixed shape (IDs from the TASK-076 run; the `seq` key is verified by `conformance_verification_defects::library_terminal_records_carry_seq`, the scratch program was not re-run); `seq` caveat removed. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-61): embedding.rs.txt rewritten against the 0.2.0 facade (`rivet::{Runtime, Policy, Value, InputEnvelope, Completion, Envelope}`, `rivet::types::IoQuery`, `rivet::Result`, `.file`, `Runtime::call`, `to_json_pretty`, `build_features`), matching `examples/embed.rs`; scratch crate depends on `package = "rivet-runtime"`; CLI step uses `--data` and 0.2.0 envelopes; 0.1.0→0.2.0 migration table; 0.2.0 Release Updates; terminal-record `seq` caveat; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: compiled embedding.rs.txt as a scratch crate against 0.1.0-dev (829ca43) and ran it from this folder; pasted the real output (outputs, manifest, draft) and the CLI comparison; replaced the outdated sketch (`.source(src)`, `json!` params, `rt.outputs("demo.add")`) with the real API (`.source(path, src, root)`, `Value::from_json`, `.ceiling`, `rt.outputs(Some(id), false)`); removed draft disclaimers; status active; verified_against 0.1.0. |

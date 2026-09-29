@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -196,7 +196,7 @@ rivet --file app.rivet io --by target
 rivet --file app.rivet io --check-policy
 rivet --file app.rivet io --check-files
 rivet --file app.rivet io --strict
-rivet --file app.rivet policy explain users.get --params '{"id":7}'
+rivet --file app.rivet policy explain users.get --data '{"id":7}'
 ```
 
 #### Expected Output / Response
@@ -447,16 +447,17 @@ Nothing is written to this folder.
 | 1. `check --strict-docs`, `list` | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 2. `settings.show` (compact and `--pretty`), `catalog.read` | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 3. `io --by target`, `io --check-policy` (0), `io --check-files` (0), `io --strict` (0), `policy explain --params` | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. (re-run after INC-2026-0012) `policy explain users.get --data '{"id":7}'` (exit 0): same table, `…/users/7.json` `exact` `allowed` | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 4. `policy generate` (2 exact grants) | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 5. `dns.resolve` in the folder; one-line retarget; GET 7, page, 404, `validation.min`; http.server log | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. Six global diagnostics (exit 2 each) | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. `highlight --format json` global tokens | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`). Every command above was executed from this folder or the scratch copy and the output pasted from that run.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`). Every command above was executed from this folder or the scratch copy and the output pasted from that run. The step 3 `policy explain` command was re-run with `--data` on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes.
 
 ## Known Caveats
 
-- A target that contains a parameter stays `param_dependent` even when everything else comes from globals (PLAN-2026-0002 finding R9). The proposal's UC-04 sample showed `…/users/{id}` as `exact`; the build keeps the 0.1.0 rule, and `policy explain ID --params JSON` shows the concrete target.
+- A target that contains a parameter stays `param_dependent` even when everything else comes from globals (PLAN-2026-0002 finding R9). The proposal's UC-04 sample showed `…/users/{id}` as `exact`; the build keeps the 0.1.0 rule, and `policy explain ID --data JSON` (alias `--params`) shows the concrete target.
 - Globals are per file: an imported module has its own globals and cannot read the importer's ([17-modules](../17-modules/README.md)).
 - The release candidate still prints version `0.1.0`; the bump happens at P5.
 
@@ -471,4 +472,5 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 `policy explain` uses `--data` (alias `--params`) and was re-run (output unchanged); caveat wording; one Verification Record row. |
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-17): new demo; seven globals across four operations, exact manifest and draft, one-line retarget against a local http.server, the six global diagnostics and highlight tokens; executed against 0.2.0-dev (8031baa). |

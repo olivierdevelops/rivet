@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -375,6 +375,15 @@ error[syntax.expression]: the expression after `return` does not parse
 exit 2
 ```
 
+A block that is never closed keeps the tokens of its header lines too (INC-2026-0012): lines before the error that no parsed statement covers are lexed as statement lines. With `printf 'operation x.y\n    name "X"\n    return (\n' > b.rivet`, `rivet highlight b.rivet --format json 2>/dev/null` prints lines 1 and 2 (exit 2):
+
+```text
+{"line":1,"col":1,"len":9,"class":"keyword","text":"operation"}
+{"line":1,"col":11,"len":3,"class":"operation_id","text":"x.y"}
+{"line":2,"col":5,"len":4,"class":"keyword","text":"name"}
+{"line":2,"col":10,"len":3,"class":"string","text":"\"X\""}
+```
+
 A missing file and an unknown format are usage errors, also exit 2:
 
 ```text
@@ -420,6 +429,7 @@ Nothing is written to this folder.
 | 4. `highlight --format json`, `html`, `ansi` | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | 5. `gen_grammar.py --check`, `check_keywords.py`, drift in a scratch copy, `conformance_highlight` (8 passed), `check_grammar.py` | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | 6. Syntax error (11 tokens, exit 2), missing file, unknown format | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
+| 6. (re-run after INC-2026-0012) `highlight broken.rivet --format json` (11 tokens, `syntax.expression`, exit 2), missing file and `--format svg` (exit 2), unchanged; unclosed `operation` block keeps its header tokens (lines 1–2, exit 2) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 
 ## Known Caveats
 
@@ -440,3 +450,4 @@ Nothing is written to this folder.
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-19): new demo; `.vsix` build and isolated install, token classes, `rivet highlight` ansi/html/json, grammar regeneration and drift check, syntax-error highlighting; executed against 0.2.0-dev (166a98b, source = 8031baa). |
+| 2 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 6 re-run (output unchanged); added the unclosed-block example that keeps header tokens; one Verification Record row. |

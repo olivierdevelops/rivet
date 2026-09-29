@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 6
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -167,7 +167,7 @@ Under create-only.json (after `rm out/snapshot.json`), `data.snapshot` succeeds 
 #### Command / Request
 
 ```sh
-rivet --file app.rivet --policy ./policies/read-only.json policy explain data.snapshot --params '{}'
+rivet --file app.rivet --policy ./policies/read-only.json policy explain data.snapshot --data '{}'
 ```
 
 #### Expected Output / Response
@@ -189,7 +189,13 @@ data.snapshot  file  create  ./out/snapshot.json  exact      app.rivet:38  denie
 denied: data.snapshot#1 allow_write ./out/snapshot.json (create)
 ```
 
-With `--json` the same result is one `rivet.policy.explain` envelope whose `data` holds `present`, `file`, `sha256`, `grants`, `deny`, `broad` and `sites` (per-site `decision`), followed by the `denied:` line on stderr and exit 3. The envelope `status` is `ok` because the explanation itself succeeded; the denial is in the site `decision` and the exit code.
+`--data` takes the call's parameters; `--params` is an alias and prints no warning. With `--json` a denial is an error, like every other failing `--json` command. stdout stays empty, and stderr carries one `status: error` envelope of kind `permission` (exit 3). Its `error.details` holds the full explanation (`present`, `file`, `sha256`, `grants`, `deny`, `broad`, `sites` with per-site `decision`) plus `denied[]`. The two `sites` entries are elided here:
+
+```json
+{"request_id":"req_0180754edd","trace_id":"tr_0180754edd","operation":"rivet.policy.explain","type":"result","status":"error","data":null,"error":{"kind":"permission","code":"permission.denied","message":"1 effect site(s) of this call would be denied by the policy","retryable":false,"operation_id":"data.snapshot","details":{"present":true,"file":"./policies/read-only.json","sha256":"sha256:32dccbdd428b22dcd654d7abfcaeb2b06949e066d8bdf2b1258cf77431489a8c","grants":1,"deny":1,"broad":[],"sites":[…],"denied":[{"effect_id":"data.snapshot#1","capability":"allow_write","target":"./out/snapshot.json","access":"create"}]}},"effects":"none","data_count":0}
+```
+
+Without a denial, `--json` prints the `ok` `rivet.policy.explain` envelope on stdout (exit 0), with the explanation as `data`.
 
 ### 4. The manifest views
 
@@ -491,13 +497,14 @@ Stop the step 8 host if it is still running; its memory trace records disappear 
 | 1. `check --strict-docs`, `outputs` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 2. Requests under empty, default, read-only and create-only policies | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 3. `policy explain` (text and `--json`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
+| 3. (re-run after INC-2026-0012) `policy explain data.snapshot --data '{}'` under read-only.json: text exit 3 (same table); `--json` → stdout empty, one `status: error` `permission.denied` envelope on stderr with the explanation and `denied[]` in `error.details` (exit 3); `data.read --json` `ok` envelope (exit 0) | Claude | 2026-09-29, commit 7c25175, macOS 26.4.1 arm64 | PASS |
 | 4. `io --check-policy` (3), `--by target`, `--by capability`, filters, strict JSON (0) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 5. `io data.snapshot --check-policy --format json` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 6. `io --needs`; `io --check-files` exits 3 / 0 / 3 | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 7. `policy generate`, `--output` refusal, create-only checks, `policy.invalid` | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | 8. `trace show`, `io --trace`, HTTP 403 through serve | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 
-Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder and the output pasted from that run (the two `policy.invalid` probes used throwaway policy files in a scratch directory). The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below.
+Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build --release --workspace --all-features`); every command above was executed from this folder and the output pasted from that run (the two `policy.invalid` probes used throwaway policy files in a scratch directory). The 0.1.0 verification (TASK-067, commit 829ca43) is recorded in an earlier revision below. Step 3 was re-run with `policy explain --data` on 2026-09-29 at commit `7c25175` (source = `14750b8`) after the INC-2026-0012 fixes; its output above is from that run.
 
 ## Known Caveats
 
@@ -516,6 +523,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 uses `policy explain --data` (alias `--params`) and was re-run; the `--json` denial is now a `status: error` envelope on stderr (exit 3), captured; one Verification Record row. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-60): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` → `--data` on `request` (kept on `policy explain`); results and errors replaced by 0.2.0 envelopes; JSON manifest, `policy explain --json`, `policy generate` conflict and `trace show --json` described as envelopes; bootstrap list without the `(+ imports)` placeholder; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: summary lines under each table; `--by capability` has a header and an `unused:` line; the JSON excerpt is replaced by the real site fields; `--check-files` summary counts files, not rows; `policy generate` stderr summary; `policy explain` output; `policy.invalid` messages; trace `ATTEMPTS` reads `1 allowed`; removed the stale committed `out/snapshot.json` (a leftover run output that made the first snapshot conflict); removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `--by target` ORIGIN/PHASE/NEEDS FILE; new "Files each operation needs" section (`io --needs`, brokered `io --check-files` under policy.json and create-only.json, flow diagram); JSON excerpt gains origin/phase/requires_existing/secret and `needs`; U-04; exit codes 3/4 for `--check-files`. |
