@@ -16,10 +16,17 @@ pub async fn multiplex_ws(
     let reply = |r: &str, e: RivetError| WsFrame::error(r, e);
     // vhco:todo parse_frame -- the surface parses JSON text frames (request frames through serve.parse_input: {operation, data}, deprecated {id, params}); a malformed frame (bad JSON, unknown type, missing ref, bad envelope) arrives here as an error and is answered with an error record {ref, …, type:"result", status:"error", error} (validation, 422 semantics) without closing the socket
     // vhco:step malformed conn.reply -- parse failure → error frame for the ref if it could be read
+    let in_flight = |r: &str| !r.is_empty() && input.open_refs.iter().any(|(x, _)| x == r);
     let frame = match input.frame {
         Ok(f) => f,
         Err((r, e)) => {
-            conn.reply(reply(&r, e)).await?;
+            // vhco:step detach detached -- a malformed frame naming a ref that is in flight is refused with ref "" and details.ref, so it never looks like that ref's terminal record
+            let refusal = if in_flight(&r) {
+                detached(&r, e)
+            } else {
+                reply(&r, e)
+            };
+            conn.reply(refusal).await?;
             return Ok(WsOutcome {
                 replied: true,
                 ..WsOutcome::default()
@@ -35,7 +42,7 @@ pub async fn multiplex_ws(
     };
     let outcome = match frame.kind {
         // vhco:todo open_ref -- type request: a ref already in flight is conflict.ref (409); a 9th concurrent ref is limit.ws_refs (429, max 8 per connection); authorize the operation for the connection's principal (403); then SessionDriver.open with connection_owned=true (bounded 16-frame event log) and report the new (ref, session_id) so the host starts its event pump
-        // vhco:error duplicate_ref -- the ref is already in flight => conflict.ref error frame
+        // vhco:error duplicate_ref -- the ref is already in flight => conflict.ref refusal with ref "" and details.ref (not a terminal record of the in-flight ref)
         // vhco:error ninth_ref -- 8 refs already in flight => limit.ws_refs error frame
         WsFrameType::Request => {
             let r = frame.r#ref.clone();
@@ -86,9 +93,21 @@ pub async fn multiplex_ws(
                     ..WsOutcome::default()
                 },
                 Err(e) => {
-                    // The ref never opened: this error is its only frame.
+                    // The ref never opened: this error is its only frame. A
+                    // refusal for a ref that is already in flight (conflict.ref)
+                    // is detached from it (ref "", details.ref): that ref's
+                    // own terminal record is still to come.
                     let op = frame.input.as_ref().map(|i| i.operation.as_str());
-                    conn.reply(WsFrame::error_for(&r, op, e)).await?;
+                    let refusal = if in_flight(&r) {
+                        let mut f = detached(&r, e);
+                        if let (Some(rec), Some(op)) = (f.record.as_mut(), op) {
+                            rec.operation = Some(op.to_string());
+                        }
+                        f
+                    } else {
+                        WsFrame::error_for(&r, op, e)
+                    };
+                    conn.reply(refusal).await?;
                     WsOutcome {
                         replied: true,
                         ..WsOutcome::default()
@@ -149,6 +168,20 @@ pub async fn multiplex_ws(
     // vhco:todo stream_out -- the host's per-ref pump reads the session with a bounded wait and forwards each data record {ref, request_id, trace_id, operation, type:"data", seq, data, error:null}, then exactly one terminal record {ref, …, type:"result", status:ok|error|cancelled, data, error, effects, data_count}; a full 16-event log blocks the producer (backpressure)
     // vhco:todo close_cancels -- on socket close the host cancels and joins every in-flight ref through SessionDriver.cancel (connection-owned, unlike polling sessions); WS is a projection only, no WS-only operations
     Ok(outcome)
+}
+
+/// A refusal of a frame that names an in-flight ref: sent with `ref: ""`
+/// (API-2026-0002: a record with ref "" is a refused frame, never a terminal
+/// record) and the ref in `error.details.ref`, so the in-flight ref still ends
+/// with exactly one terminal record of its own (INC-2026-0012 item 16).
+fn detached(r: &str, mut e: RivetError) -> WsFrame {
+    let mut fields = match std::mem::replace(&mut e.details, Value::Null) {
+        Value::Object(f) => f,
+        _ => Vec::new(),
+    };
+    fields.push(("ref".to_string(), Value::text(r)));
+    e.details = Value::Object(fields);
+    WsFrame::error("", e)
 }
 
 #[cfg(test)]

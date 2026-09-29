@@ -235,22 +235,30 @@ pub enum Envelope {
 
 impl Envelope {
     /// The wire record: `type: data` for items, `type: result` (status ok,
-    /// error or cancelled) for the terminal event.
+    /// error or cancelled) for the terminal event. A terminal record is a
+    /// stream record, so it carries `seq` like the CLI, SSE, WS, polling and C
+    /// records: the sequence after the last data record (`data_count + 1`;
+    /// an error's own `seq`, when it was numbered).
     pub fn record(&self) -> ResponseEnvelope {
         match self {
             Envelope::Data(d) => ResponseEnvelope::from_data(d),
-            Envelope::Result(c) => ResponseEnvelope::from_completion(c),
+            Envelope::Result(c) => ResponseEnvelope::from_completion(c).with_seq(c.data_count + 1),
             Envelope::Error {
                 request_id,
                 trace_id,
                 operation,
+                seq,
                 error,
-                ..
             } => {
                 let mut e = (**error).clone();
                 e.request_id = Some(request_id.clone());
                 e.trace_id = Some(trace_id.clone());
-                ResponseEnvelope::from_error(Some(operation), &e)
+                let r = ResponseEnvelope::from_error(Some(operation), &e);
+                if *seq == 0 {
+                    r
+                } else {
+                    r.with_seq(*seq).with_data_count(seq - 1)
+                }
             }
         }
     }

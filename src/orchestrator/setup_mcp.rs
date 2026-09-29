@@ -37,7 +37,8 @@
 use super::builtins::{BUILTIN_IDS, visible};
 use super::runtime::Runtime;
 use super::setup_serve::{
-    ServeState, error_response, json_response, note_access, trace_context, with_traceparent,
+    ServeState, error_response, error_response_for, json_response, note_access, trace_context,
+    with_traceparent,
 };
 use crate::domain::contracts::Principal;
 use crate::domain::contracts::TraceContext;
@@ -133,6 +134,7 @@ async fn call_tool(
     restrict: Option<Value>,
 ) -> Result<Json, (i64, String)> {
     let unknown = || (INVALID_PARAMS, format!("Unknown tool: {name}"));
+    let args_named = args.clone();
     let outcome: Result<ResponseEnvelope, crate::domain::RivetError> = if BUILTIN_IDS
         .contains(&name)
     {
@@ -180,15 +182,32 @@ async fn call_tool(
                 .map(|c| ResponseEnvelope::from_completion(&c))
         }
     };
+    // `rivet.request` answers for the operation it ran, on success (the
+    // completion names it) and on failure alike (INC-2026-0012 item 5).
+    let target = if name == "rivet.request" {
+        request_target(&args_named)
+    } else {
+        Some(name.to_string())
+    };
     let envelope = match outcome {
         Ok(env) => env,
-        Err(e) => ResponseEnvelope::from_error(Some(name), &e),
+        Err(e) => ResponseEnvelope::from_error(target.as_deref(), &e),
     };
     let is_error = matches!(
         envelope.status(),
         EnvelopeStatus::Error | EnvelopeStatus::Cancelled
     );
     Ok(tool_result(envelope.to_json(), is_error))
+}
+
+/// The operation a `rivet.request` call names: `operation`, else the
+/// deprecated `id`, when it is a non-empty string.
+fn request_target(args: &Value) -> Option<String> {
+    ["operation", "id"]
+        .iter()
+        .find_map(|k| args.get(k).and_then(Value::as_str))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn origin_allowed(headers: &HeaderMap) -> bool {
@@ -230,7 +249,10 @@ async fn post_mcp(
     body: Bytes,
 ) -> Response {
     if !origin_allowed(&headers) {
-        return error_response(&RivetError::permission("Origin is not allowed for /mcp"));
+        return error_response_for(
+            None,
+            &RivetError::permission("Origin is not allowed for /mcp"),
+        );
     }
     let principal = match st.authenticate("mcp", &headers, peer) {
         Ok(p) => p,
@@ -239,12 +261,15 @@ async fn post_mcp(
     if let Some(v) = header_str(&headers, VERSION_HEADER)
         && v != MCP_PROTOCOL_VERSION
     {
-        return error_response(&RivetError::validation(
-            "mcp.protocol_version",
-            format!(
-                "unsupported MCP-Protocol-Version {v}; this server speaks {MCP_PROTOCOL_VERSION}"
+        return error_response_for(
+            None,
+            &RivetError::validation(
+                "mcp.protocol_version",
+                format!(
+                    "unsupported MCP-Protocol-Version {v}; this server speaks {MCP_PROTOCOL_VERSION}"
+                ),
             ),
-        ));
+        );
     }
     let msg = match parse_message(&body) {
         Ok(m) => m,
@@ -283,10 +308,15 @@ async fn post_mcp(
     }
     let owner = header_str(&headers, SESSION_HEADER).map(str::to_string);
     let Some(sid) = owner else {
-        return error_response(&RivetError::validation(
-            "mcp.session_required",
-            "MCP-Session-Id header is required after initialize",
-        ));
+        // No operation was requested: `operation` is null (the JSON-RPC
+        // method is not an operation; INC-2026-0012 item 6).
+        return error_response_for(
+            None,
+            &RivetError::validation(
+                "mcp.session_required",
+                "MCP-Session-Id header is required after initialize",
+            ),
+        );
     };
     let known = st
         .mcp_sessions
@@ -294,10 +324,10 @@ async fn post_mcp(
         .map(|m| m.get(&sid) == Some(&principal.name))
         .unwrap_or(false);
     if !known {
-        return error_response(&RivetError::not_found(
-            "not_found.mcp_session",
-            "unknown or expired MCP session",
-        ));
+        return error_response_for(
+            None,
+            &RivetError::not_found("not_found.mcp_session", "unknown or expired MCP session"),
+        );
     }
     if !msg.is_request() {
         return StatusCode::ACCEPTED.into_response();

@@ -57,12 +57,29 @@ pub fn parse_input(input: RawInput) -> RivetResult<InputEnvelope> {
             "an input envelope has no `error` key (errors only appear in responses)",
         ));
     }
+    // vhco:step name_refusals body.get -- a refusal after this point names the operation the body gives as a string (`operation`, else `id`), so the error envelope's `operation` echoes it instead of null
+    // vhco:error named_refusal -- the body names an operation string but is refused (wrong-typed deadline_ms/stream/pretty, mixed keys) => the error carries operation_id = that string returns
+    let named = ["operation", "id"]
+        .iter()
+        .find_map(|k| body.get(*k).and_then(Json::as_str))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    parse_body(body, input.legacy_ok).map_err(|mut e| {
+        if e.operation_id.is_none() {
+            e.operation_id = named;
+        }
+        e
+    })
+}
+
+/// The keys of an input envelope already known to be a JSON object.
+fn parse_body(body: &serde_json::Map<String, Json>, legacy_ok: bool) -> RivetResult<InputEnvelope> {
     let mut aliases = Vec::new();
     // vhco:todo operation_alias -- `operation` (non-empty string) names the operation; the alias `id` only when legacy_ok; both → validation.input_envelope; neither → validation.required with details.field = "operation"; a non-string value → validation.input_envelope
     // vhco:step operation pick -- `operation`, else the deprecated `id` (recorded in aliases)
     // vhco:error mixed_keys -- `operation` with `id`, or `data` with `params` => validation.input_envelope returns
     // vhco:error no_operation -- neither `operation` nor `id` => validation.required (details.field operation) returns
-    let operation = match pick(body, "operation", "id", input.legacy_ok, &mut aliases)? {
+    let operation = match pick(body, "operation", "id", legacy_ok, &mut aliases)? {
         None => {
             return Err(RivetError::validation(
                 "validation.required",
@@ -82,7 +99,7 @@ pub fn parse_input(input: RawInput) -> RivetResult<InputEnvelope> {
     };
     // vhco:todo data_alias -- `data` is the operation input and defaults to {} when absent or null; the alias `params` only when legacy_ok; `data` with `params` → validation.input_envelope
     // vhco:step data pick -- `data`, else the deprecated `params`; absent or null becomes {}
-    let data = match pick(body, "data", "params", input.legacy_ok, &mut aliases)? {
+    let data = match pick(body, "data", "params", legacy_ok, &mut aliases)? {
         None | Some(Json::Null) => Value::Object(Vec::new()),
         Some(v) => Value::from_json(v),
     };

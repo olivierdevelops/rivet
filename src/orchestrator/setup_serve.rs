@@ -331,8 +331,15 @@ pub fn json_response(status: u16, body: Json) -> Response {
 /// Error envelope with the registry status (401 adds `WWW-Authenticate`); it
 /// names the operation the handler noted, when one is known.
 pub fn error_response(e: &RivetError) -> Response {
+    error_response_for(noted_operation().as_deref(), e)
+}
+
+/// Error envelope naming `operation` explicitly (`None` → `operation: null`):
+/// for protocol-level refusals where no operation was requested (the access
+/// log still records the route's note).
+pub fn error_response_for(operation: Option<&str>, e: &RivetError) -> Response {
     let status = error_status(e);
-    let mut r = json_response(status, error_body(noted_operation().as_deref(), e));
+    let mut r = json_response(status, error_body(operation, e));
     if status == 401 {
         r.headers_mut().insert(
             header::WWW_AUTHENTICATE,

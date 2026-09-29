@@ -390,13 +390,25 @@ impl From<Completion> for ResponseEnvelope {
 
 /// The `error` object of an envelope: kind, code, message, retryable and the
 /// optional source, hint, details, operation_id, node_id, cause and
-/// suppressed; `effects` is reported once, at the envelope's top level.
+/// suppressed; `effects` is reported once, at the envelope's top level, so
+/// it is removed from the error and from every nested `cause` and
+/// `suppressed[]` error too (INC-2026-0012 item 7).
 pub fn error_object(e: &RivetError) -> Json {
     let mut j = e.to_value().to_json();
-    if let Json::Object(m) = &mut j {
-        m.shift_remove("effects");
-    }
+    strip_effects(&mut j);
     j
+}
+
+fn strip_effects(j: &mut Json) {
+    if let Json::Object(m) = j {
+        m.shift_remove("effects");
+        if let Some(c) = m.get_mut("cause") {
+            strip_effects(c);
+        }
+        if let Some(Json::Array(list)) = m.get_mut("suppressed") {
+            list.iter_mut().for_each(strip_effects);
+        }
+    }
 }
 
 // vhco:domain InputEnvelope { operation: string; data: Value; deadline_ms?: int; restrict?: Value; stream?: bool; pretty?: bool; aliases: string[] }

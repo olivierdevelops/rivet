@@ -389,128 +389,20 @@ impl SessionHost {
 impl SessionDriver for SessionHost {
     async fn open(&self, input: SessionOpenInput) -> RivetResult<SessionReceipt> {
         self.sweep();
-        let entry = self
-            .registry
-            .describe(&CatalogQuery {
-                ids: vec![input.id.clone()],
-                include_private: false,
-            })?
-            .entries
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                RivetError::not_found(
-                    "not_found.operation",
-                    format!("no operation `{}`", input.id),
-                )
-            })?;
-        (self.validate)(&entry, &input.params).map_err(|mut e| {
-            e.operation_id.get_or_insert_with(|| entry.id.clone());
-            e
-        })?;
-        if !input.connection_owned {
-            let live = self
-                .map()
-                .values()
-                .filter(|s| {
-                    s.owner == input.principal.name
-                        && !s.connection_owned
-                        && s.st().terminal_at.is_none()
-                })
-                .count();
-            if live >= self.limits.per_principal {
-                return Err(RivetError::new(
-                    ErrorKind::Limit,
-                    "limit.sessions",
-                    format!(
-                        "at most {} live sessions per principal",
-                        self.limits.per_principal
-                    ),
-                ));
-            }
-        }
-        let mut req = (self.mint)(&entry.id, input.params.clone(), input.principal.clone());
-        req.restrict = input.restrict.clone();
-        // Requested total deadline, capped by the host (10 minutes).
-        if let Some(d) = input.deadline_ms {
-            req.deadline_ms = d.clamp(1, MAX_DEADLINE_MS);
-        }
+        // The request is minted first, so a refusal at open (unknown
+        // operation, invalid params, session limit) carries its request and
+        // trace ids like the same request on REST, the CLI and MCP
+        // (INC-2026-0012 item 8).
+        let mut req = (self.mint)(&input.id, input.params.clone(), input.principal.clone());
         if let Some(t) = &input.trace {
             req.trace_id = t.trace_id.clone();
             req.parent_span_id = Some(t.parent_id.clone());
         }
-        let n = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
-        let tag = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0)
-            ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        let session_id = format!("ses_{n:02}{:08x}", tag & 0xffff_ffff);
-        let (tx, rx) = mpsc::channel::<Value>(self.limits.queue_frames);
-        let session = Arc::new(Session {
-            id: session_id.clone(),
-            request_id: req.request_id.clone(),
-            operation: req.operation_id.clone(),
-            trace_id: req.trace_id.clone(),
-            owner: input.principal.name.clone(),
-            connection_owned: input.connection_owned,
-            receives: entry.receives.clone(),
-            queue_frames: self.limits.queue_frames,
-            queue_bytes: self.limits.queue_bytes,
-            budget: Arc::clone(&self.budget),
-            state: Mutex::new(State {
-                seq: InputSequencer {
-                    closed: entry.receives.is_none(),
-                    ..InputSequencer::default()
-                },
-                log: EventLog::default(),
-                held: VecDeque::new(),
-                held_bytes: 0,
-                last_touch: Instant::now(),
-                terminal_at: None,
-                terminal_state: None,
-                cancel_requested: None,
-            }),
-            changed: Notify::new(),
-            input: tokio::sync::Mutex::new(entry.receives.as_ref().map(|_| tx)),
-            read_lock: tokio::sync::Mutex::new(()),
-            task: Mutex::new(None),
-            token: req.cancel.clone(),
-        });
-        self.start_sweeper();
-        self.map().insert(session_id.clone(), Arc::clone(&session));
-        let sink: Arc<dyn DataSink> = Arc::new(SessionSink {
-            session: Arc::clone(&session),
-        });
-        let run = (self.launch)(req.clone(), sink, rx);
-        let owned = Arc::clone(&session);
-        let handle = tokio::spawn(async move {
-            let outcome = run.await;
-            owned.finish(outcome);
-        });
-        if let Ok(mut t) = session.task.lock() {
-            *t = Some(handle);
-        }
-        let lease = Duration::from_millis(self.limits.idle_ms.min(req.deadline_ms.max(1)));
-        Ok(SessionReceipt {
-            session_id,
-            request_id: req.request_id,
-            trace_id: req.trace_id,
-            // The catalog the session opened on (module loads publish new
-            // ones); the registry's effect catalog carries its source hash.
-            catalog_version: {
-                let hash = self.registry.effect_sites().bundle_sha256.clone();
-                if hash.is_empty() {
-                    self.catalog_version.clone()
-                } else {
-                    hash
-                }
-            },
-            input_schema: entry.receives.as_ref().map(ValueSpec::to_json_schema),
-            emits_schema: entry.emits.as_ref().map(ValueSpec::to_json_schema),
-            next_send_seq: 1,
-            expires_at: rfc3339(SystemTime::now() + lease),
-            events_url: None,
+        let (rid, tid) = (req.request_id.clone(), req.trace_id.clone());
+        self.open_minted(input, req).await.map_err(|mut e| {
+            e.request_id.get_or_insert(rid);
+            e.trace_id.get_or_insert(tid);
+            e
         })
     }
 
@@ -609,6 +501,136 @@ impl SessionDriver for SessionHost {
 
     fn limits(&self) -> SessionLimits {
         self.limits.clone()
+    }
+}
+
+impl SessionHost {
+    /// `open` after the request was minted: resolve, validate, count, start.
+    async fn open_minted(
+        &self,
+        input: SessionOpenInput,
+        mut req: Request,
+    ) -> RivetResult<SessionReceipt> {
+        let entry = self
+            .registry
+            .describe(&CatalogQuery {
+                ids: vec![input.id.clone()],
+                include_private: false,
+            })?
+            .entries
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                let mut e = RivetError::not_found(
+                    "not_found.operation",
+                    format!("no operation `{}`", input.id),
+                );
+                e.operation_id = Some(input.id.clone());
+                e
+            })?;
+        (self.validate)(&entry, &input.params).map_err(|mut e| {
+            e.operation_id.get_or_insert_with(|| entry.id.clone());
+            e
+        })?;
+        if !input.connection_owned {
+            let live = self
+                .map()
+                .values()
+                .filter(|s| {
+                    s.owner == input.principal.name
+                        && !s.connection_owned
+                        && s.st().terminal_at.is_none()
+                })
+                .count();
+            if live >= self.limits.per_principal {
+                return Err(RivetError::new(
+                    ErrorKind::Limit,
+                    "limit.sessions",
+                    format!(
+                        "at most {} live sessions per principal",
+                        self.limits.per_principal
+                    ),
+                ));
+            }
+        }
+        req.restrict = input.restrict.clone();
+        // Requested total deadline, capped by the host (10 minutes).
+        if let Some(d) = input.deadline_ms {
+            req.deadline_ms = d.clamp(1, MAX_DEADLINE_MS);
+        }
+        let n = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        let tag = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0)
+            ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        let session_id = format!("ses_{n:02}{:08x}", tag & 0xffff_ffff);
+        let (tx, rx) = mpsc::channel::<Value>(self.limits.queue_frames);
+        let session = Arc::new(Session {
+            id: session_id.clone(),
+            request_id: req.request_id.clone(),
+            operation: req.operation_id.clone(),
+            trace_id: req.trace_id.clone(),
+            owner: input.principal.name.clone(),
+            connection_owned: input.connection_owned,
+            receives: entry.receives.clone(),
+            queue_frames: self.limits.queue_frames,
+            queue_bytes: self.limits.queue_bytes,
+            budget: Arc::clone(&self.budget),
+            state: Mutex::new(State {
+                seq: InputSequencer {
+                    closed: entry.receives.is_none(),
+                    ..InputSequencer::default()
+                },
+                log: EventLog::default(),
+                held: VecDeque::new(),
+                held_bytes: 0,
+                last_touch: Instant::now(),
+                terminal_at: None,
+                terminal_state: None,
+                cancel_requested: None,
+            }),
+            changed: Notify::new(),
+            input: tokio::sync::Mutex::new(entry.receives.as_ref().map(|_| tx)),
+            read_lock: tokio::sync::Mutex::new(()),
+            task: Mutex::new(None),
+            token: req.cancel.clone(),
+        });
+        self.start_sweeper();
+        self.map().insert(session_id.clone(), Arc::clone(&session));
+        let sink: Arc<dyn DataSink> = Arc::new(SessionSink {
+            session: Arc::clone(&session),
+        });
+        let run = (self.launch)(req.clone(), sink, rx);
+        let owned = Arc::clone(&session);
+        let handle = tokio::spawn(async move {
+            let outcome = run.await;
+            owned.finish(outcome);
+        });
+        if let Ok(mut t) = session.task.lock() {
+            *t = Some(handle);
+        }
+        let lease = Duration::from_millis(self.limits.idle_ms.min(req.deadline_ms.max(1)));
+        Ok(SessionReceipt {
+            session_id,
+            request_id: req.request_id,
+            trace_id: req.trace_id,
+            // The catalog the session opened on (module loads publish new
+            // ones); the registry's effect catalog carries its source hash.
+            catalog_version: {
+                let hash = self.registry.effect_sites().bundle_sha256.clone();
+                if hash.is_empty() {
+                    self.catalog_version.clone()
+                } else {
+                    hash
+                }
+            },
+            input_schema: entry.receives.as_ref().map(ValueSpec::to_json_schema),
+            emits_schema: entry.emits.as_ref().map(ValueSpec::to_json_schema),
+            next_send_seq: 1,
+            expires_at: rfc3339(SystemTime::now() + lease),
+            events_url: None,
+        })
     }
 }
 

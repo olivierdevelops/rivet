@@ -115,7 +115,9 @@ impl ServeListener for AxumListener {
 pub const WS_LANE_FRAMES: usize = 16;
 
 enum Lane {
-    Open(mpsc::Sender<String>),
+    /// An in-flight ref: its lane and the data records written to it so far
+    /// (`(count, last seq)`), which number a terminal record that has no `seq`.
+    Open(mpsc::Sender<String>, (u64, u64)),
     /// The ref's terminal frame was sent; later frames are discarded.
     Ended,
 }
@@ -195,7 +197,7 @@ impl WsOutbox {
     pub fn open_ref(&self, r: &str) {
         let (tx, rx) = mpsc::channel(WS_LANE_FRAMES);
         if let Ok(mut m) = self.lanes.lock() {
-            m.insert(r.to_string(), Lane::Open(tx));
+            m.insert(r.to_string(), Lane::Open(tx, (0, 0)));
         }
         let _ = self.new_lanes.send(rx);
     }
@@ -210,18 +212,34 @@ impl WsOutbox {
 
 #[async_trait]
 impl WsConnection for WsOutbox {
-    async fn send(&self, frame: WsFrame) -> RivetResult<()> {
+    async fn send(&self, mut frame: WsFrame) -> RivetResult<()> {
         let terminal = frame.is_terminal();
         let lane = {
             let mut m = self.lanes.lock().map_err(|_| closed())?;
             match m.get_mut(&frame.r#ref) {
                 Some(Lane::Ended) => return Ok(()),
-                Some(Lane::Open(tx)) if terminal => {
+                Some(Lane::Open(tx, (count, last))) if terminal => {
+                    // A terminal record sent outside the ref's pump (a refused
+                    // input or finish_input) follows the data records already
+                    // in this lane: the next `seq` and the real `data_count`
+                    // (stream-record.schema.json; INC-2026-0012 item 2).
+                    if let Some(rec) = frame.record.as_mut()
+                        && rec.seq.is_none()
+                    {
+                        rec.seq = Some(*last + 1);
+                        rec.data_count = Some(*count);
+                    }
                     let tx = tx.clone();
                     m.insert(frame.r#ref.clone(), Lane::Ended);
                     Some(tx)
                 }
-                Some(Lane::Open(tx)) => Some(tx.clone()),
+                Some(Lane::Open(tx, (count, last))) => {
+                    if let Some(seq) = frame.record.as_ref().and_then(|r| r.seq) {
+                        *count += 1;
+                        *last = seq;
+                    }
+                    Some(tx.clone())
+                }
                 None => None,
             }
         };

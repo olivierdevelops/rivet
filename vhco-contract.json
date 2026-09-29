@@ -4603,7 +4603,7 @@
       "triggers": [
         {
           "surface": "cli",
-          "invocation": "rivet auth complete --params-file PATH [--timeout D] | rivet auth complete --params JSON"
+          "invocation": "rivet auth complete --data-file PATH [--timeout D] | rivet auth complete --data JSON (aliases --params-file, --params)"
         },
         {
           "surface": "http",
@@ -5741,6 +5741,11 @@
           "lane": "conn"
         },
         {
+          "layer": "detach",
+          "ref": "detached",
+          "role": "a refusal naming an in-flight ref goes out with ref \"\" and details.ref, never as that ref's terminal record (INC-2026-0012)"
+        },
+        {
           "layer": "authorize",
           "ref": "require_operation",
           "role": "same principal rules as every surface"
@@ -6283,6 +6288,11 @@
           "role": "`error` belongs to output envelopes only: refused"
         },
         {
+          "layer": "name_refusals",
+          "ref": "body.get",
+          "role": "a later refusal names the operation string the body gives, so the error envelope echoes it (INC-2026-0012)"
+        },
+        {
           "layer": "operation",
           "ref": "pick",
           "role": "`operation`, else the deprecated `id` (recorded in aliases); both → validation.input_envelope; neither → validation.required"
@@ -6384,6 +6394,11 @@
           "layer": "classify",
           "ref": "classify",
           "role": "keyword table from rivet.capy"
+        },
+        {
+          "layer": "recover",
+          "ref": "gaps",
+          "role": "with diagnostics, uncovered lines before the error (an unclosed block's header) are lexed as statement lines (INC-2026-0012)"
         }
       ]
     },
@@ -8129,6 +8144,23 @@
       ]
     },
     {
+      "name": "CallArg",
+      "fields": [
+        {
+          "name": "param",
+          "type": "string"
+        },
+        {
+          "name": "from_param?",
+          "type": "string"
+        },
+        {
+          "name": "value?",
+          "type": "Value"
+        }
+      ]
+    },
+    {
       "name": "CallSite",
       "fields": [
         {
@@ -8146,6 +8178,10 @@
         {
           "name": "source",
           "type": "SourceSpan"
+        },
+        {
+          "name": "args",
+          "type": "CallArg[]"
         }
       ]
     },
