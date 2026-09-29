@@ -95,7 +95,12 @@ pub fn main() -> i32 {
             return 5;
         }
     };
-    rt.block_on(run(cli))
+    let code = rt.block_on(run(cli));
+    // Do not wait for blocking tasks on exit: the `--input-jsonl -` reader sits in
+    // a blocking stdin read that only returns at EOF, and dropping the runtime
+    // would wait for it (INC-2026-0013).
+    rt.shutdown_background();
+    code
 }
 
 pub(super) fn fail(e: &RivetError, source: Option<&str>, json: bool) -> i32 {
@@ -894,6 +899,10 @@ async fn run_duplex(
     tokio::pin!(run);
     let mut watching = true;
     let mut input_error: Option<RivetError> = None;
+    // A rejected line can arrive before the session has registered the request
+    // (select! polls branches in random order), so one cancel can miss; keep
+    // cancelling until the run ends (INC-2026-0013).
+    let mut recancel = tokio::time::interval(std::time::Duration::from_millis(50));
     let outcome = loop {
         tokio::select! {
             r = &mut run => break r,
@@ -903,6 +912,9 @@ async fn run_duplex(
                     input_error = Some(e);
                     let _ = runtime.cancel(&request_id, principal.clone());
                 }
+            }
+            _ = recancel.tick(), if input_error.is_some() => {
+                let _ = runtime.cancel(&request_id, principal.clone());
             }
             _ = tokio::signal::ctrl_c() => {
                 let _ = runtime.cancel(&request_id, principal.clone());
