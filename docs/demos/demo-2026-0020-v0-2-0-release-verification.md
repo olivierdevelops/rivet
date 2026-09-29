@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-29
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -83,7 +83,7 @@ What 0.2.0 adds, and where each theme is verified:
 
 ## Verified Against Version
 
-0.2.0. Recorded on the 0.2.0-dev release candidate. Demos 01–15 were executed at commit `8031baa` (15-ffi steps 3–5 at `166a98b`), and demos 16, 17 and the per-surface examples below at `166a98b`, whose source is identical to `8031baa` (`git diff 8031baa 166a98b -- src ffi examples editors tests Cargo.toml` is empty). The version string is bumped from 0.1.0 to 0.2.0 at release (P5), so `rivet --version`, `rivet.capabilities`, MCP `serverInfo.version` and `rivet_version()` still print `0.1.0`, and the `.vsix` is `rivet-0.1.0.vsix`. Rerun this guide against the tagged artifact at P5 (TASK-096) and add a row to the Verification Record. Host: macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29, `target/release/rivet`. Request, trace and session IDs, timestamps, hashes and ports vary between runs.
+0.2.0. Recorded on the 0.2.0-dev release candidate. Demos 01–15 were executed at commit `8031baa` (15-ffi steps 3–5 at `166a98b`), and demos 16, 17 and the per-surface examples below at `166a98b`, whose source is identical to `8031baa` (`git diff 8031baa 166a98b -- src ffi examples editors tests Cargo.toml` is empty). The version string is bumped from 0.1.0 to 0.2.0 at release (P5), so `rivet --version`, `rivet.capabilities`, MCP `serverInfo.version` and `rivet_version()` still print `0.1.0`, and the `.vsix` is `rivet-0.1.0.vsix`. Rerun this guide against the tagged artifact at P5 (TASK-096) and add a row to the Verification Record. Host: macOS 26.4.1 (Darwin 25.4.0, arm64), 2026-09-29, `target/release/rivet`. The demo steps whose output changed with the INC-2026-0012 fixes, and the WebSocket and MCP examples below, were re-run on 2026-09-29 at commit `7c25175` (source = `14750b8`). Request, trace and session IDs, timestamps, hashes and ports vary between runs.
 
 ## Prerequisites
 
@@ -134,10 +134,10 @@ Folders 01–12 carry two Release Updates tables: the first lists the 0.2.0 upda
 
 | Update | Inciting User Requirement | What Changed | Do This | Expected Result | Evidence Source |
 |---|---|---|---|---|---|
-| U-01 | UQ-03/05 → R1 | Every outcome on every surface is a `ResponseEnvelope`: `request_id`, `trace_id`, `operation`, `type`, `status`, `data`, `error`, `effects`, `data_count` (+ `seq` on stream records, `ref` on WS frames) | [01-catalog](01-catalog/README.md) steps 1, 4–8; [10-grpc](10-grpc/README.md) steps 4–8; [12-library](12-library/README.md) step 2; [15-ffi](15-ffi/README.md) step 2 | Same nine keys in the same order on CLI, REST, SSE, polling, WS, MCP `structuredContent`, library and C | Recorded (per-surface examples below, 166a98b; folders at 8031baa); `conformance_envelope` (T-01) |
+| U-01 | UQ-03/05 → R1 | Every outcome on every surface is a `ResponseEnvelope`: `request_id`, `trace_id`, `operation`, `type`, `status`, `data`, `error`, `effects`, `data_count` (+ `seq` on stream records, `ref` on WS frames) | [01-catalog](01-catalog/README.md) steps 1, 4–8; [10-grpc](10-grpc/README.md) steps 4–8; [12-library](12-library/README.md) step 2; [15-ffi](15-ffi/README.md) step 2 | Same nine keys in the same order on CLI, REST, SSE, polling, WS, MCP `structuredContent`, library and C | Recorded (per-surface examples below, 166a98b; folders at 8031baa); `conformance_envelope` (T-01); changed steps re-run at 7c25175 after INC-2026-0012 (01 steps 7–8, 10 steps 7–8, 12 step 2, per-surface WS/MCP above) |
 | U-02 | UQ-05 → R2 | `status` ok / error / cancelled / accepted; `type` result / data; `effects` at the top level | [01-catalog](01-catalog/README.md) steps 1, 4, 6; [04-streaming](04-streaming/README.md) steps 6–7 | `status:error` + `data:null` on failures; `accepted` (202) for a polling open; `cancelled` on Ctrl-C (exit 130) | Recorded; `conformance_envelope` (T-01, T-04) |
-| U-03 | UQ-03 → R3 | Built-ins, GET routes and every CLI `--json` output are envelopes whose `data` is the payload | [01-catalog](01-catalog/README.md) steps 1, 2, 4; [11-sandbox](11-sandbox/README.md) steps 3–5, 7, 8 | `rivet.describe`, `rivet.outputs`, `rivet.io`, `rivet.policy.*`, `rivet.trace.show`, `rivet.check` envelopes | Recorded; `conformance_envelope` (T-03) |
-| U-04 | UQ-06 → R4 | One `InputEnvelope {operation, data, …}`; CLI `--data` and `--input FILE\|-` | [01-catalog](01-catalog/README.md) steps 1, 4, 6, 7; [12-library](12-library/README.md) step 2; [15-ffi](15-ffi/README.md) step 2 | The same body accepted by `--input -`, REST, polling, WS, `Runtime::call` and `rivet_request` | Recorded; `conformance_envelope` (T-02) |
+| U-03 | UQ-03 → R3 | Built-ins, GET routes and every CLI `--json` output are envelopes whose `data` is the payload | [01-catalog](01-catalog/README.md) steps 1, 2, 4; [11-sandbox](11-sandbox/README.md) steps 3–5, 7, 8 | `rivet.describe`, `rivet.outputs`, `rivet.io`, `rivet.policy.*`, `rivet.trace.show`, `rivet.check` envelopes | Recorded; `conformance_envelope` (T-03); 11-sandbox step 3 re-run at 7c25175 (`policy explain --json` denial = error envelope on stderr, exit 3) |
+| U-04 | UQ-06 → R4 | One `InputEnvelope {operation, data, …}`; CLI `--data` and `--input FILE\|-` | [01-catalog](01-catalog/README.md) steps 1, 4, 6, 7; [12-library](12-library/README.md) step 2; [15-ffi](15-ffi/README.md) step 2 | The same body accepted by `--input -`, REST, polling, WS, `Runtime::call` and `rivet_request` | Recorded; `conformance_envelope` (T-02); 01 step 7 and 12 step 2 re-run at 7c25175 |
 | U-05 | UQ-06 (0.1.0 clients) → R5 | `id`/`params` and `--params` still accepted with a deprecation signal; mixing a key with its alias refused | [01-catalog](01-catalog/README.md) steps 1, 3, 4 | `warning[deprecated.params]`; `"deprecation":true`; `validation.input_envelope` 422 / exit 2 | Recorded; `conformance_envelope` (T-15) |
 | U-06 | UQ-04 → R6 | `--pretty`, `?pretty=true`, `to_json_pretty()`, FFI `"pretty"`; refused with NDJSON and SSE | [01-catalog](01-catalog/README.md) steps 1, 4, 5; [12-library](12-library/README.md) step 2; SSE example below | Indented envelope; `validation.usage` exit 2 (`--pretty --stream`); `validation.pretty_stream` HTTP 400 | Recorded; `conformance_envelope` (T-05) |
 | U-07 | UQ-07 → R7 | `global NAME = EXPR`: load-time, read-only constants shared by every operation of a file | [14-globals](14-globals/README.md) step 2 | `settings.show` returns the seven computed globals | Recorded; `conformance_globals` (T-06) |
@@ -150,14 +150,14 @@ Folders 01–12 carry two Release Updates tables: the first lists the 0.2.0 upda
 | U-14 | UQ-08 → R14 | Null, UTF-8, JSON, panic and double-free guards; ownership and thread-safety rules | [15-ffi](15-ffi/README.md) step 5 | `validation.ffi_argument`, `validation.input_envelope`, `not_found.source` envelopes; second free returns 1 | Recorded; `conformance_ffi` (T-12) |
 | U-15 | UQ-08 → R15 | Pull call handle: `rivet_call_start`, `_next`, `_send`, `_finish_input`, `_cancel`, `_free` | [15-ffi](15-ffi/README.md) step 2 | Items then one terminal record; echoed input; `cancelled` | Recorded; `conformance_ffi` (T-11) |
 | U-16 | UQ-01 → R16 | Generated TextMate grammar; VS Code extension packaged as `.vsix` with Python only; drift check | [16-editor](16-editor/README.md) steps 1, 2, 5 | `rivet.rivet@0.1.0` installed in a scratch profile (0.2.0 after the bump); hand edit caught (exit 1) | Recorded (VS Code 1.108.1); `conformance_highlight` (T-13) |
-| U-17 | UQ-01 → R17 | `rivet highlight` (ansi, html, json), `rivet::highlight::tokens`, `rivet_highlight` from parser spans | [16-editor](16-editor/README.md) steps 4, 6; [14-globals](14-globals/README.md) step 7 | 12 classes in 65 tokens; broken file: 11 tokens + `syntax.expression`, exit 2 | Recorded; `conformance_highlight` (T-14) |
+| U-17 | UQ-01 → R17 | `rivet highlight` (ansi, html, json), `rivet::highlight::tokens`, `rivet_highlight` from parser spans | [16-editor](16-editor/README.md) steps 4, 6; [14-globals](14-globals/README.md) step 7 | 12 classes in 65 tokens; broken file: 11 tokens + `syntax.expression`, exit 2 | Recorded; `conformance_highlight` (T-14); 16-editor step 6 re-run at 7c25175 (unclosed block keeps header tokens) |
 | U-18 | DOCUMENTATION §§29–31 → R18 | Every document in the plan's Documentation and Demo Checklist; demos executed and re-verified | `python3 scripts/check_docs.py`; `vhco docs check .` | 0 problems in `docs/demos`; 0 errors | Recorded for `docs/demos` at this commit (Verification Record). The rest of the P4 checklist is owned by other tasks and closes at P4 exit |
 | U-19 | UQ-09 → R19 | `import "PATH" as ALIAS [public]`, relative to the importing file, root-confined; bootstrap reads name every file | [17-modules](17-modules/README.md) steps 1, 4; [08-udp](08-udp/README.md) step 5; [11-sandbox](11-sandbox/README.md) step 4 | `ok: 7 operations`; bootstrap `./app.rivet`, `./users.rivet`, `./billing.rivet` | Recorded; `conformance_modules` (T-16) |
 | U-20 | UQ-09 → R20 | `ALIAS.ID` namespaces; internal by default, `public` to expose; transitive; a file reached twice compiles once | [17-modules](17-modules/README.md) steps 1–3 | Four IDs on CLI, REST and MCP; `users.get` 404 / exit 4 | Recorded; `conformance_modules` (T-16) |
-| U-21 | UQ-09 → R21 | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | [17-modules](17-modules/README.md) step 6 | Exits 2, 4, 3, 2, 2, 2 at the `import` line | Recorded except `limit.imports` (`conformance_modules`, T-17, only) |
-| U-22 | UQ-09 → R22 | `Runtime::builder()` without an entry file; `rt.load` / `load_as` → `Module`; catalog snapshot swap | [17-modules](17-modules/README.md) step 7 (`cargo run --release --example modules`) | `users.get`, `billing.invoice`, `users.list` envelopes; duplicate alias refused | Recorded; `conformance_modules` (T-18) |
-| U-23 | UQ-09 → R23 | `rivet_load`, `rivet_module_*`; Python wrapper module object | [15-ffi](15-ffi/README.md) steps 3–4 | Same envelopes from C and Python; `check.import_duplicate` on reload | Recorded (166a98b); `conformance_ffi` (T-19) |
-| U-24 | UQ-09 → R24 | The loader's policy only; a module's `policy.json` ignored with a warning; `io`, `graph`, `policy explain`, `policy generate` cover modules | [17-modules](17-modules/README.md) steps 4–6 | `2 allowed` for sites in two modules; draft with 2 grants; `warning[check.module_policy_ignored]` | Recorded; `conformance_modules` (T-20) |
+| U-21 | UQ-09 → R21 | `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports` | [17-modules](17-modules/README.md) step 6 | Exits 2, 4, 3, 2, 2, 2 at the `import` line | Recorded except `limit.imports` (`conformance_modules`, T-17, only); 17-modules step 6 re-run at 7c25175 |
+| U-22 | UQ-09 → R22 | `Runtime::builder()` without an entry file; `rt.load` / `load_as` → `Module`; catalog snapshot swap | [17-modules](17-modules/README.md) step 7 (`cargo run --release --example modules`) | `users.get`, `billing.invoice`, `users.list` envelopes; duplicate alias refused | Recorded; `conformance_modules` (T-18); 17-modules step 7 re-run at 7c25175 |
+| U-23 | UQ-09 → R23 | `rivet_load`, `rivet_module_*`; Python wrapper module object | [15-ffi](15-ffi/README.md) steps 3–4 | Same envelopes from C and Python; `check.import_duplicate` on reload | Recorded (166a98b); `conformance_ffi` (T-19); 15-ffi step 3 re-run at 7c25175 (`rivet_load` refusal carries IDs) |
+| U-24 | UQ-09 → R24 | The loader's policy only; a module's `policy.json` ignored with a warning; `io`, `graph`, `policy explain`, `policy generate` cover modules | [17-modules](17-modules/README.md) steps 4–6 | `2 allowed` for sites in two modules; draft with 2 grants; `warning[check.module_policy_ignored]` | Recorded; `conformance_modules` (T-20); 17-modules step 6 (`request`/`serve` print the warning) and `policy explain --data` re-run at 7c25175 |
 
 ### Command / Request
 
@@ -280,18 +280,18 @@ Cancelling an open live session yields one `cancelled.session` record with `stat
 "$TMPDIR/rivet-verify-venv/bin/python" fixtures/ws_client.py ws://127.0.0.1:18860/v1/ws < requests/ws-frames.jsonl
 ```
 
-Every frame is the envelope plus `ref`. The invalid `c3` fails on its own ref (with request and trace IDs, like the CLI, REST and MCP; the `c3` line was re-captured after INC-2026-0012 with the same frame) while `c1` and `c2` succeed. A unary WS result keeps `"seq":1`: every WS ref is a session (API-2026-0002):
+Every frame is the envelope plus `ref`. The invalid `c3` fails on its own ref (with request and trace IDs, like the CLI, REST and MCP; the whole block was re-captured at `7c25175` after INC-2026-0012) while `c1` and `c2` succeed. A unary WS result keeps `"seq":1`: every WS ref is a session (API-2026-0002):
 
 ```json
-{"ref":"c3","request_id":"req_02d42e141a","trace_id":"tr_02d42e141a","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
-{"ref":"c1","request_id":"req_0584dcb419","trace_id":"tr_0584dcb419","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
-{"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
-{"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
-{"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
-{"ref":"c2","request_id":"req_06030c4826","trace_id":"tr_06030c4826","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
+{"ref":"c3","request_id":"req_03d1f18567","trace_id":"tr_03d1f18567","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0}
+{"ref":"c1","request_id":"req_01d36d27e5","trace_id":"tr_01d36d27e5","operation":"demo.add","type":"result","seq":1,"status":"ok","data":5,"error":null,"effects":"none","data_count":0}
+{"ref":"c2","request_id":"req_0252ba779a","trace_id":"tr_0252ba779a","operation":"demo.countdown","type":"data","seq":1,"data":3,"error":null}
+{"ref":"c2","request_id":"req_0252ba779a","trace_id":"tr_0252ba779a","operation":"demo.countdown","type":"data","seq":2,"data":2,"error":null}
+{"ref":"c2","request_id":"req_0252ba779a","trace_id":"tr_0252ba779a","operation":"demo.countdown","type":"data","seq":3,"data":1,"error":null}
+{"ref":"c2","request_id":"req_0252ba779a","trace_id":"tr_0252ba779a","operation":"demo.countdown","type":"result","seq":4,"status":"ok","data":{"count":3},"error":null,"effects":"none","data_count":3}
 ```
 
-Failure on the transport: under [policies/team.json](01-catalog/policies/team.json) the `ws` surface is not mounted and `GET /v1/ws` returns 404 ([01-catalog](01-catalog/README.md) step 9).
+Refusals that are not a ref's terminal record (`conflict.ref` for an in-flight ref, detached with `ref: ""` and `error.details.ref`; a not-JSON frame) and a refused-input terminal record (`seq` and the real `data_count`) are shown in [01-catalog](01-catalog/README.md) step 7 and [10-grpc](10-grpc/README.md) step 7. Failure on the transport: under [policies/team.json](01-catalog/policies/team.json) the `ws` surface is not mounted and `GET /v1/ws` returns 404 ([01-catalog](01-catalog/README.md) step 9).
 
 #### MCP
 
@@ -311,11 +311,11 @@ kill $SV; rm -f serve.err
 `notifications/initialized` returns 202 with an empty body. `structuredContent` is the ResponseEnvelope, and `isError` follows its `status`:
 
 ```json
-{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_0785f5017b\",…,\"data\":5,…}"}],"structuredContent":{"request_id":"req_0785f5017b","trace_id":"tr_0785f5017b","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
-{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{…\"status\":\"error\",…}"}],"structuredContent":{"request_id":"req_08faf6f068","trace_id":"tr_08faf6f068","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0},"isError":true}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_045280610c\",…,\"data\":5,…}"}],"structuredContent":{"request_id":"req_045280610c","trace_id":"tr_045280610c","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
+{"jsonrpc":"2.0","id":9,"result":{"content":[{"type":"text","text":"{…\"status\":\"error\",…}"}],"structuredContent":{"request_id":"req_05cc1a3431","trace_id":"tr_05cc1a3431","operation":"demo.add","type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.required","message":"missing required parameter `a`","retryable":false,"operation_id":"demo.add","details":{"field":"a"}},"effects":"none","data_count":0},"isError":true}}
 ```
 
-Modules on MCP: only public imports are tools ([17-modules](17-modules/README.md) step 3). A remote tool error surfaces as `isError: true` with `mcp.tool_failed` ([06-mcp-bridge](06-mcp-bridge/README.md) step 8).
+The same failure through the built-in `rivet.request` names the target operation (`demo.add`), and a protocol refusal such as `mcp.session_required` has `operation: null` ([01-catalog](01-catalog/README.md) step 8; [10-grpc](10-grpc/README.md) and [06-mcp-bridge](06-mcp-bridge/README.md) step 8). Modules on MCP: only public imports are tools ([17-modules](17-modules/README.md) step 3). A remote tool error surfaces as `isError: true` with `mcp.tool_failed` ([06-mcp-bridge](06-mcp-bridge/README.md) step 8).
 
 #### Rust library
 
@@ -393,6 +393,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 | U-16, U-17 editor and highlighting (16-editor) | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64, VS Code 1.108.1 | PASS |
 | U-18 `python3 scripts/check_docs.py`; `vhco docs check .` | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS: `check_docs` 0 problems in `docs/demos` (1 problem elsewhere, in `docs/references/`, owned by another task); `vhco docs check .` 0 errors, 66 warnings (index-page and folder-placement naming only) |
 | U-19…U-22, U-24 modules (17-modules) | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS (`limit.imports` by `conformance_modules` only) |
+| INC-2026-0012 changed steps re-run (T-30): per-surface WS and MCP above; 01 steps 7–8; 02 step 3; 04 steps 6–7; 06 steps 5–8; 07 step 2; 08 step 6; 10 steps 7–8; 11 step 3; 12 step 2 (scratch crate); 14 step 3; 15 step 3; 16 step 6; 17 steps 6–7 and the `policy explain --data` caveat | Claude | 2026-09-29, commit 7c25175 (source = 14750b8), macOS 26.4.1 arm64 | PASS (see each folder's record) |
 | Linux | CI | run 36483001760 | PASS |
 | Windows | — | — | NOT APPLICABLE: unsupported in 0.2.0 (INC-2026-0011) |
 | Tagged release build `v0.2.0` | — | TBD at P5 | NOT STARTED |
@@ -419,3 +420,4 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 |---|---|---|---|
 | 1 | 2026-09-29 | Claude | TASK-077 (PLAN-2026-0002 D-64): created the 0.2.0 release verification guide: header with tag/commit `TBD at P5`; U-01…U-24 (one per R1…R24) with inciting UQ, command, expected result and recorded evidence; per-surface success and failure (CLI, HTTP/SSE, polling, WebSocket, MCP, Rust library, C ABI, Python, editor) re-run at 166a98b; platform coverage (macOS here, Linux CI run 36483001760, Windows unsupported per INC-2026-0011); cleanup; verification record; caveats including the `conformance_samples` import gap. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: caveat findings fixed and removed; WS `c3` line re-captured with IDs; unary WS `seq` decision recorded. |
+| 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: WS and MCP per-surface examples re-captured; pointers to the detached `conflict.ref`, refused-input terminal record and `rivet.request` error examples; U-01, U-03, U-04, U-17, U-21…U-24 evidence cites the re-run steps; one Verification Record row. |
