@@ -461,8 +461,12 @@ impl<'a> Tokens<'a> {
     }
 
     /// Text no node header covers: `#` comments, the `else` section word and
-    /// block `end`s the tree does not keep.
-    fn gaps(&mut self) {
+    /// block `end`s the tree does not keep. With `recover` (the tree has
+    /// diagnostics), a line no node covers is a statement the parser could not
+    /// keep (e.g. the header of an unclosed `operation … ⏎ … return (` block):
+    /// it is lexed as a statement line so its tokens before the error still
+    /// appear (INC-2026-0012 item 9).
+    fn gaps(&mut self, recover: bool) {
         let mut covered = self.covered.clone();
         covered.sort();
         let mut at = 0usize;
@@ -475,6 +479,10 @@ impl<'a> Tokens<'a> {
         }
         gaps.push((at, self.text.len()));
         for (s, e) in gaps {
+            if recover {
+                self.recover_lines(s, e);
+                continue;
+            }
             for (lx, a, b) in lex(self.text, s, e) {
                 match lx {
                     Lex::Comment => self.push(a, b, "comment"),
@@ -486,6 +494,40 @@ impl<'a> Tokens<'a> {
                     _ => {}
                 }
             }
+        }
+    }
+
+    /// Lex each line of an uncovered range as a statement: a leading
+    /// declaration or control word is a keyword (the ID after `operation` /
+    /// `pipeline` an operation_id), the rest reads like an option tail.
+    fn recover_lines(&mut self, from: usize, to: usize) {
+        let mut a = from;
+        while a < to {
+            let e = self.line_end(a).min(to);
+            let lexemes = lex(self.text, a, e);
+            match lexemes.first() {
+                Some((Lex::Word, s0, e0))
+                    if matches!(&self.text[*s0..*e0], "end" | "else")
+                        || self.table.is("declaration", &self.text[*s0..*e0])
+                        || self.table.is("control", &self.text[*s0..*e0]) =>
+                {
+                    let head = &self.text[*s0..*e0];
+                    self.push(*s0, *e0, "keyword");
+                    let mut rest = *e0;
+                    if matches!(head, "operation" | "pipeline")
+                        && let Some((Lex::Word, s1, e1)) = lexemes.get(1)
+                    {
+                        self.push(*s1, *e1, "operation_id");
+                        rest = *e1;
+                    }
+                    self.span(rest, e, Mode::Tail, false);
+                }
+                Some(_) => {
+                    self.span(a, e, Mode::Tail, false);
+                }
+                None => {}
+            }
+            a = e + 1;
         }
     }
 
@@ -570,8 +612,9 @@ pub fn highlight_source(
     for n in &tree.nodes {
         t.node(n);
     }
-    t.gaps();
-    // vhco:todo partial_on_error -- when the tree has diagnostics, the earliest one (by line, column) is the error: keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing
+    // vhco:step recover gaps -- with diagnostics, uncovered lines before the error (the header of an unclosed block) are lexed as statement lines, so no token before the error is lost
+    t.gaps(!tree.diagnostics.is_empty());
+    // vhco:todo partial_on_error -- when the tree has diagnostics, the earliest one (by line, column) is the error: lines no node covers (the header of an unclosed block) are lexed as statement lines, then keep only the tokens that start before it (tokens are cut at it) and return it as syntax.* with every other diagnostic in `suppressed`, so the CLI prints the partial tokens and exits 2 instead of printing nothing
     // vhco:error syntax -- the source does not parse => syntax.* (exit 2) returns with the tokens before the error
     let mut diags: Vec<&SyntaxDiagnostic> = tree.diagnostics.iter().collect();
     diags.sort_by_key(|d| (d.span.start_line, d.span.start_col));

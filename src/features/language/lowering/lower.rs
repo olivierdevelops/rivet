@@ -217,6 +217,21 @@ impl Lowerer {
                 return None;
             }
         };
+        // `scheme://…` (https, http, file, …): imports read local files only
+        // (INC-2026-0012 item 18).
+        if let Some((scheme, _)) = path.split_once("://")
+            && !scheme.is_empty()
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        {
+            self.syntax(
+                "syntax.import",
+                format!("imports are local paths; URL imports are not supported (`{path}`)"),
+                &node.span,
+            );
+            return None;
+        }
         if path.trim().is_empty() || path.starts_with('/') || path.contains('\\') {
             self.syntax(
                 "syntax.import",
@@ -645,10 +660,38 @@ impl Lowerer {
         let mut spec = self.type_from_args(&mut it, &node.span)?;
         let rest: Vec<Arg> = it.cloned().collect();
         let desc = keyword_text(&rest, "description");
+        // `open true|false` on the header line (`output object description "x"
+        // open true`) means the same as the `open true` line of the field
+        // block (INC-2026-0012 item 10); either one opens the object.
+        let inline_open = match rest.iter().position(|a| a.word() == Some("open")) {
+            None => None,
+            Some(p) => match rest
+                .get(p + 1)
+                .and_then(|a| const_value(&a.to_expr()))
+                .or_else(|| {
+                    rest.get(p + 1).and_then(Arg::word).and_then(|w| match w {
+                        "true" => Some(Value::Bool(true)),
+                        "false" => Some(Value::Bool(false)),
+                        _ => None,
+                    })
+                }) {
+                Some(Value::Bool(b)) => Some(b),
+                _ => {
+                    self.syntax("syntax.type", "`open` takes true or false", rest[p].span());
+                    None
+                }
+            },
+        };
         if let ValueSpec::Object { fields, open } = &mut spec {
             let (f, o) = self.fields(node.children());
             *fields = f;
-            *open = o;
+            *open = o || inline_open == Some(true);
+        } else if inline_open.is_some() {
+            self.syntax(
+                "syntax.type",
+                "only `object` types can be `open`",
+                &node.span,
+            );
         } else if !node.children().is_empty() {
             self.syntax(
                 "syntax.fields",

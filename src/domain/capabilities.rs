@@ -124,8 +124,14 @@ pub fn require_build_features(
     for site in sites {
         let protocol = site.protocol.as_deref().unwrap_or("");
         let parts: Vec<&str> = protocol.split('|').collect();
-        let need = if parts.contains(&"grpc") {
+        // A gRPC call is reported at its call site (the `grpc` statement,
+        // `with grpc …` or a connector call): its endpoint connect site sits
+        // on the connector's `endpoint` line (INC-2026-0012 item 17), and the
+        // connector itself is reported above.
+        let need = if site.kind == super::io_manifest::SiteKind::Grpc {
             Some(("grpc", "a gRPC call"))
+        } else if parts.contains(&"grpc") {
+            None
         } else if parts.contains(&"quic") {
             Some(("quic", "a QUIC exchange"))
         } else if parts.contains(&"http3") {
