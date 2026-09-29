@@ -353,7 +353,7 @@ rivet --file app.rivet request demo.add --data '{"a":2,"b":3}' 2>&1 \
 
 ## Related Documents
 
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) R1–R6
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) R1–R6
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) D-10
 - [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md) — migrating 0.1.0 clients
 - [API-2026-0001](api-2026-0001-http-rest-sse-polling.md), [API-2026-0002](api-2026-0002-websocket-rivet-v1.md),

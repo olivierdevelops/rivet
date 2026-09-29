@@ -4,8 +4,8 @@ title: "Calling Rivet from C, Python and Go (librivet)"
 document_type: manual
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 1
+last_updated: 2026-09-30
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** ffi, library, sessions, registry, language
@@ -193,7 +193,7 @@ make -C examples/c && cd examples/c && ./demo ../ffi/app.rivet
 Real output (IDs differ per run; the version reads `0.2.0` in the release build):
 
 ```text
-abi 1 version 0.1.0
+abi 1 version 0.2.0
 options-error {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"validation","code":"validation.ffi_argument","message":"unknown option `colour` (expected one of file, source, path, root, policy_file, policy_json, ceiling_json, pretty)","retryable":false,"details":{"argument":"colour"}},"effects":"none","data_count":0}
 request {"request_id":"req_01aaa1efc5","trace_id":"tr_01aaa1efc5","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 pretty {
@@ -325,7 +325,7 @@ with rivet.Rivet(root="examples/modules") as rt:
 `python3 examples/python/demo.py` and `python3 examples/python/modules.py` (real output):
 
 ```text
-abi 1 version 0.1.0
+abi 1 version 0.2.0
 options-error validation.ffi_argument
 request {"request_id": "req_01ae55f7bd", "trace_id": "tr_01ae55f7bd", "operation": "demo.add", "type": "result", "status": "ok", "data": 5, "error": null, "effects": "none", "data_count": 0}
 invalid error validation.type
@@ -526,4 +526,5 @@ token. Module — a `.rivet` file loaded into a runtime under an alias.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-29 | Claude | Initial FFI manual (TASK-072, D-13): build/link per OS, C walkthrough, streams, modules, Python wrapper, verified Go program, errors, troubleshooting |

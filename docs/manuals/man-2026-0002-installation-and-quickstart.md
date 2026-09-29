@@ -4,8 +4,8 @@ title: "Rivet installation and quickstart"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 5
+last_updated: 2026-09-30
+document_revision: 6
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** cli, language, registry, policy, audit, serve, http, ffi
@@ -43,9 +43,8 @@ Get from nothing to a running operation in about ten minutes: install the binary
 operation, read its declared output, inspect its I/O and serve it over HTTP. Optional: build `librivet` for C,
 Python or Go, and install the VS Code extension. Part of the [Rivet manual](man-2026-0001-rivet-manual.md).
 
-The latest published release is **0.1.0**; **0.2.0 is in progress** and this volume describes its release candidate
-(captured 2026-09-29 from source `6f9943f`; `--version` and version fields print `0.1.0` until the release commit
-bumps the workspace version). The `v0.2.0` tag below is the one P5 of PLAN-2026-0002 creates.
+The current release is **0.2.0** (tag `v0.2.0`). Examples were captured on its release candidate (2026-09-29,
+source `6f9943f`); version fields show the released `0.2.0`.
 
 ## Reading Order
 
@@ -152,7 +151,7 @@ target/release/rivet --version
 Expected output on the release-candidate tree (the version is bumped to 0.2.0 by the release commit):
 
 ```text
-rivet 0.1.0
+rivet 0.2.0
 ```
 
 `cargo build --features cli` gives a debug build in `target/debug/rivet`. Put the binary on your `PATH` if you like
@@ -432,7 +431,7 @@ curl -s http://127.0.0.1:18960/v1/health
 ```text
 {"request_id":"req_01e5bcce1d","trace_id":"tr_01e5bcce1d","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 {"request_id":"req_02653d9c0a","trace_id":"tr_02653d9c0a","operation":"demo.add","type":"result","status":"ok","data":9,"error":null,"effects":"none","data_count":0}
-{"request_id":"req_03e15ec337","trace_id":"tr_03e15ec337","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.1.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_03e15ec337","trace_id":"tr_03e15ec337","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
 ```
 
 While it runs, terminal A shows one JSON access-log line per request after the receipt:
@@ -515,6 +514,7 @@ macOS; `cargo install … --tag v0.2.0` becomes runnable when P5 publishes the t
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 5 | 2026-09-29 | Claude | 0.2.0 (D-21, D-46): `cargo install rivet-runtime --git … --tag v0.2.0 --features cli`; Perch tasks with `--features cli` and `perch ffi` (Perch content kept); optional librivet build and `.vsix` install; quickstart re-captured with envelopes, `--data`, `--pretty`, stderr errors, stream records, `highlight`, serve on 18960 with health and access log; troubleshooting and version rows; macOS/Linux platforms, Windows unsupported. |
 | 4 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: the syntax-error example now shows `syntax.else_if` (`if … else … end` exists), `check` warnings, access log, `/v1/health` and SIGTERM drain, the `emits` line shows its description; limitations link updated. Perch content unchanged. |
 | 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |

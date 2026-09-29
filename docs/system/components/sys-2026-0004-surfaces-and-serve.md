@@ -4,8 +4,8 @@ title: "Rivet surfaces and the serve listener"
 document_type: system
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -31,7 +31,7 @@ tags: [rivet, system, surfaces, cli, serve, http, sse, polling, websocket, mcp, 
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** cli, library, serve, http, ws, poll, mcp
@@ -643,11 +643,10 @@ $ curl -s 127.0.0.1:18902/v1/operations/demo.countdown/outputs
 {"request_id":"req_04c003daa4","trace_id":"tr_04c003daa4","operation":"rivet.outputs","type":"result","status":"ok","data":{"id":"demo.countdown","output":{"type":"object","properties":{"count":{"type":"integer","description":"Number of items emitted."}},"required":["count"],"additionalProperties":false,"description":"Summary returned after the last item."},"emits":{"type":"integer","description":"One countdown value per item."},"receives":null,"errors":[]},"error":null,"effects":"none","data_count":0}
 
 $ curl -s 127.0.0.1:18902/v1/health
-{"request_id":"req_06c54603b6","trace_id":"tr_06c54603b6","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.1.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_06c54603b6","trace_id":"tr_06c54603b6","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
 ```
 
-The RC's workspace version was still `0.1.0` at capture time, so `version` reads `0.1.0`; the release build
-reads `0.2.0`.
+`version` reports the release, `0.2.0`.
 
 ### SSE request sequence
 
@@ -850,7 +849,7 @@ content-type: application/json
 mcp-session-id: mcp_118af2c3f05d711f5
 content-length: 142
 
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
 
 # with -H 'mcp-session-id: mcp_118af2c3f05d711f5' -H 'mcp-protocol-version: 2025-11-25'
 notifications/initialized            -> [202]
@@ -895,7 +894,7 @@ The client then calls `rivet.sessions.read`.
 ```text
 $ (…three JSON-RPC lines…) | rivet --file app.rivet serve --stdio
 {"listen_addr":null,"stdio":true,"surfaces":["mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","policy_hash":null}      <- stderr
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_014679ed55\",\"trace_id\":\"tr_014679ed55\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_014679ed55","trace_id":"tr_014679ed55","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
@@ -1114,7 +1113,7 @@ $ curl -s -w ' [%{http_code}]' -H 'authorization: Bearer dev-token-ada' 127.0.0.
 {"request_id":"","trace_id":"","operation":null,"type":"result","status":"error","data":null,"error":{"kind":"not_found","code":"not_found.route","message":"no such route on this listener","retryable":false},"effects":"none","data_count":0} [404]
 
 $ curl -s -w ' [%{http_code}]' 127.0.0.1:18904/v1/health          # loopback bind: no token needed
-{"request_id":"req_056f91a301",…,"operation":"rivet.health",…,"status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e…","version":"0.1.0"},…} [200]
+{"request_id":"req_056f91a301",…,"operation":"rivet.health",…,"status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e…","version":"0.2.0"},…} [200]
 
 # MCP as ci: tools/list shows 11 tools ['demo.health', 'rivet.request', 'rivet.list', 'rivet.describe', 'rivet.outputs',
 #   'rivet.sessions.open', 'rivet.sessions.send', 'rivet.sessions.finish_input', 'rivet.sessions.read', 'rivet.sessions.cancel',
@@ -1311,6 +1310,7 @@ trace, session and MCP session IDs differ on every run.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial current-state document (PLAN-2026-0001 D-18). |
 | 2 | 2026-09-28 | Claude | TASK-092 drift fix for the fix batch (829ca43): `/v1/health`, access log, SIGTERM drain, `traceparent`, `restrict` on every surface, bare `/v1/io`, polling `deadline_ms` and cancel-after-finish, WS per-ref lanes and specific refusal frames, MCP `tools/list` built-ins, `rivet.capabilities`, `rivet.trace.export` (dispatched since 2a751ab), library scope/ceiling/shutdown/access_log, `graph` and `trace export` CLI, 32 MiB remote client budget; limitations reduced to the current ones plus the recorded drift. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-34/D-47 (TASK-073, TASK-070): the wire edge (`serve.parse_input`, envelope writer, pretty, `Deprecation` header/log/trace/CLI warnings, envelope-aware remote client with 0.1.x detection); `--data`/`--input`/`--pretty`/`highlight`; every REST, SSE, polling, WebSocket, MCP, stdio, remote-CLI, bearer and startup capture re-run on the 0.2.0-rc; `cli`/`serve` feature gates; facade paths; macOS/Linux only. |

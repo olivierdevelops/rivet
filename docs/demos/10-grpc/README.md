@@ -4,8 +4,8 @@ title: "All four gRPC call modes"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** grpc, sessions, serve, cli, http, poll, ws, mcp
@@ -68,7 +68,7 @@ All four gRPC call modes. Delivery stage: **B**. Read [app.rivet](app.rivet) alo
 
 ```sh
 cargo build --release --features cli       # from the repository root (grpc is a default feature)
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 python3 -m venv "$TMPDIR/rivet-grpc-venv" && "$TMPDIR/rivet-grpc-venv/bin/pip" install grpcio protobuf websockets
 ```
 
@@ -491,6 +491,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: steps 7–8 re-run against the grpcio fixture; step 7 adds the refused-input terminal record (`seq`, real `data_count`), open refusals with IDs and the remote CLI `--timeout` over WS (`deadline_ms`); step 8 re-captured and adds the `rivet.request` error naming the target; remote-CLI stdin caveat; two Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-59): re-executed every step against the 0.2.0 release candidate (8031baa) with the grpcio fixture; `--params` → `--data`; CLI NDJSON, gRPC errors, polling (`accepted` receipt envelope, batches, cancelled terminal record), WebSocket envelope frames with `ref` and MCP session-tool `structuredContent` replaced by 0.2.0 output; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/grpc_fixture.py (port 18880), fixtures/ws_client.py and MCP session request bodies; executed every step against 0.1.0-dev (829ca43) and pasted real output: `not_found.descriptor`, check/list/outputs, manifest (summary line), four call modes, `grpc.not_found` (exit 4), `grpc.unavailable`, `stream.input_required`, `validation.input`, polling (receipt with `input_schema`, ack, batch, cancel), WebSocket frames (with `request_id`/`trace_id`), MCP session tools; completion shape is `{initial_metadata, trailers, status, status_code, data_count}`; websocat replaced by the bundled client; removed draft disclaimers; status active; verified_against 0.1.0. |

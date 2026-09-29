@@ -443,7 +443,7 @@ Nothing is written to this folder.
 - [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)
 - [Editor support and highlighting manual MAN-2026-0010](../../manuals/man-2026-0010-editor-support-and-highlighting.md) · [CLI reference MAN-2026-0004](../../manuals/man-2026-0004-cli-reference.md)
 - [Globals demo DEMO-2026-0016](../14-globals/README.md) · [Modules demo DEMO-2026-0019](../17-modules/README.md)
-- [Proposal PROP-2026-0002](../../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
+- [Proposal PROP-2026-0002](../../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
 
 ## Change History
 

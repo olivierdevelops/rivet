@@ -42,7 +42,7 @@ Approved on 2026-09-28 by the project maintainer.
 
 ## Context
 
-[PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) revision 1
+[PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) revision 1
 proposes the following for v0.2.0:
 - one output envelope and one input envelope on every surface;
 - opt-in pretty JSON;
@@ -114,7 +114,7 @@ None.
 
 ## Related Documents
 
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
 - [ADR-0001](adr-0001-approve-rivet-runtime-design.md)
 

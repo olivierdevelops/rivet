@@ -148,7 +148,7 @@ None.
 ## Related Documents
 
 - [RES-2026-0004](../research/res-2026-0004-workspace-ffi-and-feature-experiments.md) — the experiments
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) — R10–R13, C-07–C-10
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) — R10–R13, C-07–C-10
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) — P2c, P2d
 - [ADR-0004](adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) — design approval
 - [ADR-0002](adr-0002-rust-crate-selection.md) — the dependency set being gated

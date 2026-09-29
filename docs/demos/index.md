@@ -37,7 +37,7 @@ next_review_date: 2026-10-27
 > **Owner:** Project maintainer
 > **Affected Components:** registry
 
-This directory holds `.rivet` bundles, `policy.json` files, fixtures, request bodies and one usage README per folder. They illustrate [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) and, from folder 14 on, the 0.2.0 features of [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (envelopes, globals, C ABI, highlighting, modules). The new [13-real-world-apis](13-real-world-apis/README.md) cookbook uses public APIs where possible and labels credentialed, local and private-gateway setup explicitly. The walkthroughs, commands and expected results are in [README.md](README.md); this page gives status, reading order and open work only.
+This directory holds `.rivet` bundles, `policy.json` files, fixtures, request bodies and one usage README per folder. They illustrate [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) and, from folder 14 on, the 0.2.0 features of [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (envelopes, globals, C ABI, highlighting, modules). The new [13-real-world-apis](13-real-world-apis/README.md) cookbook uses public APIs where possible and labels credentialed, local and private-gateway setup explicitly. The walkthroughs, commands and expected results are in [README.md](README.md); this page gives status, reading order and open work only.
 
 ## What belongs here
 

@@ -4,8 +4,8 @@ title: "Rivet Rust library API"
 document_type: api
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later (the facade, features, `call` and `load` from 0.2.0)
 > **Owner:** Project maintainer
 > **Affected Components:** library, execution, sessions, policy, registry, audit, serve
@@ -495,7 +495,7 @@ async fn main() -> rivet::Result<()> {
 }
 ```
 
-Output (**request and trace IDs differ on every run**; `VERSION` reads `0.1.0` until the release commit):
+Output (**request and trace IDs differ on every run**):
 
 ```text
 call -> {"request_id":"req_0185444e6d","trace_id":"tr_0185444e6d","operation":"files.read","type":"result","status":"ok","data":"hello","error":null,"effects":"none","data_count":0}
@@ -560,7 +560,7 @@ The library differs from the approved design sketches in these details; the code
 ## Related Documents
 
 - [API index](index.md) · [HTTP API](api-2026-0001-http-rest-sse-polling.md) · [Error registry](api-2026-0005-error-registry.md) · [Envelopes](api-2026-0006-envelopes.md) · [C ABI](api-2026-0007-c-abi.md)
-- [MAN-2026-0007 embedding guide](../manuals/man-2026-0007-embedding-library.md) · [MIG-2026-0001 migration](../migrations/mig-2026-0001-response-and-input-envelopes.md) · [ADR-0005 workspace and features](../decisions/adr-0005-workspace-package-and-features.md) · demo `docs/demos/17-modules/` (DEMO-2026-0019, in progress)
+- [MAN-2026-0007 embedding guide](../manuals/man-2026-0007-embedding-library.md) · [MIG-2026-0001 migration](../migrations/mig-2026-0001-response-and-input-envelopes.md) · [ADR-0005 workspace and features](../decisions/adr-0005-workspace-package-and-features.md) · [DEMO-2026-0019](../demos/17-modules/README.md)
 - [Runtime architecture](../architecture/arch-2026-0001-rivet-runtime-architecture.md) · [Demo 12-library](../demos/12-library/README.md)
 - [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 
@@ -568,6 +568,7 @@ The library differs from the approved design sketches in these details; the code
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial library contract; example compiled and run against the crate at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Runtime::scope` with `stream`/`duplex` handles, `Policy::from_file`/`from_json`, `.ceiling(Policy)`, `session_limits`, typed `DataSink` stop (`consumer.stop`), structured cancellation, `request_restricted`, `export_trace`, `graph`, `shutdown`, `SessionOpenInput.trace/restrict`, `ServeOptions.access_log`; new example compiled and run at 829ca43; compatibility table reduced to the remaining differences. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-43, TASK-070): package `rivet-runtime` as a git-tag dependency; Cargo features table and `unsupported.feature`; the crate-root facade and `rivet::types` (internals under `rivet::internal`); `Runtime::call` / `call_json` envelopes; `RuntimeBuilder::root`, `Runtime::load` / `load_as` and `Module`; `rivet::highlight`; `VERSION` / `ABI_VERSION` / `build_features`; `rivet::Result` / `rivet::Error`; new example compiled and run against the 0.2.0-rc (source `6f9943f`); compatibility table updated; platform note. |

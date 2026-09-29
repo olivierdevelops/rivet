@@ -4,8 +4,8 @@ title: "Rivet v0.2.0 implementation, validation and release"
 document_type: plan
 status: approved
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 11
+last_updated: 2026-09-30
+document_revision: 12
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -45,7 +45,7 @@ next_review_date: 2026-10-28
 ## Summary
 
 This is the live execution ledger for turning the approved
-[PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
+[PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
 ([ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)) into Rivet **v0.2.0**.
 It has five gated phases, like PLAN-2026-0001:
 
@@ -357,9 +357,9 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-090 | P5 | Release candidate approval (maintainer standing approval via ADR-0004 unless revoked) | all | — | — | P4 | M | NOT STARTED | |
-| TASK-091 | P5 | Workspace version `0.1.0` → `0.2.0`; `.vsix` version; `rivet_version()`; T-33 (`scripts/check_version.py --tag` extended to FFI and vsix) | release | `Cargo.toml`, `editors/vscode/package.json` | T-33 | TASK-090 | I | NOT STARTED | |
-| TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | NOT STARTED | |
+| TASK-090 | P5 | Release candidate approval (maintainer standing approval via ADR-0004 unless revoked) | all | — | — | P4 | M | DONE | Maintainer standing approval (ADR-0004: "now plan then get an agent to implement the test and release"); release candidate = main after P4 (RPT-2026-0015, DEMO-2026-0020) |
+| TASK-091 | P5 | Workspace version `0.1.0` → `0.2.0`; `.vsix` version; `rivet_version()`; T-33 (`scripts/check_version.py --tag` extended to FFI and vsix) | release | `Cargo.toml`, `editors/vscode/package.json` | T-33 | TASK-090 | I | DONE | Workspace version 0.2.0 (Cargo.toml, Cargo.lock, ffi rivet-runtime requirement, editors/vscode/package.json); scripts/check_version.py: --version, MCP serverInfo, rivet.capabilities, rivet_version() all 0.2.0; docs version sweep |
+| TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | IN PROGRESS | REL-0.2.0 drafted; release commit `release: v0.2.0` next |
 | TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | NOT STARTED | |
 | TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | NOT STARTED | |
 | TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | NOT STARTED | Remote origin added 2026-09-28 (main, v0.1.0 pushed); runs at P5 |
@@ -509,7 +509,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | DONE | T-30 |
 | D-71 | demo | `docs/demos/17-modules/` (README DEMO-2026-0019, `app.rivet`, `users.rivet`, `billing.rivet`, `policy.json`, host programs in Rust/C/Python) | Show modules | `import … as`, internal vs `public`, `rivet list`/`io` across files, import errors, `rt.load`, `rivet_load`, Python module object; verification record | language, library, ffi | DONE | T-30 |
 | D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | IN PROGRESS | T-30 |
-| D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | NOT STARTED | T-31, T-33 |
+| D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | IN PROGRESS | T-31, T-33 |
 | D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | DONE | review |
 
 ### Updated documents (feature chapters)
@@ -572,7 +572,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | ID | Artifact | Exact path | Required change | Status | Verification |
 |---|---|---|---|---|---|
 | D-66 | navigation | `docs/index.md`, `docs/README.md` | New dirs/docs (migrations/, API-0006/0007, MAN-0009/0010, SYS-0010/0011, demos 14–16, DEMO-0019, RPT-0015, REL-0.2.0); current release 0.2.0; risks | DONE | T-31 |
-| D-67 | proposal lifecycle | `docs/proposals/approved/prop-2026-0002-…` → `docs/proposals/implemented/` + indexes | Status `implemented` at P5 | NOT STARTED | T-31 |
+| D-67 | proposal lifecycle | `docs/proposals/implemented/prop-2026-0002-…` → `docs/proposals/implemented/` + indexes | Status `implemented` at P5 | DONE | T-31 |
 | D-70 | agent guide | `AGENTS.md` project facts | Workspace crates, `ffi` surface, features, editors dir | DONE | review |
 | D-72 | navigation (modules) | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json`, `docs/index.md` | Rows for 17-modules (DEMO-2026-0019) and the release guide DEMO-2026-0020 | DONE | T-31 |
 
@@ -748,7 +748,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 ## Related Documents
 
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)
 - [PLAN-2026-0001](plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) · [REL-0.1.0](../releases/rel-0.1.0-release-notes.md) · [RPT-2026-0001](../reports/rpt-2026-0001-validation-of-plan-2026-0001.md)
 - [DOCUMENTATION.md](../../DOCUMENTATION.md) · [AGENTS.md](../../AGENTS.md)
 
@@ -756,6 +756,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 12 | 2026-09-30 | Claude | P5: TASK-090/091 DONE (version 0.2.0), REL-0.2.0 drafted, PROP-2026-0002 implemented; release commit next. |
 | 11 | 2026-09-29 | Claude | P4 ledger: TASK-070…082 DONE with commit evidence; D-rows DONE (D-64 in progress, D-67/D-68 at P5); six documentation-impact decisions recorded. |
 | 10 | 2026-09-29 | Claude | P3 done: TASK-060…064 DONE with evidence (`14750b8` gates, 493 tests, CI run 36505156729; TEST-2026-0034…0053 created and 0001…0032 re-recorded in `f5a1beb`; RPT-2026-0015 in `9678de1`); P3 phase row DONE; requirement statuses per RPT-2026-0015 (22 PASS, R12 and R18 PARTIAL); Test checklist status and evidence for T-01…T-32, T-34; D-05, D-07, D-08 DONE; final traceability statuses; P3 findings (T-08 Linux criterion, T-12 ASan deviation, T-30 PARTIAL, canary scan, vhco.json staleness); live status refreshed. |
 | 9 | 2026-09-29 | Claude | INC-2026-0012 findings row: 19 verification defects fixed before P3/P5, decisions (unary WS `seq`, `policy explain --json` denial envelope, inline `open`), contract hand edits, 493 tests. |

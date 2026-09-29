@@ -4,8 +4,8 @@ title: "Files as modules: import, namespaces and one policy"
 document_type: demo
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, audit, policy, cli, serve, library, ffi
@@ -574,7 +574,7 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
   ```
 - An error raised inside a module names the module's internal operation in `error.operation_id` (`users.fetch`) while the envelope's `operation` is the requested one (`report.remote`).
 - `limit.imports` (more than 256 files or depth over 16) is covered by `tests/conformance_modules.rs`, not reproduced here.
-- The release candidate still prints version `0.1.0`; the bump happens at P5.
+- Recorded on the release candidate before the version bump; the tagged `v0.2.0` build prints `rivet 0.2.0`.
 
 ## Related Documents
 
@@ -582,12 +582,13 @@ Nothing is written to this folder (step 3's `serve.err` is removed by its last c
 - [Language guide MAN-2026-0003](../../manuals/man-2026-0003-language-guide.md) · [Policy and I/O manifest guide MAN-2026-0005](../../manuals/man-2026-0005-policy-and-io-manifest-guide.md)
 - [Embedding library MAN-2026-0007](../../manuals/man-2026-0007-embedding-library.md) · [C ABI and FFI MAN-2026-0009](../../manuals/man-2026-0009-c-abi-and-ffi.md) · [Error registry API-2026-0005](../../api/api-2026-0005-error-registry.md)
 - [Globals demo DEMO-2026-0016](../14-globals/README.md) · [FFI demo DEMO-2026-0017](../15-ffi/README.md) · [Library demo DEMO-2026-0012](../12-library/README.md)
-- [Proposal PROP-2026-0002](../../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
+- [Proposal PROP-2026-0002](../../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-71): new demo; entry bundle with an internal and a public import (the public module imports the internal one), list/request/serve across files, `io`, `--by target`, bootstrap, `policy generate`, `graph`, module-global retarget, six import errors and the ignored module policy warning, `examples/modules.rs`; executed against 0.2.0-dev (166a98b, source = 8031baa). |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: `request` prints `check.module_policy_ignored` (re-captured); `policy explain --data` with params followed into `users.fetch` (captured); load refusals carry IDs; the `conformance_samples` caveat removed (test fixed). |
 | 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 6 (import errors, `--json`, `request` warning), `serve` printing the warning at load, step 7 (`examples/modules.rs`) and the `policy explain --data` caveat re-run; new IDs pasted; three Verification Record rows. |

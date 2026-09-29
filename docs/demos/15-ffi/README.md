@@ -4,8 +4,8 @@ title: "Rivet from C and Python through librivet"
 document_type: demo
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** ffi, library, cli
@@ -128,7 +128,7 @@ The Makefile's link lines:
                    Libs.private = -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
 ```
 
-`python3 ../../../ffi/render_pc.py --prefix PREFIX > rivet.pc` renders the pkg-config file for the host OS. On this Mac it printed `Version: 0.1.0`, `Libs: -L${libdir} -lrivet` and `Libs.private: -framework Security -framework CoreFoundation -liconv -lc -lm`.
+`python3 ../../../ffi/render_pc.py --prefix PREFIX > rivet.pc` renders the pkg-config file for the host OS. On this Mac it printed `Version: 0.2.0`, `Libs: -L${libdir} -lrivet` and `Libs.private: -framework Security -framework CoreFoundation -liconv -lc -lm`.
 
 #### Expected Output / Response
 
@@ -159,7 +159,7 @@ The static binary (about 24 MiB) has no `librivet` dependency. Without `MACOSX_D
 Both binaries print the same lines and exit 0. The unary part (a bad option, a request, the same request with `"pretty": true`, and a type error):
 
 ```text
-abi 1 version 0.1.0
+abi 1 version 0.2.0
 options-error {…"status":"error","data":null,"error":{"kind":"validation","code":"validation.ffi_argument","message":"unknown option `colour` (expected one of file, source, path, root, policy_file, policy_json, ceiling_json, pretty)",…}…}
 request {"request_id":"req_01fb94754d","trace_id":"tr_01fb94754d","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 pretty {
@@ -257,7 +257,7 @@ RIVET_LIB=../../target/release/librivet.dylib python3 modules.py
 ```
 
 ```text
-abi 1 version 0.1.0
+abi 1 version 0.2.0
 options-error validation.ffi_argument
 request {"request_id": "req_…", "trace_id": "tr_…", "operation": "demo.add", "type": "result", "status": "ok", "data": 5, "error": null, "effects": "none", "data_count": 0}
 invalid error validation.type
@@ -277,7 +277,7 @@ no-such-operation module 'users' has no operation 'missing'
 request Hello, user 7
 ```
 
-`version 0.1.0` is the pre-release version of the release-candidate build. P5 sets it to 0.2.0.
+The released build reports `version 0.2.0` and ABI 1.
 
 ### 5. Failing examples: argument misuse returns an envelope
 
@@ -355,6 +355,7 @@ rm -f docs/demos/15-ffi/misuse
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-29 | Claude | Created: shared/static links, request, stream, input, cancel, module objects, Python and misuse, all executed. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: a refused `rivet_load` now carries request/trace IDs; caveat updated. |
 | 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 re-run; its output is pasted in full from that run (the `duplicate` refusal shows its request/trace IDs); one Verification Record row. |

@@ -470,7 +470,7 @@ for a missing `id`). No data or state migration is involved: policies, `.rivet` 
 - [API-2026-0001](../api/api-2026-0001-http-rest-sse-polling.md), [API-2026-0002](../api/api-2026-0002-websocket-rivet-v1.md),
   [API-2026-0003](../api/api-2026-0003-mcp-server-tools.md), [API-2026-0004](../api/api-2026-0004-rust-library.md)
 - [MAN-2026-0004](../manuals/man-2026-0004-cli-reference.md) — CLI flags; [MAN-2026-0007](../manuals/man-2026-0007-embedding-library.md) — Cargo dependency
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) R1–R6, R10–R12;
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) R1–R6, R10–R12;
   [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md)
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) D-09
 

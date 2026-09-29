@@ -4,8 +4,8 @@ title: "Rivet contributor setup"
 document_type: onboarding
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude, Codex]
 owner: Project maintainer
 systems: [Rivet]
@@ -31,7 +31,7 @@ tags: [rivet, onboarding, contributing, toolchain, vhco, testing, workspace, ffi
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, execution, policy, audit, transports, serve, cli, library, ffi
@@ -83,7 +83,7 @@ cbindgen --version       # cbindgen 0.29.4
 cc --version             # Apple clang version 21.0.0 (clang-2100.0.123.102)
 vhco --version           # vhco 1.6.0
 cargo build --workspace --all-features   # target/debug/rivet + target/debug/librivet.{dylib|so,a}
-target/debug/rivet --version             # rivet 0.1.0 until the release commit bumps the workspace version
+target/debug/rivet --version             # rivet 0.2.0
 ```
 
 A plain `cargo build` builds the library only. The binary needs `--features cli`, which `--all-features` includes.
@@ -497,6 +497,7 @@ A new keyword that `gen_grammar.py` cannot classify fails `check_keywords.py`. A
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 4 | 2026-09-29 | Claude | PLAN-2026-0002 D-39 (TASK-079): workspace and Cargo features, cbindgen and a C compiler, Python-only editor tooling (no Node), build librivet before `cargo test` (TRBL-2026-0006), the 0.2.0 suites, reading CI failures (TRBL-2026-0007), grammar regeneration, updated Perch tasks, macOS/Linux only; Perch content kept. |
 | 3 | 2026-09-28 | Codex | Changed Perch installation to a release build followed by bman add, as requested by the maintainer. |
 | 2 | 2026-09-28 | Codex | Documented all Perch tasks, working-directory behavior, prerequisites and fail-fast development gates. |

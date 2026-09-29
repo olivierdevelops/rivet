@@ -4,8 +4,8 @@ title: "UDP request and separately authorized reply"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 8
+last_updated: 2026-09-30
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, datagrams, policy, audit, cli, serve
@@ -81,7 +81,7 @@ which also asserts the manifest verdicts for this bundle shown in steps 4–5.
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 ```
 
 - `python3` (3.8+, standard library only) for the fixture [fixtures/udp_fixture.py](fixtures/udp_fixture.py).
@@ -600,6 +600,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 8 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 6 uses `policy explain --data` (alias `--params`) and was re-run (output unchanged); the `--json` denial envelope on stderr noted; one Verification Record row. |
 | 7 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-57): re-executed every step against the 0.2.0 release candidate (8031baa) with the local UDP fixture; `--params` dropped on `request` (kept on `policy explain`), HTTP body `{operation, data}`; results and errors replaced by 0.2.0 envelopes; `outputs --all --json` as an envelope; the bootstrap row now names `./app.rivet` (INC-2026-0008 placeholder gone); full policy hash; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 6 | 2026-09-28 | Claude | TASK-067 re-verification at 829ca43 (after the INC-2026-0005/0006 fixes): every step re-run, output identical except IDs and hashes; commit references updated; linked the release verification guide DEMO-2026-0015 |

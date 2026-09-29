@@ -4,8 +4,8 @@ title: "Rivet manuals index"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -31,7 +31,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, cli, policy, audit, serve, library, transports, connectors
@@ -80,7 +80,7 @@ Naming: `man-<year>-<nnnn>-<slug>.md`, lower case, ID matching the front matter.
 | [MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md) | Calling Rivet from C, Python and Go (librivet) | C/Python/Go developers | active |
 | [MAN-2026-0010](man-2026-0010-editor-support-and-highlighting.md) | Editor support and syntax highlighting | script authors, tool authors | active |
 
-All ten describe the **0.2.0 release candidate** (in progress; the latest published release is 0.1.0). MAN-0009/0010
+All ten describe release **0.2.0** (examples captured on its release candidate). MAN-0009/0010
 were verified at `e7ed8ed`; MAN-0001…0008 were re-captured on 2026-09-29 from `cargo build --release --features cli`
 with the source at `6f9943f` (the only source change after `e7ed8ed`). Supported platforms: macOS and Linux.
 Clients of 0.1.0 read [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md) first.
@@ -142,6 +142,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | Sweep defects resolved (INC-2026-0012); MAN-0001, MAN-0004, MAN-0006, MAN-0007 updated to the fixed behaviour. |
 | 6 | 2026-09-29 | Claude | Envelope sweep finished (TASK-070/072): MAN-0001…0008 re-captured on the 0.2.0-rc (source `6f9943f`) with their new 0.2.0 sections; verification line corrected; sweep defects listed. |
 | 5 | 2026-09-29 | Claude | 0.2.0: MAN-2026-0009 and MAN-2026-0010 rows; reading-order diagram with ten volumes; status re-verified on the 0.2.0 release candidate |

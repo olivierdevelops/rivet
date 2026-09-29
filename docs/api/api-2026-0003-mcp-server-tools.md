@@ -4,8 +4,8 @@ title: "Rivet MCP server: tools over Streamable HTTP and stdio"
 document_type: api
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** serve, mcp, sessions, registry
@@ -60,7 +60,7 @@ Every public operation in a Rivet bundle is an MCP **tool** whose name is the op
                           failure      : status error | cancelled, error = {…}   (isError true)
 ```
 
-Examples were captured on 2026-09-29 (macOS 26.4) from the 0.2.0 release candidate (`cargo build --release --features cli`, source at `6f9943f`): `rivet serve --listen 127.0.0.1:18950` on a scratch bundle (`demo.add`, `demo.countdown`, the duplex `chat.echo`, `demo.read` with `allow_read ./data/**`, `demo.flaky`), and `rivet serve --stdio` on [docs/demos/01-catalog](../demos/01-catalog/app.rivet). **Request, trace, session and MCP session IDs differ on every run.** `serverInfo.version` reads `0.1.0` until the release commit bumps the workspace version.
+Examples were captured on 2026-09-29 (macOS 26.4) from the 0.2.0 release candidate (`cargo build --release --features cli`, source at `6f9943f`): `rivet serve --listen 127.0.0.1:18950` on a scratch bundle (`demo.add`, `demo.countdown`, the duplex `chat.echo`, `demo.read` with `allow_read ./data/**`, `demo.flaky`), and `rivet serve --stdio` on [docs/demos/01-catalog](../demos/01-catalog/app.rivet). **Request, trace, session and MCP session IDs differ on every run.** `serverInfo.version` reads `0.2.0`.
 
 In 0.2.0 every tool result is the **ResponseEnvelope** of [API-2026-0006](api-2026-0006-envelopes.md) (0.1.0 put a bare
 Completion, SessionReceipt or error envelope in `structuredContent`; [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md#mcp) maps them).
@@ -305,7 +305,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 mcp-session-id: mcp_1a68f2fcea0c76135
 
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
 
 $ curl -s -i -X POST http://127.0.0.1:18950/mcp -H 'mcp-session-id: mcp_1a68f2fcea0c76135' -H 'content-type: application/json' \
     -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
@@ -329,7 +329,7 @@ deprecation: true
 
 $ … -d '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"rivet.capabilities","arguments":{}}}'     # abridged
 {"jsonrpc":"2.0","id":15,"result":{"content":[{"type":"text","text":"{…}"}],"structuredContent":{"request_id":"req_360403c8ec","trace_id":"tr_360403c8ec","operation":"rivet.capabilities","type":"result","status":"ok",
- "data":{"version":"0.1.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[…],
+ "data":{"version":"0.2.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[…],
          "sandbox":{"backend":"macos-seatbelt","status":"active",…},"serve":{…},"build_features":["serve","grpc","quic","oauth","cli"],"abi_version":1},
  "error":null,"effects":"none","data_count":0},"isError":false}}
 ```
@@ -363,7 +363,7 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protoc
     '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"demo.add","arguments":{"a":2,"b":3}}}' \
   | rivet --file app.rivet serve --stdio
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
 {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_01b9f53ad5\",\"trace_id\":\"tr_01b9f53ad5\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_01b9f53ad5","trace_id":"tr_01b9f53ad5","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 # stderr:
 {"listen_addr":null,"stdio":true,"surfaces":["mcp"],"auth_type":"none","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","policy_hash":null}
@@ -393,6 +393,7 @@ MCP sessions are held in memory by the serving process; they do not survive a re
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial MCP server contract with exchanges captured from `rivet serve` (HTTP and stdio) at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `tools/list` lists every built-in the principal may call (20, including `rivet.trace.export` and `rivet.capabilities`); emits/receives descriptions; `restrict` on `tools/call`; `traceparent` in/out. |
 | 3 | 2026-09-29 | Claude | 0.2.0 envelope sweep (D-42, TASK-070): `structuredContent` and the text block are the ResponseEnvelope (`accepted` for streaming tools; `isError` for `error` and `cancelled`); `outputSchema` is the envelope schema; `rivet.request` / `rivet.sessions.open` take `{operation, data}` (deprecated `{id, params}` with the `deprecation` header); transport refusals as envelopes; all exchanges re-captured on the 0.2.0-rc (source `6f9943f`); platform and feature notes. |

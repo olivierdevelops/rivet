@@ -4,8 +4,8 @@ title: "Approved proposals"
 document_type: reference
 status: approved
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -60,7 +60,7 @@ moves between lifecycle directories. Only its directory and `status` change.
 
 | Proposal | Status | Design revision | Decision | Plan | Summary |
 |---|---|---|---|---|---|
-| [PROP-2026-0002](prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | approved | 2 | [ADR-0004](../../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) | [PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) | Envelopes, pretty JSON, globals, Cargo library, C ABI, highlighting (v0.2.0) |
+| — | — | — | — | — | None: PROP-2026-0002 was implemented in v0.2.0 and moved to [implemented/](../implemented/index.md) |
 
 PROP-2026-0001 was implemented in v0.1.0 and moved to [implemented/](../implemented/index.md).
 
@@ -104,6 +104,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | PROP-2026-0002 implemented in v0.2.0; moved to implemented/. |
 | 3 | 2026-09-28 | Claude | PROP-2026-0002 approved (ADR-0004). |
 | 2 | 2026-09-28 | Claude | PROP-2026-0001 implemented (v0.1.0) and moved to implemented/. |
 | 1 | 2026-09-28 | Claude | Created the approved-proposals index with PROP-2026-0001 (revision 8, ADR-0001). |

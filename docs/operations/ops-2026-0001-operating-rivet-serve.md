@@ -4,8 +4,8 @@ title: "Operating rivet serve"
 document_type: operations
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -32,7 +32,7 @@ tags: [rivet, operations, serve, auth, policy, deployment, envelope, deprecation
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** serve, auth, policy, audit, http, ws, poll, mcp, sessions, cli
@@ -409,12 +409,12 @@ www-authenticate: Bearer
 
 {"request_id":"","trace_id":"","operation":"rivet.health","type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false},"effects":"none","data_count":0}
 $ curl -s -H 'Authorization: Bearer dev-token-ci' http://127.0.0.1:18926/v1/health
-{"request_id":"req_046d33a7b4","trace_id":"tr_046d33a7b4","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.1.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_046d33a7b4","trace_id":"tr_046d33a7b4","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
 $ curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer dev-token-ci' http://127.0.0.1:18926/healthz
 404
 ```
 
-(`version` reads `0.1.0` because the RC's workspace version was not yet bumped; the release build reports `0.2.0`.)
+(`version` reports the release, `0.2.0`.)
 
 ## Upgrade and Rollback
 
@@ -508,6 +508,7 @@ principal pattern matches `rivet.auth.*`. Configuration is not reloaded without 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial operations guide, verified against 0.1.0-dev (f40d4aa). |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `/v1/health` probes, per-request access log, SIGTERM drains (exit 0) and upgrade steps use it, enforced `max_buffered_bytes`, `--timeout` cap, 8 MiB outbound bounds, `traceparent`, `restrict`; limitations aligned with the manual. |
 | 3 | 2026-09-29 | Claude | PLAN-2026-0002 D-38 (TASK-079): `cli` feature install and feature checks, one policy per multi-file bundle, `Deprecation` monitoring (header, `"deprecated":1`, trace rows, CLI warnings), envelope examples re-captured on the 0.2.0-rc (bearer, trace, access log, health, startup refusals, drain), 0.1.x→0.2.0 upgrade order, macOS/Linux only. |

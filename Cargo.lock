@@ -2031,7 +2031,7 @@ dependencies = [
 
 [[package]]
 name = "rivet-ffi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "rivet-runtime",
  "serde_json",
@@ -2040,7 +2040,7 @@ dependencies = [
 
 [[package]]
 name = "rivet-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "apple-native-keyring-store",
  "async-trait",

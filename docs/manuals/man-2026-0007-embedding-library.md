@@ -4,8 +4,8 @@ title: "Embedding Rivet as a Rust library"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** library, registry, execution, policy, audit, sessions, serve
@@ -45,8 +45,8 @@ and every serve surface. Part of the [Rivet manual](man-2026-0001-rivet-manual.m
 signatures are in [API-2026-0004](../api/api-2026-0004-rust-library.md). Hosts in C, Python or Go use the C ABI
 instead ([MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md)).
 
-The latest published release is 0.1.0; **0.2.0 is in progress** and this volume describes its release candidate
-(source `6f9943f`, programs run on 2026-09-29, macOS 26.4). What changed for Rust hosts in 0.2.0: the package is
+The current release is **0.2.0** and this volume describes it (programs run on the release candidate, source
+`6f9943f`, 2026-09-29, macOS 26.4). What changed for Rust hosts in 0.2.0: the package is
 `rivet-runtime`, the public API is the crate-root **facade**, `Runtime::call` returns the **envelope** every surface
 prints, Cargo **features** trim the build, and `Runtime::load` turns a `.rivet` file into a **`Module`** object.
 Moving an existing host: [MIG-2026-0001 §Rust library](../migrations/mig-2026-0001-response-and-input-envelopes.md#rust-library).
@@ -555,6 +555,7 @@ on 2026-09-29 against the 0.2.0 release candidate (source `6f9943f`), and the AP
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial library guide for 0.1.0 with a host program compiled and run against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Policy::from_file/from_json`, `.ceiling`, `Runtime::scope` with stream/duplex handles, typed `DataSink` stop, `request_restricted`, `export_trace`, `graph`, structured cancellation, `shutdown`, `ServeOptions.access_log`; second program compiled and run; host program re-run unchanged; obsolete limitation removed. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-26, D-46): Cargo dependency on the git tag (`rivet-runtime`) with a features table and lean-build flow; facade path table (0.2.0 vs 0.1.0); `call`/`call_json` envelopes; host program ported to the facade and re-run on the 0.2.0-rc; scopes/ceilings program linked to API-2026-0004 (not duplicated); new **Load files as module objects** section with `examples/modules.rs` and its real output; `.root`; errors, limitations and version rows. |

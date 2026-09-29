@@ -4,8 +4,8 @@ title: "Rivet protocols and connectors"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** transports, http, datagrams, quic, grpc, connectors, auth, mcp, policy, files
@@ -42,8 +42,7 @@ next_review_date: 2026-10-29
 Pick the right transport, write it, grant it, and recover when it fails. Part of the
 [Rivet manual](man-2026-0001-rivet-manual.md). Language basics are in
 [MAN-2026-0003](man-2026-0003-language-guide.md); grant syntax in
-[MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md). The latest published release is 0.1.0; **0.2.0 is
-in progress**: request outputs below are 0.2.0 envelopes ([API-2026-0006](../api/api-2026-0006-envelopes.md)), and
+[MAN-2026-0005](man-2026-0005-policy-and-io-manifest-guide.md). The current release is **0.2.0**: request outputs below are 0.2.0 envelopes ([API-2026-0006](../api/api-2026-0006-envelopes.md)), and
 some protocols now depend on a **Cargo feature** of the build ([§Cargo features per protocol](#cargo-features-per-protocol)).
 
 ## Reading Order
@@ -750,6 +749,7 @@ policy and DNS boundaries; their wire behaviour is covered by the conformance su
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial protocols and connectors guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa with local fixtures. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`http.status` messages name the explicit port): 8 MiB size defaults and the host byte budget, secret sinks, multicast manifest now mirrors the runtime (workaround removed), OAuth token reuse and cache key, opaque MCP effects `unknown`, `mcp.schema_drift` drift check, sync output check first, MCP 401 lease invalidation; limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-27, D-46): new **Cargo features per protocol** section (feature table, flow, real `unsupported.feature` output of a lean build on 09-quic, 10-grpc, 07-oauth2 and `serve`); SSE, TCP, OAuth client-credentials and MCP bridge outputs re-captured as envelopes on the 0.2.0-rc; MCP bridge reads `structuredContent.data` from a 0.2.0 peer (and reports `effects: "unknown"`); Linux sandbox gated / Windows unsupported; error, limitation and version rows. |

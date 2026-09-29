@@ -1113,7 +1113,7 @@ History: 0.1.0-dev was first verified at f40d4aa and re-verified at 829ca43 (`if
 - [SYS-2026-0009: MCP client connectors](../integrations/sys-2026-0009-mcp-client-connectors.md)
 - [SYS-2026-0010: FFI surface and packaging](sys-2026-0010-ffi-surface-and-packaging.md) (`rivet_load`, module handles)
 - [SYS-2026-0011: Highlighting and grammar generation](sys-2026-0011-highlighting-and-grammar-generation.md)
-- [PROP-2026-0002](../../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (R7–R9 globals, R19–R24 modules) and [PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (D-31)
+- [PROP-2026-0002](../../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (R7–R9 globals, R19–R24 modules) and [PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (D-31)
 - [API-2026-0006: Envelopes](../../api/api-2026-0006-envelopes.md) (the `--json` output shape)
 - [MAN-2026-0003: Language guide](../../manuals/man-2026-0003-language-guide.md) (Globals, Modules)
 - [Demos](../../demos/README.md) (`01-catalog`)

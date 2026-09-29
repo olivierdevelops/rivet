@@ -4,8 +4,8 @@ title: "Rivet policy and I/O manifest guide"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, audit, files, transports, auth, connectors, cli, serve, language
@@ -43,7 +43,7 @@ Decide — and prove — what a Rivet bundle may touch. `policy.json` is the onl
 manifest (`rivet io`) lists every effect site so you can review it, check it against the policy, and generate a
 least-privilege draft. Part of the [Rivet manual](man-2026-0001-rivet-manual.md).
 
-The latest published release is 0.1.0; **0.2.0 is in progress**. New for policy authors in 0.2.0: **globals** keep
+The current release is **0.2.0**. New for policy authors in 0.2.0: **globals** keep
 targets exact (so grants can be exact), and **one policy governs a bundle and every module it imports**. Outputs of
 `rivet request` are 0.2.0 envelopes ([API-2026-0006](../api/api-2026-0006-envelopes.md)). Examples were captured on
 2026-09-29 from the 0.2.0 release candidate (source `6f9943f`); IDs differ on every run.
@@ -693,6 +693,7 @@ read/write grants (MAN-2026-0008), and dynamic targets can only be reviewed, nev
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial policy and I/O manifest guide for 0.1.0, verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`— no I/O` call rows): `policy explain --params` (exit 3), per-request `restrict` section, host ceiling, enforced `max_buffered_bytes`, limit field widths, `approved.overlaps` unused, `update` needs `stat`, URL path segment matching, multicast manifest mirrors runtime; limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-24, D-46): **Globals in targets** (literal + global targets are `exact`, drafts exact grants; params stay `param_dependent`; `check.global_not_constant`) and **One policy across modules** (entry policy only, `check.module_policy_ignored`, root-relative paths, manifest and bootstrap across files, denial then grant) sections with real output; request and `restrict` examples re-captured as envelopes; error rows; platforms; version rows. |

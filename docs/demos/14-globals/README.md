@@ -4,8 +4,8 @@ title: "Global constants shared by every operation"
 document_type: demo
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 2
+last_updated: 2026-09-30
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, audit, policy, cli
@@ -459,18 +459,19 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 - A target that contains a parameter stays `param_dependent` even when everything else comes from globals (PLAN-2026-0002 finding R9). The proposal's UC-04 sample showed `…/users/{id}` as `exact`; the build keeps the 0.1.0 rule, and `policy explain ID --data JSON` (alias `--params`) shows the concrete target.
 - Globals are per file: an imported module has its own globals and cannot read the importer's ([17-modules](../17-modules/README.md)).
-- The release candidate still prints version `0.1.0`; the bump happens at P5.
+- Recorded on the release candidate before the version bump; the tagged `v0.2.0` build prints `rivet 0.2.0`.
 
 ## Related Documents
 
 - [All sample folders](../README.md) · [demos index](../index.md) · [v0.2.0 release verification guide](../demo-2026-0020-v0-2-0-release-verification.md)
 - [Language guide MAN-2026-0003](../../manuals/man-2026-0003-language-guide.md) · [Policy and I/O manifest guide MAN-2026-0005](../../manuals/man-2026-0005-policy-and-io-manifest-guide.md)
 - [Error registry API-2026-0005](../../api/api-2026-0005-error-registry.md) · [Envelopes API-2026-0006](../../api/api-2026-0006-envelopes.md)
-- [Proposal PROP-2026-0002](../../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
+- [Proposal PROP-2026-0002](../../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [Plan PLAN-2026-0002](../../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)
 
 ## Change History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 `policy explain` uses `--data` (alias `--params`) and was re-run (output unchanged); caveat wording; one Verification Record row. |
 | 1 | 2026-09-29 | Claude | TASK-075 (PLAN-2026-0002 D-17): new demo; seven globals across four operations, exact manifest and draft, one-line retarget against a local http.server, the six global diagnostics and highlight tokens; executed against 0.2.0-dev (8031baa). |

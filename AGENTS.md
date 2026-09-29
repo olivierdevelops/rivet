@@ -524,12 +524,12 @@ command set, and the codebase-intelligence layer), see the **VHCO agent wiki ind
   `dist/rivet-<version>.vsix` without Node.js).
 - **Platforms:** macOS and Linux (CI green on both; the process sandbox is active on macOS and gated on Linux).
   Windows is not supported ([INC-2026-0011](docs/incidents/active/inc-2026-0011-windows-port-failures.md)).
-- **Releases:** 0.1.0 released (tag `v0.1.0`); 0.2.0 in progress
+- **Releases:** 0.2.0 current (tag `v0.2.0`); 0.1.0 previous (tag `v0.1.0`)
   ([PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)).
 - **Spec (hand-authored design):** `vhco-contract.json` — render with `vhco live`. Approved by the maintainer
   in [ADR-0001](docs/decisions/adr-0001-approve-rivet-runtime-design.md); design source of truth is
   [PROP-2026-0001](docs/proposals/implemented/prop-2026-0001-rivet-runtime.md) (0.1.0) and
-  [PROP-2026-0002](docs/proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (0.2.0,
+  [PROP-2026-0002](docs/proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (0.2.0,
   approved in [ADR-0004](docs/decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)); execution
   ledgers are [PLAN-2026-0001](docs/plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) and
   [PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md).

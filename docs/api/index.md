@@ -89,7 +89,7 @@ The 0.1.0 input keys `id`/`params` and the CLI flag `--params` are deprecated al
 
 ## Important relationships
 
-- Implements the surface requirements of [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (envelopes, facade, C ABI) under [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md), on top of [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) under [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).
+- Implements the surface requirements of [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (envelopes, facade, C ABI) under [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md), on top of [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md) under [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md).
 - Security properties of these surfaces (serve auth, principal map, MCP trust boundary): [SEC-2026-0001](../security/sec-2026-0001-policy-and-sandbox-model.md).
 - How the surfaces reach the shared dispatcher: [ARCH-2026-0001](../architecture/arch-2026-0001-rivet-runtime-architecture.md).
 

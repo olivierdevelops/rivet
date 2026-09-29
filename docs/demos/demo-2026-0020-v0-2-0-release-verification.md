@@ -4,8 +4,8 @@ title: "Rivet v0.2.0 release verification guide"
 document_type: demo
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -36,7 +36,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** every Rivet feature and surface (language through library), plus the C ABI (`librivet`), modules and the editor grammar
@@ -90,7 +90,7 @@ What 0.2.0 adds, and where each theme is verified:
 ```sh
 cargo build --release --workspace --all-features   # from the repository root: rivet + librivet
 export PATH="$PWD/target/release:$PATH"             # put this build first on PATH
-rivet --version                                      # rivet 0.1.0 until the P5 bump, then rivet 0.2.0
+rivet --version                                      # rivet 0.2.0
 ```
 
 | Needed for | Tool |
@@ -409,7 +409,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 ## Related Documents
 
 - [Sample folders](README.md) · [demos index](index.md) · [v0.1.0 release verification guide DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md)
-- [Implementation plan PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) · [Proposal PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
+- [Implementation plan PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) · [Proposal PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md)
 - [Envelopes API-2026-0006](../api/api-2026-0006-envelopes.md) · [C ABI API-2026-0007](../api/api-2026-0007-c-abi.md) · [Error registry API-2026-0005](../api/api-2026-0005-error-registry.md)
 - [Language guide MAN-2026-0003](../manuals/man-2026-0003-language-guide.md) · [C ABI and FFI MAN-2026-0009](../manuals/man-2026-0009-c-abi-and-ffi.md) · [Editor support MAN-2026-0010](../manuals/man-2026-0010-editor-support-and-highlighting.md)
 - [Windows port failures INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)
@@ -418,6 +418,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-29 | Claude | TASK-077 (PLAN-2026-0002 D-64): created the 0.2.0 release verification guide: header with tag/commit `TBD at P5`; U-01…U-24 (one per R1…R24) with inciting UQ, command, expected result and recorded evidence; per-surface success and failure (CLI, HTTP/SSE, polling, WebSocket, MCP, Rust library, C ABI, Python, editor) re-run at 166a98b; platform coverage (macOS here, Linux CI run 36483001760, Windows unsupported per INC-2026-0011); cleanup; verification record; caveats including the `conformance_samples` import gap. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: caveat findings fixed and removed; WS `c3` line re-captured with IDs; unary WS `seq` decision recorded. |
 | 3 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: WS and MCP per-surface examples re-captured; pointers to the detached `conflict.ref`, refused-input terminal record and `rivet.request` error examples; U-01, U-03, U-04, U-17, U-21…U-24 evidence cites the re-run steps; one Verification Record row. |

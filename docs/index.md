@@ -4,8 +4,8 @@ title: "Rivet documentation index"
 document_type: reference
 status: active
 created_date: 2026-09-27
-last_updated: 2026-09-29
-document_revision: 11
+last_updated: 2026-09-30
+document_revision: 12
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
-scope: Navigation of the Rivet documentation — every directory with its current documents, for release 0.1.0 and the 0.2.0 release candidate (in progress).
+scope: Navigation of the Rivet documentation — every directory with its current documents, for release 0.2.0 (current; 0.1.0 previous).
 reason: AGENTS.md "Directory Indexes" and PLAN-2026-0002 rows D-66, D-72 (TASK-080) — one page that points to every documentation directory and lifecycle document.
 dependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]
 related_documents: ["PROP-2026-0001", "PROP-2026-0002", "PLAN-2026-0001", "PLAN-2026-0002", "MIG-2026-0001", "INC-2026-0011", "STD-2026-0001"]
@@ -32,13 +32,13 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-27
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, execution, cli, http, mcp, library, policy, ffi
 
 Navigate the documentation. Current-state claims belong in [README.md](README.md); design decisions belong in
-proposals and decisions. The current release is **0.1.0**; **0.2.0 is in progress** (PLAN-2026-0002).
+proposals and decisions. The current release is **0.2.0** (PLAN-2026-0002, [REL-0.2.0](releases/rel-0.2.0-release-notes.md)); the previous release is 0.1.0.
 Supported platforms: macOS and Linux.
 
 ```text
@@ -61,7 +61,7 @@ docs/
 ├── testing/             TEST-2026-0001 … 0033 (one per 0.1.0 plan test row, latest recorded result)
 ├── reports/             RPT-2026-0001 validation of PLAN-2026-0001
 ├── releases/            REL-0.1.0 (first release, tag v0.1.0); REL-0.2.0 comes with P5
-├── plans/               PLAN-2026-0001 (v0.1.0, released) · PLAN-2026-0002 (v0.2.0, in progress)
+├── plans/               PLAN-2026-0001 (v0.1.0, released) · PLAN-2026-0002 (v0.2.0, released)
 ├── proposals/           design proposals by lifecycle
 │   ├── approved/        PROP-2026-0002 (v0.2.0: envelopes, globals, modules, library, C ABI, highlighting)
 │   ├── implemented/     PROP-2026-0001 Rivet runtime (implemented in v0.1.0, revision 9)
@@ -109,6 +109,7 @@ document changes lifecycle or a new directory or document is added.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 12 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 11 | 2026-09-29 | Claude | TASK-080 / D-66, D-72: status active (was draft) with a visible header; tree updated to the real inventory (ADR-0005, INC-0009…0011, TRBL-0004…0007, RES-0004, MAN-0009/0010, SYS-0010/0011, API-0006/0007 and schemas, new `migrations/`, STD-2026-0001, demos 14–17 in progress); 0.2.0 lifecycle diagram; reading order adds manuals, API, migrations and the other current-state directories; release 0.1.0 with 0.2.0 in progress. |
 | 10 | 2026-09-28 | Claude | Added manuals, system, API, architecture, security, operations, runbooks and onboarding to navigation. |
 | 9 | 2026-09-28 | Claude | Added incidents/ and troubleshooting/ to navigation. |

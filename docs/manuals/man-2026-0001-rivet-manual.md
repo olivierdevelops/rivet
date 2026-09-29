@@ -4,8 +4,8 @@ title: "Rivet manual"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,7 +32,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, execution, files, transports, http, datagrams, quic, grpc, connectors, auth, policy, audit, sessions, serve, poll, ws, mcp, cli, library, ffi
@@ -45,9 +45,8 @@ declared output, streamed items and errors — and the same operation is callabl
 network, processes, credentials, MCP and gRPC calls) goes through one policy broker that reads `policy.json`
 and denies anything not granted.
 
-This book is the **current-state manual for the implemented build**. The latest published release is **0.1.0**;
-**0.2.0 is in progress** (PLAN-2026-0002: implemented and documented, release pending) and this book describes the
-0.2.0 release candidate (source at `6f9943f`, re-verified 2026-09-29), marking what changed since 0.1.0. It explains
+This book is the **current-state manual for the implemented build**. The current release is **0.2.0**
+(PLAN-2026-0002) and this book describes it; examples were captured on the 0.2.0 release candidate (source at `6f9943f`, re-verified 2026-09-29), marking what changed since 0.1.0. It explains
 what you can do, why you would do it, and where the exact, copy-pasteable instructions live. Volumes MAN-2026-0002
 … MAN-2026-0010 hold the task procedures. **Supported platforms: macOS and Linux** (CI green on both); Windows is
 not supported ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
@@ -97,10 +96,9 @@ not supported ([INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-fa
 
 ## What's New in 0.2.0
 
-0.2.0 is **in progress** (PLAN-2026-0002 P4 documentation; P5 publishes the release). The latest published release
-is 0.1.0. Release history will be in `REL-0.2.0`; migrating an existing client is
-[MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md). Demos 14–17 are being written in
-parallel and are named by path.
+0.2.0 is the current release (PLAN-2026-0002; release notes
+[REL-0.2.0](../releases/rel-0.2.0-release-notes.md)); the previous release is 0.1.0. migrating an existing client is
+[MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md). Demos 14–17 in `docs/demos/` show each addition end to end.
 
 ```text
  0.1.0 ───────────────────────────────────────────▶ 0.2.0 (release candidate)
@@ -243,7 +241,7 @@ Build from source with Cargo (Rust 1.90.0, pinned by `rust-toolchain.toml`) on m
 
 ```bash
 cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli
-rivet --version                      # rivet 0.2.0   (a checkout before the release commit prints 0.1.0)
+rivet --version                      # rivet 0.2.0
 ```
 
 ## Feature Catalogue
@@ -608,7 +606,7 @@ surfaces (MAN-2026-0006) expose every operation.
 ## Related Documents
 
 - Plans: [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) (rows D-34 … D-41), [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (rows D-20, D-46)
-- 0.2.0: [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md), [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md), [API-2026-0006](../api/api-2026-0006-envelopes.md), [API-2026-0007](../api/api-2026-0007-c-abi.md), [MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md), [MAN-2026-0010](man-2026-0010-editor-support-and-highlighting.md), [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)
+- 0.2.0: [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md), [MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md), [API-2026-0006](../api/api-2026-0006-envelopes.md), [API-2026-0007](../api/api-2026-0007-c-abi.md), [MAN-2026-0009](man-2026-0009-c-abi-and-ffi.md), [MAN-2026-0010](man-2026-0010-editor-support-and-highlighting.md), [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)
 - Approved design: [PROP-2026-0001](../proposals/implemented/prop-2026-0001-rivet-runtime.md)
 - Numbered examples: [REF-2026-0002](../references/ref-2026-0002-language-and-usage.md)
 - System documents: [SYS-2026-0001](../system/components/sys-2026-0001-compiler-and-catalog.md),
@@ -621,6 +619,7 @@ surfaces (MAN-2026-0006) expose every operation.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial root manual for the implemented 0.1.0 build: catalogue, concepts, limitations, glossary; every command verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (TASK-095 doc part): What's New and catalogue rows for `else`, `with file open`, `check` warnings, `graph`, `trace export`, `rivet.capabilities`, `restrict`, ceiling, health/access log/drain, `traceparent`, secret taint on every sink, `if_version`, buffered-bytes budget; configuration and error rows; new **Known Limitations** chapter listing exactly the current limitations; known defects linked. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-20, D-46): **What's New in 0.2.0** (0.1.0 table kept as "Introduced in 0.1.0"; 0.2.0 marked in progress); catalogue rows for envelopes, input envelope and `--data`/`--input`, deprecation, pretty output, globals, modules, the Cargo dependency with features, the facade, the C ABI and highlighting, with why/when and demo paths 14–17; reading path adds MAN-0009/0010 and MIG-0001; concepts, mental model and configuration for envelopes, globals, modules and features; error rows for the new codes; Known Limitations: removed "no `import`", added macOS/Linux support and Windows unsupported (INC-2026-0011), Linux sandbox gated (`unsupported.sandbox_backend`), no URL imports / hot reload, compiled-out features, envelope deviations; version applicability. |

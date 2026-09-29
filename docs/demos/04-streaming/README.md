@@ -4,8 +4,8 @@ title: "Streaming data and contextual cleanup"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** language, execution, files, transports, policy, cli, serve, http
@@ -68,7 +68,7 @@ Streaming data and contextual cleanup. Delivery stage: **A; WebSocket in B**. Re
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 python3 -m venv "$TMPDIR/rivet-demo-venv" && "$TMPDIR/rivet-demo-venv/bin/pip" install websockets
 ```
 
@@ -419,6 +419,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: the outbound WebSocket steps 6–7 re-run; output unchanged except request/trace IDs and the fixture's client port (none of the INC-2026-0012 fixes changes this path); two Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-53): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` dropped (no parameters), HTTP bodies `{operation}`; NDJSON and SSE records, the `stream.required` refusal and every result replaced by 0.2.0 stream records and envelopes (`status: cancelled` on Ctrl-C); `outputs --all --json` as an envelope; record diagram; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: `files.chunks` uses `with file open … mode read` (G35); added fixtures/ws_fixture.py and a scratch-copy WebSocket run; executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: `outputs` shows `emits integer` without the description and bytes items as a tagged base64 object; `--check-policy` summary lines; the CLI without `--stream` returns the Completion (only HTTP refuses with `stream.required`); added timeout (exit 6) and Ctrl-C (exit 130) cleanup; removed draft disclaimers; status active; verified_against 0.1.0. |

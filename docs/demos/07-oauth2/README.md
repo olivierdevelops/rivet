@@ -4,8 +4,8 @@ title: "OAuth 2.0 without returning tokens"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** auth, policy, audit, transports, cli, serve, http
@@ -68,7 +68,7 @@ OAuth 2.0 without returning tokens. Delivery stage: **B**. Read [app.rivet](app.
 
 ```sh
 cargo build --release --features cli       # from the repository root (oauth is a default feature)
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 ```
 
 - `python3` (standard library only) for [fixtures/oauth_fixture.py](fixtures/oauth_fixture.py): an authorization server (`POST /token`, client `rivet-service`, secret `demo-secret-not-real`, tokens `DEMO-AT-<n>`) and a resource server (`GET /contacts`, accepts only issued tokens). `DEMO_FIXTURE_TOKEN_DELAY=5` makes `/token` answer late.
@@ -392,6 +392,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 2 `policy explain` uses `--data` (alias `--params`) and was re-run; one Verification Record row. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-56): re-executed every step against the 0.2.0 release candidate (8031baa) with the local OAuth fixture; `--params` dropped (no parameters); results and every auth, permission and timeout error replaced by 0.2.0 envelopes; `outputs`, `policy explain` and `trace show` JSON as envelopes; token still never leaks (`grep -c DEMO-AT` 0); 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/oauth_fixture.py (ports 18870/18871) and a scratch-copy run; executed every step against 0.1.0-dev (829ca43) and pasted real output: check, outputs (`(open: extra fields allowed)`), manifest (summary line, `use` row before `read, write`), `auth.client_secret_missing`, `auth.token_endpoint_failed`, success, reuse through serve, trace, token-leak grep, `allow_env` denial, `timeout.auth_token`; removed draft disclaimers; status active; verified_against 0.1.0. |

@@ -37,7 +37,7 @@ approves one, it moves to [approved/](../approved/index.md) and keeps its file n
 
 | Proposal | Status | Target | Summary |
 |---|---|---|---|
-| [PROP-2026-0002](../approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | approved (moved) | v0.2.0 | Standard input/output envelopes, pretty JSON, `global` constants, Rivet as a Cargo dependency, C ABI shared/static library, syntax highlighting |
+| [PROP-2026-0002](../implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) | approved (moved) | v0.2.0 | Standard input/output envelopes, pretty JSON, `global` constants, Rivet as a Cargo dependency, C ABI shared/static library, syntax highlighting |
 
 - PROP-2026-0001 (Rivet runtime) was implemented in v0.1.0 and lives at
   [implemented/prop-2026-0001-rivet-runtime.md](../implemented/prop-2026-0001-rivet-runtime.md).

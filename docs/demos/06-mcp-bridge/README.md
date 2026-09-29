@@ -4,8 +4,8 @@ title: "Bridge a remote MCP connector into local operations"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** connectors, registry, policy, mcp, cli, serve
@@ -73,7 +73,7 @@ The connector's tool schemas come from a **reviewed snapshot**, never from disco
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 ```
 
 - `python3` (standard library only) for [fixtures/crm_mcp.py](fixtures/crm_mcp.py), an MCP Streamable HTTP server that replays [schemas/tools-list.fixture.json](schemas/tools-list.fixture.json) and [schemas/search-result.fixture.json](schemas/search-result.fixture.json) (query `Ada` → one contact; any other query → `isError: true`). `--drift` serves a changed `search` input schema.
@@ -472,6 +472,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 5 uses `policy explain --data` (`--params` alias noted) and adds the `--json` denial envelope on stderr (exit 3) under sync.json; steps 6–8 re-run (new IDs); step 8 adds the `rivet.request` error naming `contacts.find`; three Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-55): re-executed every step against the 0.2.0 release candidate (8031baa) with the unchanged fixture (same snapshot sha256); `--params` → `--data` on `request`; `connectors sync`, results, `mcp.tool_failed`, `mcp.schema_drift` and incoming-MCP `structuredContent` replaced by 0.2.0 envelopes (a failed nested call now reports the outer request ID and operation); 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/crm_mcp.py (port 18860) and a scratch-copy run; the snapshot format is now real (`rivet.mcp.snapshot/1`), created by `connectors sync`, promoted and approved in the walkthrough; executed every step against 0.1.0-dev (829ca43) and pasted real output: `not_found.mcp_snapshot`, sync (denied / written / never overwritten), `mcp.snapshot_unapproved`, check/list/outputs (imported tool listed), manifest, `policy explain`, success, `mcp.tool_failed`, `mcp.schema_drift`, incoming MCP; removed draft disclaimers; status active; verified_against 0.1.0. |

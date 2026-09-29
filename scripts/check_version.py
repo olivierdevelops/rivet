@@ -87,6 +87,12 @@ def main():
         print(f'{"ok " if got else "BAD"} {manifest + " version.workspace":<34} {"yes" if got else "no"}')
         if not got:
             problems.append(manifest)
+    # rivet-ffi pins its path dependency on rivet-runtime to the same version.
+    ffi_manifest = os.path.join(ROOT, 'ffi', 'Cargo.toml')
+    if os.path.exists(ffi_manifest):
+        m = re.search(r'package\s*=\s*"rivet-runtime"[^}]*version\s*=\s*"([^"]+)"', open(ffi_manifest).read())
+        if m:
+            check('ffi/Cargo.toml rivet-runtime requirement', m.group(1))
     if not os.path.exists(binary):
         print(f'BAD {"rivet binary":<34} missing: {binary} (cargo build --release --features cli)')
         problems.append('rivet binary')

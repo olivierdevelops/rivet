@@ -262,7 +262,7 @@ from the graph. The fallback in PROP-2026-0002's risk table is not needed.
 
 ## Related Documents
 
-- [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) — C-08, C-10, R10–R13, complexity unknowns
+- [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) — C-08, C-10, R10–R13, complexity unknowns
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) — TASK-005…TASK-009, P2c, P2d
 - [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md) — the decision this research supports
 - [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) — design approval

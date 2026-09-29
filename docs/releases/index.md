@@ -4,8 +4,8 @@ title: "Rivet releases"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 1
+last_updated: 2026-09-30
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -49,7 +49,8 @@ Release documents (DOCUMENTATION §4.20, §33), filed flat as `rel-<version>-rel
 
 | Release | Tag | Date | Plan | Status |
 |---|---|---|---|---|
-| [REL-0.1.0](rel-0.1.0-release-notes.md) | `v0.1.0` | 2026-09-28 | [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | first release |
+| [REL-0.2.0](rel-0.2.0-release-notes.md) | `v0.2.0` | 2026-09-30 | [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) | current release |
+| [REL-0.1.0](rel-0.1.0-release-notes.md) | `v0.1.0` | 2026-09-28 | [PLAN-2026-0001](../plans/plan-2026-0001-rivet-v0-1-0-implementation-and-release.md) | previous release (first release) |
 
 ## Recently added or updated
 
@@ -67,4 +68,5 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-30 | Claude | Added REL-0.2.0. |
 | 1 | 2026-09-28 | Claude | Created. |

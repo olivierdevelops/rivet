@@ -2,7 +2,7 @@
   "name": "rivet",
   "displayName": "Rivet",
   "description": "Syntax highlighting, comments, brackets and end-based indentation for Rivet (.rivet) sources",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "rivet",
   "license": "MIT",
   "repository": {

@@ -4,8 +4,8 @@ title: "QUIC streams and HTTP3"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 6
+last_updated: 2026-09-30
+document_revision: 7
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** quic, transports, policy, cli
@@ -65,7 +65,7 @@ QUIC streams and HTTP3. Delivery stage: **B**. Read [app.rivet](app.rivet) along
 
 ```sh
 cargo build --release --features cli       # from the repository root (quic is a default feature)
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 python3 -m venv "$TMPDIR/rivet-quic-venv" && "$TMPDIR/rivet-quic-venv/bin/pip" install aioquic
 ```
 
@@ -349,6 +349,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-58): re-executed every step against the 0.2.0 release candidate (8031baa) with the aioquic fixture; `--params` dropped (no parameters); results and errors replaced by 0.2.0 envelopes; `outputs --all --json` as an envelope; `quic` feature note; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/quic_fixture.py (ports 18890/18891) and a scratch-copy run with a throwaway CA and `tls ca_file`; executed every step against 0.1.0-dev (829ca43) and pasted real output: check, outputs, manifest (summary line, `ca_file` file sites), QUIC status, HTTP/3 items, cross-policy denials, stream `timeout`, `quic.tls` (ALPN, unknown issuer), `tls.handshake` for a non-h3 peer; removed draft disclaimers; status active; verified_against 0.1.0. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): `io --by target` gains ORIGIN (`with quic`, `http get`), PHASE and NEEDS FILE. |

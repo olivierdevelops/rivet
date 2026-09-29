@@ -70,7 +70,7 @@ Neither is a defect in the implementation.
 
 ## Plan Under Validation
 
-[PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md). It implements [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) revision 3, approved in [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) revision 2, for phases P1 and P2a–P2f. It covers:
+[PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md). It implements [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) revision 3, approved in [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) revision 2, for phases P1 and P2a–P2f. It covers:
 - envelopes, input and pretty output;
 - globals;
 - the package, facade and features;
@@ -300,7 +300,7 @@ The two PARTIAL results, R12 and R18, depend on work that the plan schedules aft
 
 ## Related Documents
 
-- [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) · [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) · [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md) · [RES-2026-0004](../research/res-2026-0004-workspace-ffi-and-feature-experiments.md)
+- [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) · [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md) · [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md) · [RES-2026-0004](../research/res-2026-0004-workspace-ffi-and-feature-experiments.md)
 - [Tests](../testing/index.md): TEST-2026-0034…0053 (new), TEST-2026-0001…0032 (re-recorded)
 - Incidents: [INC-2026-0009](../incidents/resolved/inc-2026-0009-numeric-index-paths-do-not-parse.md) · [INC-2026-0010](../incidents/resolved/inc-2026-0010-ffi-rlib-output-collision.md) · [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md) · [INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md)
 - Troubleshooting: [TRBL-2026-0004](../troubleshooting/trbl-2026-0004-vhco-sync-drift-after-renaming-triggers-or-steps.md) · [TRBL-2026-0005](../troubleshooting/trbl-2026-0005-contract-written-ahead-of-code-drifts-on-ports-and-step-order.md) · [TRBL-2026-0006](../troubleshooting/trbl-2026-0006-cargo-test-leaves-cdylib-and-staticlib-in-deps.md) · [TRBL-2026-0007](../troubleshooting/trbl-2026-0007-reading-ci-failures-through-annotations.md)

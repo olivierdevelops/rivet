@@ -2,10 +2,10 @@
 document_id: PROP-2026-0002
 title: "Standard envelopes, pretty JSON, global constants, embeddable library, C ABI and syntax highlighting"
 document_type: proposal
-status: approved
+status: implemented
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 3
+last_updated: 2026-09-30
+document_revision: 4
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -38,7 +38,7 @@ next_review_date: 2026-10-28
 > **Revision 3 amendment (2026-09-28):** the approved scope now also includes file modules. They add UQ-09,
 > G-08, R19–R24, UC-10, UC-11, C-14, C-15, F-19–F-24 and T-16–T-20 (ADR-0004 revision 2).
 
-> **Status:** Approved
+> **Status:** Implemented
 > **Created:** 2026-09-28
 > **Last Updated:** 2026-09-28
 > **Affected Versions:** 0.2.0
@@ -1100,6 +1100,7 @@ Open questions Q-01…Q-06 are resolved with the recommendations in the table ab
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 4 | 2026-09-30 | Claude | Implemented in v0.2.0 (PLAN-2026-0002, REL-0.2.0); moved to implemented/. |
 | 3 | 2026-09-28 | Claude | Amendment (UQ-09): file modules — `import … as ALIAS [public]` in `.rivet` and `Runtime::load`/`rivet_load` module objects; namespaced by alias; loader's policy only. Added P-08, G-08, R19–R24, UC-10/UC-11, C-14/C-15, F-19–F-24, T-16–T-20, Q-07. |
 | 2 | 2026-09-28 | Claude | Approved (ADR-0004); moved to approved/; Q-01…Q-06 resolved with the recommendations; PLAN-2026-0002 created. |
 | 1 | 2026-09-28 | Claude | Initial draft from UQ-01…UQ-08, with the maintainer's clarifications: library = Cargo dependency, globals = immutable constants, no `error` in input. |

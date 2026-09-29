@@ -4,8 +4,8 @@ title: "Rivet project status"
 document_type: reference
 status: active
 created_date: 2026-09-27
-last_updated: 2026-09-29
-document_revision: 12
+last_updated: 2026-09-30
+document_revision: 13
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
-scope: Current Rivet runtime (release 0.1.0; 0.2.0 in progress), source build, installation and developer workflows, and links to the 0.2.0 documentation.
+scope: Current Rivet runtime (release 0.2.0), source build, installation and developer workflows, and links to the 0.2.0 documentation.
 reason: Record the project brief and requested changes as reviewable contracts and examples.
 dependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]
 related_documents: ["PROP-2026-0001", "PROP-2026-0002", "PLAN-2026-0002", "MIG-2026-0001", "API-2026-0006", "API-2026-0007", "MAN-2026-0009", "MAN-2026-0010", "INC-2026-0011", "STD-2026-0001", "REF-2026-0001", "REF-2026-0002"]
@@ -32,9 +32,9 @@ next_review_date: 2026-10-27
 
 Rivet is a Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.
 
-**Current release: 0.1.0** (tag `v0.1.0`, [REL-0.1.0](docs/releases/rel-0.1.0-release-notes.md)). **0.2.0 is in
-progress** ([PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md): implemented and
-documented on `main`, release pending). The repository contains the Rust library, the `rivet` binary, the C ABI
+**Current release: 0.2.0** (tag `v0.2.0`, [REL-0.2.0](docs/releases/rel-0.2.0-release-notes.md); plan
+[PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)). Previous release: 0.1.0
+([REL-0.1.0](docs/releases/rel-0.1.0-release-notes.md)). The repository contains the Rust library, the `rivet` binary, the C ABI
 library `librivet`, editor support, conformance tests and runnable source-build workflows. **Supported platforms:
 macOS and Linux** (CI green on both); Windows is not supported
 ([INC-2026-0011](docs/incidents/active/inc-2026-0011-windows-port-failures.md)).
@@ -42,8 +42,8 @@ Start with the [current manual](docs/manuals/man-2026-0001-rivet-manual.md) and
 [installation guide](docs/manuals/man-2026-0002-installation-and-quickstart.md).
 
 ```text
- 0.1.0 (released)                               0.2.0 (in progress on main)
- ────────────────                               ───────────────────────────
+ 0.1.0 (previous release)                       0.2.0 (current release)
+ ────────────────────────                       ───────────────────────
  per-surface JSON shapes ("result", …)   ──▶    one response envelope everywhere (breaking; MIG-2026-0001)
  {id, params} · --params                 ──▶    {operation, data} · --data · --input (old keys deprecated)
  one file per bundle                     ──▶    global constants · import "./x.rivet" as x · rt.load
@@ -299,6 +299,7 @@ approved by the maintainer on 2026-09-28.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 13 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 12 | 2026-09-29 | Claude | TASK-080 / D-49: current release 0.1.0 with 0.2.0 in progress (0.1.0 → 0.2.0 diagram and links to MIG-0001, API-0006/0007, MAN-0009/0010, globals/modules, facade); Cargo install with `--features cli`, librivet and `.vsix`; quickstart re-captured as 0.2.0 envelopes with `--data`; runtime overview adds the C ABI and envelopes; platforms macOS and Linux, Windows unsupported (INC-2026-0011), Linux sandbox gated; STD-2026-0001 and Perch content kept. |
 | 11 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard. |
 | 10 | 2026-09-28 | Claude | TASK-069: verified quickstart (deny-by-default → io → policy generate → allowed) and the current limitations table. |

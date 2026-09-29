@@ -4,8 +4,8 @@ title: "Rivet proposals"
 document_type: reference
 status: draft
 created_date: 2026-09-27
-last_updated: 2026-09-28
-document_revision: 9
+last_updated: 2026-09-30
+document_revision: 10
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -40,16 +40,16 @@ Design proposals for Rivet, one directory per lifecycle state. Documents are nam
      └─(rejection)─▶ rejected/  └─(replaced)─▶ superseded/                  (none)
 
   today:  draft/     (empty)
-          approved/  PROP-2026-0002  ── ADR-0004 ──▶ PLAN-2026-0002 (v0.2.0)
-          implemented/  PROP-2026-0001  rev 9  ── ADR-0001 ──▶ PLAN-2026-0001 ──▶ v0.1.0
+          approved/  (empty)
+          implemented/  PROP-2026-0001 ──▶ v0.1.0 · PROP-2026-0002 ──▶ v0.2.0
 ```
 
 ## Reading order and active documents
 
 | Directory | Contents | Index |
 |---|---|---|
-| `implemented/` | [PROP-2026-0001 — Rivet runtime](implemented/prop-2026-0001-rivet-runtime.md), implemented in v0.1.0, R1–R26 | [implemented/index.md](implemented/index.md) |
-| `approved/` | [PROP-2026-0002 — envelopes, globals, library, C ABI, highlighting](approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md), approved (ADR-0004), in PLAN-2026-0002 | [approved/index.md](approved/index.md) |
+| `implemented/` | [PROP-2026-0001 — Rivet runtime](implemented/prop-2026-0001-rivet-runtime.md) (v0.1.0); [PROP-2026-0002 — envelopes, globals, library, C ABI, highlighting](implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) (v0.2.0) | [implemented/index.md](implemented/index.md) |
+| `approved/` | Empty | [approved/index.md](approved/index.md) |
 | `draft/` | Empty | [draft/index.md](draft/index.md) |
 
 1. [Implemented proposals](implemented/index.md), then [PROP-2026-0001](implemented/prop-2026-0001-rivet-runtime.md).
@@ -68,6 +68,7 @@ TASK-010). Update this index when a document changes lifecycle or a new related 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 10 | 2026-09-30 | Claude | PROP-2026-0002 implemented in v0.2.0. |
 | 9 | 2026-09-28 | Claude | PROP-2026-0002 approved (ADR-0004). |
 | 8 | 2026-09-28 | Claude | PROP-2026-0002 drafted. |
 | 7 | 2026-09-28 | Claude | PROP-2026-0001 implemented in v0.1.0; moved to implemented/. |

@@ -4,8 +4,8 @@ title: "Deny-by-default sandbox and I/O inventory"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -33,7 +33,7 @@ verified_against: "0.2.0"
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** policy, audit, files, cli, serve, http
@@ -69,7 +69,7 @@ Four policy files show the same bundle under different authority. Only the file 
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # the release candidate prints rivet 0.1.0 until the P5 bump
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
 ```
 
 `curl` for step 8; loopback port 18811 free.
@@ -523,6 +523,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 3 uses `policy explain --data` (alias `--params`) and was re-run; the `--json` denial is now a `status: error` envelope on stderr (exit 3), captured; one Verification Record row. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-60): re-executed every step against the 0.2.0 release candidate (8031baa); `--params` → `--data` on `request` (kept on `policy explain`); results and errors replaced by 0.2.0 envelopes; JSON manifest, `policy explain --json`, `policy generate` conflict and `trace show --json` described as envelopes; bootstrap list without the `(+ imports)` placeholder; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: executed every step against 0.1.0-dev (829ca43) and pasted real output. Fixes: summary lines under each table; `--by capability` has a header and an `unused:` line; the JSON excerpt is replaced by the real site fields; `--check-files` summary counts files, not rows; `policy generate` stderr summary; `policy explain` output; `policy.invalid` messages; trace `ATTEMPTS` reads `1 allowed`; removed the stale committed `out/snapshot.json` (a leftover run output that made the first snapshot conflict); removed draft disclaimers; status active; verified_against 0.1.0. |

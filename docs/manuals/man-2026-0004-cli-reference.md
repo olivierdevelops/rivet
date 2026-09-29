@@ -4,8 +4,8 @@ title: "Rivet CLI reference"
 document_type: manual
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 4
+last_updated: 2026-09-30
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -32,18 +32,17 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 and later
 > **Owner:** Project maintainer
 > **Affected Components:** cli, registry, execution, policy, audit, connectors, auth, serve, sessions
 
 ## Purpose
 
-The complete command-line contract of `rivet`. The latest published release is 0.1.0; **0.2.0 is in progress** and
-this reference describes its release candidate: every row was taken from `rivet … --help` of
+The complete command-line contract of `rivet`. The current release is **0.2.0** and this reference describes it: every row was taken from `rivet … --help` of
 `cargo build --release --features cli` (source `6f9943f`) and every example was executed on 2026-09-29 (macOS 26.4)
 from `docs/demos/NN-*/` or a scratch bundle as stated. **Request and trace IDs differ on every run**; `--version`
-prints `rivet 0.1.0` until the release commit. Part of the [Rivet manual](man-2026-0001-rivet-manual.md).
+prints `rivet 0.2.0`. Part of the [Rivet manual](man-2026-0001-rivet-manual.md).
 
 What changed for CLI users in 0.2.0 ([MIG-2026-0001](../migrations/mig-2026-0001-response-and-input-envelopes.md#cli)):
 
@@ -84,7 +83,7 @@ Global options and exit codes first, then commands in the order `rivet --help` p
 | `--pretty` | flag (0.2.0) | indent any JSON output (2 spaces, same key order) | refused with `--stream` (`validation.usage`, exit 2) |
 | `--endpoint URL` | URL | send `request`, `list`, `describe`, `outputs`, `io`, `trace`, `auth` to a running server | not with `--file`/`--policy`; `check`, `graph`, `policy`, `serve` refused (exit 2) |
 | `--token-file FILE` | path | bearer token for `--endpoint` | never pass tokens in argv or env |
-| `-h`, `--help` / `-V`, `--version` | flag | help / `rivet 0.2.0` (`rivet 0.1.0` before the release commit) | — |
+| `-h`, `--help` / `-V`, `--version` | flag | help / `rivet 0.2.0` | — |
 
 Output streams (0.2.0): a **success** envelope (`status: "ok"`) goes to **stdout**; an **error or cancelled**
 envelope goes to **stderr** with the registry exit code, so `2>/dev/null` leaves stdout empty on failure. Compile
@@ -815,6 +814,7 @@ The CLI-relevant rows of the [manual's Known Limitations](man-2026-0001-rivet-ma
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial CLI reference for 0.1.0, every command executed against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: `rivet graph`, `rivet trace export` (remote form verified after the 2a751ab fix), emits/receives descriptions, `check` warnings and `check.unknown_function`, `policy explain --params` (exit 3), `--timeout` 10m cap, `connectors sync` output check before discovery and `mcp.schema_drift`, serve access log/health/drain, exit-code flow diagram; limitations aligned with MAN-2026-0001. |
 | 3 | 2026-09-29 | Claude | 0.2.0 (D-23, D-46): `--data`, `--input FILE\|-`, `--pretty`, the `--params` deprecation warning (and the non-deprecated `policy explain`/`auth complete --params`), `rivet highlight` (formats, failures, a known deviation), envelopes for every JSON output (`list`, `describe`, `outputs`, `check`, `graph`, `io`, `policy explain/generate`, `trace`), stdout/stderr split, exit codes for the new codes; every example re-captured on the 0.2.0-rc (source `6f9943f`); `connectors sync` check order corrected; macOS/Linux. |

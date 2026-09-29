@@ -4,8 +4,8 @@ title: "Rivet documentation current state"
 document_type: reference
 status: active
 created_date: 2026-09-27
-last_updated: 2026-09-29
-document_revision: 15
+last_updated: 2026-09-30
+document_revision: 16
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
-scope: Current runtime documentation and developer workflows — release 0.1.0 and the 0.2.0 release candidate on `main` (in progress).
+scope: Current runtime documentation and developer workflows — release 0.2.0 (current) and 0.1.0 (previous).
 reason: Record the project brief and requested changes as reviewable contracts and examples.
 dependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]
 related_documents: ["PROP-2026-0001", "PROP-2026-0002", "PLAN-2026-0002", "MIG-2026-0001", "API-2026-0006", "API-2026-0007", "MAN-2026-0009", "MAN-2026-0010", "SYS-2026-0010", "SYS-2026-0011", "INC-2026-0011", "STD-2026-0001", "REF-2026-0002"]
@@ -30,9 +30,8 @@ next_review_date: 2026-10-27
 
 # Rivet documentation current state
 
-Rivet is implemented as a Rust library and `rivet` binary. The **current release is 0.1.0** (git tag `v0.1.0`, the
-first release; `main` and the tag are pushed to `origin`, no artifacts are published). **0.2.0 is in progress** on
-`main`: implemented and documented, release pending (PLAN-2026-0002 P5). The source tree contains the runtime, the C
+Rivet is implemented as a Rust library and `rivet` binary. The **current release is 0.2.0** (git tag `v0.2.0`, pushed to
+`origin` with `main`; release artifacts are built locally, see REL-0.2.0). The previous release is 0.1.0 (tag `v0.1.0`). The source tree contains the runtime, the C
 ABI library `librivet` (`ffi/`), editor support (`editors/`), conformance tests, protocol fixtures and manuals.
 Supported platforms: **macOS and Linux** (CI green on both); Windows is not supported
 ([INC-2026-0011](incidents/active/inc-2026-0011-windows-port-failures.md)).
@@ -88,7 +87,7 @@ commands.perch -> Cargo build/install/test/lint
 
 [PLAN-2026-0002](plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) (approved in
 [ADR-0004](decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)) implements
-[PROP-2026-0002](proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) for v0.2.0.
+[PROP-2026-0002](proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) for v0.2.0.
 P1 and P2a–P2f are done on `main` (476 tests; CI green on macOS and Linux); P4 documentation is under way; P5
 releases.
 
@@ -143,6 +142,7 @@ tree. Platform support beyond the locally verified environment requires the corr
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 16 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 15 | 2026-09-29 | Claude | TASK-080 / D-49, D-66: current release 0.1.0 (remote `origin`, no published artifacts) with 0.2.0 in progress; 0.2.0 feature table linking API-0006/0007, MIG-0001, MAN-0009/0010, SYS-0010/0011, globals/modules, facade; Perch `ffi` and the Cargo install with `--features cli`; platforms macOS and Linux, Windows unsupported (INC-2026-0011); seven surfaces and two crates; STD-2026-0001 and Perch content kept. |
 | 14 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard to current documentation. |
 | 13 | 2026-09-28 | Claude | PLAN-2026-0002 P2b, P2f and P2e done (globals, file modules, highlighting); INC-2026-0009 resolved. |

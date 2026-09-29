@@ -72,7 +72,7 @@ None.
 ## Important relationships
 
 - The target contract: [API-2026-0006](../api/api-2026-0006-envelopes.md).
-- Requirement R5 of [PROP-2026-0002](../proposals/approved/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md),
+- Requirement R5 of [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md),
   executed under [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md).
 
 ## Unresolved work and open questions
