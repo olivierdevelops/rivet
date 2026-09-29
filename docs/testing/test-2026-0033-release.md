@@ -5,7 +5,7 @@ document_type: test
 status: completed
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 2
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -74,6 +74,8 @@ Tests executed:
 
 ## Actual Results
 
+**v0.2.1 run (2026-09-30).** Release commit `9074f593ea8c11cfb5a9e077bd7961c8c8701070` has the annotated tag `v0.2.1` (tag object 899d24c). The tag resolves to that commit, `git describe --tags --exact-match HEAD` prints `v0.2.1`, and the working tree was clean. `scripts/check_version.py --tag` reports 0.2.1 everywhere: the workspace, the members, the ffi requirement, `--version`, MCP, capabilities, `rivet_version()`, and ABI 1 / 1. `main` and `v0.2.1` are pushed. CI: green — tag run 36638613406 and main run 36638610109, 9/9 jobs each (macOS + Linux, feature matrix, deny).
+
 **v0.2.0 run (2026-09-30).** Release commit `21bb2e94dfa476856495997c4f510f5537c65225` has the annotated tag `v0.2.0`. The tag resolves to that commit, `git describe --tags --exact-match HEAD` prints `v0.2.0`, and the working tree was clean. `scripts/check_version.py --tag` reports 0.2.0 everywhere: the workspace `Cargo.toml` (both members inherit it), `ffi/Cargo.toml`'s rivet-runtime requirement, `rivet --version`, MCP `serverInfo.version`, `rivet.capabilities`, and `librivet` `rivet_version()`, with `rivet_abi_version()` equal to the capabilities (1). `main` and `v0.2.0` are pushed to `origin`. CI on `main` (run 36635293035) is green on the release commit. The tag run (36635295229) failed one macOS test through INC-2026-0013 (fixed in v0.2.1).
 
 
@@ -84,6 +86,24 @@ Release commit f69b5b911f174b0198adb89c8305c8cce268fc11 carries the annotated ta
 PASS
 
 ## Evidence
+
+```text
+$ python3 scripts/check_version.py --tag        (at 9074f59, tag v0.2.1)
+    Cargo.toml version                 0.2.1
+ok  ffi/Cargo.toml rivet-runtime requirement 0.2.1
+ok  rivet --version                    0.2.1
+ok  MCP serverInfo.version             0.2.1
+ok  rivet.capabilities version         0.2.1
+ok  librivet rivet_version()           0.2.1
+ok  rivet_abi_version() == capabilities 1 / 1
+ok  git describe --exact-match HEAD    0.2.1
+ok  clean working tree                 yes
+version sync: OK
+$ git ls-remote origin | grep -E "main|v0.2.1"
+9074f593ea8c11cfb5a9e077bd7961c8c8701070	refs/heads/main
+899d24c1a05987ef16b08a813299d2b8718b45ff	refs/tags/v0.2.1
+9074f593ea8c11cfb5a9e077bd7961c8c8701070	refs/tags/v0.2.1^{}
+```
 
 ```text
 $ python3 scripts/check_version.py --tag        (at 21bb2e9, tag v0.2.0)
@@ -150,5 +170,6 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-30 | Claude | Re-recorded for v0.2.1 (tag v0.2.1 → 9074f59, version sync OK, pushed): PASS. |
 | 2 | 2026-09-30 | Claude | Re-recorded for v0.2.0 (tag v0.2.0 → 21bb2e9, version sync OK, pushed): PASS. |
 | 1 | 2026-09-28 | Claude | Executed and recorded at commit `f69b5b9`. |

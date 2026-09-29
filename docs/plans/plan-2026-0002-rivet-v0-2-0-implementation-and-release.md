@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 14
+document_revision: 15
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -127,9 +127,9 @@ recommendations (ADR-0004).
 | State | Count | Notes |
 |---|---:|---|
 | NOT STARTED | 0 | |
-| IN PROGRESS | 1 | TASK-097 patch release v0.2.1 |
+| IN PROGRESS | 0 | — |
 | BLOCKED | 1 | TASK-095 GitHub Release upload (needs a token; artifacts in dist/) |
-| DONE | 72 | P1–P5 v0.2.0 |
+| DONE | 73 | P1–P5 v0.2.0; TASK-097 v0.2.1 |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io (G-PUB, owner) |
 
@@ -355,7 +355,7 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 | TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | DONE | REL-0.2.0 completed (identity, §34 walk; vhco docs release OK); PROP-2026-0002 → implemented/; RPT-2026-0015 24 PASS; TEST-0030/0033 PASS |
 | TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | BLOCKED | main + v0.1.0 + v0.2.0 pushed to origin; artifacts built in dist/v0.2.0; GitHub Release upload needs a token/gh (not available here): maintainer uploads |
 | TASK-096 | P5 | CI on macOS and Linux (Windows dropped by the maintainer 2026-09-29, INC-2026-0011); post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | DONE | CI green on main at the release commit (run 36635293035); the tag run 36635295229 failed one macOS test → INC-2026-0013 (fixed dd5e5ad, v0.2.1); tagged-build smoke run and U-12 git dependency PASS |
-| TASK-097 | P5 | Patch release v0.2.1 with the INC-2026-0013 fix: version 0.2.1, docs version strings, REL-0.2.1, release commit, tag, CI, artifacts | release | `Cargo.toml`, `ffi/Cargo.toml`, `editors/vscode/package.json`, docs | T-33 | TASK-096 | I | IN PROGRESS | Maintainer chose "Cut v0.2.1 now" (2026-09-30) |
+| TASK-097 | P5 | Patch release v0.2.1 with the INC-2026-0013 fix: version 0.2.1, docs version strings, REL-0.2.1, release commit, tag, CI, artifacts | release | `Cargo.toml`, `ffi/Cargo.toml`, `editors/vscode/package.json`, docs | T-33 | TASK-096 | I | DONE | Released 9074f59, tag v0.2.1; CI green (runs 36638613406 tag, 36638610109 main); REL-0.2.1; TEST-2026-0033 PASS; dist/v0.2.1 smoke PASS |
 
 ## File and Artifact Checklist
 
@@ -749,6 +749,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 15 | 2026-09-30 | Claude | TASK-097 DONE: v0.2.1 released (9074f59), CI green, REL-0.2.1 finalized. |
 | 14 | 2026-09-30 | Claude | TASK-097: version 0.2.1, docs swept, REL-0.2.1 drafted; release commit next. |
 | 13 | 2026-09-30 | Claude | v0.2.0 released (21bb2e9); REL finalized; INC-2026-0013 from the tag CI run; TASK-097 v0.2.1 patch added. |
 | 12 | 2026-09-30 | Claude | P5: TASK-090/091 DONE (version 0.2.0), REL-0.2.0 drafted, PROP-2026-0002 implemented; release commit next. |

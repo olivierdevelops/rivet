@@ -2,19 +2,25 @@
 document_id: REL-0.2.1
 title: "Rivet 0.2.1 release notes"
 document_type: release
-status: draft
+status: completed
 created_date: 2026-09-30
 last_updated: 2026-09-30
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 version: "0.2.1"
 git_tag: v0.2.1
-git_commit: recorded after tagging
+git_commit: 9074f593ea8c11cfb5a9e077bd7961c8c8701070
 release_date: 2026-09-30
 source_branch: main
 previous_version: "0.2.0"
 previous_tag: v0.2.0
+release:
+  version: "0.2.1"
+  tag: v0.2.1
+  commit: 9074f593ea8c11cfb5a9e077bd7961c8c8701070
+  date: 2026-09-30
+  branch: main
 systems: [Rivet]
 components: [cli]
 affected_versions:
@@ -31,7 +37,7 @@ tags: [rivet, release, v0.2.1, patch]
 
 # Release 0.2.1
 
-> **Status:** Draft
+> **Status:** Completed
 > **Created:** 2026-09-30
 > **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.1
@@ -43,7 +49,7 @@ tags: [rivet, release, v0.2.1, patch]
 ```text
 Release Version:          0.2.1 (patch of 0.2.0)
 Git Tag:                  v0.2.1
-Git Commit:               recorded after tagging
+Git Commit:               9074f593ea8c11cfb5a9e077bd7961c8c8701070
 Release Date:             2026-09-30
 Source Branch:            main
 Previous Version:         0.2.0
@@ -52,7 +58,7 @@ Previous Release Commit:  21bb2e94dfa476856495997c4f510f5537c65225
 Repository:               https://github.com/olivierdevelops/rivet (origin)
 Supported platforms:      macOS, Linux (Windows unsupported: INC-2026-0011)
 Artifacts:                dist/v0.2.1/ — rivet, librivet.dylib + librivet.a, rivet.h, rivet.pc, rivet-0.2.1.vsix, SHA256SUMS
-CI:                       pending
+CI:                       green — tag run 36638613406 and main run 36638610109, 9/9 jobs each (macOS + Linux, feature matrix, deny)
 ```
 
 ## Plan
@@ -187,10 +193,10 @@ Walked for the patch on 2026-09-30. Every item that REL-0.2.0 walked still holds
 | Bug documented | ✔ | INC-2026-0013 |
 | Tests completed and recorded | ✔ | Tests above; TEST-2026-0033 |
 | Canonical version updated and synchronized | ✔ | `check_version.py --tag`: 0.2.1 everywhere |
-| Release commit, clean tree, full SHA | ✔ | `recorded after tagging` |
+| Release commit, clean tree, full SHA | ✔ | `9074f593ea8c11cfb5a9e077bd7961c8c8701070` |
 | Tag created, matches, resolves to the commit | ✔ | annotated `v0.2.1` |
 | Commit and tag pushed | ✔ | origin |
-| CI | ✔ | pending |
+| CI | ✔ | green — tag run 36638613406 and main run 36638610109, 9/9 jobs each (macOS + Linux, feature matrix, deny) |
 | Six documentation-impact decisions | ✔ | Documentation Impact above |
 | Indexes regenerated | ✔ | releases, incidents, testing |
 
@@ -202,4 +208,5 @@ Walked for the patch on 2026-09-30. Every item that REL-0.2.0 walked still holds
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-30 | Claude | Finalized with tag v0.2.1, commit 9074f593ea8c11cfb5a9e077bd7961c8c8701070 and CI. |
 | 1 | 2026-09-30 | Claude | Drafted for the release commit. |
