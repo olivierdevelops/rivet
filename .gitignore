@@ -11,3 +11,5 @@ __pycache__/
 /examples/c/demo_static
 /examples/c/modules
 /examples/c/modules_static
+# Local-only reference material
+/.ignore/
