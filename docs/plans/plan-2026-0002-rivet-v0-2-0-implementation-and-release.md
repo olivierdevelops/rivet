@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-29
-document_revision: 10
+document_revision: 11
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -126,15 +126,15 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 19 | P4 task rows TASK-070…082 (documentation work under way, rows updated at P4 exit), P5 TASK-090…095 |
+| NOT STARTED | 6 | P5 TASK-090…095 |
 | IN PROGRESS | 1 | TASK-096 CI (post-release verification at P5) |
 | BLOCKED | 0 | |
-| DONE | 53 | P1, P2a–P2f, P3 (TASK-060…064) |
+| DONE | 66 | P1, P2a–P2f, P3 (TASK-060…064) |
 | FAILED | 0 | |
 | DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
 
 ```text
- P1 ✔ ─ P2a–P2f ✔ ─ P3 ✔ (RPT-2026-0015: 22 PASS · 2 PARTIAL · 0 FAIL) ─ P4 ◐ docs/demos ─ P5 ○ version, tag, REL
+ P1 ✔ ─ P2a–P2f ✔ ─ P3 ✔ (RPT-2026-0015: 22 PASS · 2 PARTIAL · 0 FAIL) ─ P4 ✔ docs/demos ─ P5 ○ version, tag, REL
 ```
 
 - **Current phase:** P3 complete at `14750b8`. Records are in `f5a1beb` (TEST documents) and `9678de1` (RPT-2026-0015).
@@ -233,7 +233,7 @@ builds; this is recorded as an observation in RES-2026-0004, not an acceptance t
 | P2e | Highlighting | P1 exit | T-13, T-14 green | P1 | DONE (`9ec2a39`, `0d6c2ea`; T-13, T-14 PASS) |
 | P2f | File modules (import + host load) | P2b exit (global scoping per module) | T-16–T-18, T-20 green | P2b | DONE (`2942066`) |
 | P3 | Full test and validation | P2a–P2f exit | T-01–T-20 + T-27–T-29, T-34 recorded; `vhco sync` 0; RPT-2026-0015 | P2* | DONE (`f5a1beb`, `9678de1`; 493 tests, CI run 36505156729; T-01–T-20, T-27–T-29, T-34 PASS; T-30 PARTIAL, T-31/T-32 PASS; `vhco sync` 0; RPT-2026-0015: 22 PASS, 2 PARTIAL) |
-| P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | NOT STARTED |
+| P4 | Documentation and demos | P3 exit | Every D-row DONE or NOT APPLICABLE with a reason; T-30, T-31 | P3 | DONE |
 | P5 | Version, release commit, tag, REL | P4 exit | §34 gate walked; T-33 | P4 | NOT STARTED |
 
 ## Live Work Checklist
@@ -339,19 +339,19 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 
 | Task | Phase | Description / method | Req / UC / Change IDs | Production files | Test files / manual procedure | Dependencies | Owner | Status | Evidence / result |
 |---|---|---|---|---|---|---|---|---|---|
-| TASK-070 | P4 | Envelope sweep: update every example in the 62 current-state files listed in D-40…D-66 to the 0.2.0 envelopes, input keys and flags; paste real output from the RC build | R18 / C-13 | docs | T-30, T-31 | P3 | I | NOT STARTED | |
-| TASK-071 | P4 | New API docs: API-2026-0006 (envelope reference + schemas), API-2026-0007 (C ABI reference) | R1–R6, R13–R15 | docs | T-31 | P3 | I | NOT STARTED | |
-| TASK-072 | P4 | New manuals: MAN-2026-0009 (C ABI and FFI), MAN-2026-0010 (editor support and highlighting); chapter updates listed in D-20…D-29 | R7–R17 | docs | T-30 | P3 | I | NOT STARTED | |
-| TASK-073 | P4 | New system docs: SYS-2026-0010 (FFI surface and packaging), SYS-2026-0011 (highlighting and grammar generation); updates D-30…D-39 | R10–R17 | docs | review | P3 | I | NOT STARTED | |
-| TASK-074 | P4 | Migration guide MIG-2026-0001 + new `docs/migrations/index.md` | R5 | docs | T-31 | P3 | I | NOT STARTED | |
-| TASK-075 | P4 | New demos 14-globals (DEMO-2026-0016), 15-ffi (DEMO-2026-0017), 16-editor (DEMO-2026-0018), 17-modules (DEMO-2026-0019), executed literally; demos index/README/manifest | R7–R17 | docs/demos | T-30 | P3 | I | NOT STARTED | |
-| TASK-076 | P4 | Re-execute demos 01–13 against the RC and update their READMEs (verification records, `verified_against: "0.2.0"`) | R18 | docs/demos | T-30 | TASK-070 | I | NOT STARTED | |
-| TASK-077 | P4 | Release verification guide DEMO-2026-0020 (U-01…U-24, one per requirement; per-surface success and failure; FFI and editor rows; verification record) | R18 | docs/demos | T-30 | TASK-075, 076 | I | NOT STARTED | |
-| TASK-078 | P4 | REF-2026-0002: `global` syntax row and examples; CLI mapping `--data`/`--input`/`--pretty`/`highlight`; envelope examples; status lines re-verified | R7, R4 | docs | T-29 | P3 | I | NOT STARTED | |
-| TASK-079 | P4 | Architecture, security, operations, runbooks, onboarding updates (D-30…D-39) | R10–R14 | docs | T-31 | P3 | I | NOT STARTED | |
-| TASK-080 | P4 | README.md, `docs/README.md`, `docs/index.md`, and `AGENTS.md` project facts (workspace, `ffi` surface, features) | R18 | docs | T-31 | all P4 | I | NOT STARTED | |
-| TASK-081 | P4 | Record the six documentation-impact decisions (findings table + REL-0.2.0) | R18 | docs | T-32 | all P4 | I | NOT STARTED | |
-| TASK-082 | P4 | Documents with `review_cycle: on-release`: set `next_review_date`; `vhco doc` drift check | R18 | docs | T-31 | all P4 | I | NOT STARTED | |
+| TASK-070 | P4 | Envelope sweep: update every example in the 62 current-state files listed in D-40…D-66 to the 0.2.0 envelopes, input keys and flags; paste real output from the RC build | R18 / C-13 | docs | T-30, T-31 | P3 | I | DONE | Envelope sweep done across API/manuals/system/ops/runbooks/onboarding/REF/README/demos: 4c38120, 04d3eb1, 24e825a, 522778d, 59d0592, b267a0b, bd2c68b, 9342842, 6def3b0…0afd93d, 6f229ce, 166a98b, 8ccd557, f36c39b, 02dc70e, 4af80b2 |
+| TASK-071 | P4 | New API docs: API-2026-0006 (envelope reference + schemas), API-2026-0007 (C ABI reference) | R1–R6, R13–R15 | docs | T-31 | P3 | I | DONE | API-2026-0006 (envelopes + schemas) and API-2026-0007 (C ABI): d38f777 |
+| TASK-072 | P4 | New manuals: MAN-2026-0009 (C ABI and FFI), MAN-2026-0010 (editor support and highlighting); chapter updates listed in D-20…D-29 | R7–R17 | docs | T-30 | P3 | I | DONE | MAN-2026-0009/0010 new (d38f777); MAN-2026-0001…0008 updated (b267a0b, bd2c68b, 9342842) |
+| TASK-073 | P4 | New system docs: SYS-2026-0010 (FFI surface and packaging), SYS-2026-0011 (highlighting and grammar generation); updates D-30…D-39 | R10–R17 | docs | review | P3 | I | DONE | SYS-2026-0010/0011 new (d38f777); SYS-0001…0009 + index updated (6def3b0…0afd93d) |
+| TASK-074 | P4 | Migration guide MIG-2026-0001 + new `docs/migrations/index.md` | R5 | docs | T-31 | P3 | I | DONE | MIG-2026-0001 + docs/migrations/index.md: d38f777; serve path updated 55b9e73 |
+| TASK-075 | P4 | New demos 14-globals (DEMO-2026-0016), 15-ffi (DEMO-2026-0017), 16-editor (DEMO-2026-0018), 17-modules (DEMO-2026-0019), executed literally; demos index/README/manifest | R7–R17 | docs/demos | T-30 | P3 | I | DONE | 14-globals, 15-ffi (277d160), 16-editor, 17-modules (d2bb115), all executed |
+| TASK-076 | P4 | Re-execute demos 01–13 against the RC and update their READMEs (verification records, `verified_against: "0.2.0"`) | R18 | docs/demos | T-30 | TASK-070 | I | DONE | Demos 01–13 re-verified at 8031baa (4af80b2); INC-2026-0012-affected steps re-run after the fix pass |
+| TASK-077 | P4 | Release verification guide DEMO-2026-0020 (U-01…U-24, one per requirement; per-surface success and failure; FFI and editor rows; verification record) | R18 | docs/demos | T-30 | TASK-075, 076 | I | DONE | DEMO-2026-0020 with U-01…U-24 (478a382); tag/commit filled at P5 |
+| TASK-078 | P4 | REF-2026-0002: `global` syntax row and examples; CLI mapping `--data`/`--input`/`--pretty`/`highlight`; envelope examples; status lines re-verified | R7, R4 | docs | T-29 | P3 | I | DONE | REF-2026-0002 for 0.2.0 (f36c39b): global/import/xs.0 rows, CLI mapping, envelopes, status lines |
+| TASK-079 | P4 | Architecture, security, operations, runbooks, onboarding updates (D-30…D-39) | R10–R14 | docs | T-31 | P3 | I | DONE | ARCH (7674fab), SEC (d38f777), OPS (166a98b), RUN (6f229ce), ONB (8ccd557) |
+| TASK-080 | P4 | README.md, `docs/README.md`, `docs/index.md`, and `AGENTS.md` project facts (workspace, `ffi` surface, features) | R18 | docs | T-31 | all P4 | I | DONE | README, docs/README, docs/index (02dc70e); AGENTS.md project facts (3cfe7e3) |
+| TASK-081 | P4 | Record the six documentation-impact decisions (findings table + REL-0.2.0) | R18 | docs | T-32 | all P4 | I | DONE | Six documentation-impact decisions recorded in the findings table (all UPDATED); repeated in REL-0.2.0 |
+| TASK-082 | P4 | Documents with `review_cycle: on-release`: set `next_review_date`; `vhco doc` drift check | R18 | docs | T-31 | all P4 | I | DONE | on-release docs got next_review_date 2026-10-29 (A3 commits); vhco doc drift: none besides INC-2026-0012 items, fixed |
 
 ### P5 — Version, release and rollout
 
@@ -496,85 +496,85 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-06 | troubleshooting | `docs/troubleshooting/trbl-2026-0004…` + index | §26 | Linking, symbol export, feature-gate pitfalls as found | — | DONE | T-31 |
 | D-07 | tests | `docs/testing/test-2026-0034-envelope-schema.md` … `test-2026-0048-legacy-input.md` + re-records of 0001…0033 + `docs/testing/index.md` | §27 | Definition, requirement, environment, result, evidence | all | DONE | T-32 |
 | D-08 | validation | `docs/reports/rpt-2026-0015-validation-of-plan-2026-0002.md` + index | §28 | R1–R18 results | all | DONE | T-32 |
-| D-09 | migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` + **new** `docs/migrations/index.md` (REF-2026-0037) | §4.21 | Before/after per surface (CLI, HTTP, SSE, polling, WS, MCP, library); `jq` mapping; deprecation timeline 0.2 → 0.3; client checklist; rollback (pin v0.1.0) | all surfaces | NOT STARTED | T-31 |
-| D-10 | API | `docs/api/api-2026-0006-envelopes.md` | Canonical envelope reference | Response, input, stream record; status/type tables; key order; pretty; error object; per-surface wrapping (WS `ref`, MCP `structuredContent`); JSON Schemas | all | NOT STARTED | T-01, T-31 |
+| D-09 | migration | `docs/migrations/mig-2026-0001-response-and-input-envelopes.md` + **new** `docs/migrations/index.md` (REF-2026-0037) | §4.21 | Before/after per surface (CLI, HTTP, SSE, polling, WS, MCP, library); `jq` mapping; deprecation timeline 0.2 → 0.3; client checklist; rollback (pin v0.1.0) | all surfaces | DONE | T-31 |
+| D-10 | API | `docs/api/api-2026-0006-envelopes.md` | Canonical envelope reference | Response, input, stream record; status/type tables; key order; pretty; error object; per-surface wrapping (WS `ref`, MCP `structuredContent`); JSON Schemas | all | DONE | T-01, T-31 |
 | D-11 | API schema | `docs/api/schemas/{response,input,stream-record}.schema.json` | Machine-readable contract | JSON Schema 2020-12 | all | DONE | T-01 |
-| D-12 | API | `docs/api/api-2026-0007-c-abi.md` | C ABI reference | Every `rivet_*` function (incl. `rivet_load`, `rivet_module_*`), ownership, threading, status, error envelopes, ABI versioning, linking flags per OS | FFI | NOT STARTED | T-11, T-31 |
-| D-13 | manual | `docs/manuals/man-2026-0009-c-abi-and-ffi.md` | Integrator guide | Install `librivet`, compile/link (shared/static), C walkthrough, Python ctypes, Go cgo sketch, streaming/input/cancel, **module objects (`rivet_load`, Python wrapper)**, errors and recovery, troubleshooting | FFI | NOT STARTED | T-30 |
-| D-14 | manual | `docs/manuals/man-2026-0010-editor-support-and-highlighting.md` | Author guide | Install `.vsix`, other TextMate editors, `rivet highlight` (ansi/html/json), docs pipeline use, regenerating the grammar | editors, CLI | NOT STARTED | T-30 |
-| D-15 | system | `docs/system/components/sys-2026-0010-ffi-surface-and-packaging.md` | §31 | Workspace, facade, features, `setup_ffi` design, runtime/module/call handle lifecycle state machines, artifacts | library, ffi | NOT STARTED | TASK-082 |
-| D-16 | system | `docs/system/components/sys-2026-0011-highlighting-and-grammar-generation.md` | §31 | Token classes, parser-span tokenizer, generator pipeline, drift test | language | NOT STARTED | TASK-082 |
-| D-17 | demo | `docs/demos/14-globals/` (README DEMO-2026-0016, `app.rivet`, `policy.json`) | Show globals + exact manifest | Steps, success and failure (`check.global_*`), verification record | language | NOT STARTED | T-30 |
-| D-18 | demo | `docs/demos/15-ffi/` (README DEMO-2026-0017, C and Python programs) | Show the C ABI | Build, link shared and static, run, stream, cancel, misuse error | FFI | NOT STARTED | T-30 |
-| D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | NOT STARTED | T-30 |
-| D-71 | demo | `docs/demos/17-modules/` (README DEMO-2026-0019, `app.rivet`, `users.rivet`, `billing.rivet`, `policy.json`, host programs in Rust/C/Python) | Show modules | `import … as`, internal vs `public`, `rivet list`/`io` across files, import errors, `rt.load`, `rivet_load`, Python module object; verification record | language, library, ffi | NOT STARTED | T-30 |
-| D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | NOT STARTED | T-30 |
+| D-12 | API | `docs/api/api-2026-0007-c-abi.md` | C ABI reference | Every `rivet_*` function (incl. `rivet_load`, `rivet_module_*`), ownership, threading, status, error envelopes, ABI versioning, linking flags per OS | FFI | DONE | T-11, T-31 |
+| D-13 | manual | `docs/manuals/man-2026-0009-c-abi-and-ffi.md` | Integrator guide | Install `librivet`, compile/link (shared/static), C walkthrough, Python ctypes, Go cgo sketch, streaming/input/cancel, **module objects (`rivet_load`, Python wrapper)**, errors and recovery, troubleshooting | FFI | DONE | T-30 |
+| D-14 | manual | `docs/manuals/man-2026-0010-editor-support-and-highlighting.md` | Author guide | Install `.vsix`, other TextMate editors, `rivet highlight` (ansi/html/json), docs pipeline use, regenerating the grammar | editors, CLI | DONE | T-30 |
+| D-15 | system | `docs/system/components/sys-2026-0010-ffi-surface-and-packaging.md` | §31 | Workspace, facade, features, `setup_ffi` design, runtime/module/call handle lifecycle state machines, artifacts | library, ffi | DONE | TASK-082 |
+| D-16 | system | `docs/system/components/sys-2026-0011-highlighting-and-grammar-generation.md` | §31 | Token classes, parser-span tokenizer, generator pipeline, drift test | language | DONE | TASK-082 |
+| D-17 | demo | `docs/demos/14-globals/` (README DEMO-2026-0016, `app.rivet`, `policy.json`) | Show globals + exact manifest | Steps, success and failure (`check.global_*`), verification record | language | DONE | T-30 |
+| D-18 | demo | `docs/demos/15-ffi/` (README DEMO-2026-0017, C and Python programs) | Show the C ABI | Build, link shared and static, run, stream, cancel, misuse error | FFI | DONE | T-30 |
+| D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | DONE | T-30 |
+| D-71 | demo | `docs/demos/17-modules/` (README DEMO-2026-0019, `app.rivet`, `users.rivet`, `billing.rivet`, `policy.json`, host programs in Rust/C/Python) | Show modules | `import … as`, internal vs `public`, `rivet list`/`io` across files, import errors, `rt.load`, `rivet_load`, Python module object; verification record | language, library, ffi | DONE | T-30 |
+| D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | IN PROGRESS | T-30 |
 | D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | NOT STARTED | T-31, T-33 |
-| D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | NOT STARTED | review |
+| D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | DONE | review |
 
 ### Updated documents (feature chapters)
 
 | ID | Artifact | Exact path | Why it changes | Required addition / removal | Related interfaces | Status | Verification |
 |---|---|---|---|---|---|---|---|
-| D-20 | manual (root) | `docs/manuals/man-2026-0001-rivet-manual.md` | §30 | What's New in 0.2.0; feature catalogue rows (envelopes, pretty, globals, modules, Cargo dependency, C ABI, highlighting) with why/when and demo links; reading path adds MAN-0009/0010; limitations update (remove L1 "no import form"; add non-goals: URL imports, hot reload) | all | NOT STARTED | T-30 |
-| D-21 | manual | `docs/manuals/man-2026-0002-installation-and-quickstart.md` | Install changes | `perch install` / `cargo install rivet-runtime --features cli --git …`; installing `librivet`; installing the `.vsix`; quickstart with envelopes | CLI | NOT STARTED | T-30 |
-| D-22 | manual | `docs/manuals/man-2026-0003-language-guide.md` | New forms | **Globals chapter** (syntax, allowed expressions, lookup order, errors, examples); **Modules chapter** (`import … as ALIAS [public]`, path rules, namespacing, visibility, per-module globals, calling `(alias.id …)`, errors, policy); syntax table rows | language | NOT STARTED | T-29 |
-| D-23 | manual | `docs/manuals/man-2026-0004-cli-reference.md` | New flags/command | `--data`, `--input`, `--pretty`, `--params` deprecation, `rivet highlight`, envelope output for every command; `list`/`io --include-bootstrap` across modules; exit codes | CLI | NOT STARTED | T-02 |
-| D-24 | manual | `docs/manuals/man-2026-0005-policy-and-io-manifest-guide.md` | Globals, modules | Globals in targets, exact grants; one policy for all modules; module `policy.json` ignored; manifest across files | policy, audit | NOT STARTED | T-08 |
-| D-25 | manual | `docs/manuals/man-2026-0006-serving-and-surfaces.md` | Wire change | Envelopes per surface, `?pretty=true`, `Deprecation` monitoring, WS/poll/MCP shapes | serve | NOT STARTED | T-01 |
-| D-26 | manual | `docs/manuals/man-2026-0007-embedding-library.md` | Library change | Cargo dependency (git tag), features, facade, `Runtime::call`, envelopes, **`Runtime::load`/`Module` objects**, builder without an entry file, link to MAN-0009 for non-Rust | library | NOT STARTED | T-09 |
-| D-27 | manual | `docs/manuals/man-2026-0008-protocols-and-connectors.md` | Features | Which protocols need which feature; `unsupported.feature` | transports | NOT STARTED | T-10 |
-| D-28 | manual index | `docs/manuals/index.md` | New manuals | MAN-0009, MAN-0010 rows; reading order | — | NOT STARTED | T-31 |
-| D-29 | reference manual links | all manual cross-links to API-2026-0006/0007 | Navigation | Links | — | NOT STARTED | T-31 |
-| D-30 | architecture | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md` + index | §31 | Workspace crates, facade boundary, `ffi` surface, envelope edge layer, feature gates (diagrams) | all | NOT STARTED | T-31 |
-| D-31 | system | `docs/system/components/sys-2026-0001-compiler-and-catalog.md` | Globals, highlighting, modules | `global` lowering, `compile_globals`, tokenizer link; `resolve_imports` (resolution, dedup, cycles, namespacing, visibility); `load_module` and catalog snapshots | language | NOT STARTED | TASK-082 |
-| D-32 | system | `docs/system/runtime/sys-2026-0002-execution-scopes-and-dag.md` | Frame | Global scope lookup order | execution | NOT STARTED | TASK-082 |
-| D-33 | system | `docs/system/components/sys-2026-0003-policy-broker-and-io-manifest.md` | Manifest | Global substitution; manifest and policy across modules; bootstrap reads of imported files | audit | NOT STARTED | TASK-082 |
-| D-34 | system | `docs/system/components/sys-2026-0004-surfaces-and-serve.md` | Wire | Input parser, envelope writer, pretty, Deprecation, remote client | serve | NOT STARTED | TASK-082 |
-| D-35 | system | `docs/system/integrations/sys-2026-0005-protocol-adapters.md`, `sys-2026-0006-oauth-and-credentials.md`, `sys-2026-0009-mcp-client-connectors.md` | Features | Feature gates per adapter; examples re-shaped | transports, auth, connectors | NOT STARTED | TASK-082 |
-| D-36 | system | `docs/system/runtime/sys-2026-0007-sessions.md`, `docs/system/configuration/sys-2026-0008-policy-json-reference.md`, `docs/system/index.md` | Wire | Receipts/records as envelopes; index rows for SYS-0010/0011 | sessions | NOT STARTED | TASK-082 |
-| D-37 | security | `docs/security/sec-2026-0001-policy-and-sandbox-model.md` + index | New boundary | FFI trust boundary (host = library principal), memory-safety guarantees and non-guarantees, globals cannot hold secrets; modules: root confinement, single policy, no URL imports | ffi, language | NOT STARTED | T-12, T-31 |
-| D-38 | operations / runbooks | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/runbooks/run-2026-0001-…`, `run-2026-0002-…` + indexes | Wire / install | `cli` feature install; `Deprecation` and `deprecated=1` monitoring; envelope examples in procedures | serve | NOT STARTED | T-30 (dry run) |
-| D-39 | onboarding | `docs/onboarding/onb-2026-0001-contributor-setup.md` + index | Dev setup | Workspace, features, `cbindgen`, C compiler, Node/npx for editors, new suites, grammar regeneration | — | NOT STARTED | T-31 |
+| D-20 | manual (root) | `docs/manuals/man-2026-0001-rivet-manual.md` | §30 | What's New in 0.2.0; feature catalogue rows (envelopes, pretty, globals, modules, Cargo dependency, C ABI, highlighting) with why/when and demo links; reading path adds MAN-0009/0010; limitations update (remove L1 "no import form"; add non-goals: URL imports, hot reload) | all | DONE | T-30 |
+| D-21 | manual | `docs/manuals/man-2026-0002-installation-and-quickstart.md` | Install changes | `perch install` / `cargo install rivet-runtime --features cli --git …`; installing `librivet`; installing the `.vsix`; quickstart with envelopes | CLI | DONE | T-30 |
+| D-22 | manual | `docs/manuals/man-2026-0003-language-guide.md` | New forms | **Globals chapter** (syntax, allowed expressions, lookup order, errors, examples); **Modules chapter** (`import … as ALIAS [public]`, path rules, namespacing, visibility, per-module globals, calling `(alias.id …)`, errors, policy); syntax table rows | language | DONE | T-29 |
+| D-23 | manual | `docs/manuals/man-2026-0004-cli-reference.md` | New flags/command | `--data`, `--input`, `--pretty`, `--params` deprecation, `rivet highlight`, envelope output for every command; `list`/`io --include-bootstrap` across modules; exit codes | CLI | DONE | T-02 |
+| D-24 | manual | `docs/manuals/man-2026-0005-policy-and-io-manifest-guide.md` | Globals, modules | Globals in targets, exact grants; one policy for all modules; module `policy.json` ignored; manifest across files | policy, audit | DONE | T-08 |
+| D-25 | manual | `docs/manuals/man-2026-0006-serving-and-surfaces.md` | Wire change | Envelopes per surface, `?pretty=true`, `Deprecation` monitoring, WS/poll/MCP shapes | serve | DONE | T-01 |
+| D-26 | manual | `docs/manuals/man-2026-0007-embedding-library.md` | Library change | Cargo dependency (git tag), features, facade, `Runtime::call`, envelopes, **`Runtime::load`/`Module` objects**, builder without an entry file, link to MAN-0009 for non-Rust | library | DONE | T-09 |
+| D-27 | manual | `docs/manuals/man-2026-0008-protocols-and-connectors.md` | Features | Which protocols need which feature; `unsupported.feature` | transports | DONE | T-10 |
+| D-28 | manual index | `docs/manuals/index.md` | New manuals | MAN-0009, MAN-0010 rows; reading order | — | DONE | T-31 |
+| D-29 | reference manual links | all manual cross-links to API-2026-0006/0007 | Navigation | Links | — | DONE | T-31 |
+| D-30 | architecture | `docs/architecture/arch-2026-0001-rivet-runtime-architecture.md` + index | §31 | Workspace crates, facade boundary, `ffi` surface, envelope edge layer, feature gates (diagrams) | all | DONE | T-31 |
+| D-31 | system | `docs/system/components/sys-2026-0001-compiler-and-catalog.md` | Globals, highlighting, modules | `global` lowering, `compile_globals`, tokenizer link; `resolve_imports` (resolution, dedup, cycles, namespacing, visibility); `load_module` and catalog snapshots | language | DONE | TASK-082 |
+| D-32 | system | `docs/system/runtime/sys-2026-0002-execution-scopes-and-dag.md` | Frame | Global scope lookup order | execution | DONE | TASK-082 |
+| D-33 | system | `docs/system/components/sys-2026-0003-policy-broker-and-io-manifest.md` | Manifest | Global substitution; manifest and policy across modules; bootstrap reads of imported files | audit | DONE | TASK-082 |
+| D-34 | system | `docs/system/components/sys-2026-0004-surfaces-and-serve.md` | Wire | Input parser, envelope writer, pretty, Deprecation, remote client | serve | DONE | TASK-082 |
+| D-35 | system | `docs/system/integrations/sys-2026-0005-protocol-adapters.md`, `sys-2026-0006-oauth-and-credentials.md`, `sys-2026-0009-mcp-client-connectors.md` | Features | Feature gates per adapter; examples re-shaped | transports, auth, connectors | DONE | TASK-082 |
+| D-36 | system | `docs/system/runtime/sys-2026-0007-sessions.md`, `docs/system/configuration/sys-2026-0008-policy-json-reference.md`, `docs/system/index.md` | Wire | Receipts/records as envelopes; index rows for SYS-0010/0011 | sessions | DONE | TASK-082 |
+| D-37 | security | `docs/security/sec-2026-0001-policy-and-sandbox-model.md` + index | New boundary | FFI trust boundary (host = library principal), memory-safety guarantees and non-guarantees, globals cannot hold secrets; modules: root confinement, single policy, no URL imports | ffi, language | DONE | T-12, T-31 |
+| D-38 | operations / runbooks | `docs/operations/ops-2026-0001-operating-rivet-serve.md`, `docs/runbooks/run-2026-0001-…`, `run-2026-0002-…` + indexes | Wire / install | `cli` feature install; `Deprecation` and `deprecated=1` monitoring; envelope examples in procedures | serve | DONE | T-30 (dry run) |
+| D-39 | onboarding | `docs/onboarding/onb-2026-0001-contributor-setup.md` + index | Dev setup | Workspace, features, `cbindgen`, C compiler, Node/npx for editors, new suites, grammar regeneration | — | DONE | T-31 |
 
 ### Updated documents (envelope sweep — every current-state file with 0.1.0 wire examples, TASK-070)
 
 | ID | Exact path(s) | Required change | Status | Verification |
 |---|---|---|---|---|
-| D-40 | `docs/api/api-2026-0001-http-rest-sse-polling.md` | Every request/response/SSE/polling example → envelopes; `pretty`; `Deprecation`; new errors | NOT STARTED | T-31 |
-| D-41 | `docs/api/api-2026-0002-websocket-rivet-v1.md` | Frames `{type:"request",ref,operation,data}`; record frames | NOT STARTED | T-31 |
-| D-42 | `docs/api/api-2026-0003-mcp-server-tools.md` | `structuredContent` envelope; `rivet.request` `{operation,data}` | NOT STARTED | T-31 |
-| D-43 | `docs/api/api-2026-0004-rust-library.md` | Facade, features, dependency snippet, `call`, envelopes, `load`/`load_as`/`Module` | NOT STARTED | T-09, T-18 |
-| D-44 | `docs/api/api-2026-0005-error-registry.md` + `docs/api/index.md` | New codes: `validation.input_envelope`, `validation.pretty_stream`, `syntax.global`, `check.global_*` (5), `unsupported.feature`, `validation.ffi_argument`, `internal.panic`, `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports`, `check.module_policy_ignored`; examples re-shaped; index rows API-0006/0007 | NOT STARTED | T-31 |
-| D-45 | `docs/references/ref-2026-0002-language-and-usage.md` | `global` and `import` syntax rows + examples; CLI mapping; envelope examples; status lines re-verified | NOT STARTED | T-29 |
-| D-46 | `docs/manuals/man-2026-0001…0008` (all eight) | Example outputs re-shaped (in addition to D-20…D-27 content) | NOT STARTED | T-30 |
-| D-47 | `docs/system/**` (nine SYS docs + `docs/system/index.md`) | Example outputs re-shaped | NOT STARTED | TASK-082 |
-| D-48 | `docs/architecture/arch-2026-0001…`, `docs/security/sec-2026-0001…`, `docs/operations/ops-2026-0001…`, `docs/runbooks/run-2026-0002…` | Example outputs re-shaped | NOT STARTED | T-31 |
-| D-49 | `README.md`, `docs/README.md` | Quickstart output re-shaped; 0.2.0 state | NOT STARTED | T-31 |
-| D-50 | `docs/demos/01-catalog/README.md` + `requests/{add.http,add.mcp,countdown.http,initialize.mcp,list.mcp,outputs.mcp}.json`, `requests/ws-frames.jsonl` | Re-executed; input envelopes | NOT STARTED | T-30 |
-| D-51 | `docs/demos/02-file-crud/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-52 | `docs/demos/03-http/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-53 | `docs/demos/04-streaming/README.md` | Re-executed (records) | NOT STARTED | T-30 |
-| D-54 | `docs/demos/05-dag/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-55 | `docs/demos/06-mcp-bridge/README.md`, `fixtures/crm_mcp.py`, `schemas/{search-result,tools-list}.fixture.json` | Re-executed; fixture shapes (remote MCP responses stay MCP-shaped; only Rivet output changes) | NOT STARTED | T-30 |
-| D-56 | `docs/demos/07-oauth2/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-57 | `docs/demos/08-udp/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-58 | `docs/demos/09-quic/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-59 | `docs/demos/10-grpc/README.md` + `requests/{initialize.mcp,open.http,open.mcp,sessions-finish.mcp,sessions-read.mcp,sessions-send.mcp}.json`, `requests/ws-chat.jsonl` | Re-executed; input envelopes | NOT STARTED | T-30 |
-| D-60 | `docs/demos/11-sandbox/README.md` | Re-executed | NOT STARTED | T-30 |
-| D-61 | `docs/demos/12-library/README.md`, `embedding.rs` | Facade API, `call`, envelopes; compiled example | NOT STARTED | T-09, T-30 |
-| D-62 | `docs/demos/13-real-world-apis/README.md` (+ its report RPT-2026-0014, historical, unchanged) | Commands and outputs re-shaped where local fixtures allow; public-API steps marked as not re-verifiable offline | NOT STARTED | T-30 |
-| D-63 | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` | Rows for 14–16 and DEMO-2026-0020; `verified_against: "0.2.0"` | NOT STARTED | T-31 |
+| D-40 | `docs/api/api-2026-0001-http-rest-sse-polling.md` | Every request/response/SSE/polling example → envelopes; `pretty`; `Deprecation`; new errors | DONE | T-31 |
+| D-41 | `docs/api/api-2026-0002-websocket-rivet-v1.md` | Frames `{type:"request",ref,operation,data}`; record frames | DONE | T-31 |
+| D-42 | `docs/api/api-2026-0003-mcp-server-tools.md` | `structuredContent` envelope; `rivet.request` `{operation,data}` | DONE | T-31 |
+| D-43 | `docs/api/api-2026-0004-rust-library.md` | Facade, features, dependency snippet, `call`, envelopes, `load`/`load_as`/`Module` | DONE | T-09, T-18 |
+| D-44 | `docs/api/api-2026-0005-error-registry.md` + `docs/api/index.md` | New codes: `validation.input_envelope`, `validation.pretty_stream`, `syntax.global`, `check.global_*` (5), `unsupported.feature`, `validation.ffi_argument`, `internal.panic`, `syntax.import`, `not_found.import`, `permission.import_outside_root`, `check.import_cycle`, `check.import_duplicate`, `check.import_collision`, `limit.imports`, `check.module_policy_ignored`; examples re-shaped; index rows API-0006/0007 | DONE | T-31 |
+| D-45 | `docs/references/ref-2026-0002-language-and-usage.md` | `global` and `import` syntax rows + examples; CLI mapping; envelope examples; status lines re-verified | DONE | T-29 |
+| D-46 | `docs/manuals/man-2026-0001…0008` (all eight) | Example outputs re-shaped (in addition to D-20…D-27 content) | DONE | T-30 |
+| D-47 | `docs/system/**` (nine SYS docs + `docs/system/index.md`) | Example outputs re-shaped | DONE | TASK-082 |
+| D-48 | `docs/architecture/arch-2026-0001…`, `docs/security/sec-2026-0001…`, `docs/operations/ops-2026-0001…`, `docs/runbooks/run-2026-0002…` | Example outputs re-shaped | DONE | T-31 |
+| D-49 | `README.md`, `docs/README.md` | Quickstart output re-shaped; 0.2.0 state | DONE | T-31 |
+| D-50 | `docs/demos/01-catalog/README.md` + `requests/{add.http,add.mcp,countdown.http,initialize.mcp,list.mcp,outputs.mcp}.json`, `requests/ws-frames.jsonl` | Re-executed; input envelopes | DONE | T-30 |
+| D-51 | `docs/demos/02-file-crud/README.md` | Re-executed | DONE | T-30 |
+| D-52 | `docs/demos/03-http/README.md` | Re-executed | DONE | T-30 |
+| D-53 | `docs/demos/04-streaming/README.md` | Re-executed (records) | DONE | T-30 |
+| D-54 | `docs/demos/05-dag/README.md` | Re-executed | DONE | T-30 |
+| D-55 | `docs/demos/06-mcp-bridge/README.md`, `fixtures/crm_mcp.py`, `schemas/{search-result,tools-list}.fixture.json` | Re-executed; fixture shapes (remote MCP responses stay MCP-shaped; only Rivet output changes) | DONE | T-30 |
+| D-56 | `docs/demos/07-oauth2/README.md` | Re-executed | DONE | T-30 |
+| D-57 | `docs/demos/08-udp/README.md` | Re-executed | DONE | T-30 |
+| D-58 | `docs/demos/09-quic/README.md` | Re-executed | DONE | T-30 |
+| D-59 | `docs/demos/10-grpc/README.md` + `requests/{initialize.mcp,open.http,open.mcp,sessions-finish.mcp,sessions-read.mcp,sessions-send.mcp}.json`, `requests/ws-chat.jsonl` | Re-executed; input envelopes | DONE | T-30 |
+| D-60 | `docs/demos/11-sandbox/README.md` | Re-executed | DONE | T-30 |
+| D-61 | `docs/demos/12-library/README.md`, `embedding.rs` | Facade API, `call`, envelopes; compiled example | DONE | T-09, T-30 |
+| D-62 | `docs/demos/13-real-world-apis/README.md` (+ its report RPT-2026-0014, historical, unchanged) | Commands and outputs re-shaped where local fixtures allow; public-API steps marked as not re-verifiable offline | DONE | T-30 |
+| D-63 | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json` | Rows for 14–16 and DEMO-2026-0020; `verified_against: "0.2.0"` | DONE | T-31 |
 | D-65 | `docs/demos/demo-2026-0015-v0-1-0-release-verification.md` | **Not changed**: historical verification of v0.1.0 (NOT APPLICABLE: records a past release) | NOT APPLICABLE | — |
 
 ### Lifecycle, navigation and agent guide
 
 | ID | Artifact | Exact path | Required change | Status | Verification |
 |---|---|---|---|---|---|
-| D-66 | navigation | `docs/index.md`, `docs/README.md` | New dirs/docs (migrations/, API-0006/0007, MAN-0009/0010, SYS-0010/0011, demos 14–16, DEMO-0019, RPT-0015, REL-0.2.0); current release 0.2.0; risks | NOT STARTED | T-31 |
+| D-66 | navigation | `docs/index.md`, `docs/README.md` | New dirs/docs (migrations/, API-0006/0007, MAN-0009/0010, SYS-0010/0011, demos 14–16, DEMO-0019, RPT-0015, REL-0.2.0); current release 0.2.0; risks | DONE | T-31 |
 | D-67 | proposal lifecycle | `docs/proposals/approved/prop-2026-0002-…` → `docs/proposals/implemented/` + indexes | Status `implemented` at P5 | NOT STARTED | T-31 |
-| D-70 | agent guide | `AGENTS.md` project facts | Workspace crates, `ffi` surface, features, editors dir | NOT STARTED | review |
-| D-72 | navigation (modules) | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json`, `docs/index.md` | Rows for 17-modules (DEMO-2026-0019) and the release guide DEMO-2026-0020 | NOT STARTED | T-31 |
+| D-70 | agent guide | `AGENTS.md` project facts | Workspace crates, `ffi` surface, features, editors dir | DONE | review |
+| D-72 | navigation (modules) | `docs/demos/README.md`, `docs/demos/index.md`, `docs/demos/manifest.json`, `docs/index.md` | Rows for 17-modules (DEMO-2026-0019) and the release guide DEMO-2026-0020 | DONE | T-31 |
 
 **Six post-release documentation-impact decisions** (§31), all expected `UPDATED`:
 
@@ -620,6 +620,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-29 | Finding | TASK-041 | `rivet-ffi`'s extra `rlib` collided with `rivet-runtime`'s `librivet.rlib`; FFI tests moved in-crate; CI and `perch tests` now build librivet before testing | Build hazard removed | Implementer | INC-2026-0010, 6f9943f, 8045343 |
 | 2026-09-29 | Finding | TASK-096 | CI logs need admin rights; `scripts/ci_step.py` re-emits failures as public check-run annotations | CI debuggable without `gh` | Implementer | TRBL-2026-0007 |
 | 2026-09-29 | Finding | — | A separate Codex session added STD-2026-0001 (orchestrator and cross-package review standard); committed as authored (e7ed8ed) | Review practice only | Maintainer | STD-2026-0001 |
+| 2026-09-29 | Decision | TASK-081 | Six documentation-impact decisions for v0.2.0: release verification guide/demo UPDATED (DEMO-2026-0020, demos 01–17); README UPDATED; system UPDATED (SYS-0001…0011); architecture UPDATED (ARCH-0001); API and CLI reference UPDATED (API-0001…0007, MAN-0004); manual UPDATED (MAN-0001…0010) | Recorded for REL-0.2.0 | Implementer | REL-0.2.0 |
 | 2026-09-28 | Decision | UQ-09 / P2f | Scope amendment: file modules (import in `.rivet` + host load objects in Rust/C/Python), namespaced by alias, loader's policy only; CLI run-from-path not selected | +8 tasks (TASK-045, TASK-100–107), T-16–T-20, D-71, D-72 | Maintainer | PROP-2026-0002 rev 3, ADR-0004 rev 2 |
 | 2026-09-28 | Deviation | IDs | The modules demo takes DEMO-2026-0019; the release verification guide moves to DEMO-2026-0020 | — | Implementer | D-64, D-71 |
 | 2026-09-28 | Finding | TASK-005 | vhco reads only `src/`: the `ffi/` crate is invisible, so all FFI logic and annotations go in `orchestrator/setup_ffi.rs` (ADR-0005). `vhco sync` also compares flow triggers (exact text) and flow handling (`layer: ref` steps), so renaming a trigger or a step needs a hand edit of the contract flow | Every later phase edits contract flows with its code | Implementer | RES-2026-0004, TRBL-2026-0004 |
@@ -755,6 +756,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 11 | 2026-09-29 | Claude | P4 ledger: TASK-070…082 DONE with commit evidence; D-rows DONE (D-64 in progress, D-67/D-68 at P5); six documentation-impact decisions recorded. |
 | 10 | 2026-09-29 | Claude | P3 done: TASK-060…064 DONE with evidence (`14750b8` gates, 493 tests, CI run 36505156729; TEST-2026-0034…0053 created and 0001…0032 re-recorded in `f5a1beb`; RPT-2026-0015 in `9678de1`); P3 phase row DONE; requirement statuses per RPT-2026-0015 (22 PASS, R12 and R18 PARTIAL); Test checklist status and evidence for T-01…T-32, T-34; D-05, D-07, D-08 DONE; final traceability statuses; P3 findings (T-08 Linux criterion, T-12 ASan deviation, T-30 PARTIAL, canary scan, vhco.json staleness); live status refreshed. |
 | 9 | 2026-09-29 | Claude | INC-2026-0012 findings row: 19 verification defects fixed before P3/P5, decisions (unary WS `seq`, `policy explain --json` denial envelope, inline `open`), contract hand edits, 493 tests. |
 | 8 | 2026-09-29 | Claude | CI green on macOS + Linux (run 36483001760); Windows dropped (INC-2026-0011); INC-2026-0010; live status. |
