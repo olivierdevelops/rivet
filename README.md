@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-30
-document_revision: 13
+document_revision: 14
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -16,7 +16,7 @@ affected_versions:
   to: null
 applicable_environments: [development, embedded, server]
 audience: [maintainers, developers, reviewers]
-scope: Current Rivet runtime (release 0.2.0), source build, installation and developer workflows, and links to the 0.2.0 documentation.
+scope: Current Rivet runtime (release 0.2.1), source build, installation and developer workflows, and links to the 0.2.0 documentation.
 reason: Record the project brief and requested changes as reviewable contracts and examples.
 dependencies: [PROJECT.md, DOCUMENTATION.md, AGENTS.md]
 related_documents: ["PROP-2026-0001", "PROP-2026-0002", "PLAN-2026-0002", "MIG-2026-0001", "API-2026-0006", "API-2026-0007", "MAN-2026-0009", "MAN-2026-0010", "INC-2026-0011", "STD-2026-0001", "REF-2026-0001", "REF-2026-0002"]
@@ -32,7 +32,8 @@ next_review_date: 2026-10-27
 
 Rivet is a Rust library and runtime for protocol-visible connections, scoped resources and composable DAG workflows, using Capy for parsing.
 
-**Current release: 0.2.0** (tag `v0.2.0`, [REL-0.2.0](docs/releases/rel-0.2.0-release-notes.md); plan
+**Current release: 0.2.1** (tag `v0.2.1`, [REL-0.2.1](docs/releases/rel-0.2.1-release-notes.md), a patch of
+[REL-0.2.0](docs/releases/rel-0.2.0-release-notes.md); plan
 [PLAN-2026-0002](docs/plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md)). Previous release: 0.1.0
 ([REL-0.1.0](docs/releases/rel-0.1.0-release-notes.md)). The repository contains the Rust library, the `rivet` binary, the C ABI
 library `librivet`, editor support, conformance tests and runnable source-build workflows. **Supported platforms:
@@ -113,12 +114,12 @@ Direct Cargo and VHCO invocations remain available.
 Without Perch, install the binary from the git tag with Cargo (the `cli` feature is required for the binary):
 
 ```sh
-cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli   # once P5 tags v0.2.0
+cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.1 --features cli
 cargo build --release -p rivet-ffi              # librivet (C ABI): target/release/librivet.{a,dylib|so}
 python3 editors/vscode/package_vsix.py          # the VS Code extension: dist/rivet-<version>.vsix
 ```
 
-A Rust project depends on `rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0" }`
+A Rust project depends on `rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1" }`
 ([MAN-2026-0007](docs/manuals/man-2026-0007-embedding-library.md)).
 
 ## Quickstart (verified)
@@ -299,6 +300,7 @@ approved by the maintainer on 2026-09-28.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 14 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 13 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 12 | 2026-09-29 | Claude | TASK-080 / D-49: current release 0.1.0 with 0.2.0 in progress (0.1.0 → 0.2.0 diagram and links to MIG-0001, API-0006/0007, MAN-0009/0010, globals/modules, facade); Cargo install with `--features cli`, librivet and `.vsix`; quickstart re-captured as 0.2.0 envelopes with `--data`; runtime overview adds the C ABI and envelopes; platforms macOS and Linux, Windows unsupported (INC-2026-0011), Linux sandbox gated; STD-2026-0001 and Perch content kept. |
 | 11 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard. |

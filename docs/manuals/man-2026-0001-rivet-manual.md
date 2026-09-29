@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 5
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -240,8 +240,8 @@ Build from source with Cargo (Rust 1.90.0, pinned by `rust-toolchain.toml`) on m
 (0.2.0: the binary needs the `cli` feature) or with `perch install`:
 
 ```bash
-cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli
-rivet --version                      # rivet 0.2.0
+cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.1 --features cli
+rivet --version                      # rivet 0.2.1
 ```
 
 ## Feature Catalogue
@@ -619,6 +619,7 @@ surfaces (MAN-2026-0006) expose every operation.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial root manual for the implemented 0.1.0 build: catalogue, concepts, limitations, glossary; every command verified against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (TASK-095 doc part): What's New and catalogue rows for `else`, `with file open`, `check` warnings, `graph`, `trace export`, `rivet.capabilities`, `restrict`, ceiling, health/access log/drain, `traceparent`, secret taint on every sink, `if_version`, buffered-bytes budget; configuration and error rows; new **Known Limitations** chapter listing exactly the current limitations; known defects linked. |

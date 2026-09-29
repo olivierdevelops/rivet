@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-30
-document_revision: 16
+document_revision: 17
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -30,8 +30,8 @@ next_review_date: 2026-10-27
 
 # Rivet documentation current state
 
-Rivet is implemented as a Rust library and `rivet` binary. The **current release is 0.2.0** (git tag `v0.2.0`, pushed to
-`origin` with `main`; release artifacts are built locally, see REL-0.2.0). The previous release is 0.1.0 (tag `v0.1.0`). The source tree contains the runtime, the C
+Rivet is implemented as a Rust library and `rivet` binary. The **current release is 0.2.1** (git tag `v0.2.1`, a patch of 0.2.0; see REL-0.2.1 and REL-0.2.0;
+release artifacts are built locally). The previous release is 0.1.0 (tag `v0.1.0`). The source tree contains the runtime, the C
 ABI library `librivet` (`ffi/`), editor support (`editors/`), conformance tests, protocol fixtures and manuals.
 Supported platforms: **macOS and Linux** (CI green on both); Windows is not supported
 ([INC-2026-0011](incidents/active/inc-2026-0011-windows-port-failures.md)).
@@ -51,7 +51,7 @@ perch tests
 perch gates
 ```
 
-Without Perch: `cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli`
+Without Perch: `cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.1 --features cli`
 (the binary needs the `cli` feature; the `v0.2.0` tag is created in P5).
 
 The approved [`commands.perch`](../commands.perch) wraps Cargo, Python documentation checks and VHCO.
@@ -142,6 +142,7 @@ tree. Platform support beyond the locally verified environment requires the corr
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 17 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 16 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 15 | 2026-09-29 | Claude | TASK-080 / D-49, D-66: current release 0.1.0 (remote `origin`, no published artifacts) with 0.2.0 in progress; 0.2.0 feature table linking API-0006/0007, MIG-0001, MAN-0009/0010, SYS-0010/0011, globals/modules, facade; Perch `ffi` and the Cargo install with `--features cli`; platforms macOS and Linux, Windows unsupported (INC-2026-0011); seven surfaces and two crates; STD-2026-0001 and Perch content kept. |
 | 14 | 2026-09-29 | Codex | Added the orchestrator and cross-package implementation standard to current documentation. |

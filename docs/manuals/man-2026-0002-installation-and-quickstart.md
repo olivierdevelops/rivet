@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 6
+document_revision: 7
 authors: [Claude, Codex]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -70,7 +70,7 @@ source `6f9943f`); version fields show the released `0.2.0`.
 ### Journey Overview
 
 ```text
- cargo install rivet-runtime --git … --tag v0.2.0 --features cli ─┐
+ cargo install rivet-runtime --git … --tag v0.2.1 --features cli ─┐
  perch install  (from a checkout)                                 ├─► rivet --version ─► "rivet 0.2.0"
  cargo build --release --features cli (from a checkout)          ─┘
         |
@@ -84,8 +84,8 @@ From 0.2.0 the package is **`rivet-runtime`** and the `rivet` binary is behind t
 (the library does not need clap). There is no crates.io crate yet, so install from the git tag:
 
 ```sh
-cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli
-rivet --version                      # rivet 0.2.0
+cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.1 --features cli
+rivet --version                      # rivet 0.2.1
 ```
 
 Without `--features cli` Cargo builds only the library and installs no binary (captured with `--path .`):
@@ -114,7 +114,7 @@ perch build             # cargo build --locked --release --features cli --bin ri
 perch build_debug       # cargo build --locked --features cli --bin rivet
 perch install           # build release (--features cli), then bman add "<absolute binary path>"
 perch ffi               # build librivet, verify rivet.h, run the C and Python examples (see below)
-rivet --version         # rivet 0.2.0
+rivet --version         # rivet 0.2.1
 ```
 
 The install task requires `bman` on `PATH`. It builds the optimized binary into this checkout's `target/`
@@ -151,7 +151,7 @@ target/release/rivet --version
 Expected output on the release-candidate tree (the version is bumped to 0.2.0 by the release commit):
 
 ```text
-rivet 0.2.0
+rivet 0.2.1
 ```
 
 `cargo build --features cli` gives a debug build in `target/debug/rivet`. Put the binary on your `PATH` if you like
@@ -183,7 +183,7 @@ Commands:
 ```
 
 There is no crates.io crate, installer or prebuilt binary. To use Rivet as a Rust library, depend on the
-git tag (`rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0" }`,
+git tag (`rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1" }`,
 MAN-2026-0007).
 
 ### Optional: build librivet (C, Python, Go)
@@ -431,7 +431,7 @@ curl -s http://127.0.0.1:18960/v1/health
 ```text
 {"request_id":"req_01e5bcce1d","trace_id":"tr_01e5bcce1d","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0}
 {"request_id":"req_02653d9c0a","trace_id":"tr_02653d9c0a","operation":"demo.add","type":"result","status":"ok","data":9,"error":null,"effects":"none","data_count":0}
-{"request_id":"req_03e15ec337","trace_id":"tr_03e15ec337","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_03e15ec337","trace_id":"tr_03e15ec337","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.1"},"error":null,"effects":"none","data_count":0}
 ```
 
 While it runs, terminal A shows one JSON access-log line per request after the receipt:
@@ -471,7 +471,7 @@ Exit code 2. Recovery: add bearer tokens to `policy.json` (MAN-2026-0006).
 
 [01-catalog (DEMO-2026-0001)](../demos/01-catalog/README.md). Every quickstart command above was run on 2026-09-29
 against the 0.2.0 release candidate (`cargo build --release --features cli`, source `6f9943f`) from that folder on
-macOS; `cargo install … --tag v0.2.0` becomes runnable when P5 publishes the tag. Editor and FFI demos:
+macOS; `cargo install … --tag v0.2.1` installs the current release. Editor and FFI demos:
 `docs/demos/16-editor/` and `docs/demos/15-ffi/` (being added).
 
 ## Troubleshooting
@@ -514,6 +514,7 @@ macOS; `cargo install … --tag v0.2.0` becomes runnable when P5 publishes the t
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 6 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 5 | 2026-09-29 | Claude | 0.2.0 (D-21, D-46): `cargo install rivet-runtime --git … --tag v0.2.0 --features cli`; Perch tasks with `--features cli` and `perch ffi` (Perch content kept); optional librivet build and `.vsix` install; quickstart re-captured with envelopes, `--data`, `--pretty`, stderr errors, stream records, `highlight`, serve on 18960 with health and access log; troubleshooting and version rows; macOS/Linux platforms, Windows unsupported. |
 | 4 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: the syntax-error example now shows `syntax.else_if` (`if … else … end` exists), `check` warnings, access log, `/v1/health` and SIGTERM drain, the `emits` line shows its description; limitations link updated. Perch content unchanged. |

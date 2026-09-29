@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 13
+document_revision: 14
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -749,6 +749,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 14 | 2026-09-30 | Claude | TASK-097: version 0.2.1, docs swept, REL-0.2.1 drafted; release commit next. |
 | 13 | 2026-09-30 | Claude | v0.2.0 released (21bb2e9); REL finalized; INC-2026-0013 from the tag CI run; TASK-097 v0.2.1 patch added. |
 | 12 | 2026-09-30 | Claude | P5: TASK-090/091 DONE (version 0.2.0), REL-0.2.0 drafted, PROP-2026-0002 implemented; release commit next. |
 | 11 | 2026-09-29 | Claude | P4 ledger: TASK-070…082 DONE with commit evidence; D-rows DONE (D-64 in progress, D-67/D-68 at P5); six documentation-impact decisions recorded. |

@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 5
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -203,7 +203,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 traceparent: 00-9b1a1e95b4d67fd4870aec50f28c0a31-dd05364efca207bc-01
 
-{"request_id":"req_039e215277","trace_id":"tr_039e215277","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:d7bc50b83b6b4e5c6eda533ddba582129a8edc30bcafe80ad3844972d6282787","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_039e215277","trace_id":"tr_039e215277","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:d7bc50b83b6b4e5c6eda533ddba582129a8edc30bcafe80ad3844972d6282787","version":"0.2.1"},"error":null,"effects":"none","data_count":0}
 ```
 
 **Access log.** After the receipt, every request on every surface writes one JSON line to stderr:
@@ -533,7 +533,7 @@ curl -sS "${H[@]}" -H 'mcp-session-id: mcp_1a68f2fcea0c76135' -X POST $B/mcp \
 ```text
 HTTP/1.1 200 OK
 mcp-session-id: mcp_1a68f2fcea0c76135
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.1"}}}
 
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_24211eee50\",…,\"status\":\"ok\",\"data\":5,…}"}],"structuredContent":{"request_id":"req_24211eee50","trace_id":"tr_24211eee50","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
@@ -581,7 +581,7 @@ Callable through every surface (`POST /v1/request {"operation":"rivet.list"}`, M
 ```text
 $ rivet --file app.rivet request rivet.capabilities          # abridged; also POST /v1/request, MCP tools/call
 {"request_id":"req_01ab1fac65","trace_id":"tr_01ab1fac65","operation":"rivet.capabilities","type":"result","status":"ok",
- "data":{"version":"0.2.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},
+ "data":{"version":"0.2.1","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},
          "features":[{"name":"http","stage":"A",…},…],"sandbox":{"backend":"macos-seatbelt","status":"active",…},
          "serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]},
          "build_features":["serve","grpc","quic","oauth","cli"],"abi_version":1},
@@ -710,6 +710,7 @@ The serving rows of the [manual's Known Limitations](man-2026-0001-rivet-manual.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial serving and surfaces guide for 0.1.0, captured from a live 0.1.0-dev (commit f40d4aa) server. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab: health/access-log/shutdown section, `traceparent`, `restrict`, bare `/v1/io`, polling `deadline_ms`, sweeper, cancel after finish, WebSocket lanes and specific refusal frames, MCP `tools/list` built-ins, `rivet.capabilities` and `rivet.trace.export` (dispatched and listed since 2a751ab); limitations aligned with MAN-2026-0001. |

@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 7
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -69,7 +69,7 @@ HTTP requests and typed recovery. Delivery stage: **A**. Read [app.rivet](app.ri
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.1
 ```
 
 - `python3` (3.8+, standard library only) for [fixtures/users_fixture.py](fixtures/users_fixture.py).
@@ -400,6 +400,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 7 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-52): re-executed every step against the 0.2.0 release candidate (8031baa) with the local fixture; `--params` → `--data`, HTTP bodies `{operation, data}`; every result and error replaced by the 0.2.0 ResponseEnvelope; `trace show` shown as a `rivet.trace.show` envelope (attempts now carry `request_id`, `trace_id`, `node_id`) plus the `not_found.trace` envelope; 0.2.0 Release Updates; verified_against 0.2.0 |
 | 5 | 2026-09-28 | Claude | TASK-067: added fixtures/users_fixture.py (port 18830) and a scratch-copy fixture run; executed every step against 0.1.0-dev (829ca43) and pasted real output: check, outputs, manifest (summary line), success and retry, `users.not_found`, `http.status`, `output.invalid`, `validation.min`, trace attempts via `--endpoint`, HTTP 502/500 and traceparent; removed draft disclaimers; status active; verified_against 0.1.0. |

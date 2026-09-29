@@ -5,7 +5,7 @@ document_type: manual
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 5
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -116,7 +116,7 @@ package is `rivet-runtime`, the library name stays `rivet`, so code keeps `use r
 
 ```toml
 [dependencies]
-rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0" }
+rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde_json = "1"
 async-trait = "0.1"          # only to implement DataSink
@@ -131,7 +131,7 @@ async-trait = "0.1"          # only to implement DataSink
 | `cli` | no | clap | only the `rivet` binary; a library host never needs it |
 
 ```text
- lean host: rivet = { package = "rivet-runtime", git = "…", tag = "v0.2.0", default-features = false }
+ lean host: rivet = { package = "rivet-runtime", git = "…", tag = "v0.2.1", default-features = false }
      bundle uses grpc/quic/oauth? ── no ─▶ builds and runs; smaller binary, fewer dependencies
                                   └ yes ─▶ Runtime::builder().build() → Err(unsupported.feature), details.feature
                                            (every use listed, before anything runs)
@@ -555,6 +555,7 @@ on 2026-09-29 against the 0.2.0 release candidate (source `6f9943f`), and the AP
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial library guide for 0.1.0 with a host program compiled and run against 0.1.0-dev commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Policy::from_file/from_json`, `.ceiling`, `Runtime::scope` with stream/duplex handles, typed `DataSink` stop, `request_restricted`, `export_trace`, `graph`, structured cancellation, `shutdown`, `ServeOptions.access_log`; second program compiled and run; host program re-run unchanged; obsolete limitation removed. |

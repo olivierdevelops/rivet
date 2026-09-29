@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 9
+document_revision: 10
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -88,7 +88,7 @@ What changed for embedders in 0.2.0 ([migration guide](../../migrations/mig-2026
 
 ```sh
 cargo build --release --features cli       # from the repository root
-export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.1
 ```
 
 A Rust toolchain matching the repository's `rust-toolchain.toml` (edition 2024) for step 2.
@@ -298,6 +298,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 10 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 9 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 8 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: the scratch embedding crate was compiled and run again; step 2 output replaced by that run (terminal record `"seq":4` confirmed by the program itself); one Verification Record row. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012: the library terminal record carries `"seq":4` like the CLI's; the step-2 terminal line is updated to the fixed shape (IDs from the TASK-076 run; the `seq` key is verified by `conformance_verification_defects::library_terminal_records_carry_seq`, the scratch program was not re-run); `seq` caveat removed. |

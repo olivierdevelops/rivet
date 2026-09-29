@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 10
+document_revision: 11
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -85,7 +85,7 @@ Build Rivet and put it on `PATH` (from the repository root):
 
 ```sh
 cargo build --release --features cli
-export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.1
 ```
 
 `curl` is needed for the HTTP steps. The WebSocket step uses the small client in [fixtures/ws_client.py](fixtures/ws_client.py), which needs the `websockets` Python package (any WebSocket client that can set the `rivet.v1` subprotocol works, for example websocat):
@@ -245,7 +245,7 @@ rivet --file app.rivet request rivet.capabilities
 ```
 
 ```json
-{"request_id":"req_018b6d075d","trace_id":"tr_018b6d075d","operation":"rivet.capabilities","type":"result","status":"ok","data":{"version":"0.2.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]},"build_features":["serve","grpc","quic","oauth","cli"],"abi_version":1},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_018b6d075d","trace_id":"tr_018b6d075d","operation":"rivet.capabilities","type":"result","status":"ok","data":{"version":"0.2.1","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},"features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]}, …],"sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},"serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]},"build_features":["serve","grpc","quic","oauth","cli"],"abi_version":1},"error":null,"effects":"none","data_count":0}
 ```
 
 ### 2. View outputs
@@ -345,7 +345,7 @@ curl -sS 'http://127.0.0.1:8080/v1/request?pretty=true' -H 'Content-Type: applic
 Every GET route answers with an envelope of the matching built-in (`rivet.health`, `rivet.list`, `rivet.describe`, `rivet.outputs`):
 
 ```json
-{"request_id":"req_02a4cf4782","trace_id":"tr_02a4cf4782","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_02a4cf4782","trace_id":"tr_02a4cf4782","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.1"},"error":null,"effects":"none","data_count":0}
 {"request_id":"req_0326f0907f","trace_id":"tr_0326f0907f","operation":"rivet.list","type":"result","status":"ok","data":{"operations":[{"id":"demo.greet","name":"Greet a person","description":"Return a greeting for the supplied person.","streaming":false},{"id":"demo.add","name":"Add two integers","description":"Add two signed integers and return their sum.","streaming":false},{"id":"demo.health","name":"Check availability","description":"Return a constant readiness response without I/O.","streaming":false},{"id":"demo.countdown","name":"Count down","description":"Emit 3, 2, 1 as data items and then return a summary.","streaming":true}],"next_cursor":null},"error":null,"effects":"none","data_count":0}
 ```
 
@@ -617,7 +617,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 mcp-session-id: mcp_126a8c57f065c6f75
 …
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.1"}}}
 ```
 
 `notifications/initialized` returns HTTP 202 with an empty body. `tools/list` returns the four direct tools, each with `name`, `title`, `description`, `inputSchema` and `outputSchema` (the ResponseEnvelope schema whose `data` is the declared output or null), followed by the built-ins `rivet.request`, `rivet.list`, `rivet.describe`, `rivet.outputs`, `rivet.sessions.open|send|finish_input|read|cancel`, `rivet.io`, `rivet.policy.generate`, `rivet.trace.show`, `rivet.trace.export`, `rivet.capabilities`, `rivet.connectors.sync` and `rivet.auth.begin|complete|status|disconnect|cancel`. One entry:
@@ -656,7 +656,7 @@ For an MCP client that launches Rivet as a subprocess, use stdio instead. It ser
 ```
 
 ```json
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"rivet","version":"0.2.1"}}}
 {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"{\"request_id\":\"req_014a894aad\",\"trace_id\":\"tr_014a894aad\",\"operation\":\"demo.add\",\"type\":\"result\",\"status\":\"ok\",\"data\":5,\"error\":null,\"effects\":\"none\",\"data_count\":0}"}],"structuredContent":{"request_id":"req_014a894aad","trace_id":"tr_014a894aad","operation":"demo.add","type":"result","status":"ok","data":5,"error":null,"effects":"none","data_count":0},"isError":false}}
 ```
 
@@ -888,6 +888,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 11 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 10 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 9 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: step 7 re-run, `c3` now has request/trace IDs, added the detached `conflict.ref`, `operation`-echoing envelope refusal and not-JSON frame; step 8 re-run (new IDs), added the `rivet.request` error naming the target and `mcp.session_required` with `operation: null`; two Verification Record rows. |
 | 8 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-50): re-executed every step against the 0.2.0 release candidate (8031baa). Commands use `--data` (plus `--input -`, `--pretty`, the `--params` deprecation warning and the refusals); every output replaced by 0.2.0 ResponseEnvelopes and stream records: GET routes, `describe`/`outputs`/`check`/`io` JSON, SSE `event: result`, polling `accepted` receipt, WS envelope frames with `ref`, MCP `structuredContent` and `outputSchema`; legacy-body `Deprecation` example; `(+ imports)` placeholder replaced by the real bootstrap table; `build_features`/`abi_version` in `rivet.capabilities`; 0.2.0 Release Updates; verified_against 0.2.0 |

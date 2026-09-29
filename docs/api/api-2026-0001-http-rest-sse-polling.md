@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 4
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -187,7 +187,7 @@ Every reserved `rivet.*` ID is dispatched through the same `/v1/request` route (
 ```text
 $ curl -s http://127.0.0.1:18951/v1/request -H 'content-type: application/json' -d '{"operation":"rivet.capabilities"}'   # abridged
 {"request_id":"req_01cff26d05","trace_id":"tr_01cff26d05","operation":"rivet.capabilities","type":"result","status":"ok",
- "data":{"version":"0.2.0","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},
+ "data":{"version":"0.2.1","platform":{"os":"macos","arch":"aarch64"},"stages":{"A":"supported","B":"supported","C":"unsupported"},
   "features":[{"name":"http","stage":"A","support":"supported","versions":["1.1","2","3"],"streaming":["sse","jsonl","lines","bytes"]},…],
   "sandbox":{"backend":"macos-seatbelt","status":"active","reason":"Seatbelt via /usr/bin/sandbox-exec with a deny-default profile"},
   "serve":{"surfaces":["cli","http","sse","poll","websocket","mcp","library"],"auth":["none","bearer"]},
@@ -658,7 +658,7 @@ HTTP/1.1 200 OK
 content-type: application/json
 traceparent: 00-9b1a1e95b4d67fd4870aec50f28c0a31-dd05364efca207bc-01
 
-{"request_id":"req_039e215277","trace_id":"tr_039e215277","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:d7bc50b83b6b4e5c6eda533ddba582129a8edc30bcafe80ad3844972d6282787","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_039e215277","trace_id":"tr_039e215277","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:d7bc50b83b6b4e5c6eda533ddba582129a8edc30bcafe80ad3844972d6282787","version":"0.2.1"},"error":null,"effects":"none","data_count":0}
 
 $ curl -s -i http://127.0.0.1:18952/v1/request -H 'content-type: application/json' -H 'traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01' -d '{"operation":"demo.read","data":{"path":"data/a.txt"}}'
 HTTP/1.1 200 OK
@@ -762,6 +762,7 @@ The remote CLI (`rivet --endpoint URL [--token-file PATH] …`) is a client of t
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial current-state contract for REST, SSE and polling, with examples captured from `rivet serve` at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43 and 2a751ab (`rivet.trace.export` dispatched with `{request_id, path}`; emits/receives descriptions): `GET /v1/health`, per-request `restrict`, W3C `traceparent` in/out, access-log line, SIGTERM drain, bare `/v1/io` manifest, polling `deadline_ms`/`restrict`, background sweeper, cancel of a finished session, `limit.buffered_bytes`, `rivet.capabilities` and `rivet.trace.export` (known dispatcher defect) built-ins, five sensitive IDs. |

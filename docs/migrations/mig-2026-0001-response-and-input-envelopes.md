@@ -4,8 +4,8 @@ title: "Migrating from Rivet 0.1.0 to 0.2.0: response and input envelopes, CLI f
 document_type: migration
 status: active
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 2
+last_updated: 2026-09-30
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -31,7 +31,7 @@ next_review_date: 2026-10-29
 
 > **Status:** Active
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0 to 0.2.x
 > **Owner:** Project maintainer
 > **Affected Components:** envelope, cli, http, sse, poll, ws, mcp, library, packaging
@@ -363,7 +363,7 @@ After (0.2.0):
 
 ```toml
 [dependencies]
-rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0" }
+rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1" }
 # lean: default-features = false, features = ["serve"]   (see MAN-2026-0007)
 ```
 
@@ -401,7 +401,7 @@ converts. `rivet.capabilities` data gains `build_features` and `abi_version`.
 cargo install --path .
 # 0.2.0 (the binary needs the `cli` feature)
 cargo install --path . --features cli
-cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.0 --features cli
+cargo install rivet-runtime --git https://github.com/olivierdevelops/rivet --tag v0.2.1 --features cli
 ```
 
 ## Migration or Rollout
@@ -478,5 +478,6 @@ for a missing `id`). No data or state migration is involved: policies, `.rivet` 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 1 | 2026-09-29 | Claude | Initial migration guide (TASK-074, D-09): before/after per surface, jq mapping, timeline, checklist, rollback |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: serving, session and trace types are in the facade (`rivet::serve`, `rivet::types`, `rivet::TraceResult`). |

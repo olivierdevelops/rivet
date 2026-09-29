@@ -5,7 +5,7 @@ document_type: api
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 4
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -70,9 +70,9 @@ depend on the git tag:
 
 ```toml
 [dependencies]
-rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0" }
+rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1" }
 # lean: only the serve surfaces
-# rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0",
+# rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.1",
 #           default-features = false, features = ["serve"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
@@ -568,6 +568,7 @@ The library differs from the approved design sketches in these details; the code
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial library contract; example compiled and run against the crate at commit f40d4aa. |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `Runtime::scope` with `stream`/`duplex` handles, `Policy::from_file`/`from_json`, `.ceiling(Policy)`, `session_limits`, typed `DataSink` stop (`consumer.stop`), structured cancellation, `request_restricted`, `export_trace`, `graph`, `shutdown`, `SessionOpenInput.trace/restrict`, `ServeOptions.access_log`; new example compiled and run at 829ca43; compatibility table reduced to the remaining differences. |

@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-27
 last_updated: 2026-09-30
-document_revision: 12
+document_revision: 13
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -38,7 +38,7 @@ next_review_date: 2026-10-29
 > **Affected Components:** language, execution, cli, http, mcp, library, policy, ffi
 
 Navigate the documentation. Current-state claims belong in [README.md](README.md); design decisions belong in
-proposals and decisions. The current release is **0.2.0** (PLAN-2026-0002, [REL-0.2.0](releases/rel-0.2.0-release-notes.md)); the previous release is 0.1.0.
+proposals and decisions. The current release is **0.2.1** ([REL-0.2.1](releases/rel-0.2.1-release-notes.md), a patch of [REL-0.2.0](releases/rel-0.2.0-release-notes.md)); earlier: 0.1.0.
 Supported platforms: macOS and Linux.
 
 ```text
@@ -109,6 +109,7 @@ document changes lifecycle or a new directory or document is added.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 13 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 12 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 11 | 2026-09-29 | Claude | TASK-080 / D-66, D-72: status active (was draft) with a visible header; tree updated to the real inventory (ADR-0005, INC-0009…0011, TRBL-0004…0007, RES-0004, MAN-0009/0010, SYS-0010/0011, API-0006/0007 and schemas, new `migrations/`, STD-2026-0001, demos 14–17 in progress); 0.2.0 lifecycle diagram; reading order adds manuals, API, migrations and the other current-state directories; release 0.1.0 with 0.2.0 in progress. |
 | 10 | 2026-09-28 | Claude | Added manuals, system, API, architecture, security, operations, runbooks and onboarding to navigation. |

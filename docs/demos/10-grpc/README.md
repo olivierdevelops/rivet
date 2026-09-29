@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 8
+document_revision: 9
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -68,7 +68,7 @@ All four gRPC call modes. Delivery stage: **B**. Read [app.rivet](app.rivet) alo
 
 ```sh
 cargo build --release --features cli       # from the repository root (grpc is a default feature)
-export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.0
+export PATH="$PWD/target/release:$PATH"     # rivet --version prints rivet 0.2.1
 python3 -m venv "$TMPDIR/rivet-grpc-venv" && "$TMPDIR/rivet-grpc-venv/bin/pip" install grpcio protobuf websockets
 ```
 
@@ -371,7 +371,7 @@ The CLI as a remote client drives the same WebSocket route for live input, and `
 {"request_id":"req_1093b9fbc2","trace_id":"tr_1093b9fbc2","operation":"chat.exchange","type":"result","seq":2,"status":"error","data":null,"error":{"kind":"timeout","code":"grpc.deadline_exceeded","message":"gRPC /example.Users/Chat ended with DEADLINE_EXCEEDED (4): deadline of 1999 ms exceeded","retryable":false,"source":{"file":"app.rivet","line":78,"column":17,"end_line":80,"end_column":20},"operation_id":"chat.exchange","details":{"grpc_status":4,"grpc_code":"DEADLINE_EXCEEDED","grpc_message":"deadline of 1999 ms exceeded","method":"users/example.Users/Chat","data_count":1,"trailers":{}}},"effects":"committed","data_count":1}
 ```
 
-The deadline fires after 2 s and the exit code is 6. The process itself exits only when stdin reaches EOF (after 6 s here), even though the terminal record has already arrived (see Known Caveats). Without `--timeout`, `rivet --endpoint http://127.0.0.1:18881 request chat.exchange --input-jsonl - --stream < chat-input.jsonl` prints the same three records as step 4 (exit 0).
+The deadline fires after 2 s and the exit code is 6. On 0.2.0 the process then waited for stdin EOF (6 s here); since v0.2.1 it exits as soon as the terminal record arrives ([INC-2026-0013](../../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md), guarded by `conformance_streams::input_jsonl_exits_when_the_operation_ends_without_eof`). Without `--timeout`, `rivet --endpoint http://127.0.0.1:18881 request chat.exchange --input-jsonl - --stream < chat-input.jsonl` prints the same three records as step 4 (exit 0).
 
 ### 8. MCP session tools
 
@@ -477,7 +477,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 - The fixture is plaintext HTTP/2 (h2c) on loopback; a real service uses `https://` with a trusted certificate (or `tls ca_file`, see [09-quic](../09-quic/README.md)).
 - `users.pb` is generated, not committed; the conformance tests compile the same `.proto`.
-- The remote CLI (`--endpoint … --input-jsonl -`) exits only when stdin reaches EOF, even after the terminal record has arrived (INC-2026-0012 Remaining Risks; pre-existing).
+- Up to 0.2.0 the CLI (`--input-jsonl -`, local and remote) waited for stdin EOF after the terminal record; fixed in v0.2.1 (INC-2026-0013).
 
 ## Related Documents
 
@@ -491,6 +491,7 @@ Verified on 0.2.0-dev at commit `8031baa`, the release candidate (`cargo build -
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 9 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 8 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 7 | 2026-09-29 | Claude | INC-2026-0012 re-verification (T-30) at 7c25175: steps 7–8 re-run against the grpcio fixture; step 7 adds the refused-input terminal record (`seq`, real `data_count`), open refusals with IDs and the remote CLI `--timeout` over WS (`deadline_ms`); step 8 re-captured and adds the `rivet.request` error naming the target; remote-CLI stdin caveat; two Verification Record rows. |
 | 6 | 2026-09-29 | Claude | TASK-076 (PLAN-2026-0002 D-59): re-executed every step against the 0.2.0 release candidate (8031baa) with the grpcio fixture; `--params` → `--data`; CLI NDJSON, gRPC errors, polling (`accepted` receipt envelope, batches, cancelled terminal record), WebSocket envelope frames with `ref` and MCP session-tool `structuredContent` replaced by 0.2.0 output; 0.2.0 Release Updates; verified_against 0.2.0 |

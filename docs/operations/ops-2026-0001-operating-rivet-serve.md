@@ -5,7 +5,7 @@ document_type: operations
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 5
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 component_owner: Project maintainer
@@ -80,7 +80,7 @@ In 0.2.0 the `rivet` binary is behind the `cli` Cargo feature of the `rivet-runt
      │
      ├─ cargo build --release --features cli          ─▶ target/release/rivet
      ├─ cargo install --path . --features cli          ─▶ ~/.cargo/bin/rivet   (default features + cli)
-     └─ cargo install --git https://github.com/olivierdevelops/rivet --tag v0.2.0 rivet-runtime --features cli
+     └─ cargo install --git https://github.com/olivierdevelops/rivet --tag v0.2.1 rivet-runtime --features cli
                                                         (git dependency; no crates.io release yet, G-PUB)
  lean server build (only what the bundle needs):
      cargo build --release --no-default-features --features cli,serve      (+ grpc / quic / oauth as needed)
@@ -96,7 +96,7 @@ $ cargo install --path . --features cli --root ./inst
 
 | Check after installing | Command | Expect |
 |---|---|---|
-| Binary present | `rivet --version` | `rivet 0.2.0` (the RC still printed `0.1.0`) |
+| Binary present | `rivet --version` | `rivet 0.2.1` (the RC still printed `0.1.0`) |
 | Compiled features | `rivet --file app.rivet request rivet.capabilities` | `data.build_features` lists `serve` and every protocol feature your bundles use |
 | Bundle accepted by this build | `rivet --file app.rivet check` | `ok: …` (a compiled-out adapter is `unsupported.feature`, exit 5, before anything runs) |
 | Serving possible | `rivet --file app.rivet serve --listen 127.0.0.1:0` | a startup receipt, not `unsupported.feature {feature: "serve"}` |
@@ -409,7 +409,7 @@ www-authenticate: Bearer
 
 {"request_id":"","trace_id":"","operation":"rivet.health","type":"result","status":"error","data":null,"error":{"kind":"auth","code":"auth.required","message":"missing bearer token","retryable":false},"effects":"none","data_count":0}
 $ curl -s -H 'Authorization: Bearer dev-token-ci' http://127.0.0.1:18926/v1/health
-{"request_id":"req_046d33a7b4","trace_id":"tr_046d33a7b4","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.0"},"error":null,"effects":"none","data_count":0}
+{"request_id":"req_046d33a7b4","trace_id":"tr_046d33a7b4","operation":"rivet.health","type":"result","status":"ok","data":{"status":"ok","catalog_version":"sha256:67104f0e7faaeafee253db758a668a9b24aa4263677e9d5ea2451b32019f9730","version":"0.2.1"},"error":null,"effects":"none","data_count":0}
 $ curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer dev-token-ci' http://127.0.0.1:18926/healthz
 404
 ```
@@ -508,6 +508,7 @@ principal pattern matches `rivet.auth.*`. Configuration is not reloaded without 
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | v0.2.1 patch (PLAN-2026-0002 TASK-097): version strings, install tag v0.2.1; INC-2026-0013 behaviour where described. |
 | 5 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-28 | Claude | Initial operations guide, verified against 0.1.0-dev (f40d4aa). |
 | 2 | 2026-09-28 | Claude | Fix batch through 829ca43: `/v1/health` probes, per-request access log, SIGTERM drains (exit 0) and upgrade steps use it, enforced `max_buffered_bytes`, `--timeout` cap, 8 MiB outbound bounds, `traceparent`, `restrict`; limitations aligned with the manual. |
