@@ -1,11 +1,14 @@
 //! T-29 — sample corpus: every demo bundle compiles; every reference example parses.
 
-use rivet::internal::domain::ports::Parser;
+use rivet::internal::domain::ports::{Parser, SourceLoader};
 use rivet::internal::domain::source::{SourceBundle, SourceFile};
 use rivet::internal::features::language::compile_program::compile_program;
+use rivet::internal::features::language::resolve_imports::resolve_imports;
 use rivet::internal::infra::capy_parser::CapyParser;
+use rivet::internal::infra::source_loader::DiskSourceLoader;
 
 // vhco:test language.compile_program -- every docs/demos app.rivet compiles into a program
+// vhco:test language.resolve_imports -- each demo is loaded like `rivet check` (source loader, demo folder as root, imports resolved), so 17-modules compiles with its modules (INC-2026-0012 item 1)
 #[test]
 fn every_demo_bundle_compiles() {
     let parser = CapyParser::new().unwrap();
@@ -20,16 +23,13 @@ fn every_demo_bundle_compiles() {
     for dir in &dirs {
         let path = dir.join("app.rivet");
         let text = std::fs::read_to_string(&path).unwrap();
-        let bundle = SourceBundle {
-            entry: path.display().to_string(),
-            root: dir.display().to_string(),
-            files: vec![SourceFile {
-                path: path.display().to_string(),
-                text: text.clone(),
-            }],
-            modules: Vec::new(),
-        };
-        if let Err(e) = compile_program(&bundle, &parser) {
+        // The same import-aware path as `rivet check`: the disk loader makes
+        // the demo folder the root, then every `import` is resolved below it.
+        let bundle = DiskSourceLoader
+            .load(&path.display().to_string())
+            .and_then(|b| resolve_imports(&b, &parser, &DiskSourceLoader))
+            .and_then(|b| compile_program(&b, &parser).map(|_| b));
+        if let Err(e) = bundle {
             failures.push(e.render(Some(&text)));
             for s in &e.suppressed {
                 failures.push(format!("  also: {}", s.render(Some(&text))));
@@ -84,7 +84,7 @@ const STRUCTURAL: &[&str] = &[
     "syntax.yield",
 ];
 
-// vhco:test language.compile_program -- every reference body fragment lowers without structural errors inside a wrapper operation
+// vhco:test language.compile_program -- every reference body fragment lowers without structural errors inside a wrapper operation; blocks that start with a declaration (including `global` and `import`) are compiled as whole files (INC-2026-0012 item 19)
 #[test]
 fn every_reference_fragment_lowers() {
     let parser = CapyParser::new().unwrap();
@@ -93,12 +93,25 @@ fn every_reference_fragment_lowers() {
     let mut failures = Vec::new();
     for (n, block) in text.split("```rivet\n").skip(1).enumerate() {
         let src = block.split("```").next().unwrap();
-        let first = src.trim_start();
-        let is_bundle = ["operation ", "pipeline ", "connector ", "auth "]
-            .iter()
-            .any(|k| first.starts_with(k))
-            && !first.starts_with("auth ")
-            || first.lines().next().is_some_and(|l| l.ends_with("oauth2"));
+        // A whole file starts (after comments) with a top-level declaration:
+        // operation, pipeline, connector, `auth NAME oauth2`, and — from 0.2.0 —
+        // `global` and `import` (INC-2026-0012 item 19); anything else is a
+        // body fragment and is wrapped in an operation.
+        let head = src
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .unwrap_or("");
+        let is_bundle = [
+            "operation ",
+            "pipeline ",
+            "connector ",
+            "global ",
+            "import ",
+        ]
+        .iter()
+        .any(|k| head.starts_with(k))
+            || (head.starts_with("auth ") && head.ends_with("oauth2"));
         let wrapped = if is_bundle {
             src.to_string()
         } else {
