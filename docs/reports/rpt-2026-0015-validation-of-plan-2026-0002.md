@@ -4,8 +4,8 @@ title: "Validation of PLAN-2026-0002 (Rivet v0.2.0)"
 document_type: report
 status: completed
 created_date: 2026-09-29
-last_updated: 2026-09-29
-document_revision: 1
+last_updated: 2026-09-30
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 report_date: 2026-09-29
@@ -35,7 +35,7 @@ tags: [rivet, validation, report, v0.2.0]
 
 > **Status:** Completed
 > **Created:** 2026-09-29
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0
 > **Owner:** Project maintainer
 > **Affected Components:** language, registry, execution, audit, serve, cli, http, ws, poll, mcp, library, ffi
@@ -44,8 +44,8 @@ tags: [rivet, validation, report, v0.2.0]
 
 | Result | Requirements |
 |---|---:|
-| PASS | 22 |
-| PARTIAL | 2 (R12, R18) |
+| PASS | 24 |
+| PARTIAL | 0 |
 | FAIL | 0 |
 | NOT APPLICABLE | 0 |
 
@@ -62,9 +62,9 @@ tags: [rivet, validation, report, v0.2.0]
 
 The planned functionality is implemented and behaves as specified on both supported platforms: macOS was tested locally and Linux in CI. Every proposal test T-01…T-20 is PASS. The 0.1.0 suites (T-34) are green on the new envelopes. The three 0.1.0 PARTIAL results that existed only because Linux and Windows had no CI (T-01, T-08, T-27 of PLAN-2026-0001) are now PASS. Linux is covered, and Windows is no longer a supported platform (maintainer decision, [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)).
 
-Two requirements are PARTIAL:
-- **R12:** the `v0.2.0` git-tag dependency cannot be checked before the P5 tag exists, and crates.io publication is deferred to the owner (G-PUB).
-- **R18:** the P4 documentation phase has not exited, and the demo records (T-30) predate the INC-2026-0012 fix commits.
+Two requirements were PARTIAL at P3 and are now PASS:
+- **R12:** now PASS (2026-09-30). The `v0.2.0` git-tag dependency was verified from GitHub (a fresh crate resolved `tag=v0.2.0#21bb2e9…`, built, and ran). crates.io publication stays deferred to the owner (G-PUB, ADR-0004), which is outside the requirement's acceptance.
+- **R18:** now PASS (2026-09-30). P4 exited (every D-row DONE), the INC-2026-0012-affected demo steps were re-run, and the tagged build passed the DEMO-2026-0020 smoke run (TEST-2026-0030 PASS).
 
 Neither is a defect in the implementation.
 
@@ -127,13 +127,13 @@ The workspace layout follows [ADR-0005](../decisions/adr-0005-workspace-package-
 | R9 | Globals substituted in manifest and graph; exact grants (T-08) | Literal+global targets `exact`; `policy generate` exact grants. Param-bearing targets stay `param_dependent` (recorded deviation) | [TEST-2026-0041](../testing/test-2026-0041-globals-manifest.md) PASS | PASS |
 | R10 | External crate builds against the facade only (T-09) | `cargo run --example embed` exit 0 (envelopes, stream, outputs, manifest, draft); facade exposes sessions, trace, serve; scratch crate recorded in DEMO-2026-0012 | [TEST-2026-0042](../testing/test-2026-0042-library-facade.md) PASS | PASS |
 | R11 | Feature matrix builds; compiled-out adapters `unsupported.feature` (T-10) | none/cli/serve/grpc/quic/oauth build, 0 warnings, locally and in 6 CI jobs; refusals exit 5 / HTTP 501 at the call site | [TEST-2026-0043](../testing/test-2026-0043-cargo-features.md) PASS | PASS |
-| R12 | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB (T-10 packaging) | `cargo package --list` ships the embedded files, no tests/docs/ffi (T-10 PASS). The tag `v0.2.0` does not exist until P5, so the git-tag dependency is unverified; `cargo publish --dry-run` fails on the git `capy-core` dependency, as expected until G-PUB (TASK-038 DEFERRED) | [TEST-2026-0043](../testing/test-2026-0043-cargo-features.md) PASS | PARTIAL |
+| R12 | Git dependency on tag `v0.2.0`; crates.io prepared, gated by G-PUB (T-10 packaging) | `cargo package --list` ships the embedded files, with no tests, docs or ffi (T-10 PASS). The git-tag dependency on `v0.2.0` resolves to `21bb2e9`, builds and runs from GitHub (DEMO-2026-0020 U-12, 2026-09-30); crates.io deferred (G-PUB) | [TEST-2026-0043](../testing/test-2026-0043-cargo-features.md) PASS | PASS |
 | R13 | `librivet` shared + static, `rivet.h`, `rivet.pc`, ABI version (T-11) | 18 `rivet_*` exports only; C shared and static, Python ctypes; header = cbindgen (CI `--verify`); pkg-config; Linux `.so`/`.a` in CI | [TEST-2026-0044](../testing/test-2026-0044-c-abi.md) PASS | PASS |
 | R14 | Misuse returns error envelopes; no crash, no leak (T-12) | 8 misuse tests pass; `leaks --atExit` 0 leaks for the misuse suite and the C examples. ASan not run (see Deviations) | [TEST-2026-0045](../testing/test-2026-0045-ffi-safety.md) PASS | PASS |
 | R15 | Call handle start/next/send/finish_input/cancel/free (T-11) | Items then one terminal; live input echoed; cancel → `cancelled`; free while running bounded by the 5 s grace | [TEST-2026-0044](../testing/test-2026-0044-c-abi.md) PASS | PASS |
 | R16 | Generated grammar, no drift, `.vsix` (T-13) | No drift; grammar scopes 107 samples; `.vsix` with the workspace version (Python tooling, recorded deviation) | [TEST-2026-0046](../testing/test-2026-0046-editor-grammar.md) PASS | PASS |
 | R17 | `rivet highlight` goldens; partial tokens on error (T-14) | ansi/html/json goldens; classes; spans; partial tokens + exit 2; unclosed-block headers kept | [TEST-2026-0047](../testing/test-2026-0047-highlight-cli.md) PASS | PASS |
-| R18 | Every Documentation and Demo Checklist row; demos executed against the RC (T-30, T-31, T-32) | `check_docs` 0 problems, `vhco docs check` 0 errors (T-31); 0 traceability orphans (T-32). Demo records PASS on macOS but predate the INC-2026-0012 fix commits; the tagged-build run is P5; the P4 checklist (D-rows) has not exited | [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) PARTIAL, [TEST-2026-0031](../testing/test-2026-0031-documentation.md) PASS, [TEST-2026-0032](../testing/test-2026-0032-traceability.md) PASS | PARTIAL |
+| R18 | Every Documentation and Demo Checklist row; demos executed against the RC (T-30, T-31, T-32) | `check_docs` 0 problems, `vhco docs check` 0 errors (T-31); 0 traceability orphans (T-32); demos 01–17 executed, INC-2026-0012 steps re-run, tagged-build smoke run PASS (T-30 PASS) | [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) PASS, [TEST-2026-0031](../testing/test-2026-0031-documentation.md) PASS, [TEST-2026-0032](../testing/test-2026-0032-traceability.md) PASS | PASS |
 | R19 | `import "PATH" as ALIAS [public]`, root-confined (T-16) | Compile once, relative paths, bootstrap rows per module file | [TEST-2026-0049](../testing/test-2026-0049-file-modules.md) PASS | PASS |
 | R20 | `ALIAS.ID`, internal by default, transitive (T-16) | Namespaces, visibility, `(alias.id …)` and `request` calls, per-module globals/connectors | [TEST-2026-0049](../testing/test-2026-0049-file-modules.md) PASS | PASS |
 | R21 | Every import error code with span and exit (T-17) | Seven codes incl. cycle path, symlink, both limits; URL imports `syntax.import`; load refusals carry IDs | [TEST-2026-0050](../testing/test-2026-0050-import-errors.md) PASS | PASS |
@@ -145,7 +145,7 @@ The workspace layout follows [ADR-0005](../decisions/adr-0005-workspace-package-
         R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11 R12 R13 R14 R15 R16 R17 R18 R19 R20 R21 R22 R23 R24
  macOS  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔   ✔   ◐   ✔   ✔   ✔   ✔   ✔   ◐   ✔   ✔   ✔   ✔   ✔   ✔
  Linux  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔  ✔   ✔   ◐   ✔   ✔   ✔   ✔   ✔   ◐   ✔   ✔   ✔   ✔   ✔   ✔     (CI)
-        ✔ PASS   ◐ PARTIAL (R12: tag / G-PUB after P5 · R18: P4 not exited, demo re-run pending)
+        ✔ PASS (all 24; R12 and R18 closed at P5, 2026-09-30)
 ```
 
 ## Security Checks
@@ -223,6 +223,8 @@ The plan's Decisions, Findings, Deviations and Blockers table records every devi
 
 ## Unintended Behaviour
 
+**Found at P5 (2026-09-30).** The CI run on the `v0.2.0` tag failed one macOS test, `cli_live_input_local_and_remote`, while the `main` run of the same commit was green. The root cause is a CLI shutdown defect: `--input-jsonl -` waited for stdin EOF after the request ended. It is recorded in [INC-2026-0013](../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md), fixed in `dd5e5ad` with a deterministic regression test, and shipped in v0.2.1. The tag `v0.2.0` keeps the defect (tags are never moved).
+
 None is known at `14750b8`. PLAN-2026-0002 found these defects, all fixed before this report, each with a regression test:
 
 | Incident | Severity | What happened | Fix | Verifying tests |
@@ -281,22 +283,23 @@ The v0.1.0 limitations carried forward unchanged are mTLS serve authentication (
    - create the release commit and tag `v0.2.0` (TASK-092/093);
    - verify the git-tag dependency (U-12) and the tagged-build row of DEMO-2026-0020;
    - build the release artifacts with a single `MACOSX_DEPLOYMENT_TARGET`.
-3. **REL-0.2.0:** reference this report, carry the two PARTIAL requirements and the limitations above, and walk the §34 gate (TASK-094).
+3. **REL-0.2.0:** reference this report and the limitations above, and walk the §34 gate (TASK-094). Done 2026-09-30.
 4. **ASan:** add an AddressSanitizer job for `rivet-ffi` on Linux CI, which the plan's T-12 names. Alternatively, record why it stays out of scope.
 5. **Carried forward:**
    - certify and ungate the Linux Landlock + seccomp backend ([ADR-0003](../decisions/adr-0003-process-sandbox-backends.md));
    - plan the Windows port from [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md);
    - G-PUB publication decision (TASK-038);
-   - regenerate `vhco.json` (PF-G01) after the documentation settles.
+   - ship the INC-2026-0013 fix in v0.2.1 (patch release).
 
 ## Conclusion
 
 The v0.2.0 implementation meets PLAN-2026-0002 on both supported platforms, macOS and Linux:
-- 22 of 24 requirements PASS, and no requirement FAILS;
+- all 24 requirements PASS, and none FAILS (R12 and R18 were closed at P5, 2026-09-30);
 - all 20 proposal tests pass, and every 0.1.0 suite is green on the new envelopes;
-- the static gates, the architecture gates, traceability and the security checks are clean.
+- the static gates, the architecture gates, traceability and the security checks are clean;
+- the tag `v0.2.0` resolves to the release commit `21bb2e9`, and its tagged build and git-tag dependency are verified.
 
-The two PARTIAL results, R12 and R18, depend on work that the plan schedules after P3: the P4 documentation exit and the P5 tag. Neither indicates a defect. §28 requires both to be referenced from REL-0.2.0. Windows is unsupported by maintainer decision and does not affect any result. P3 is complete, and the plan can proceed to finish P4 and then to P5.
+One defect surfaced after tagging: [INC-2026-0013](../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md), found by the CI run on the tag. It is fixed on `main` and released as v0.2.1. Windows is unsupported by maintainer decision and does not affect any result.
 
 ## Related Documents
 
@@ -310,4 +313,5 @@ The two PARTIAL results, R12 and R18, depend on work that the plan schedules aft
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-30 | Claude | P5: R12 and R18 PASS (git-tag dependency verified; demos re-run; tagged build). INC-2026-0013 from the tag CI run recorded (fixed in v0.2.1). |
 | 1 | 2026-09-29 | Claude | Created at PLAN-2026-0002 P3 (TASK-062…064) from TEST-2026-0001…0053 at commit `14750b8` and CI run 36505156729: 22 PASS, 2 PARTIAL (R12, R18), 0 FAIL; canary scan 0 hits; global-secret refusal confirmed; FFI misuse 0 leaks. |

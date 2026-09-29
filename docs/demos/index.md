@@ -4,8 +4,8 @@ title: "Rivet demos index"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 5
+last_updated: 2026-09-30
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -87,7 +87,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 | Item | State |
 |---|---|
 | Samples | Seventeen folders. 01–12 and 14–17 are **active**, executed step by step against the 0.2.0 release candidate (source 8031baa; 16-editor and 17-modules at 166a98b; 2026-09-29, macOS arm64) with local fixtures; each README has a Verification Record and `manifest.json` records `runtime_verified` per folder (16-editor is listed under `guides`: it has no bundle). 13-real-world-apis is a separately owned draft (`runtime_verified: "partial"`) |
-| Release guides | [DEMO-2026-0020](demo-2026-0020-v0-2-0-release-verification.md) (0.2.0), active; tag and commit are `TBD at P5`. [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) (0.1.0), active, tag v0.1.0 |
+| Release guides | [DEMO-2026-0020](demo-2026-0020-v0-2-0-release-verification.md) (0.2.0), active; tag `v0.2.0` → `21bb2e9`, tagged build verified. [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) (0.1.0), active, tag v0.1.0 |
 | Design revision | Updated to proposal revision 8: prefix calls, declared outputs, `policy.json` only (the `--sandbox` flag was removed), one `rivet serve` for every surface, and the generated I/O manifest (every README shows `io --by target` with ORIGIN, PHASE and NEEDS FILE columns, and `io --check-policy`, for its own app.rivet). Revision 8 (TASK-005, ADR-0001) adds option-derived file sites (`tls ca_file`/`cert_file`/`key_file`, `body file`), `io --needs` and `io --check-files`; connector `descriptor`/`schema` files (10-grpc, 06-mcp-bridge) stay bootstrap reads |
 | Recently added | 0.2.0 (2026-09-29): folders 14-globals, 15-ffi, 16-editor, 17-modules and the release guide DEMO-2026-0020; 01–13 re-verified on 0.2.0 envelopes. 0.1.0: release verification guide DEMO-2026-0015; local fixtures under `fixtures/` in 01, 03, 04, 06, 07, 08, 09, 10 (TASK-067, 2026-09-28); earlier:  `io --needs` / `io --check-files` walkthrough in 11-sandbox and `bundle load needs` examples in 06-mcp-bridge and 10-grpc; this index; `11-sandbox/policies/create-only.json` (`access` narrowing) and the `policy generate` comparison (2026-09-28) |
 | Deprecated / superseded / archived | None |
@@ -114,6 +114,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | DEMO-2026-0020 tag and commit recorded. |
 | 5 | 2026-09-29 | Claude | PLAN-2026-0002 TASK-075…077: 0.2.0 folders 14–17 and DEMO-2026-0020 in the layout, reading order and status; 01–13 re-verified on 0.2.0; platform coverage (Linux CI, Windows unsupported); `conformance_samples` import gap as open work. |
 | 4 | 2026-09-28 | Claude | TASK-067/068: folders 01–12 verified against 0.1.0 (829ca43) and active; added the release verification guide DEMO-2026-0015 to the layout, reading order and status; open work now lists platform coverage and the release-artifact rerun; §7 header. |
 | 3 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): status now proposal revision 8 (option-derived file sites, `io --needs`, `io --check-files`); reading order and recently added updated; G-LIC marked closed. |

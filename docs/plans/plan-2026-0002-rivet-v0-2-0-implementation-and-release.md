@@ -5,7 +5,7 @@ document_type: plan
 status: approved
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 12
+document_revision: 13
 start_date: 2026-09-28
 target_date: null           # not estimated; scope fixed by PROP-2026-0002 (ADR-0004)
 authors: [Claude]
@@ -126,26 +126,17 @@ recommendations (ADR-0004).
 
 | State | Count | Notes |
 |---|---:|---|
-| NOT STARTED | 6 | P5 TASK-090…095 |
-| IN PROGRESS | 1 | TASK-096 CI (post-release verification at P5) |
-| BLOCKED | 0 | |
-| DONE | 66 | P1, P2a–P2f, P3 (TASK-060…064) |
+| NOT STARTED | 0 | |
+| IN PROGRESS | 1 | TASK-097 patch release v0.2.1 |
+| BLOCKED | 1 | TASK-095 GitHub Release upload (needs a token; artifacts in dist/) |
+| DONE | 72 | P1–P5 v0.2.0 |
 | FAILED | 0 | |
-| DEFERRED | 1 | TASK-038 crates.io publish (G-PUB, owner) |
+| DEFERRED | 1 | TASK-038 crates.io (G-PUB, owner) |
 
-```text
- P1 ✔ ─ P2a–P2f ✔ ─ P3 ✔ (RPT-2026-0015: 22 PASS · 2 PARTIAL · 0 FAIL) ─ P4 ✔ docs/demos ─ P5 ○ version, tag, REL
-```
-
-- **Current phase:** P3 complete at `14750b8`. Records are in `f5a1beb` (TEST documents) and `9678de1` (RPT-2026-0015).
-  - Tests: 493 passed, 0 failed; CI run 36505156729 is green at the same commit on ubuntu-latest, macos-latest, the feature matrix and deny.
-  - T-01…T-20 PASS; T-27…T-29, T-31, T-32 and T-34 PASS; T-30 PARTIAL.
-  - Validation: R12 and R18 are PARTIAL (R12: tag and G-PUB after P5; R18: P4 not exited); every other requirement is PASS.
-  - Next: P4 exit (D-rows; T-30 re-run on the fixed build), then P5.
-- **Platforms:** macOS and Linux supported; Windows dropped (INC-2026-0011).
-- **Remote:** `origin` https://github.com/olivierdevelops/rivet (main pushed after each verified phase).
-- **Last updated:** 2026-09-29.
-- **Release target:** v0.2.0.
+- **Released:** v0.2.0 (tag → `21bb2e9`, 2026-09-30); REL-0.2.0 completed; RPT-2026-0015 24/24 PASS.
+- **Next:** v0.2.1 patch (INC-2026-0013).
+- **Platforms:** macOS and Linux; Windows unsupported (INC-2026-0011).
+- **Last updated:** 2026-09-30.
 
 ## Requirements and Use Cases
 
@@ -359,11 +350,12 @@ contract todo, write the code, add a colocated or conformance test, then run `vh
 |---|---|---|---|---|---|---|---|---|---|
 | TASK-090 | P5 | Release candidate approval (maintainer standing approval via ADR-0004 unless revoked) | all | — | — | P4 | M | DONE | Maintainer standing approval (ADR-0004: "now plan then get an agent to implement the test and release"); release candidate = main after P4 (RPT-2026-0015, DEMO-2026-0020) |
 | TASK-091 | P5 | Workspace version `0.1.0` → `0.2.0`; `.vsix` version; `rivet_version()`; T-33 (`scripts/check_version.py --tag` extended to FFI and vsix) | release | `Cargo.toml`, `editors/vscode/package.json` | T-33 | TASK-090 | I | DONE | Workspace version 0.2.0 (Cargo.toml, Cargo.lock, ffi rivet-runtime requirement, editors/vscode/package.json); scripts/check_version.py: --version, MCP serverInfo, rivet.capabilities, rivet_version() all 0.2.0; docs version sweep |
-| TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | IN PROGRESS | REL-0.2.0 drafted; release commit `release: v0.2.0` next |
-| TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | NOT STARTED | |
-| TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | NOT STARTED | |
-| TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | NOT STARTED | Remote origin added 2026-09-28 (main, v0.1.0 pushed); runs at P5 |
-| TASK-096 | P5 | CI on macOS and Linux (Windows dropped by the maintainer 2026-09-29, INC-2026-0011); post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | IN PROGRESS | CI green on ubuntu-latest + macos-latest + feature matrix + deny: run 36483001760 (commit 8045343). Post-release verification pending P5 |
+| TASK-092 | P5 | REL-0.2.0 draft (flat form) with Breaking Changes → MIG-2026-0001; release commit `release: v0.2.0`; full SHA recorded | release | `docs/releases/rel-0.2.0-release-notes.md` | T-31 | TASK-091 | I | DONE | REL-0.2.0 drafted; release commit `release: v0.2.0` = 21bb2e94dfa476856495997c4f510f5537c65225 |
+| TASK-093 | P5 | Annotated tag `v0.2.0`; verify with `git rev-list -n 1`, `describe --exact-match` and a clean tree; build release artifacts locally (`rivet` binary, `librivet.{dylib,a}`, `rivet.h`, `rivet.pc`, `.vsix`) with SHA-256 checksums | release | artifacts | T-33 | TASK-092 | I | DONE | Annotated tag v0.2.0 → 21bb2e9; describe --exact-match v0.2.0; clean tree; check_version --tag OK; dist/v0.2.0/ artifacts with SHA256SUMS (MACOSX_DEPLOYMENT_TARGET=26.0) |
+| TASK-094 | P5 | Finalize REL-0.2.0 (tag, SHA, `release:` block, §34 walk); PROP-2026-0002 → `implemented/`; plan status update; indexes | release | docs | `vhco docs release . REL-0.2.0` | TASK-093 | I | DONE | REL-0.2.0 completed (identity, §34 walk; vhco docs release OK); PROP-2026-0002 → implemented/; RPT-2026-0015 24 PASS; TEST-0030/0033 PASS |
+| TASK-095 | P5 | Push `main`, `v0.1.0` and `v0.2.0`; publish artifacts | release | — | remote shows tags | a git remote | M | BLOCKED | main + v0.1.0 + v0.2.0 pushed to origin; artifacts built in dist/v0.2.0; GitHub Release upload needs a token/gh (not available here): maintainer uploads |
+| TASK-096 | P5 | CI on macOS and Linux (Windows dropped by the maintainer 2026-09-29, INC-2026-0011); post-release verification of DEMO-2026-0020 on the published artifacts | release | — | CI | TASK-095 | M/I | DONE | CI green on main at the release commit (run 36635293035); the tag run 36635295229 failed one macOS test → INC-2026-0013 (fixed dd5e5ad, v0.2.1); tagged-build smoke run and U-12 git dependency PASS |
+| TASK-097 | P5 | Patch release v0.2.1 with the INC-2026-0013 fix: version 0.2.1, docs version strings, REL-0.2.1, release commit, tag, CI, artifacts | release | `Cargo.toml`, `ffi/Cargo.toml`, `editors/vscode/package.json`, docs | T-33 | TASK-096 | I | IN PROGRESS | Maintainer chose "Cut v0.2.1 now" (2026-09-30) |
 
 ## File and Artifact Checklist
 
@@ -508,8 +500,8 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | D-18 | demo | `docs/demos/15-ffi/` (README DEMO-2026-0017, C and Python programs) | Show the C ABI | Build, link shared and static, run, stream, cancel, misuse error | FFI | DONE | T-30 |
 | D-19 | demo | `docs/demos/16-editor/` (README DEMO-2026-0018) | Show highlighting | Install `.vsix`, open samples, `rivet highlight` outputs | editors | DONE | T-30 |
 | D-71 | demo | `docs/demos/17-modules/` (README DEMO-2026-0019, `app.rivet`, `users.rivet`, `billing.rivet`, `policy.json`, host programs in Rust/C/Python) | Show modules | `import … as`, internal vs `public`, `rivet list`/`io` across files, import errors, `rt.load`, `rivet_load`, Python module object; verification record | language, library, ffi | DONE | T-30 |
-| D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | IN PROGRESS | T-30 |
-| D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | IN PROGRESS | T-31, T-33 |
+| D-64 | release verification | `docs/demos/demo-2026-0020-v0-2-0-release-verification.md` | §29 | Version/tag/commit; U-01…U-24; per-surface success/failure incl. FFI, editor and modules; cleanup; verification record | all | DONE | T-30 |
+| D-68 | release notes | `docs/releases/rel-0.2.0-release-notes.md` + `docs/releases/index.md` | §33 | Full template; Breaking Changes; six impact decisions; §34 walk; `release:` block | all | DONE | T-31, T-33 |
 | D-69 | extension readme | `editors/vscode/README.md` | Marketplace-style readme (local) | Features, install, file association | editors | DONE | review |
 
 ### Updated documents (feature chapters)
@@ -621,6 +613,7 @@ Real output only: each example is pasted from the RC build, and varying IDs are 
 | 2026-09-29 | Finding | TASK-096 | CI logs need admin rights; `scripts/ci_step.py` re-emits failures as public check-run annotations | CI debuggable without `gh` | Implementer | TRBL-2026-0007 |
 | 2026-09-29 | Finding | — | A separate Codex session added STD-2026-0001 (orchestrator and cross-package review standard); committed as authored (e7ed8ed) | Review practice only | Maintainer | STD-2026-0001 |
 | 2026-09-29 | Decision | TASK-081 | Six documentation-impact decisions for v0.2.0: release verification guide/demo UPDATED (DEMO-2026-0020, demos 01–17); README UPDATED; system UPDATED (SYS-0001…0011); architecture UPDATED (ARCH-0001); API and CLI reference UPDATED (API-0001…0007, MAN-0004); manual UPDATED (MAN-0001…0010) | Recorded for REL-0.2.0 | Implementer | REL-0.2.0 |
+| 2026-09-30 | Finding | TASK-096 | CI on tag v0.2.0 failed one macOS test (`cli_live_input_local_and_remote`); root cause: the CLI waited for the blocking stdin reader on runtime drop (`--input-jsonl -` hangs until EOF) | Fixed dd5e5ad; maintainer decision: cut v0.2.1 now (TASK-097) | Implementer / Maintainer | INC-2026-0013 |
 | 2026-09-28 | Decision | UQ-09 / P2f | Scope amendment: file modules (import in `.rivet` + host load objects in Rust/C/Python), namespaced by alias, loader's policy only; CLI run-from-path not selected | +8 tasks (TASK-045, TASK-100–107), T-16–T-20, D-71, D-72 | Maintainer | PROP-2026-0002 rev 3, ADR-0004 rev 2 |
 | 2026-09-28 | Deviation | IDs | The modules demo takes DEMO-2026-0019; the release verification guide moves to DEMO-2026-0020 | — | Implementer | D-64, D-71 |
 | 2026-09-28 | Finding | TASK-005 | vhco reads only `src/`: the `ffi/` crate is invisible, so all FFI logic and annotations go in `orchestrator/setup_ffi.rs` (ADR-0005). `vhco sync` also compares flow triggers (exact text) and flow handling (`layer: ref` steps), so renaming a trigger or a step needs a hand edit of the contract flow | Every later phase edits contract flows with its code | Implementer | RES-2026-0004, TRBL-2026-0004 |
@@ -756,6 +749,7 @@ into 0.3.0 (alias removal, G-PUB, tree-sitter).
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 13 | 2026-09-30 | Claude | v0.2.0 released (21bb2e9); REL finalized; INC-2026-0013 from the tag CI run; TASK-097 v0.2.1 patch added. |
 | 12 | 2026-09-30 | Claude | P5: TASK-090/091 DONE (version 0.2.0), REL-0.2.0 drafted, PROP-2026-0002 implemented; release commit next. |
 | 11 | 2026-09-29 | Claude | P4 ledger: TASK-070…082 DONE with commit evidence; D-rows DONE (D-64 in progress, D-67/D-68 at P5); six documentation-impact decisions recorded. |
 | 10 | 2026-09-29 | Claude | P3 done: TASK-060…064 DONE with evidence (`14750b8` gates, 493 tests, CI run 36505156729; TEST-2026-0034…0053 created and 0001…0032 re-recorded in `f5a1beb`; RPT-2026-0015 in `9678de1`); P3 phase row DONE; requirement statuses per RPT-2026-0015 (22 PASS, R12 and R18 PARTIAL); Test checklist status and evidence for T-01…T-32, T-34; D-05, D-07, D-08 DONE; final traceability statuses; P3 findings (T-08 Linux criterion, T-12 ASan deviation, T-30 PARTIAL, canary scan, vhco.json staleness); live status refreshed. |

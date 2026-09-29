@@ -4,8 +4,8 @@ title: "T-30 — manual / e2e (all UCs / R1–R26)"
 document_type: test
 status: completed
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 2
+last_updated: 2026-09-30
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -16,8 +16,8 @@ affected_versions:
 validated_plan_requirements: [PLAN-2026-0001 R1, PLAN-2026-0001 R26, PLAN-2026-0002 R18]
 environment: "macOS 26.4.1 arm64 (aarch64-apple-darwin), Rust 1.90.0, Apple clang 21.0.0, Python 3.9.6, cbindgen 0.29.4 (local); GitHub Actions run 36505156729 at the same commit on ubuntu-latest and macos-latest (Rust 1.90.0, Python 3.12); Windows unsupported in 0.2.0 (INC-2026-0011)"
 executed_by: Claude (automated)
-executed_at: 2026-09-29T14:23:39Z
-result: PARTIAL
+executed_at: 2026-09-30T05:50:00Z
+result: PASS
 confidentiality: internal
 scope: Test definition and latest recorded result for plan test T-30; re-recorded for v0.2.0 (PLAN-2026-0002 T-30).
 reason: DOCUMENTATION §27 — every plan test has a TEST document linked to the requirement it validates.
@@ -31,7 +31,7 @@ tags: [rivet, test]
 
 > **Status:** Completed
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0, 0.2.0 (re-recorded)
 > **Owner:** Project maintainer
 > **Affected Components:** execution
@@ -83,6 +83,13 @@ Every step matches; verification records filled
 
 ## Actual Results
 
+**v0.2.0 final (2026-09-30).** Both PARTIAL reasons from the 2026-09-29 record are resolved:
+1. The demo steps affected by the INC-2026-0012 fixes were re-executed at `7c25175`, and every one passed (commits `8376530` and `63fe46e`).
+2. The tagged build `v0.2.0` (`21bb2e9`, `dist/v0.2.0/`) passed the smoke run recorded in DEMO-2026-0020: checksums, CLI, modules, highlight, C links both static and shared, and Python. The U-12 git-tag dependency builds and runs.
+
+**Result PASS.** Linux coverage comes from CI. Windows is unsupported (INC-2026-0011).
+
+
 ### v0.2.0 run (2026-09-29, commit `14750b8`)
 
 This run summarizes the demo verification records written during P4 (TASK-075…077); the demos were not re-executed for this document. On macOS 26.4.1 arm64 every step of folders 01–12 and 14–17 is recorded PASS against the release candidate (commits `8031baa` and `166a98b`), each folder `verified_against: "0.2.0"`; 13-real-world-apis depends on third-party services and is not part of the pass/fail decision, as in 0.1.0. DEMO-2026-0020 records U-01…U-24 PASS, with three items evidenced only by conformance suites (`unsupported.feature`, `limit.imports`, the `v0.2.0` git-tag dependency). Linux: the suites behind the demos are green in CI (runs 36483001760 and 36505156729); the demos themselves were not executed on a Linux host. **Result PARTIAL**, for concrete reasons: (1) the plan's criterion is "executed … against the RC" and "every step matches", but the demo records predate the INC-2026-0012 fix commits (`4122353`, `1034636`, `4a34537`); the documentation was updated to the fixed behaviour (`55b9e73`) and the regressions are tested, but the changed steps have not been re-executed; (2) DEMO-2026-0020's `Tagged release build v0.2.0` row is NOT STARTED until P5 (TASK-093), and the U-12 git-tag dependency cannot be checked before the tag exists. Windows is not a reason for PARTIAL (unsupported, INC-2026-0011).
@@ -93,7 +100,7 @@ All 12 release sample folders (01-catalog … 12-library) were executed step by 
 
 ## Result
 
-PARTIAL
+PASS
 
 Windows is not a supported platform in 0.2.0 (maintainer decision, [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md)) and is not among the reasons above.
 
@@ -180,5 +187,6 @@ Defects found while building this suite are recorded as incidents (see [incident
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-30 | Claude | v0.2.0 final: INC-2026-0012 steps re-run and tagged-build smoke run PASS: PASS. |
 | 1 | 2026-09-28 | Claude | Executed and recorded at commit `64c93d8`. |
 | 2 | 2026-09-29 | Claude | Re-recorded for v0.2.0 at commit `14750b8` (PLAN-2026-0002 T-30, TASK-061): PARTIAL; still PARTIAL (records predate the INC-2026-0012 fixes; tagged-build run is P5). v0.1.0 run kept as history. |

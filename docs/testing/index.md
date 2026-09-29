@@ -4,8 +4,8 @@ title: "Rivet tests"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 2
+last_updated: 2026-09-30
+document_revision: 3
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -26,7 +26,7 @@ tags: [rivet, index, test]
 
 > **Status:** Active
 > **Created:** 2026-09-28
-> **Last Updated:** 2026-09-29
+> **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.1.0, 0.2.0
 > **Owner:** Project maintainer
 > **Affected Components:** language, execution, files, policy, audit, serve, transports, library, ffi
@@ -41,7 +41,7 @@ This page lists the TEST documents (DOCUMENTATION §27). Each one maps to one ro
  T-01 … T-20 (proposal tests) ────────► TEST-2026-0034 … 0053 (new) ───► cargo test --test conformance_<suite>
  T-27 build · T-28 vhco · T-29 corpus ─► TEST-2026-0027 · 0028 · 0029 ──► gates, vhco, conformance_samples
  T-30 demos · T-31 docs · T-32 trace ──► TEST-2026-0030 · 0031 · 0032 ──► demo records, check_docs, trace script
- T-33 release (P5) ───────────────────► TEST-2026-0033 (still the v0.1.0 record until P5)
+ T-33 release ────────────────────────► TEST-2026-0033 (v0.2.0: tag v0.2.0 → 21bb2e9)
  T-34 regression ─────────────────────► TEST-2026-0001 … 0026 (re-recorded, each keeps its v0.1.0 run)
                 │
                 └──► result per requirement R1–R24 ──► RPT-2026-0015 (validation report) ──► REL-0.2.0
@@ -83,10 +83,10 @@ Environment of the v0.2.0 runs: macOS 26.4.1 arm64 locally at commit `14750b8`, 
 | [TEST-2026-0027](test-2026-0027-build-static.md) | T-27 | T-27 — build / static (all / R1) | PARTIAL | PASS |
 | [TEST-2026-0028](test-2026-0028-architecture.md) | T-28 | T-28 — architecture (all / R14) | PASS | PASS |
 | [TEST-2026-0029](test-2026-0029-samples.md) | T-29 | T-29 — regression / corpus (UC-01 / R2, R14) | PASS | PASS |
-| [TEST-2026-0030](test-2026-0030-demos-e2e.md) | T-30 | T-30 — manual / e2e (all UCs / R1–R26) | PARTIAL | PARTIAL |
+| [TEST-2026-0030](test-2026-0030-demos-e2e.md) | T-30 | T-30 — manual / e2e (all UCs / R1–R26) | PARTIAL | PASS |
 | [TEST-2026-0031](test-2026-0031-documentation.md) | T-31 | T-31 — documentation (R14) | PASS | PASS |
 | [TEST-2026-0032](test-2026-0032-traceability.md) | T-32 | T-32 — traceability (R1–R26) | PASS | PASS |
-| [TEST-2026-0033](test-2026-0033-release.md) | T-33 | T-33 — release (release) | PASS | P5 (not yet re-recorded) |
+| [TEST-2026-0033](test-2026-0033-release.md) | T-33 | T-33 — release (release) | PASS | PASS |
 
 ### PLAN-2026-0002 T-34 regression (the PLAN-2026-0001 suites, re-recorded)
 
@@ -123,12 +123,12 @@ Environment of the v0.2.0 runs: macOS 26.4.1 arm64 locally at commit `14750b8`, 
  v0.2.0 results        PASS  PARTIAL  FAIL
  ───────────────────── ────  ───────  ────
  new (0034–0053)         20        0     0
- plan checks (27–32)      5        1     0      T-30: demo records predate the INC-2026-0012 fixes; tagged-build run is P5
+ plan checks (27–32)      6        0     0
  T-34 (0001–0026)        26        0     0
- T-33 (0033)            — re-recorded at P5 —
+ T-33 (0033)             1        0     0      tag v0.2.0 → 21bb2e9
 ```
 
-The v0.1.0 PARTIAL results of TEST-2026-0001, 0008 and 0027 existed only because Linux and Windows had no CI runner. Linux is now covered and green. Windows is no longer a supported platform, so these tests are now PASS. For TEST-2026-0008, the Linux sandbox stays gated by design ([ADR-0003](../decisions/adr-0003-process-sandbox-backends.md)); the typed refusal before spawn is the outcome the criterion specifies (see that document). TEST-2026-0030 remains PARTIAL for the reasons it states.
+The v0.1.0 PARTIAL results of TEST-2026-0001, 0008 and 0027 existed only because Linux and Windows had no CI runner. Linux is now covered and green. Windows is no longer a supported platform, so these tests are now PASS. For TEST-2026-0008, the Linux sandbox stays gated by design ([ADR-0003](../decisions/adr-0003-process-sandbox-backends.md)); the typed refusal before spawn is the outcome the criterion specifies (see that document). TEST-2026-0030 is PASS since the 2026-09-30 re-run and the tagged-build smoke run.
 
 ## Recently added or updated
 
@@ -147,5 +147,6 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 3 | 2026-09-30 | Claude | TEST-2026-0030 PASS and TEST-2026-0033 re-recorded for v0.2.0. |
 | 2 | 2026-09-29 | Claude | PLAN-2026-0002 P3: TEST-2026-0034…0053 added; 0001…0032 re-recorded for v0.2.0; tables split by plan row; results summary. |
 | 1 | 2026-09-28 | Claude | Created. |

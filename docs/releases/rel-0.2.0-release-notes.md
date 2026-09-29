@@ -2,19 +2,25 @@
 document_id: REL-0.2.0
 title: "Rivet 0.2.0 release notes"
 document_type: release
-status: draft
+status: completed
 created_date: 2026-09-30
 last_updated: 2026-09-30
-document_revision: 1
+document_revision: 2
 authors: [Claude]
 owner: Project maintainer
 version: "0.2.0"
 git_tag: v0.2.0
-git_commit: recorded after tagging (TASK-094)
+git_commit: 21bb2e94dfa476856495997c4f510f5537c65225
 release_date: 2026-09-30
 source_branch: main
 previous_version: "0.1.0"
 previous_tag: v0.1.0
+release:
+  version: "0.2.0"
+  tag: v0.2.0
+  commit: 21bb2e94dfa476856495997c4f510f5537c65225
+  date: 2026-09-30
+  branch: main
 systems: [Rivet]
 components: [language, registry, execution, audit, policy, serve, cli, http, ws, poll, mcp, library, ffi]
 affected_versions:
@@ -31,7 +37,7 @@ tags: [rivet, release, v0.2.0]
 
 # Release 0.2.0
 
-> **Status:** Draft
+> **Status:** Completed
 > **Created:** 2026-09-30
 > **Last Updated:** 2026-09-30
 > **Affected Versions:** 0.2.0
@@ -43,7 +49,7 @@ tags: [rivet, release, v0.2.0]
 ```text
 Release Version:          0.2.0
 Git Tag:                  v0.2.0
-Git Commit:               recorded after tagging (TASK-094)
+Git Commit:               21bb2e94dfa476856495997c4f510f5537c65225
 Release Date:             2026-09-30
 Source Branch:            main
 Previous Version:         0.1.0
@@ -63,7 +69,7 @@ approved in [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-f
 decision is [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md).
 
 ```text
- PROP-2026-0002 r3 ─► ADR-0004 ─► PLAN-2026-0002 ─► 78 commits since v0.1.0 ─► TEST-2026-0001…0053 ─► RPT-2026-0015
+ PROP-2026-0002 r3 ─► ADR-0004 ─► PLAN-2026-0002 ─► 80 commits since v0.1.0 ─► TEST-2026-0001…0053 ─► RPT-2026-0015
                                                                                   └─► DEMO-2026-0020 ─► REL-0.2.0
 ```
 
@@ -88,13 +94,13 @@ decision is [ADR-0005](../decisions/adr-0005-workspace-package-and-features.md).
 | PROP-2026-0002 R9 | Manifest precision | U-09 | PASS |
 | PROP-2026-0002 R10 | UQ-02: Cargo dependency | U-10 | PASS |
 | PROP-2026-0002 R11 | UQ-02: lean builds | U-11 | PASS |
-| PROP-2026-0002 R12 | UQ-02: publication path | U-12 | PARTIAL |
+| PROP-2026-0002 R12 | UQ-02: publication path | U-12 | PASS |
 | PROP-2026-0002 R13 | UQ-08: C ABI | U-13 | PASS |
 | PROP-2026-0002 R14 | FFI safety | U-14 | PASS |
 | PROP-2026-0002 R15 | FFI streams | U-15 | PASS |
 | PROP-2026-0002 R16 | UQ-01: editors | U-16 | PASS |
 | PROP-2026-0002 R17 | UQ-01: terminal/HTML | U-17 | PASS |
-| PROP-2026-0002 R18 | DOCUMENTATION §§29–31 | U-18 | PARTIAL |
+| PROP-2026-0002 R18 | DOCUMENTATION §§29–31 | U-18 | PASS |
 | PROP-2026-0002 R19 | UQ-09: files as modules | U-19 | PASS |
 | PROP-2026-0002 R20 | UQ-09: namespaced by alias | U-20 | PASS |
 | PROP-2026-0002 R21 | Safe imports | U-21 | PASS |
@@ -174,7 +180,7 @@ These were found and fixed during the release work:
 | U-09 | UQ-07 → R9 | Globals substituted in the manifest and call graph; literal-and-global targets are `exact`; exact grants from `policy generate` | [14-globals](../demos/14-globals/README.md) steps 3–5 | `…/users/index.json?limit=50` `exact`; draft with 2 exact grants; one-line retarget | Recorded; `conformance_globals` (T-08). Deviation: a target with a param stays `param_dependent` (Known Caveats) |
 | U-10 | UQ-02 → R10 | Package `rivet-runtime`, library `rivet`, public facade only (`rivet::{Runtime, Policy, Value, InputEnvelope, …}`, `rivet::types`) | [12-library](../demos/12-library/README.md) step 2 | A scratch crate with `package = "rivet-runtime"` compiles against the facade and exits 0 | Recorded; `examples/embed.rs`; `conformance_library` |
 | U-11 | UQ-02 → R11 | Cargo features `serve`, `grpc`, `quic`, `oauth`, `cli`; a compiled-out adapter is `unsupported.feature` | [12-library](../demos/12-library/README.md) step 2; [01-catalog](../demos/01-catalog/README.md) step 1 (`rivet.capabilities`) | `build_features` `["serve","grpc","quic","oauth"]` (library) / plus `cli` (binary) | Success recorded. The failure half (`unsupported.feature`, exit 5, HTTP 501) is evidenced by `conformance_features` (T-10) only: no lean binary is built in the demos |
-| U-12 | UQ-02 → R12 | Git dependency on tag `v0.2.0`; crates.io publication prepared and gated (G-PUB) | `cargo package --list -p rivet-runtime --allow-dirty`; after P5, `rivet-runtime = { git = "…/rivet", tag = "v0.2.0" }` | 177 files: `src/**`, `rivet.capy`, `editors/keywords.json`, the two examples; no `tests/`, `docs/`, `ffi/` | Package list recorded (166a98b). **Not verifiable yet**: the tag `v0.2.0` does not exist until P5; `cargo publish --dry-run` fails on the git `capy-core` dependency, as expected until G-PUB (PLAN-2026-0002 finding R12) |
+| U-12 | UQ-02 → R12 | Git dependency on tag `v0.2.0`; crates.io publication prepared and gated (G-PUB) | `cargo package --list -p rivet-runtime --allow-dirty`; after P5, `rivet-runtime = { git = "…/rivet", tag = "v0.2.0" }` | 177 files: `src/**`, `rivet.capy`, `editors/keywords.json`, the two examples; no `tests/`, `docs/`, `ffi/` | `cargo package --list` 177 files (166a98b). **Git-tag dependency verified** 2026-09-30: a fresh crate with `rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0", default-features = false }` resolved `git+…?tag=v0.2.0#21bb2e94…`, built, and `Runtime::call` returned `data: 5`. crates.io DEFERRED (G-PUB) |
 | U-13 | UQ-08 → R13 | `librivet` as `cdylib` + `staticlib`, `include/rivet.h`, `rivet.pc`, `rivet_abi_version` | [15-ffi](../demos/15-ffi/README.md) Setup, step 1 | 18 `rivet_*` symbols; shared and static links run | Recorded; `conformance_ffi` (T-11); Linux in CI run 36483001760 |
 | U-14 | UQ-08 → R14 | Null, UTF-8, JSON, panic and double-free guards; ownership and thread-safety rules | [15-ffi](../demos/15-ffi/README.md) step 5 | `validation.ffi_argument`, `validation.input_envelope`, `not_found.source` envelopes; second free returns 1 | Recorded; `conformance_ffi` (T-12) |
 | U-15 | UQ-08 → R15 | Pull call handle: `rivet_call_start`, `_next`, `_send`, `_finish_input`, `_cancel`, `_free` | [15-ffi](../demos/15-ffi/README.md) step 2 | Items then one terminal record; echoed input; `cancelled` | Recorded; `conformance_ffi` (T-11) |
@@ -221,10 +227,10 @@ These were found and fixed during the release work:
 | [TEST-2026-0027](../testing/test-2026-0027-build-static.md) | PLAN-2026-0001 R1, PLAN-2026-0002 R10, PLAN-2026-0002 R11, PLAN-2026-0002 R13 | PASS |
 | [TEST-2026-0028](../testing/test-2026-0028-architecture.md) | PLAN-2026-0001 R14, PLAN-2026-0002 R1, PLAN-2026-0002 R24 | PASS |
 | [TEST-2026-0029](../testing/test-2026-0029-samples.md) | PLAN-2026-0001 R2, PLAN-2026-0001 R14, PLAN-2026-0002 R7, PLAN-2026-0002 R16, PLAN-2026-0002 R19 | PASS |
-| [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) | PLAN-2026-0001 R1, PLAN-2026-0001 R26, PLAN-2026-0002 R18 | PARTIAL |
+| [TEST-2026-0030](../testing/test-2026-0030-demos-e2e.md) | PLAN-2026-0001 R1, PLAN-2026-0001 R26, PLAN-2026-0002 R18 | PASS |
 | [TEST-2026-0031](../testing/test-2026-0031-documentation.md) | PLAN-2026-0001 R14, PLAN-2026-0002 R18 | PASS |
 | [TEST-2026-0032](../testing/test-2026-0032-traceability.md) | PLAN-2026-0001 R1, PLAN-2026-0001 R26, PLAN-2026-0002 R1…R24 | PASS |
-| [TEST-2026-0033](../testing/test-2026-0033-release.md) | PLAN-2026-0001 R14 | PASS |
+| [TEST-2026-0033](../testing/test-2026-0033-release.md) | PLAN-2026-0001 R14, PLAN-2026-0002 R12 | PASS |
 | [TEST-2026-0034](../testing/test-2026-0034-envelope-schema.md) | PLAN-2026-0002 R1, PLAN-2026-0002 R2 | PASS |
 | [TEST-2026-0035](../testing/test-2026-0035-input-envelope.md) | PLAN-2026-0002 R4 | PASS |
 | [TEST-2026-0036](../testing/test-2026-0036-builtin-json-envelopes.md) | PLAN-2026-0002 R3 | PASS |
@@ -248,8 +254,8 @@ These were found and fixed during the release work:
 
 ## Validation
 
-[RPT-2026-0015](../reports/rpt-2026-0015-validation-of-plan-2026-0002.md) records 22 requirements PASS,
-2 PARTIAL and 0 FAIL. Requirements not yet PASS: R12, R18. CI evidence comes from GitHub Actions on
+[RPT-2026-0015](../reports/rpt-2026-0015-validation-of-plan-2026-0002.md) records 24 requirements PASS,
+0 PARTIAL and 0 FAIL. Requirements not yet PASS: none. CI evidence comes from GitHub Actions on
 ubuntu-latest and macos-latest (tests, `cargo deny`, and a feature matrix of none, cli, serve, grpc, quic and
 oauth).
 
@@ -266,6 +272,7 @@ response envelope.
 | [INC-2026-0009](../incidents/resolved/inc-2026-0009-numeric-index-paths-do-not-parse.md) | S4 | Numeric index paths (`xs.0`) do not parse and report a misleading assign_map error | resolved |
 | [INC-2026-0010](../incidents/resolved/inc-2026-0010-ffi-rlib-output-collision.md) | S3 | rivet-ffi and rivet-runtime both produced librivet.rlib (output filename collision) | resolved |
 | [INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md) | S3 | Defects found by v0.2.0 documentation and demo verification | resolved |
+| [INC-2026-0013](../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md) | S3 | rivet request --input-jsonl - waited for stdin EOF after the request ended | resolved |
 
 ## Troubleshooting
 
@@ -318,8 +325,9 @@ RUN-2026-0001/0002 and ONB-2026-0001 are updated for 0.2.0. MIG-2026-0001 is new
 
 - **Windows is not supported.** CI found about 13 problem areas (paths, file replace, stdio MCP, UDP and others),
   catalogued in [INC-2026-0011](../incidents/active/inc-2026-0011-windows-port-failures.md) for a future port.
-- **`rivet request --input-jsonl -`** over `--endpoint` exits only when stdin closes, even after the terminal
-  record arrives (INC-2026-0012 note).
+- **`rivet request --input-jsonl -` waits for stdin EOF after the request ends** (local and `--endpoint`):
+  [INC-2026-0013](../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md), found by the CI run on
+  this tag. Fixed in **v0.2.1**; upgrade, or close stdin when the terminal record arrives.
 - **No AddressSanitizer CI job** for `rivet-ffi` yet. Leak checks ran locally on macOS (T-12).
 - **crates.io publication is deferred** (G-PUB: needs the owner's Capy published as `capy-lang`). Depend on the git
   tag instead.
@@ -345,6 +353,41 @@ RUN-2026-0001/0002 and ONB-2026-0001 are updated for 0.2.0. MIG-2026-0001 is new
 - 0.3.0: remove the deprecated `id`/`params`/`--params` input aliases (MIG-2026-0001 timeline).
 - G-PUB: publish Capy as `capy-lang`, then `rivet-runtime`, to crates.io (owner decision).
 
+## Release Completion Gate (DOCUMENTATION §34)
+
+Walked on 2026-09-30 against tag `v0.2.0` (commit `21bb2e94dfa476856495997c4f510f5537c65225`).
+
+| # | Condition | State | Evidence |
+|---|---|---|---|
+| 1 | Approved plan exists | ✔ | PLAN-2026-0002 (ADR-0004) |
+| 2 | Proposal preserves the request and traces requirements | ✔ | PROP-2026-0002 r3 (UQ-01…UQ-09, R1–R24) |
+| 3 | Every user-facing requirement has a UC | ✔ | UC-01…UC-11 |
+| 4 | Changes and file rows map to requirements and forward | ✔ | TEST-2026-0032: no orphans |
+| 5 | Standards baseline recorded and passed | ✔ | Project Standards Baseline above |
+| 6 | Implementation matches the plan; deviations documented | ✔ | Plan findings table; RPT-2026-0015 |
+| 7 | No unexplained open item in release scope | ✔ | TASK-038 DEFERRED (G-PUB, owner); TASK-095 artifacts built, GitHub Release upload manual (no token here) |
+| 8 | Unexpected bugs documented | ✔ | INC-2026-0009…0013 |
+| 9 | Reusable problems documented | ✔ | TRBL-2026-0004…0007 |
+| 10 | Tests completed and recorded | ✔ | TEST-2026-0001…0053 |
+| 11 | Every test links its requirement | ✔ | `validated_plan_requirements` |
+| 12–14 | Measurable claims | N/A | none made |
+| 15 | Validation report with a result per requirement | ✔ | RPT-2026-0015: 24 PASS |
+| 16 | Every PARTIAL or FAIL referenced | ✔ | none remaining; tag CI failure → INC-2026-0013 |
+| 17 | Verification guide, one U-row per update | ✔ | DEMO-2026-0020 U-01…U-24 |
+| 18 | U-rows link requirement, action, expected result and evidence | ✔ | Released Updates table |
+| 19 | Demo commands executed | ✔ | TEST-2026-0030 PASS; tagged-build smoke run |
+| 20–22 | Manual integrated, feature catalogue, every CLI/API/error documented | ✔ | MAN-2026-0001…0010, API-2026-0001…0007 |
+| 23–27 | Six documentation-impact decisions | ✔ | Documentation Impact above |
+| 28 | Code and system docs consistent | ✔ | `vhco sync` 0; `vhco docs check` 0 errors |
+| 29 | on-release docs reviewed | ✔ | next_review_date 2026-10-29 |
+| 30–31 | Canonical version updated and synchronized | ✔ | `check_version.py --tag`: 0.2.0 everywhere |
+| 32–34 | Release committed, clean tree, full SHA recorded | ✔ | `21bb2e9` release: v0.2.0 |
+| 35–36 | Tag created, matches, resolves to the commit | ✔ | annotated `v0.2.0` → `21bb2e9` |
+| 37 | Commit and tag pushed | ✔ | `origin` main and `v0.2.0`; CI on main green (36635293035); tag run: INC-2026-0013 |
+| 38 | Known issues and limitations documented | ✔ | above |
+| 39–44 | Release document complete, links, accurate, identity | ✔ | this document; `vhco docs release . REL-0.2.0` |
+| 45 | Indexes regenerated | ✔ | docs/index.md, releases, testing, reports, proposals, incidents |
+
 ## Related Documents
 
 - [PLAN-2026-0002](../plans/plan-2026-0002-rivet-v0-2-0-implementation-and-release.md) · [PROP-2026-0002](../proposals/implemented/prop-2026-0002-envelopes-globals-library-ffi-highlighting.md) · [ADR-0004](../decisions/adr-0004-approve-envelopes-globals-library-ffi-highlighting.md)
@@ -355,4 +398,5 @@ RUN-2026-0001/0002 and ONB-2026-0001 are updated for 0.2.0. MIG-2026-0001 is new
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 2 | 2026-09-30 | Claude | Finalized with tag v0.2.0 and commit 21bb2e94dfa476856495997c4f510f5537c65225; §34 gate walked. |
 | 1 | 2026-09-30 | Claude | Drafted for the release commit (tag and commit recorded after tagging). |

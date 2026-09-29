@@ -4,8 +4,8 @@ title: "Rivet incidents"
 document_type: reference
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-28
-document_revision: 5
+last_updated: 2026-09-30
+document_revision: 6
 authors: [Claude]
 owner: Project maintainer
 systems: [Rivet]
@@ -51,6 +51,7 @@ Unexpected defects, regressions and abnormal behaviour (DOCUMENTATION §4.19, §
 | [INC-2026-0010](resolved/inc-2026-0010-ffi-rlib-output-collision.md) | S3 | resolved | `librivet.rlib` output collision between rivet-ffi and rivet-runtime (fixed `6f9943f`) |
 | [INC-2026-0011](active/inc-2026-0011-windows-port-failures.md) | S3 | active | Windows port failures W-01…W-13; Windows dropped from CI and support for v0.2.0 |
 | [INC-2026-0012](resolved/inc-2026-0012-documentation-and-demo-verification-defects.md) | S3 | resolved | 19 defects found by v0.2.0 documentation and demo verification (envelope `seq`/IDs/`operation`, WS refusals, `policy explain --data`, highlight, facade), fixed before release |
+| [INC-2026-0013](resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md) | S3 | resolved | `--input-jsonl -` waited for stdin EOF after the request ended (fixed `dd5e5ad`, v0.2.1) |
 
 ```text
  active/        none
@@ -79,6 +80,7 @@ None.
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 6 | 2026-09-30 | Claude | INC-2026-0013. |
 | 5 | 2026-09-29 | Claude | INC-2026-0012. |
 | 4 | 2026-09-29 | Claude | INC-2026-0010 and INC-2026-0011. |
 | 3 | 2026-09-28 | Claude | INC-2026-0009 resolved. |

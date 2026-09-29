@@ -5,7 +5,7 @@ document_type: demo
 status: active
 created_date: 2026-09-29
 last_updated: 2026-09-30
-document_revision: 4
+document_revision: 5
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -20,7 +20,7 @@ scope: Executable verification procedure for every update released in Rivet 0.2.
 reason: DOCUMENTATION.md §29 requires a release verification guide and demo for every release; PLAN-2026-0002 TASK-077 (D-64, T-30).
 release_version: "0.2.0"
 release_tag: v0.2.0
-release_commit: TBD at P5
+release_commit: 21bb2e94dfa476856495997c4f510f5537c65225
 dependencies: [PLAN-2026-0002, PROP-2026-0002]
 related_documents: [PLAN-2026-0002, PROP-2026-0002, DEMO-2026-0015, DEMO-2026-0001, DEMO-2026-0002, DEMO-2026-0003, DEMO-2026-0004, DEMO-2026-0005, DEMO-2026-0006, DEMO-2026-0007, DEMO-2026-0008, DEMO-2026-0009, DEMO-2026-0010, DEMO-2026-0011, DEMO-2026-0012, DEMO-2026-0013, DEMO-2026-0014, DEMO-2026-0016, DEMO-2026-0017, DEMO-2026-0018, DEMO-2026-0019, API-2026-0005, API-2026-0006, INC-2026-0011]
 supersedes: null
@@ -44,8 +44,8 @@ verified_against: "0.2.0"
 ```text
   ┌──────────────────────────────────────────────────────────────────────────┐
   │  RELEASE      Rivet 0.2.0                                                │
-  │  TAG          v0.2.0 (annotated)                    TBD at P5            │
-  │  COMMIT       TBD at P5                                                  │
+  │  TAG          v0.2.0 (annotated)                                         │
+  │  COMMIT       21bb2e94dfa476856495997c4f510f5537c65225                   │
   │  VERIFIED ON  0.2.0-dev release candidate: source 8031baa,               │
   │               re-run at 166a98b (documentation-only commits after it)    │
   │  PLAN         PLAN-2026-0002   PROPOSAL  PROP-2026-0002                  │
@@ -145,7 +145,7 @@ Folders 01–12 carry two Release Updates tables: the first lists the 0.2.0 upda
 | U-09 | UQ-07 → R9 | Globals substituted in the manifest and call graph; literal-and-global targets are `exact`; exact grants from `policy generate` | [14-globals](14-globals/README.md) steps 3–5 | `…/users/index.json?limit=50` `exact`; draft with 2 exact grants; one-line retarget | Recorded; `conformance_globals` (T-08). Deviation: a target with a param stays `param_dependent` (Known Caveats) |
 | U-10 | UQ-02 → R10 | Package `rivet-runtime`, library `rivet`, public facade only (`rivet::{Runtime, Policy, Value, InputEnvelope, …}`, `rivet::types`) | [12-library](12-library/README.md) step 2 | A scratch crate with `package = "rivet-runtime"` compiles against the facade and exits 0 | Recorded; `examples/embed.rs`; `conformance_library` |
 | U-11 | UQ-02 → R11 | Cargo features `serve`, `grpc`, `quic`, `oauth`, `cli`; a compiled-out adapter is `unsupported.feature` | [12-library](12-library/README.md) step 2; [01-catalog](01-catalog/README.md) step 1 (`rivet.capabilities`) | `build_features` `["serve","grpc","quic","oauth"]` (library) / plus `cli` (binary) | Success recorded. The failure half (`unsupported.feature`, exit 5, HTTP 501) is evidenced by `conformance_features` (T-10) only: no lean binary is built in the demos |
-| U-12 | UQ-02 → R12 | Git dependency on tag `v0.2.0`; crates.io publication prepared and gated (G-PUB) | `cargo package --list -p rivet-runtime --allow-dirty`; after P5, `rivet-runtime = { git = "…/rivet", tag = "v0.2.0" }` | 177 files: `src/**`, `rivet.capy`, `editors/keywords.json`, the two examples; no `tests/`, `docs/`, `ffi/` | Package list recorded (166a98b). **Not verifiable yet**: the tag `v0.2.0` does not exist until P5; `cargo publish --dry-run` fails on the git `capy-core` dependency, as expected until G-PUB (PLAN-2026-0002 finding R12) |
+| U-12 | UQ-02 → R12 | Git dependency on tag `v0.2.0`; crates.io publication prepared and gated (G-PUB) | `cargo package --list -p rivet-runtime --allow-dirty`; after P5, `rivet-runtime = { git = "…/rivet", tag = "v0.2.0" }` | 177 files: `src/**`, `rivet.capy`, `editors/keywords.json`, the two examples; no `tests/`, `docs/`, `ffi/` | `cargo package --list` 177 files (166a98b). **Git-tag dependency verified** 2026-09-30: a fresh crate with `rivet = { package = "rivet-runtime", git = "https://github.com/olivierdevelops/rivet", tag = "v0.2.0", default-features = false }` resolved `git+…?tag=v0.2.0#21bb2e94…`, built, and `Runtime::call` returned `data: 5`. crates.io DEFERRED (G-PUB) |
 | U-13 | UQ-08 → R13 | `librivet` as `cdylib` + `staticlib`, `include/rivet.h`, `rivet.pc`, `rivet_abi_version` | [15-ffi](15-ffi/README.md) Setup, step 1 | 18 `rivet_*` symbols; shared and static links run | Recorded; `conformance_ffi` (T-11); Linux in CI run 36483001760 |
 | U-14 | UQ-08 → R14 | Null, UTF-8, JSON, panic and double-free guards; ownership and thread-safety rules | [15-ffi](15-ffi/README.md) step 5 | `validation.ffi_argument`, `validation.input_envelope`, `not_found.source` envelopes; second free returns 1 | Recorded; `conformance_ffi` (T-12) |
 | U-15 | UQ-08 → R15 | Pull call handle: `rivet_call_start`, `_next`, `_send`, `_finish_input`, `_cancel`, `_free` | [15-ffi](15-ffi/README.md) step 2 | Items then one terminal record; echoed input; `cancelled` | Recorded; `conformance_ffi` (T-11) |
@@ -387,7 +387,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 | U-01…U-06 through folders 01–13 (re-verified) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS (see each folder's record) |
 | U-07…U-09 globals (14-globals) | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | U-10, U-11 facade and features (12-library; `rivet.capabilities`) | Claude (TASK-076) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS; `unsupported.feature` by `conformance_features` only |
-| U-12 `cargo package --list -p rivet-runtime` (177 files, no tests/docs/ffi) | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS for packaging; git-tag dependency NOT VERIFIABLE until P5; crates.io DEFERRED (G-PUB) |
+| U-12 `cargo package --list -p rivet-runtime` (177 files, no tests/docs/ffi) | Claude (TASK-077) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS: packaging (166a98b) and the git-tag dependency (2026-09-30, tag v0.2.0 → 21bb2e9); crates.io DEFERRED (G-PUB) |
 | U-13…U-15 C ABI (15-ffi steps 1–2) | Claude (TASK-075) | 2026-09-29, commit 8031baa, macOS 26.4.1 arm64 | PASS |
 | U-14, U-23 misuse, C and Python modules (15-ffi steps 3–5) | Claude (coordinator) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64 | PASS |
 | U-16, U-17 editor and highlighting (16-editor) | Claude (TASK-075) | 2026-09-29, commit 166a98b, macOS 26.4.1 arm64, VS Code 1.108.1 | PASS |
@@ -396,11 +396,12 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 | INC-2026-0012 changed steps re-run (T-30): per-surface WS and MCP above; 01 steps 7–8; 02 step 3; 04 steps 6–7; 06 steps 5–8; 07 step 2; 08 step 6; 10 steps 7–8; 11 step 3; 12 step 2 (scratch crate); 14 step 3; 15 step 3; 16 step 6; 17 steps 6–7 and the `policy explain --data` caveat | Claude | 2026-09-29, commit 7c25175 (source = 14750b8), macOS 26.4.1 arm64 | PASS (see each folder's record) |
 | Linux | CI | run 36483001760 | PASS |
 | Windows | — | — | NOT APPLICABLE: unsupported in 0.2.0 (INC-2026-0011) |
-| Tagged release build `v0.2.0` | — | TBD at P5 | NOT STARTED |
+| Tagged release build `v0.2.0` (`dist/v0.2.0/`: `shasum -c SHA256SUMS`; `rivet --version`; 01-catalog `demo.add` ok and invalid exit 2; 17-modules `check`; 16-editor `highlight --format json`; C static and shared links (examples/c) with 0 deployment-target warnings; Python ctypes demo) | Claude (P5) | 2026-09-30, tag v0.2.0 (21bb2e9), macOS 26.4.1 arm64, MACOSX_DEPLOYMENT_TARGET=26.0 | PASS |
 
 ## Known Caveats
 
-- **Tag and commit.** Both are `TBD at P5`. The steps were recorded on the release candidate (`--version` prints `rivet 0.1.0` until the bump). Rerun at least the per-surface examples, 15-ffi step 1 and 16-editor step 1 against the tagged build and add a row to the Verification Record.
+- **Tag and commit.** Tag `v0.2.0` → `21bb2e9`. The steps were recorded on the release candidate before the version bump; the tagged build prints `rivet 0.2.0` and passed the smoke run in the last Verification Record row.
+- **Tag CI run.** On the `v0.2.0` tag, macOS `cli_live_input_local_and_remote` timed out (run 36635295229). The same commit is green on `main` (run 36635293035). The cause is a CLI shutdown defect (`--input-jsonl -` waited for stdin EOF), recorded in [INC-2026-0013](../incidents/resolved/inc-2026-0013-input-jsonl-waits-for-stdin-eof.md) and fixed in v0.2.1.
 - **Fixed before release (INC-2026-0012).** The findings this page first listed here — the `conformance_samples` import gap, `check.import_duplicate` IDs on host loads, MCP `rivet.request` error `operation`, `policy explain --data` and params through modules, library terminal `seq`, WS validation IDs, `check.module_policy_ignored` on `request`/`serve` — are fixed, each with a regression test ([INC-2026-0012](../incidents/resolved/inc-2026-0012-documentation-and-demo-verification-defects.md)). The unary WS `"seq":1` is by design (decision in INC-2026-0012).
 - **R9 deviation.** A target that contains a param stays `param_dependent` even when the rest comes from globals ([14-globals](14-globals/README.md) Known Caveats).
 - **Not reproduced in the demos:** `unsupported.feature` (needs a lean build), `limit.imports` (257 files), the git-tag dependency (needs the P5 tag). Each is covered by its conformance suite.
@@ -418,6 +419,7 @@ Each folder README ends with its own Cleanup; scratch copies (`$WORK`) and scrat
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 5 | 2026-09-30 | Claude | P5: tag v0.2.0 / commit 21bb2e9 recorded; tagged-build smoke run PASS; U-12 git-tag dependency PASS; tag CI note (INC-2026-0013). |
 | 4 | 2026-09-30 | Claude | v0.2.0 release (PLAN-2026-0002 TASK-091): version strings and current-release wording updated to 0.2.0. |
 | 1 | 2026-09-29 | Claude | TASK-077 (PLAN-2026-0002 D-64): created the 0.2.0 release verification guide: header with tag/commit `TBD at P5`; U-01…U-24 (one per R1…R24) with inciting UQ, command, expected result and recorded evidence; per-surface success and failure (CLI, HTTP/SSE, polling, WebSocket, MCP, Rust library, C ABI, Python, editor) re-run at 166a98b; platform coverage (macOS here, Linux CI run 36483001760, Windows unsupported per INC-2026-0011); cleanup; verification record; caveats including the `conformance_samples` import gap. |
 | 2 | 2026-09-29 | Claude | INC-2026-0012: caveat findings fixed and removed; WS `c3` line re-captured with IDs; unary WS `seq` decision recorded. |
