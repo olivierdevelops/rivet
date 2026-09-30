@@ -4,8 +4,8 @@ title: "Rivet sample folders"
 document_type: demo
 status: active
 created_date: 2026-09-28
-last_updated: 2026-09-29
-document_revision: 7
+last_updated: 2026-09-30
+document_revision: 8
 authors: [Codex, Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -75,6 +75,7 @@ Start with [01-catalog](01-catalog/README.md). Its single [app.rivet](01-catalog
 | [13-real-world-apis](13-real-world-apis/README.md) | Open-Meteo, JSONPlaceholder, GitHub, OpenAI, Ollama, Binance WebSocket, MCP and private UDP/QUIC/gRPC shapes | `policy.json` | Optional API key, Ollama, `uvx`, reviewed gRPC descriptor, or user-owned gateways |
 | [14-globals](14-globals/README.md) | **0.2.0:** `global` constants, exact manifest targets, one-line retarget, the six global diagnostics | `policy.json` | `python3 -m http.server` for the retarget step |
 | [15-ffi](15-ffi/README.md) | **0.2.0:** `librivet` from C (shared and static) and Python; streams, live input, cancel, module objects, misuse | none (pure) | C compiler, `make`; Python 3 (ctypes) |
+| [18-ffi-tour](18-ffi-tour/README.md) | **0.2.1:** every `librivet` capability against the shipped release files, from outside the repo: sandbox and `restrict`, timeout records, deadlines, modules, 8 threads, highlighting, misuse; C (shared/static) and Python | `policy.json` | C compiler with pthreads; Python 3 (ctypes); no Rust toolchain |
 | [16-editor](16-editor/README.md) | **0.2.0:** VS Code `.vsix`, token classes, `rivet highlight` ansi/html/json, grammar drift, syntax-error highlighting | none (no bundle) | Python 3; optional `code` launcher (scratch profile) |
 | [17-modules](17-modules/README.md) | **0.2.0:** `import … as ALIAS [public]`, one catalog and one policy across files, import errors, `rt.load` | `policy.json` | `python3 -m http.server` for the retarget step; Rust toolchain for the example |
 
@@ -185,6 +186,7 @@ Each site records a **kind**, one or more **access verbs**, the **capability** t
 | 11-sandbox | 3 file sites | `data.private` denied by design, exit 3 |
 | 14-globals | 1 file read + 2 `connect GET` sites built from globals | all allowed, exit 0 |
 | 15-ffi | none (pure) | exit 0 |
+| 18-ffi-tour | 2 file reads | `data.private` denied by design, exit 3 |
 | 17-modules | `file read ./rates.json` in billing.rivet + `connect GET` in users.rivet, from one policy.json | 2 allowed, exit 0 |
 
 [11-sandbox](11-sandbox/README.md) walks through every view (`--by capability`, `--kind file --access delete`, `--format json`), compares `policy generate` output with its hand-written policy.json, and narrows a grant with `"access": ["create"]` in `policies/create-only.json`. policy.json grants and deny entries may carry an optional `access` list; without it, a grant covers every verb of its capability. A verb from another capability is `policy.invalid` (exit 2).
@@ -227,6 +229,7 @@ These are sample assets under docs, not new Rust architecture buckets or runtime
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 8 | 2026-09-30 | Claude | Added 18-ffi-tour (DEMO-2026-0021): librivet capability tour against the v0.2.1 release files. |
 | 4 | 2026-09-28 | Claude | TASK-005/R26 (ADR-0001, proposal revision 8): site origin/phase/requires_existing/secret with phase diagram; `io --needs`/`io --check-files` in inspection list; bootstrap descriptor/schema note; exit-code table rows 3 and 4 cover `io --check-files`. |
 | 3 | 2026-09-28 | Claude | UQ-18/R26: "Inspect before invoking" now describes the generated I/O manifest (`io --by target`, `io --check-policy`), the access-verb table, a per-folder result summary and the 11-sandbox `policy generate`/`access` walkthrough; added policies/create-only.json (67 files); exit-code table notes for io and policy generate. |
 | 2 | 2026-09-28 | Claude | UQ-17: recounted files/operations by script (replacing the stale 49/37 claim); walkthrough table lists policy files; policy.json discovery convention replaces `--sandbox`/intersection text; shortest usage uses `outputs` and one `serve`; strict-docs, bootstrap list and exit-code table updated; users.get collision resolved. |

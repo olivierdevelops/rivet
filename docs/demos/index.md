@@ -5,7 +5,7 @@ document_type: reference
 status: active
 created_date: 2026-09-28
 last_updated: 2026-09-30
-document_revision: 6
+document_revision: 7
 authors: [Claude]
 owner: Project maintainer
 reviewers: [Project maintainer]
@@ -19,7 +19,7 @@ audience: [developers, reviewers]
 scope: Navigation and status for the sample folders and the v0.1.0 and v0.2.0 release verification guides.
 reason: Every documentation directory needs an index.md; the walkthroughs live in README.md.
 dependencies: [PROP-2026-0001, REF-2026-0002]
-related_documents: ["DEMO-2026-0013", "DEMO-2026-0015", "DEMO-2026-0020", "PLAN-2026-0001", "PLAN-2026-0002", "PROP-2026-0001", "PROP-2026-0002", "REF-2026-0002"]
+related_documents: ["DEMO-2026-0013", "DEMO-2026-0021", "DEMO-2026-0015", "DEMO-2026-0020", "PLAN-2026-0001", "PLAN-2026-0002", "PROP-2026-0001", "PROP-2026-0002", "REF-2026-0002"]
 supersedes: null
 superseded_by: null
 tags: [rivet, examples, design]
@@ -79,6 +79,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 4. [02-file-crud](02-file-crud/README.md), [03-http](03-http/README.md), [04-streaming](04-streaming/README.md), [05-dag](05-dag/README.md).
 5. Protocol samples: [06-mcp-bridge](06-mcp-bridge/README.md), [07-oauth2](07-oauth2/README.md), [08-udp](08-udp/README.md), [09-quic](09-quic/README.md), [10-grpc](10-grpc/README.md).
 6. 0.2.0 features: [14-globals](14-globals/README.md) (DEMO-2026-0016), [17-modules](17-modules/README.md) (DEMO-2026-0019), [15-ffi](15-ffi/README.md) (DEMO-2026-0017), [16-editor](16-editor/README.md) (DEMO-2026-0018).
+7. 0.2.1: [18-ffi-tour](18-ffi-tour/README.md) (DEMO-2026-0021) — every librivet capability against the shipped release files.
 7. [v0.2.0 release verification guide DEMO-2026-0020](demo-2026-0020-v0-2-0-release-verification.md) — one row per 0.2.0 update (U-01…U-24), success and failure per surface including the C ABI, Python and the editor. The 0.1.0 guide is [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) (U-01…U-26).
 8. [13-real-world-apis](13-real-world-apis/README.md) — public APIs, OpenAI, Ollama, WebSocket, MCP and private transport gateways.
 
@@ -89,7 +90,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 | Samples | Seventeen folders. 01–12 and 14–17 are **active**, executed step by step against the 0.2.0 release candidate (source 8031baa; 16-editor and 17-modules at 166a98b; 2026-09-29, macOS arm64) with local fixtures; each README has a Verification Record and `manifest.json` records `runtime_verified` per folder (16-editor is listed under `guides`: it has no bundle). 13-real-world-apis is a separately owned draft (`runtime_verified: "partial"`) |
 | Release guides | [DEMO-2026-0020](demo-2026-0020-v0-2-0-release-verification.md) (0.2.0), active; tag `v0.2.0` → `21bb2e9`, tagged build verified. [DEMO-2026-0015](demo-2026-0015-v0-1-0-release-verification.md) (0.1.0), active, tag v0.1.0 |
 | Design revision | Updated to proposal revision 8: prefix calls, declared outputs, `policy.json` only (the `--sandbox` flag was removed), one `rivet serve` for every surface, and the generated I/O manifest (every README shows `io --by target` with ORIGIN, PHASE and NEEDS FILE columns, and `io --check-policy`, for its own app.rivet). Revision 8 (TASK-005, ADR-0001) adds option-derived file sites (`tls ca_file`/`cert_file`/`key_file`, `body file`), `io --needs` and `io --check-files`; connector `descriptor`/`schema` files (10-grpc, 06-mcp-bridge) stay bootstrap reads |
-| Recently added | 0.2.0 (2026-09-29): folders 14-globals, 15-ffi, 16-editor, 17-modules and the release guide DEMO-2026-0020; 01–13 re-verified on 0.2.0 envelopes. 0.1.0: release verification guide DEMO-2026-0015; local fixtures under `fixtures/` in 01, 03, 04, 06, 07, 08, 09, 10 (TASK-067, 2026-09-28); earlier:  `io --needs` / `io --check-files` walkthrough in 11-sandbox and `bundle load needs` examples in 06-mcp-bridge and 10-grpc; this index; `11-sandbox/policies/create-only.json` (`access` narrowing) and the `policy generate` comparison (2026-09-28) |
+| Recently added | 0.2.1 (2026-09-30): 18-ffi-tour (DEMO-2026-0021), verified against the v0.2.1 release files. 0.2.0 (2026-09-29): folders 14-globals, 15-ffi, 16-editor, 17-modules and the release guide DEMO-2026-0020; 01–13 re-verified on 0.2.0 envelopes. 0.1.0: release verification guide DEMO-2026-0015; local fixtures under `fixtures/` in 01, 03, 04, 06, 07, 08, 09, 10 (TASK-067, 2026-09-28); earlier:  `io --needs` / `io --check-files` walkthrough in 11-sandbox and `bundle load needs` examples in 06-mcp-bridge and 10-grpc; this index; `11-sandbox/policies/create-only.json` (`access` narrowing) and the `policy generate` comparison (2026-09-28) |
 | Deprecated / superseded / archived | None |
 
 ## Open work and risks
@@ -114,6 +115,7 @@ Belongs here: sample bundles and their inputs. Does not belong here: design deci
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| 7 | 2026-09-30 | Claude | Added 18-ffi-tour (DEMO-2026-0021). |
 | 6 | 2026-09-30 | Claude | DEMO-2026-0020 tag and commit recorded. |
 | 5 | 2026-09-29 | Claude | PLAN-2026-0002 TASK-075…077: 0.2.0 folders 14–17 and DEMO-2026-0020 in the layout, reading order and status; 01–13 re-verified on 0.2.0; platform coverage (Linux CI, Windows unsupported); `conformance_samples` import gap as open work. |
 | 4 | 2026-09-28 | Claude | TASK-067/068: folders 01–12 verified against 0.1.0 (829ca43) and active; added the release verification guide DEMO-2026-0015 to the layout, reading order and status; open work now lists platform coverage and the release-artifact rerun; §7 header. |

@@ -1,0 +1,27 @@
+# A module file: rivet_load(rt, "lib/users.rivet", "users", ...) namespaces
+# these operations as users.get and users.list.
+
+operation get
+    name "Get a user"
+    description "Return a synthetic user by ID."
+    param id integer required description "User ID."
+    output object description "The user."
+        field id integer required description "User ID."
+        field name text required description "Display name."
+    end
+    return {id: id, name: "user-" + id}
+end
+
+operation list
+    name "List users"
+    description "Emit three synthetic users."
+    output integer description "Number of users emitted."
+    emits object description "One user."
+        field id integer required description "User ID."
+        field name text required description "Display name."
+    end
+    for id in [1, 2, 3]
+        emit {id: id, name: "user-" + id}
+    end
+    return 3
+end
